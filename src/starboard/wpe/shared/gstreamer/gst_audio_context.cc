@@ -21,7 +21,6 @@ AudioContext::AudioContext()
 
     src = (GstAppSrc*)gst_element_factory_make("appsrc", "audsrc");
     decoder = gst_element_factory_make("decodebin", "auddecoder");
-    queue = gst_element_factory_make ("queue", "audqueue");
     appsink = gst_element_factory_make ("appsink", "audappsink");
 
     g_signal_connect(src, "need-data", G_CALLBACK(StartFeed), this);
@@ -29,9 +28,8 @@ AudioContext::AudioContext()
     g_signal_connect(decoder, "pad-added", G_CALLBACK(OnPadAdded), this);
 
     gst_bin_add_many(GST_BIN(pipeline),
-            (GstElement*)src, decoder, queue, appsink, NULL);
+            (GstElement*)src, decoder, appsink, NULL);
     gst_element_link((GstElement*)src, decoder);
-    gst_element_link(queue, appsink);
 
     g_object_set(appsink, "emit-signals", TRUE, "sync", FALSE, NULL);
     g_signal_connect(appsink, "new-sample", G_CALLBACK (NewSample), this);
@@ -101,8 +99,6 @@ gboolean AudioContext::BusCallback(GstBus *bus, GstMessage *message, gpointer *p
         break;
 
     default:
-        g_print("got message %s\n", \
-                gst_message_type_get_name (GST_MESSAGE_TYPE (message)));
         break;
     }
     return TRUE;
@@ -136,30 +132,10 @@ void AudioContext::OnPadAdded(
         GstElement *element, GstPad *pad, void *context) {
     AudioContext *con = reinterpret_cast<AudioContext*>(context);
 
-#if 0
-    {
-        GstStructure *structure;
-        GstCaps *caps;
-        int rate, channels, frame_size;
-        gboolean ret;
-        const gchar *str;
-
-        caps = gst_pad_get_current_caps(pad);
-
-        structure = gst_caps_get_structure (caps, 0);
-        str = gst_structure_get_name(structure);
-        if (g_str_has_prefix(str, "audio/x-raw")) {
-            ret = gst_structure_get_int (structure, "rate", &rate);
-            ret = gst_structure_get_int (structure, "channels", &channels);
-            ret = gst_structure_get_int (structure, "frame-size", &frame_size);
-        }
-    }
-#endif
-
-    GstPad *queuesink;
-    queuesink = gst_element_get_static_pad(con->queue, "sink");
-    gst_pad_link(pad, queuesink);
-    g_object_unref(queuesink);
+    GstPad *appsinkpad;
+    appsinkpad = gst_element_get_static_pad(con->appsink, "sink");
+    gst_pad_link(pad, appsinkpad);
+    g_object_unref(appsinkpad);
 }
 
 gboolean AudioContext::ReadData (void *context) {
@@ -203,7 +179,7 @@ GstFlowReturn AudioContext::NewSample (
     GstMapInfo map;
     gst_buffer_map (buffer, &map, GST_MAP_READ);
     audio_decoder->PushOutputBuffer(
-            map.data, gst_buffer_get_size(buffer), GST_BUFFER_TIMESTAMP(buffer));
+            map.data, gst_buffer_get_size(buffer), GST_BUFFER_PTS(buffer));
     gst_buffer_unmap (buffer, &map);
 
     gst_sample_unref (sample);

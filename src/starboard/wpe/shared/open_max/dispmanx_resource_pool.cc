@@ -19,7 +19,7 @@
 namespace starboard {
 namespace wpe {
 namespace shared {
-namespace open_max {
+namespace gstreamer {
 
 DispmanxResourcePool::DispmanxResourcePool(size_t max_number_of_resources)
     : max_number_of_resources_(max_number_of_resources),
@@ -91,7 +91,7 @@ void DispmanxResourcePool::DisposeDispmanxYUV420Resource(
   pool->Release();
 }
 
-}  // namespace open_max
+}  // namespace gstreamer
 }  // namespace shared
 }  // namespace wpe
 }  // namespace starboard

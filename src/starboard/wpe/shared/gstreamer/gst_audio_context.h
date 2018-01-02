@@ -37,7 +37,6 @@ private:
     GstPipeline *pipeline;
     GstAppSrc *src;
     GstElement *decoder;
-    GstElement *queue;
     GstElement *appsink;
     guint sourceid;
     void *audio_decoder;

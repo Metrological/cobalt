@@ -14,7 +14,7 @@
 
 #include "starboard/shared/starboard/player/filter/player_components.h"
 
-#include "starboard/wpe/shared/open_max/video_decoder.h"
+#include "starboard/wpe/shared/gstreamer/gst_video_decoder.h"
 #include "starboard/wpe/shared/gstreamer/gst_audio_decoder.h"
 #include "starboard/shared/starboard/player/filter/audio_renderer_impl_internal.h"
 #include "starboard/shared/starboard/player/filter/video_renderer_impl_internal.h"
@@ -30,7 +30,7 @@ scoped_ptr<PlayerComponents> PlayerComponents::Create(
     const AudioParameters& audio_parameters,
     const VideoParameters& video_parameters) {
   using AudioDecoderImpl = ::starboard::shared::gstreamer::AudioDecoder;
-  using VideoDecoderImpl = ::starboard::wpe::shared::open_max::VideoDecoder;
+  using VideoDecoderImpl = ::starboard::wpe::shared::gstreamer::VideoDecoder;
 
   AudioDecoderImpl* audio_decoder = new AudioDecoderImpl(
       audio_parameters.audio_codec, audio_parameters.audio_header);

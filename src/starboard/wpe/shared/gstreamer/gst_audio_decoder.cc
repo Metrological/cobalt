@@ -57,6 +57,8 @@ void AudioDecoder::Decode(
         const scoped_refptr<InputBuffer>& input_buffer,
         const Closure& consumed_cb)
 {
+    AudioContext *con = reinterpret_cast<AudioContext*>(audio_context);
+
     SB_DCHECK(BelongsToCurrentThread());
     SB_DCHECK(input_buffer);
     SB_DCHECK(output_cb_.is_valid());
@@ -83,13 +85,14 @@ void AudioDecoder::PushedInputBuffer()
 void AudioDecoder::PushOutputBuffer(
         uint8_t *buffer, int64_t size, int64_t pts)
 {
-    decoded_audios_.push(new DecodedAudio(
+    scoped_refptr<DecodedAudio> decoded_audio = new DecodedAudio(
             2,
             kSbMediaAudioSampleTypeInt16,
             kSbMediaAudioFrameStorageTypeInterleaved,
             pts,
-            size));
-    SbMemoryCopy(decoded_audios_.back()->buffer(), buffer, size);
+            size);
+    SbMemoryCopy(decoded_audio->buffer(), buffer, size);
+    decoded_audios_.push(decoded_audio);
     Schedule(output_cb_);
 }
 

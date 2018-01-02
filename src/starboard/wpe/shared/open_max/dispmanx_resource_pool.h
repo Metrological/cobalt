@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef STARBOARD_RASPI_SHARED_OPEN_MAX_DISPMANX_RESOURCE_POOL_H_
-#define STARBOARD_RASPI_SHARED_OPEN_MAX_DISPMANX_RESOURCE_POOL_H_
+#ifndef STARBOARD_WPE_SHARED_GSTREAMER_DISPMANX_RESOURCE_POOL_H_
+#define STARBOARD_WPE_SHARED_GSTREAMER_DISPMANX_RESOURCE_POOL_H_
 
 #include <queue>
 
@@ -24,7 +24,7 @@
 namespace starboard {
 namespace wpe {
 namespace shared {
-namespace open_max {
+namespace gstreamer {
 
 class DispmanxResourcePool : public RefCountedThreadSafe<DispmanxResourcePool> {
  public:
@@ -52,9 +52,9 @@ class DispmanxResourcePool : public RefCountedThreadSafe<DispmanxResourcePool> {
   ResourceQueue free_resources_;
 };
 
-}  // namespace open_max
+}  // namespace gstreamer
 }  // namespace shared
 }  // namespace wpe
 }  // namespace starboard
 
-#endif  // STARBOARD_RASPI_SHARED_OPEN_MAX_DISPMANX_RESOURCE_POOL_H_
+#endif  // STARBOARD_WPE_SHARED_GSTREAMER_DISPMANX_RESOURCE_POOL_H_
