@@ -64,6 +64,10 @@ void VideoContext::SetPlay() {
     gst_element_set_state((GstElement*)pipeline, GST_STATE_PLAYING);
 }
 
+void VideoContext::SetReady() {
+    gst_element_set_state((GstElement*)pipeline, GST_STATE_READY);
+}
+
 gboolean VideoContext::BusCallback(GstBus *bus, GstMessage *message, gpointer *ptr) {
     VideoContext *con = reinterpret_cast<VideoContext*>(ptr);
     switch(GST_MESSAGE_TYPE(message)) {
@@ -176,6 +180,7 @@ gboolean VideoContext::ReadData(void *context) {
         else {
             GstBuffer *buffer =
                     gst_buffer_new_and_alloc(input_buffer->size());
+            GST_BUFFER_TIMESTAMP(buffer) = input_buffer->pts() * 10000.0 / 0.9;
             GstMapInfo map;
             gst_buffer_map(buffer, &map, GST_MAP_WRITE);
             memcpy(map.data, input_buffer->data(), input_buffer->size());

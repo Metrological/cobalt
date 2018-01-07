@@ -63,6 +63,10 @@ void AudioContext::SetPlay() {
     gst_element_set_state((GstElement*)pipeline, GST_STATE_PLAYING);
 }
 
+void AudioContext::SetReady() {
+    gst_element_set_state((GstElement*)pipeline, GST_STATE_READY);
+}
+
 gboolean AudioContext::BusCallback(GstBus *bus, GstMessage *message, gpointer *ptr) {
     AudioContext *con = reinterpret_cast<AudioContext*>(ptr);
     switch(GST_MESSAGE_TYPE(message)) {
@@ -154,6 +158,7 @@ gboolean AudioContext::ReadData (void *context) {
     else {
         GstBuffer *buffer =
                 gst_buffer_new_and_alloc(input_buffer->size());
+        GST_BUFFER_TIMESTAMP(buffer) = input_buffer->pts();
         GstMapInfo map;
         gst_buffer_map (buffer, &map, GST_MAP_WRITE);
         memcpy(map.data, input_buffer->data(), input_buffer->size());

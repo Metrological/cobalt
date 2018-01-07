@@ -54,9 +54,13 @@ void VideoDecoder::WriteInputBuffer(
     SB_DCHECK(host_ != NULL);
 
     input_buffers_.push(input_buffer);
-    if (!TryToDeliverOneFrame()) {
-        SbThreadSleep(kSbTimeMillisecond);
-        host_->OnDecoderStatusUpdate(kNeedMoreInput, NULL);
+
+    for (int i = 0; i < 10; i++)
+    {
+        if (!TryToDeliverOneFrame()) {
+            SbThreadSleep(kSbTimeMillisecond);
+            host_->OnDecoderStatusUpdate(kNeedMoreInput, NULL);
+        }
     }
 }
 
@@ -92,6 +96,18 @@ void VideoDecoder::WriteEndOfStream() {
 }
 
 void VideoDecoder::Reset() {
+
+    VideoContext *con = reinterpret_cast<VideoContext*>(video_context);
+    con->SetReady();
+
+    while (!input_buffers_.empty()) {
+        input_buffers_.pop();
+    }
+    while (!decoded_videos_.empty()) {
+        decoded_videos_.pop();
+    }
+    job_queue_->Schedule(update_closure_, kUpdateInterval);
+    con->SetPlay();
 }
 
 void VideoDecoder::Update() {

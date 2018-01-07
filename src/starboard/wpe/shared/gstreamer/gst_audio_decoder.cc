@@ -127,10 +127,17 @@ void AudioDecoder::Reset()
 {
     SB_DCHECK(BelongsToCurrentThread());
 
+    AudioContext *con = reinterpret_cast<AudioContext*>(audio_context);
+    con->SetReady();
+
     while (!decoded_audios_.empty()) {
         decoded_audios_.pop();
     }
     CancelPendingJobs();
+    while (!input_buffers_.empty()) {
+        input_buffers_.pop();
+    }
+    con->SetPlay();
 }
 
 SbMediaAudioSampleType AudioDecoder::GetSampleType() const

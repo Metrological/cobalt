@@ -20,6 +20,7 @@ public:
     void SetDecoder(void *audio_decoder);
     void *GetDecoder();
     void SetPlay();
+    void SetReady();
 
 private:
     static gboolean BusCallback (GstBus *bus,
