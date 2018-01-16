@@ -14,11 +14,20 @@
 {
   'variables': {
     'starboard_platform_dependent_files': [
+      'analog_thumbstick_input.cc',
+      'analog_thumbstick_input.h',
+      'analog_thumbstick_input_thread.cc',
+      'analog_thumbstick_input_thread.h',
       'application_uwp_key_event.cc',
+      'application_uwp_get_commandline_pointer.cc',
       'application_uwp.cc',
       'application_uwp.h',
       'async_utils.h',
       'get_home_directory.cc',
+      'log_file_impl.cc',
+      'log_file_impl.h',
+      'log_raw.cc',
+      'log_raw_format.cc',
       'media_is_output_protected.cc',
       'media_set_output_protection.cc',
       'system_clear_platform_error.cc',
@@ -35,6 +44,27 @@
       'window_internal.h',
       'window_set_default_options.cc',
       'winrt_workaround.h',
+
+      'private/keys.cc',
+      'private/keys.h',
+
+      # Microphone section.
+      '<(DEPTH)/starboard/shared/uwp/microphone_impl.cc',
+      '<(DEPTH)/starboard/shared/starboard/microphone/microphone_get_available.cc',
+      '<(DEPTH)/starboard/shared/starboard/microphone/microphone_get_available.h',
+      '<(DEPTH)/starboard/shared/starboard/microphone/microphone_close.cc',
+      '<(DEPTH)/starboard/shared/starboard/microphone/microphone_close.h',
+      '<(DEPTH)/starboard/shared/starboard/microphone/microphone_create.cc',
+      '<(DEPTH)/starboard/shared/starboard/microphone/microphone_create.h',
+      '<(DEPTH)/starboard/shared/starboard/microphone/microphone_destroy.cc',
+      '<(DEPTH)/starboard/shared/starboard/microphone/microphone_destroy.h',
+      '<(DEPTH)/starboard/shared/starboard/microphone/microphone_get_available.cc',
+      '<(DEPTH)/starboard/shared/starboard/microphone/microphone_get_available.h',
+      '<(DEPTH)/starboard/shared/starboard/microphone/microphone_internal.h',
+      '<(DEPTH)/starboard/shared/starboard/microphone/microphone_is_sample_rate_supported.cc',
+      '<(DEPTH)/starboard/shared/starboard/microphone/microphone_open.cc',
+      '<(DEPTH)/starboard/shared/starboard/microphone/microphone_read.cc',
+
       '<(DEPTH)/starboard/shared/starboard/localized_strings.cc',
       '<(DEPTH)/starboard/shared/starboard/system_request_pause.cc',
       '<(DEPTH)/starboard/shared/starboard/system_request_stop.cc',

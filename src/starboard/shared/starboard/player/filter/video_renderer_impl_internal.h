@@ -41,6 +41,7 @@ class VideoRendererImpl : public VideoRenderer,
                           private HostedVideoDecoder::Host {
  public:
   explicit VideoRendererImpl(scoped_ptr<HostedVideoDecoder> decoder);
+  ~VideoRendererImpl() SB_OVERRIDE;
 
   int GetDroppedFrames() const SB_OVERRIDE { return dropped_frames_; }
 
@@ -74,6 +75,9 @@ class VideoRendererImpl : public VideoRenderer,
   //    no longer accept more data.
   static const size_t kMaxCachedFrames = 12;
 
+  // Advances the clock, potentially dropping any expired frames.
+  void AdvanceCurrentFrame(SbMediaTime media_time, bool audio_eos_reached);
+
   // VideoDecoder::Host method.
   void OnDecoderStatusUpdate(VideoDecoder::Status status,
                              const scoped_refptr<VideoFrame>& frame)
@@ -87,9 +91,9 @@ class VideoRendererImpl : public VideoRenderer,
 
   // During seeking, all frames inside |frames_| will be cleared but the app
   // should still display the last frame it is rendering.  This frame will be
-  // kept inside |last_displayed_frame_|.  It is an empty/black frame before the
+  // kept inside |current_frame_|.  It is an empty/black frame before the
   // video is started.
-  scoped_refptr<VideoFrame> last_displayed_frame_;
+  scoped_refptr<VideoFrame> current_frame_;
 
   SbMediaTime seeking_to_pts_;
   bool end_of_stream_written_;

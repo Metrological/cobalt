@@ -26,6 +26,13 @@ const char kAudioDecoderStub[] = "audio_decoder_stub";
 // Switches different debug console modes: on | hud | off
 const char kDebugConsoleMode[] = "debug_console";
 
+// Enables/disables animations on animated images (e.g. animated WebP).
+const char kDisableImageAnimations[] = "disable_image_animations";
+
+// Disables the splash screen on reloads; instead it will only appear on the
+// first navigate.
+const char kDisableSplashScreenOnReloads[] = "disable_splash_screen_on_reloads";
+
 // Do not create the WebDriver server.
 const char kDisableWebDriver[] = "disable_webdriver";
 
@@ -119,9 +126,6 @@ const char kWebDriverListenIp[] = "webdriver_listen_ip";
 // Enables memory tracking by installing the memory tracker on startup.
 const char kMemoryTracker[] = "memory_tracker";
 
-// Enables/disables animations on animated images (e.g. animated WebP).
-const char kDisableImageAnimations[] = "disable_image_animations";
-
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
 
 // If toggled, framerate statistics will be printed to stdout after each
@@ -132,10 +136,6 @@ const char kFPSPrint[] = "fps_stdout";
 // and updated after each animation completes, or after a maximum number of
 // frames has been collected.
 const char kFPSOverlay[] = "fps_overlay";
-
-// Disables the hard-coded navigation whitelist without disabling any other
-// security checks. This is enabled in production(gold) builds.
-const char kDisableNavigationWhitelist[] = "disable_navigation_whitelist";
 
 // Determines the capacity of the image cache which manages image surfaces
 // downloaded from a web page.  While it depends on the platform, often (and
@@ -154,6 +154,11 @@ const char kLocalStoragePartitionUrl[] = "local_storage_partition_url";
 // typefaces downloaded from a web page.
 const char kRemoteTypefaceCacheSizeInBytes[] =
     "remote_typeface_cache_size_in_bytes";
+
+// Causes the remote typeface cache to be retained when Cobalt is suspended, so
+// that they don't need to be re-downloaded when Cobalt is resumed.
+const char kRetainRemoteTypefaceCacheDuringSuspend[] =
+    "retain_remote_typeface_cache_during_suspend";
 
 // Determines the capacity of the scratch surface cache.  The scratch surface
 // cache facilitates the reuse of temporary offscreen surfaces within a single

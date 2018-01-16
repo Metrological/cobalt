@@ -68,7 +68,8 @@ class CachedResource
   typedef base::Callback<scoped_ptr<Loader>(
       const GURL&, const csp::SecurityCallback&,
       const base::Callback<void(const scoped_refptr<ResourceType>&)>&,
-      const base::Callback<void(const std::string&)>&)> CreateLoaderFunction;
+      const base::Callback<void(const std::string&)>&, const Origin&)>
+      CreateLoaderFunction;
 
   // This class can be used to attach success or error callbacks to
   // CachedResource objects that are executed when the resource finishes
@@ -100,7 +101,7 @@ class CachedResource
   CachedResource(const GURL& url,
                  const csp::SecurityCallback& security_callback,
                  const CreateLoaderFunction& create_loader_function,
-                 ResourceCacheType* resource_cache);
+                 ResourceCacheType* resource_cache, const Origin& origin);
 
   // Resource is available. CachedResource is a wrapper of the resource
   // and there is no need to fetch or load this resource again. |loader_|
@@ -214,7 +215,7 @@ template <typename CacheType>
 CachedResource<CacheType>::CachedResource(
     const GURL& url, const csp::SecurityCallback& security_callback,
     const CreateLoaderFunction& create_loader_function,
-    ResourceCacheType* resource_cache)
+    ResourceCacheType* resource_cache, const Origin& origin)
     : url_(url),
       resource_cache_(resource_cache),
       completion_callbacks_enabled_(false) {
@@ -223,7 +224,8 @@ CachedResource<CacheType>::CachedResource(
   loader_ = create_loader_function.Run(
       url, security_callback,
       base::Bind(&CachedResource::OnLoadingSuccess, base::Unretained(this)),
-      base::Bind(&CachedResource::OnLoadingError, base::Unretained(this)));
+      base::Bind(&CachedResource::OnLoadingError, base::Unretained(this)),
+      origin);
 }
 
 template <typename CacheType>
@@ -405,7 +407,8 @@ class ResourceCache {
   // |unreference_cached_resource_map_|, creates a CachedResource with a loader
   // for it. If the CachedResource is in the cache map, return the
   // CachedResource or wrap the resource if necessary.
-  scoped_refptr<CachedResourceType> CreateCachedResource(const GURL& url);
+  scoped_refptr<CachedResourceType> CreateCachedResource(const GURL& url,
+                                                         const Origin& origin);
 
   // Set a callback that the loader will query to determine if the URL is safe
   // according to our document's security policy.
@@ -420,6 +423,10 @@ class ResourceCache {
   void SetCapacity(uint32 capacity);
 
   void Purge();
+
+  // Processes all pending callbacks regardless of the state of
+  // |callback_blocking_loading_resource_set_|.
+  void ProcessPendingCallbacks();
 
   void DisableCallbacks();
 
@@ -462,9 +469,6 @@ class ResourceCache {
   // Calls ProcessPendingCallbacks() if
   // |callback_blocking_loading_resource_set_| is empty.
   void ProcessPendingCallbacksIfUnblocked();
-  // Processes all pending callbacks regardless of the state of
-  // |callback_blocking_loading_resource_set_|.
-  void ProcessPendingCallbacks();
 
   // The name of this resource cache object, useful while debugging.
   const std::string name_;
@@ -568,7 +572,8 @@ ResourceCache<CacheType>::ResourceCache(
 
 template <typename CacheType>
 scoped_refptr<CachedResource<CacheType> >
-ResourceCache<CacheType>::CreateCachedResource(const GURL& url) {
+ResourceCache<CacheType>::CreateCachedResource(const GURL& url,
+                                               const Origin& origin) {
   DCHECK(resource_cache_thread_checker_.CalledOnValidThread());
   DCHECK(url.is_valid());
 
@@ -609,7 +614,7 @@ ResourceCache<CacheType>::CreateCachedResource(const GURL& url) {
 
   // Create the cached resource and fetch its resource based on the url.
   scoped_refptr<CachedResourceType> cached_resource(new CachedResourceType(
-      url, security_callback_, create_loader_function_, this));
+      url, security_callback_, create_loader_function_, this, origin));
   cached_resource_map_.insert(
       std::make_pair(url.spec(), cached_resource.get()));
 
@@ -634,6 +639,30 @@ void ResourceCache<CacheType>::Purge() {
   DCHECK(resource_cache_thread_checker_.CalledOnValidThread());
   ProcessPendingCallbacks();
   ReclaimMemory(0, true);
+}
+
+template <typename CacheType>
+void ResourceCache<CacheType>::ProcessPendingCallbacks() {
+  DCHECK(resource_cache_thread_checker_.CalledOnValidThread());
+
+  // If callbacks are disabled, simply return.
+  if (are_callbacks_disabled_) {
+    return;
+  }
+
+  is_processing_pending_callbacks_ = true;
+  while (!pending_callback_map_.empty()) {
+    ResourceCallbackInfo& callback_info = pending_callback_map_.front().second;
+
+    // To avoid the last reference of this object getting deleted in the
+    // callbacks.
+    scoped_refptr<CachedResourceType> holder(callback_info.cached_resource);
+    callback_info.cached_resource->RunCallbacks(callback_info.callback_type);
+
+    pending_callback_map_.erase(pending_callback_map_.begin());
+  }
+  is_processing_pending_callbacks_ = false;
+  count_pending_callbacks_ = 0;
 }
 
 template <typename CacheType>
@@ -781,30 +810,6 @@ void ResourceCache<CacheType>::ProcessPendingCallbacksIfUnblocked() {
           non_callback_blocking_loading_resource_set_);
     }
   }
-}
-
-template <typename CacheType>
-void ResourceCache<CacheType>::ProcessPendingCallbacks() {
-  DCHECK(resource_cache_thread_checker_.CalledOnValidThread());
-
-  // If callbacks are disabled, simply return.
-  if (are_callbacks_disabled_) {
-    return;
-  }
-
-  is_processing_pending_callbacks_ = true;
-  while (!pending_callback_map_.empty()) {
-    ResourceCallbackInfo& callback_info = pending_callback_map_.front().second;
-
-    // To avoid the last reference of this object getting deleted in the
-    // callbacks.
-    scoped_refptr<CachedResourceType> holder(callback_info.cached_resource);
-    callback_info.cached_resource->RunCallbacks(callback_info.callback_type);
-
-    pending_callback_map_.erase(pending_callback_map_.begin());
-  }
-  is_processing_pending_callbacks_ = false;
-  count_pending_callbacks_ = 0;
 }
 
 }  // namespace loader

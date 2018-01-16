@@ -39,11 +39,14 @@
 #include "cobalt/browser/url_handler.h"
 #include "cobalt/browser/web_module.h"
 #include "cobalt/dom/array_buffer.h"
+#include "cobalt/dom/input_event_init.h"
 #include "cobalt/dom/keyboard_event_init.h"
 #include "cobalt/dom/pointer_event_init.h"
 #include "cobalt/dom/wheel_event_init.h"
 #include "cobalt/input/input_device_manager.h"
 #include "cobalt/layout/layout_manager.h"
+#include "cobalt/media/can_play_type_handler.h"
+#include "cobalt/media/media_module.h"
 #include "cobalt/network/network_module.h"
 #include "cobalt/render_tree/resource_provider.h"
 #include "cobalt/render_tree/resource_provider_stub.h"
@@ -59,6 +62,7 @@
 #include "cobalt/debug/debug_server.h"
 #endif  // ENABLE_DEBUG_CONSOLE
 #include "starboard/configuration.h"
+#include "starboard/window.h"
 
 namespace cobalt {
 namespace browser {
@@ -75,20 +79,20 @@ class BrowserModule {
         : web_module_options(web_options),
           command_line_auto_mem_settings(
               memory_settings::AutoMemSettings::kTypeCommandLine),
-          build_auto_mem_settings(
-              memory_settings::AutoMemSettings::kTypeBuild) {}
+          build_auto_mem_settings(memory_settings::AutoMemSettings::kTypeBuild),
+          enable_splash_screen_on_reloads(true) {}
     network::NetworkModule::Options network_module_options;
     renderer::RendererModule::Options renderer_module_options;
     storage::StorageManager::Options storage_manager_options;
     WebModule::Options web_module_options;
     media::MediaModule::Options media_module_options;
-    std::string language;
     std::string initial_deep_link;
     base::Closure web_module_recreated_callback;
     memory_settings::AutoMemSettings command_line_auto_mem_settings;
     memory_settings::AutoMemSettings build_auto_mem_settings;
     base::optional<GURL> fallback_splash_screen_url;
     base::optional<math::Size> requested_viewport_size;
+    bool enable_splash_screen_on_reloads;
   };
 
   // Type for a collection of URL handler callbacks that can potentially handle
@@ -158,6 +162,16 @@ class BrowserModule {
   void CheckMemory(const int64_t& used_cpu_memory,
                    const base::optional<int64_t>& used_gpu_memory);
 
+#if SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+  // Called when a kSbEventTypeWindowSizeChange event is fired.
+  void OnWindowSizeChanged(const SbWindowSize& size);
+#endif  // SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+  void OnOnScreenKeyboardShown();
+  void OnOnScreenKeyboardHidden();
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+
  private:
 #if SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
   static void CoreDumpHandler(void* browser_module_as_void);
@@ -196,6 +210,14 @@ class BrowserModule {
   // persist the user's preference.
   void SaveDebugConsoleMode();
 
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+  // Glue function to deal with the production of an input event from an on
+  // screen keyboard input device, and manage handing it off to the web module
+  // for interpretation.
+  void OnOnScreenKeyboardInputEventProduced(base::Token type,
+                                            const dom::InputEventInit& event);
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+
   // Glue function to deal with the production of a keyboard input event from a
   // keyboard input device, and manage handing it off to the web module for
   // interpretation.
@@ -212,6 +234,13 @@ class BrowserModule {
   // wheel input device, and manage handing it off to the web module for
   // interpretation.
   void OnWheelEventProduced(base::Token type, const dom::WheelEventInit& event);
+
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+  // Injects an on screen keyboard input event directly into the main web
+  // module.
+  void InjectOnScreenKeyboardInputEventToMainWebModule(
+      base::Token type, const dom::InputEventInit& event);
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
   // Injects a key event directly into the main web module, useful for setting
   // up an input fuzzer whose input should be sent directly to the main
@@ -293,6 +322,12 @@ class BrowserModule {
   // Initializes the system window, and all components that require it.
   void InitializeSystemWindow();
 
+  // Instantiates a renderer module and dependent objects.
+  void InstantiateRendererModule();
+
+  // Destroys the renderer module and dependent objects.
+  void DestroyRendererModule();
+
   // Updates all components that have already been created with information
   // resulting from the creation of the system window.
   void UpdateFromSystemWindow();
@@ -321,6 +356,9 @@ class BrowserModule {
   // |render_tree_combiner_| and submits it to the pipeline in the renderer
   // module.
   void SubmitCurrentRenderTreeToRenderer();
+
+  // Get the SbWindow via |system_window_| or potentially NULL.
+  SbWindow GetSbWindow();
 
   // TODO:
   //     WeakPtr usage here can be avoided if BrowserModule has a thread to
@@ -389,14 +427,19 @@ class BrowserModule {
   // Controls all media playback related objects/resources.
   scoped_ptr<media::MediaModule> media_module_;
 
+  // Allows checking if particular media type can be played.
+  scoped_ptr<media::CanPlayTypeHandler> can_play_type_handler_;
+
   // Sets up the network component for requesting internet resources.
   network::NetworkModule network_module_;
 
   // Manages the three render trees, combines and renders them.
-  scoped_ptr<RenderTreeCombiner> render_tree_combiner_;
+  RenderTreeCombiner render_tree_combiner_;
   scoped_ptr<RenderTreeCombiner::Layer> main_web_module_layer_;
-  scoped_ptr<RenderTreeCombiner::Layer> debug_console_layer_;
   scoped_ptr<RenderTreeCombiner::Layer> splash_screen_layer_;
+#if defined(ENABLE_DEBUG_CONSOLE)
+  scoped_ptr<RenderTreeCombiner::Layer> debug_console_layer_;
+#endif  // defined(ENABLE_DEBUG_CONSOLE)
 
 #if defined(ENABLE_SCREENSHOT)
   // Helper object to create screen shots of the last layout tree.
@@ -422,6 +465,9 @@ class BrowserModule {
   // This will be called after the WebModule has been destroyed and recreated,
   // which could occur on navigation.
   base::Closure web_module_recreated_callback_;
+
+  // The total number of navigations that have occurred.
+  int navigate_count_;
 
   // The time when a URL navigation starts. This is recorded after the previous
   // WebModule is destroyed.
@@ -489,6 +535,11 @@ class BrowserModule {
   // The timer for the next call to OnErrorRetry(). It is started in OnError()
   // when it is not already active.
   base::OneShotTimer<BrowserModule> on_error_retry_timer_;
+
+  // Set when we've posted a system error for network failure until we receive
+  // the next navigation. This is used to suppress retrying the current URL on
+  // resume until the error retry occurs.
+  bool waiting_for_error_retry_;
 
   // Set when the application is about to quit. May be set from a thread other
   // than the one hosting this object, and read from another.

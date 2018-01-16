@@ -18,6 +18,7 @@
 #include "starboard/log.h"
 #include "starboard/shared/starboard/player/closure.h"
 #include "starboard/shared/starboard/player/filter/audio_renderer_impl_internal.h"
+#include "starboard/shared/starboard/player/filter/audio_renderer_sink_impl.h"
 #include "starboard/shared/starboard/player/filter/player_components.h"
 #include "starboard/shared/starboard/player/filter/video_renderer_impl_internal.h"
 #include "starboard/shared/starboard/player/job_queue.h"
@@ -48,7 +49,9 @@ class StubAudioDecoder : public AudioDecoder, private JobQueue::JobOwner {
         audio_header_(audio_header),
         stream_ended_(false) {}
 
-  void Initialize(const Closure& output_cb) SB_OVERRIDE {
+  void Initialize(const Closure& output_cb,
+                  const Closure& error_cb) SB_OVERRIDE {
+    SB_UNREFERENCED_PARAMETER(error_cb);
     output_cb_ = output_cb;
   }
 
@@ -194,11 +197,12 @@ scoped_ptr<PlayerComponents> PlayerComponents::Create(
   StubAudioDecoder* audio_decoder =
       new StubAudioDecoder(audio_parameters.audio_header);
   StubVideoDecoder* video_decoder = new StubVideoDecoder();
-  AudioRendererImpl* audio_renderer =
-      new AudioRendererImpl(scoped_ptr<AudioDecoder>(audio_decoder).Pass(),
-                            audio_parameters.audio_header);
-  VideoRendererImpl* video_renderer = new VideoRendererImpl(
-      scoped_ptr<HostedVideoDecoder>(video_decoder).Pass());
+  AudioRendererImpl* audio_renderer = new AudioRendererImpl(
+      make_scoped_ptr<AudioDecoder>(audio_decoder),
+      make_scoped_ptr<AudioRendererSink>(new AudioRendererSinkImpl),
+      audio_parameters.audio_header);
+  VideoRendererImpl* video_renderer =
+      new VideoRendererImpl(make_scoped_ptr<HostedVideoDecoder>(video_decoder));
 
   return scoped_ptr<PlayerComponents>(
       new PlayerComponents(audio_renderer, video_renderer));

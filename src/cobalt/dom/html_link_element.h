@@ -22,6 +22,7 @@
 #include "base/threading/thread_checker.h"
 #include "cobalt/cssom/style_sheet.h"
 #include "cobalt/dom/html_element.h"
+#include "cobalt/dom/url_utils.h"
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/loader/loader.h"
 #include "cobalt/loader/text_decoder.h"
@@ -52,6 +53,9 @@ class HTMLLinkElement : public HTMLElement {
   std::string href() const { return GetAttribute("href").value_or(""); }
   void set_href(const std::string& value) { SetAttribute("href", value); }
 
+  base::optional<std::string> cross_origin() const;
+  void set_cross_origin(const base::optional<std::string>& value);
+
   // Custom, not in any spec.
   //
   scoped_refptr<HTMLLinkElement> AsHTMLLinkElement() OVERRIDE { return this; }
@@ -70,7 +74,8 @@ class HTMLLinkElement : public HTMLElement {
   // From the spec: HTMLLinkElement.
   void Obtain();
 
-  void OnLoadingDone(const std::string& content);
+  void OnLoadingDone(const std::string& content,
+                     const loader::Origin& last_url_origin);
   void OnLoadingError(const std::string& error);
   void OnSplashscreenLoaded(Document* document, const std::string& content);
   void OnStylesheetLoaded(Document* document, const std::string& content);
@@ -90,6 +95,12 @@ class HTMLLinkElement : public HTMLElement {
 
   // The style sheet associated with this element.
   scoped_refptr<cssom::StyleSheet> style_sheet_;
+
+  // The origin of fetch request's final destination.
+  loader::Origin fetched_last_url_origin_;
+
+  // The request mode for the fetch request.
+  loader::RequestMode request_mode_;
 };
 
 }  // namespace dom

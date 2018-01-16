@@ -102,7 +102,7 @@ void SystemWindow::DispatchInputEvent(const SbInputData& data,
   // Starboard handily uses the Microsoft key mapping, which is also what Cobalt
   // uses.
   int key_code = static_cast<int>(data.key);
-#if SB_API_VERSION >= SB_POINTER_INPUT_API_VERSION
+#if SB_API_VERSION >= 6
   float pressure = data.pressure;
   uint32 modifiers = data.key_modifiers;
   if (((data.device_type == kSbInputDeviceTypeTouchPad) ||
@@ -126,12 +126,22 @@ void SystemWindow::DispatchInputEvent(const SbInputData& data,
     }
   }
 
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+  scoped_ptr<InputEvent> input_event(
+      new InputEvent(type, data.device_id, key_code, modifiers, is_repeat,
+                     math::PointF(data.position.x, data.position.y),
+                     math::PointF(data.delta.x, data.delta.y), pressure,
+                     math::PointF(data.size.x, data.size.y),
+                     math::PointF(data.tilt.x, data.tilt.y),
+                     data.input_text ? data.input_text : ""));
+#else   // SB_HAS(ON_SCREEN_KEYBOARD)
   scoped_ptr<InputEvent> input_event(
       new InputEvent(type, data.device_id, key_code, modifiers, is_repeat,
                      math::PointF(data.position.x, data.position.y),
                      math::PointF(data.delta.x, data.delta.y), pressure,
                      math::PointF(data.size.x, data.size.y),
                      math::PointF(data.tilt.x, data.tilt.y)));
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 #else
   scoped_ptr<InputEvent> input_event(
       new InputEvent(type, data.device_id, key_code, data.key_modifiers,
@@ -159,7 +169,7 @@ void SystemWindow::HandlePointerInputEvent(const SbInputData& data) {
       DispatchInputEvent(data, input_event_type, false /* is_repeat */);
       break;
     }
-#if SB_API_VERSION >= SB_POINTER_INPUT_API_VERSION
+#if SB_API_VERSION >= 6
     case kSbInputEventTypeWheel: {
       DispatchInputEvent(data, InputEvent::kWheel, false /* is_repeat */);
       break;
@@ -181,7 +191,6 @@ void SystemWindow::HandlePointerInputEvent(const SbInputData& data) {
 
 void SystemWindow::HandleInputEvent(const SbInputData& data) {
   DCHECK_EQ(window_, data.window);
-
   // Handle supported pointer device types.
   if ((kSbInputDeviceTypeMouse == data.device_type) ||
       (kSbInputDeviceTypeTouchScreen == data.device_type) ||
@@ -206,10 +215,18 @@ void SystemWindow::HandleInputEvent(const SbInputData& data) {
       DispatchInputEvent(data, InputEvent::kKeyMove, false /* is_repeat */);
       break;
     }
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+    case kSbInputEventTypeInput: {
+      DispatchInputEvent(data, InputEvent::kInput, false /* is_repeat */);
+      break;
+    }
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
     default:
       break;
   }
 }
+
+SystemWindow* SystemWindow::PrimaryWindow() { return g_the_window; }
 
 void HandleInputEvent(const SbEvent* event) {
   if (event->type != kSbEventTypeInput) {

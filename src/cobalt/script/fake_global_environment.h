@@ -25,15 +25,17 @@ namespace script {
 
 class FakeGlobalEnvironment : public GlobalEnvironment {
  public:
-  void CreateGlobalObject() OVERRIDE {};
+  void CreateGlobalObject() OVERRIDE {}
   bool EvaluateScript(const scoped_refptr<SourceCode>& /*script_utf8*/,
+                      bool /*mute_errors*/,
                       std::string* /*out_result*/) OVERRIDE {
     return false;
   }
-  bool EvaluateScript(const scoped_refptr<SourceCode>& /*script_utf8*/,
-                      const scoped_refptr<Wrappable>& /*owning_object*/,
-                      base::optional<OpaqueHandleHolder::Reference>*
-                          out_opaque_handle) OVERRIDE {
+  bool EvaluateScript(
+      const scoped_refptr<SourceCode>& /*script_utf8*/,
+      const scoped_refptr<Wrappable>& /*owning_object*/, bool /*mute_errors*/,
+      base::optional<ValueHandleHolder::Reference>* /*out_value_handle*/)
+      OVERRIDE {
     return false;
   }
   // False positive lint error.

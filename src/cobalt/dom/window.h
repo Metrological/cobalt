@@ -16,6 +16,7 @@
 #define COBALT_DOM_WINDOW_H_
 
 #include <string>
+#include <vector>
 
 #include "base/callback.h"
 #include "base/hash_tables.h"
@@ -33,6 +34,7 @@
 #include "cobalt/dom/html_element_context.h"
 #include "cobalt/dom/location.h"
 #include "cobalt/dom/media_query_list.h"
+#include "cobalt/dom/on_screen_keyboard.h"
 #include "cobalt/dom/parser.h"
 #if defined(ENABLE_TEST_RUNNER)
 #include "cobalt/dom/test_runner.h"
@@ -40,6 +42,7 @@
 #include "cobalt/dom/url_registry.h"
 #include "cobalt/dom/window_timers.h"
 #include "cobalt/input/camera_3d.h"
+#include "cobalt/loader/cors_preflight_cache.h"
 #include "cobalt/loader/decoder.h"
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/loader/font/remote_typeface_cache.h"
@@ -83,6 +86,7 @@ class LocalStorageDatabase;
 class Location;
 class MediaSource;
 class Navigator;
+class OnScreenKeyboard;
 class Performance;
 class Screen;
 class Storage;
@@ -109,10 +113,8 @@ class Window : public EventTarget,
   typedef base::Callback<void(base::TimeDelta)> CloseCallback;
   typedef UrlRegistry<MediaSource> MediaSourceRegistry;
   typedef base::Callback<bool(const GURL&, const std::string&)> CacheCallback;
-  enum ClockType {
-    kClockTypeTestRunner,
-    kClockTypeSystemTime
-  };
+  typedef base::Callback<SbWindow()> GetSbWindowCallback;
+  enum ClockType { kClockTypeTestRunner, kClockTypeSystemTime };
 
   Window(
       int width, int height, float device_pixel_ratio,
@@ -135,17 +137,18 @@ class Window : public EventTarget,
       MediaSourceRegistry* media_source_registry,
       DomStatTracker* dom_stat_tracker, const GURL& url,
       const std::string& user_agent, const std::string& language,
+      const std::string& font_language_script,
       const base::Callback<void(const GURL&)> navigation_callback,
       const base::Callback<void(const std::string&)>& error_callback,
       network_bridge::CookieJar* cookie_jar,
       const network_bridge::PostSender& post_sender,
-      const std::string& default_security_policy,
       csp::CSPHeaderPolicy require_csp,
       dom::CspEnforcementType csp_enforcement_mode,
       const base::Closure& csp_policy_changed_callback,
       const base::Closure& ran_animation_frame_callbacks_callback,
       const CloseCallback& window_close_callback,
       const base::Closure& window_minimize_callback,
+      const base::Callback<SbWindow()>& get_sb_window_callback,
       const scoped_refptr<input::Camera3D>& camera_3d,
       const scoped_refptr<cobalt::media_session::MediaSession>& media_session,
       int csp_insecure_allowed_token = 0, int dom_max_element_depth = 0,
@@ -234,9 +237,11 @@ class Window : public EventTarget,
   scoped_refptr<Crypto> crypto() const;
 
   // base64 encoding and decoding
-  std::string Btoa(const std::string& string_to_encode);
+  std::string Btoa(const std::string& string_to_encode,
+                   script::ExceptionState* exception_state);
 
-  std::string Atob(const std::string& encoded_string);
+  std::vector<uint8_t> Atob(const std::string& encoded_string,
+                            script::ExceptionState* exception_state);
 
   // Web API: WindowTimers (implements)
   //   https://www.w3.org/TR/html5/webappapis.html#timers
@@ -305,11 +310,6 @@ class Window : public EventTarget,
 
   void SetCamera3D(const scoped_refptr<input::Camera3D>& camera_3d);
 
-  void set_can_play_type_handler(
-      media::CanPlayTypeHandler* can_play_type_handler) {
-    html_element_context_->set_can_play_type_handler(can_play_type_handler);
-  }
-
   void set_web_media_player_factory(
       media::WebMediaPlayerFactory* web_media_player_factory) {
     html_element_context_->set_web_media_player_factory(
@@ -339,6 +339,13 @@ class Window : public EventTarget,
 
   // Cache the passed in splash screen content for the window.location URL.
   void CacheSplashScreen(const std::string& content);
+
+  const scoped_refptr<loader::CORSPreflightCache> get_preflight_cache() {
+    return preflight_cache_;
+  }
+
+  // Custom on screen keyboard.
+  const scoped_refptr<OnScreenKeyboard>& on_screen_keyboard() const;
 
   DEFINE_WRAPPABLE_TYPE(Window);
 
@@ -395,9 +402,15 @@ class Window : public EventTarget,
 
   scoped_refptr<Screen> screen_;
 
+  // Global preflight cache.
+  scoped_refptr<loader::CORSPreflightCache> preflight_cache_;
+
   const base::Closure ran_animation_frame_callbacks_callback_;
   const CloseCallback window_close_callback_;
   const base::Closure window_minimize_callback_;
+  const GetSbWindowCallback get_sb_window_callback_;
+
+  scoped_refptr<OnScreenKeyboard> on_screen_keyboard_;
 
   CacheCallback splash_screen_cache_callback_;
 

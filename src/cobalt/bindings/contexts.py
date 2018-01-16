@@ -18,6 +18,7 @@ Extract the relevant information from the IdlParser objects and store them in
 dicts that will be used by Jinja in JS bindings generation.
 """
 
+import _env  # pylint: disable=unused-import
 from idl_definitions import IdlTypedef
 from idl_types import IdlPromiseType
 from idl_types import IdlSequenceType
@@ -84,6 +85,19 @@ def idl_primitive_type_to_cobalt(idl_type):
   }
   assert idl_type.is_primitive_type, 'Expected primitive type.'
   return type_map[idl_type.base_type]
+
+
+def idl_string_type_to_cobalt(idl_type):
+  """Map IDL string type to C++ type."""
+  type_map = {
+      'ByteString': 'std::vector<uint8_t>',
+      'DOMString': 'std::string',
+      'String': 'std::string',
+      'StringOrNull': 'std::string',
+      'USVString': 'std::string',
+  }
+  assert idl_type.is_string_type, 'Expected string type.'
+  return type_map[idl_type.name]
 
 
 def cobalt_type_is_optional(idl_type):
@@ -180,6 +194,9 @@ def get_conversion_flags(idl_type, extended_attributes):
   if extended_attributes.has_key('Clamp'):
     flags.append('kConversionFlagClamped')
 
+  if is_object_type(idl_type):
+    flags.append('kConversionFlagObjectOnly')
+
   if flags:
     return '(%s)' % ' | '.join(flags)
   else:
@@ -235,7 +252,7 @@ class ContextBuilder(object):
     if idl_type.is_primitive_type:
       cobalt_type = idl_primitive_type_to_cobalt(idl_type)
     elif idl_type.is_string_type:
-      cobalt_type = 'std::string'
+      cobalt_type = idl_string_type_to_cobalt(idl_type)
     elif idl_type.is_callback_interface:
       cobalt_type = '::cobalt::script::CallbackInterfaceTraits<%s >' % (
           get_interface_name(idl_type))
@@ -250,7 +267,7 @@ class ContextBuilder(object):
     elif idl_type.name == 'void':
       cobalt_type = 'void'
     elif is_object_type(idl_type):
-      cobalt_type = '::cobalt::script::OpaqueHandle'
+      cobalt_type = '::cobalt::script::ValueHandle'
     elif is_any_type(idl_type):
       cobalt_type = '::cobalt::script::ValueHandle'
     elif idl_type.is_dictionary:
@@ -436,8 +453,9 @@ class ContextBuilder(object):
 
   def attribute_context(self, interface, attribute, definitions):
     """Create template values for attribute bindings."""
-    cobalt_name = attribute.extended_attributes.get(
-        'ImplementedAs', convert_to_cobalt_name(attribute.name))
+    cobalt_name = attribute.extended_attributes.get('ImplementedAs',
+                                                    convert_to_cobalt_name(
+                                                        attribute.name))
     context = {
         'idl_name':
             attribute.name,
@@ -495,8 +513,10 @@ class ContextBuilder(object):
     return {
         'enumeration_name':
             enumeration.name,
-        'value_pairs': [(convert_to_cobalt_enumeration_value(
-            enumeration.name, value), value,) for value in enumeration.values],
+        'value_pairs': [(
+            convert_to_cobalt_enumeration_value(enumeration.name, value),
+            value,
+        ) for value in enumeration.values],
     }
 
   def constant_context(self, constant):
@@ -528,7 +548,8 @@ class ContextBuilder(object):
     # Get the method contexts for all operations.
     methods = [
         self.method_context(interface, operation)
-        for operation in interface.operations if operation.name
+        for operation in interface.operations
+        if operation.name
     ]
 
     # Create overload sets for static and non-static methods seperately.
@@ -538,9 +559,9 @@ class ContextBuilder(object):
         [m for m in methods if m['is_static']])
     non_static_method_overloads = method_overloads_by_name(
         [m for m in methods if not m['is_static']])
-    static_overload_contexts = get_overload_contexts(expression_generator, [
-        contexts for _, contexts in static_method_overloads
-    ])
+    static_overload_contexts = get_overload_contexts(
+        expression_generator,
+        [contexts for _, contexts in static_method_overloads])
     non_static_overload_contexts = get_overload_contexts(
         expression_generator,
         [contexts for _, contexts in non_static_method_overloads])

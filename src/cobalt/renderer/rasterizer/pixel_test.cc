@@ -187,6 +187,18 @@ TEST_F(PixelTest, CircleViaRoundedCorners) {
                         rounded_corners.Pass()));
 }
 
+// These particular rounded corner values were found to cause a crash problem
+// with some rasterizers, this test is added to prevent a regression.
+TEST_F(PixelTest, AlmostCircleViaRoundedCorners) {
+  RoundedCorner rounded_corner(11.9999504f, 11.9999504f);
+  scoped_ptr<RoundedCorners> rounded_corners(
+      new RoundedCorners(rounded_corner));
+  TestTree(new RectNode(
+      RectF(24, 24),
+      scoped_ptr<Brush>(new SolidColorBrush(ColorRGBA(1.0, 1.0, 0.0, 1.0))),
+      rounded_corners.Pass()));
+}
+
 TEST_F(PixelTest, OvalViaRoundedCorners) {
   RoundedCorner top_left(50, 25);
   RoundedCorner top_right(50, 25);
@@ -566,6 +578,161 @@ TEST_F(PixelTest, RectWithRoundedCornersOnSolidColor) {
                    scoped_ptr<Brush>(
                        new SolidColorBrush(ColorRGBA(0.0, 0.0, 1.0, 1))))));
   TestTree(new CompositionNode(builder.Pass()));
+}
+
+TEST_F(PixelTest, EmptyRectWithRoundedCornersAnd4DifferentEdgeColorsBorder) {
+  // Create a test render tree for a border with rounded corners and 4 different
+  // edge colors.
+  BorderSide border_left(25, render_tree::kBorderStyleSolid,
+                         ColorRGBA(0.0, 0.0, 1.0, 1));
+  BorderSide border_right(25, render_tree::kBorderStyleSolid,
+                          ColorRGBA(0.0, 1.0, 1.0, 0.5));
+  BorderSide border_top(25, render_tree::kBorderStyleSolid,
+                        ColorRGBA(1.0, 1.0, 1.0, 1));
+  BorderSide border_bottom(25, render_tree::kBorderStyleSolid,
+                           ColorRGBA(0.0, 1.0, 0.0, 0.8f));
+  scoped_ptr<Border> border(
+      new Border(border_left, border_right, border_top, border_bottom));
+
+  math::RectF rect(200, 100);
+
+  RoundedCorner rounded_corner(100, 100);
+  scoped_ptr<RoundedCorners> rounded_corners(
+      new RoundedCorners(rounded_corner));
+  *rounded_corners = rounded_corners->Normalize(rect);
+
+  TestTree(new RectNode(rect, border.Pass(), rounded_corners.Pass()));
+}
+
+TEST_F(PixelTest, EmptyRectWith4DifferentRoundedCornersAndEdgeColorsBorder) {
+  // Create a test render tree for a border with 4 different rounded corners and
+  // edge colors.
+  BorderSide border_left(25, render_tree::kBorderStyleSolid,
+                         ColorRGBA(0.0, 0.0, 1.0, 1));
+  BorderSide border_right(25, render_tree::kBorderStyleSolid,
+                          ColorRGBA(0.0, 1.0, 1.0, 0.5));
+  BorderSide border_top(25, render_tree::kBorderStyleSolid,
+                        ColorRGBA(1.0, 1.0, 1.0, 1));
+  BorderSide border_bottom(25, render_tree::kBorderStyleSolid,
+                           ColorRGBA(0.0, 1.0, 0.0, 0.8f));
+  scoped_ptr<Border> border(
+      new Border(border_left, border_right, border_top, border_bottom));
+
+  math::RectF rect(200, 100);
+
+  RoundedCorner top_left(30, 30);
+  RoundedCorner top_right(10, 10);
+  RoundedCorner bottom_right(50, 50);
+  RoundedCorner bottom_left(40, 40);
+  scoped_ptr<RoundedCorners> rounded_corners(
+      new RoundedCorners(top_left, top_right, bottom_right, bottom_left));
+  *rounded_corners = rounded_corners->Normalize(rect);
+
+  TestTree(new RectNode(rect, border.Pass(), rounded_corners.Pass()));
+}
+
+TEST_F(PixelTest, EmptyRectWithRoundedCornersAnd4DifferentEdgeWidthsBorder) {
+  // Create a test render tree for a border with rounded corners and 4 different
+  // edge widths.
+  BorderSide border_left(25, render_tree::kBorderStyleSolid,
+                         ColorRGBA(0.0, 1.0, 0.0, 0.8f));
+  BorderSide border_right(30, render_tree::kBorderStyleSolid,
+                          ColorRGBA(0.0, 1.0, 0.0, 0.8f));
+  BorderSide border_top(40, render_tree::kBorderStyleSolid,
+                        ColorRGBA(0.0, 1.0, 0.0, 0.8f));
+  BorderSide border_bottom(10, render_tree::kBorderStyleSolid,
+                           ColorRGBA(0.0, 1.0, 0.0, 0.8f));
+  scoped_ptr<Border> border(
+      new Border(border_left, border_right, border_top, border_bottom));
+
+  math::RectF rect(200, 100);
+
+  RoundedCorner rounded_corner(100, 100);
+  scoped_ptr<RoundedCorners> rounded_corners(
+      new RoundedCorners(rounded_corner));
+  *rounded_corners = rounded_corners->Normalize(rect);
+
+  TestTree(new RectNode(rect, border.Pass(), rounded_corners.Pass()));
+}
+
+TEST_F(PixelTest, EmptyRectWith4DifferentRoundedCornersAndEdgeWidthsBorder) {
+  // Create a test render tree for a border with 4 different rounded corners and
+  // edge widths.
+  BorderSide border_left(25, render_tree::kBorderStyleSolid,
+                         ColorRGBA(0.0, 1.0, 0.0, 0.8f));
+  BorderSide border_right(30, render_tree::kBorderStyleSolid,
+                          ColorRGBA(0.0, 1.0, 0.0, 0.8f));
+  BorderSide border_top(40, render_tree::kBorderStyleSolid,
+                        ColorRGBA(0.0, 1.0, 0.0, 0.8f));
+  BorderSide border_bottom(10, render_tree::kBorderStyleSolid,
+                           ColorRGBA(0.0, 1.0, 0.0, 0.8f));
+  scoped_ptr<Border> border(
+      new Border(border_left, border_right, border_top, border_bottom));
+
+  math::RectF rect(200, 100);
+
+  RoundedCorner top_left(50, 50);
+  RoundedCorner top_right(10, 10);
+  RoundedCorner bottom_right(60, 60);
+  RoundedCorner bottom_left(40, 40);
+  scoped_ptr<RoundedCorners> rounded_corners(
+      new RoundedCorners(top_left, top_right, bottom_right, bottom_left));
+  *rounded_corners = rounded_corners->Normalize(rect);
+
+  TestTree(new RectNode(rect, border.Pass(), rounded_corners.Pass()));
+}
+
+TEST_F(PixelTest,
+       EmptyRectWithRoundedCornersAnd4DifferentEdgeColorsAndEdgeWidthsBorder) {
+  // Create a test render tree for a border with rounded corners and 4 different
+  // edge colors and edge widths.
+  BorderSide border_left(25, render_tree::kBorderStyleSolid,
+                         ColorRGBA(0.0, 0.0, 1.0, 1));
+  BorderSide border_right(30, render_tree::kBorderStyleSolid,
+                          ColorRGBA(0.0, 1.0, 1.0, 0.5));
+  BorderSide border_top(40, render_tree::kBorderStyleSolid,
+                        ColorRGBA(1.0, 1.0, 1.0, 1));
+  BorderSide border_bottom(10, render_tree::kBorderStyleSolid,
+                           ColorRGBA(0.0, 1.0, 0.0, 0.8f));
+  scoped_ptr<Border> border(
+      new Border(border_left, border_right, border_top, border_bottom));
+
+  math::RectF rect(200, 100);
+
+  RoundedCorner rounded_corner(100, 100);
+  scoped_ptr<RoundedCorners> rounded_corners(
+      new RoundedCorners(rounded_corner));
+  *rounded_corners = rounded_corners->Normalize(rect);
+
+  TestTree(new RectNode(rect, border.Pass(), rounded_corners.Pass()));
+}
+
+TEST_F(PixelTest,
+       EmptyRectWith4DifferentRoundedCornersAndEdgeColorsAndEdgeWidthsBorder) {
+  // Create a test render tree for a border with 4 different rounded corners,
+  // edge colors and edge widths.
+  BorderSide border_left(25, render_tree::kBorderStyleSolid,
+                         ColorRGBA(0.0, 0.0, 1.0, 1));
+  BorderSide border_right(30, render_tree::kBorderStyleSolid,
+                          ColorRGBA(0.0, 1.0, 1.0, 0.5));
+  BorderSide border_top(40, render_tree::kBorderStyleSolid,
+                        ColorRGBA(1.0, 1.0, 1.0, 1));
+  BorderSide border_bottom(10, render_tree::kBorderStyleSolid,
+                           ColorRGBA(0.0, 1.0, 0.0, 0.8f));
+  scoped_ptr<Border> border(
+      new Border(border_left, border_right, border_top, border_bottom));
+
+  math::RectF rect(200, 100);
+
+  RoundedCorner top_left(60, 60);
+  RoundedCorner top_right(10, 10);
+  RoundedCorner bottom_right(50, 50);
+  RoundedCorner bottom_left(40, 40);
+  scoped_ptr<RoundedCorners> rounded_corners(
+      new RoundedCorners(top_left, top_right, bottom_right, bottom_left));
+  *rounded_corners = rounded_corners->Normalize(rect);
+
+  TestTree(new RectNode(rect, border.Pass(), rounded_corners.Pass()));
 }
 
 TEST_F(PixelTest, SingleRGBAImageLargerThanRenderTarget) {

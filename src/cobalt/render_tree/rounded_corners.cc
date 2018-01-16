@@ -47,8 +47,8 @@ RoundedCorners RoundedCorners::Normalize(const math::RectF& rect) const {
     scale = std::min(rect.width() / size, scale);
   }
 
-  size = top_left.vertical +
-         std::max(bottom_left.vertical, bottom_right.vertical);
+  size =
+      top_left.vertical + std::max(bottom_left.vertical, bottom_right.vertical);
   if (size > rect.height()) {
     scale = std::min(rect.height() / size, scale);
   }
@@ -59,21 +59,28 @@ RoundedCorners RoundedCorners::Normalize(const math::RectF& rect) const {
     scale = std::min(rect.height() / size, scale);
   }
 
+  scale = std::max(scale, 0.0f);
   return Scale(scale, scale);
 }
 
 bool RoundedCorners::IsNormalized(const math::RectF& rect) const {
+  // Introduce a fuzz epsilon so that we are not strict about rounding errors
+  // when computing Normalize().
+  const float kEpsilon = 0.0001f;
+  const float fuzzed_width = rect.width() + kEpsilon;
+  const float fuzzed_height = rect.height() + kEpsilon;
+
   return
       // Adjacent corners must not overlap.
-      top_left.horizontal + top_right.horizontal <= rect.width() &&
-      bottom_left.horizontal + bottom_right.horizontal <= rect.width() &&
-      top_left.vertical + bottom_left.vertical <= rect.height() &&
-      top_right.vertical + bottom_right.vertical <= rect.height() &&
+      top_left.horizontal + top_right.horizontal <= fuzzed_width &&
+      bottom_left.horizontal + bottom_right.horizontal <= fuzzed_width &&
+      top_left.vertical + bottom_left.vertical <= fuzzed_height &&
+      top_right.vertical + bottom_right.vertical <= fuzzed_height &&
       // Opposing corners must not overlap.
-      top_left.horizontal + bottom_right.horizontal <= rect.width() &&
-      bottom_left.horizontal + top_right.horizontal <= rect.width() &&
-      top_left.vertical + bottom_right.vertical <= rect.height() &&
-      top_right.vertical + bottom_left.vertical <= rect.height();
+      top_left.horizontal + bottom_right.horizontal <= fuzzed_width &&
+      bottom_left.horizontal + top_right.horizontal <= fuzzed_width &&
+      top_left.vertical + bottom_right.vertical <= fuzzed_height &&
+      top_right.vertical + bottom_left.vertical <= fuzzed_height;
 }
 
 }  // namespace render_tree

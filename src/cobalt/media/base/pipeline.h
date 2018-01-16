@@ -15,6 +15,7 @@
 #ifndef COBALT_MEDIA_BASE_PIPELINE_H_
 #define COBALT_MEDIA_BASE_PIPELINE_H_
 
+#include <string>
 #include <vector>
 
 #include "base/callback.h"
@@ -30,16 +31,8 @@
 #include "ui/gfx/rect.h"
 #include "ui/gfx/size.h"
 
-#if SB_HAS(PLAYER)
-#define COBALT_USE_SBPLAYER_PIPELINE
-#endif  // SB_HAS(PLAYER)
-
-#if defined(COBALT_USE_SBPLAYER_PIPELINE)
 #include "starboard/window.h"
 typedef SbWindow PipelineWindow;
-#else   // defined(COBALT_USE_SBPLAYER_PIPELINE)
-typedef void* PipelineWindow;
-#endif  // defined(COBALT_USE_SBPLAYER_PIPELINE)
 
 namespace cobalt {
 namespace media {
@@ -83,6 +76,10 @@ class MEDIA_EXPORT Pipeline : public base::RefCountedThreadSafe<Pipeline> {
   };
 
   typedef base::Callback<void(BufferingState)> BufferingStateCB;
+#if SB_HAS(PLAYER_WITH_URL)
+  typedef base::Callback<void(EmeInitDataType, const std::vector<uint8_t>&)>
+      OnEncryptedMediaInitDataEncounteredCB;
+#endif  // SB_HAS(PLAYER_WITH_URL)
 
   static scoped_refptr<Pipeline> Create(
       PipelineWindow window,
@@ -118,12 +115,18 @@ class MEDIA_EXPORT Pipeline : public base::RefCountedThreadSafe<Pipeline> {
 #if COBALT_MEDIA_ENABLE_VIDEO_DUMPER
                      const SetEMEInitDataReadyCB& set_eme_init_data_ready_cb,
 #endif  // COBALT_MEDIA_ENABLE_VIDEO_DUMPER
+#if SB_HAS(PLAYER_WITH_URL)
+                     const OnEncryptedMediaInitDataEncounteredCB&
+                         encrypted_media_init_data_encountered_cb,
+                     const std::string& source_url,
+#endif  // SB_HAS(PLAYER_WITH_URL)
                      const PipelineStatusCB& ended_cb,
                      const PipelineStatusCB& error_cb,
                      const PipelineStatusCB& seek_cb,
                      const BufferingStateCB& buffering_state_cb,
                      const base::Closure& duration_change_cb,
-                     const base::Closure& output_mode_change_cb) = 0;
+                     const base::Closure& output_mode_change_cb,
+                     const base::Closure& content_size_change_cb) = 0;
 
   // Asynchronously stops the pipeline, executing |stop_cb| when the pipeline
   // teardown has completed.

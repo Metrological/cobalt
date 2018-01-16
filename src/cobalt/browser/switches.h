@@ -22,6 +22,8 @@ namespace switches {
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
 extern const char kAudioDecoderStub[];
 extern const char kDebugConsoleMode[];
+extern const char kDisableImageAnimations[];
+extern const char kDisableSplashScreenOnReloads[];
 extern const char kDisableWebDriver[];
 extern const char kDisableWebmVp9[];
 extern const char kExtraWebFileDir[];
@@ -44,10 +46,8 @@ extern const char kVideoContainerSizeOverride[];
 extern const char kVideoDecoderStub[];
 extern const char kWebDriverListenIp[];
 extern const char kWebDriverPort[];
-extern const char kDisableImageAnimations[];
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
 
-extern const char kDisableNavigationWhitelist[];
 extern const char kFPSPrint[];
 extern const char kFPSOverlay[];
 extern const char kImageCacheSizeInBytes[];
@@ -55,6 +55,7 @@ extern const char kInitialURL[];
 extern const char kLocalStoragePartitionUrl[];
 extern const char kOffscreenTargetCacheSizeInBytes[];
 extern const char kRemoteTypefaceCacheSizeInBytes[];
+extern const char kRetainRemoteTypefaceCacheDuringSuspend[];
 extern const char kScratchSurfaceCacheSizeInBytes[];
 extern const char kSkiaCacheSizeInBytes[];
 extern const char kSoftwareSurfaceCacheSizeInBytes[];

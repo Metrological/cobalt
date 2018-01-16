@@ -209,10 +209,35 @@ URLSchemeForHistogram URLScheme(const GURL& url) {
 
 }  // anonymous namespace
 
+#if SB_HAS(PLAYER_WITH_URL)
+
+void WebMediaPlayerImpl::LoadUrl(const GURL& url) {
+  TRACE_EVENT0("cobalt::media", "WebMediaPlayerImpl::LoadUrl");
+  DCHECK_EQ(main_loop_, MessageLoop::current());
+
+  UMA_HISTOGRAM_ENUMERATION("Media.URLScheme", URLScheme(url), kMaxURLScheme);
+  DLOG(INFO) << "Start URL playback";
+
+  // Handle any volume changes that occured before load().
+  SetVolume(GetClient()->Volume());
+
+  // TODO: Set networkState to WebMediaPlayer::kNetworkStateIdle on stop.
+  SetNetworkState(WebMediaPlayer::kNetworkStateLoading);
+  SetReadyState(WebMediaPlayer::kReadyStateHaveNothing);
+  media_log_->AddEvent(media_log_->CreateLoadEvent(url.spec()));
+
+  is_local_source_ = !url.SchemeIs("http") && !url.SchemeIs("https");
+
+  StartPipeline(url);
+}
+
+#else  // SB_HAS(PLAYER_WITH_URL)
+
 void WebMediaPlayerImpl::LoadMediaSource() {
   TRACE_EVENT0("cobalt::media", "WebMediaPlayerImpl::LoadMediaSource");
-
   DCHECK_EQ(main_loop_, MessageLoop::current());
+
+  DLOG(INFO) << "Start MEDIASOURCE playback";
 
   // Handle any volume changes that occured before load().
   SetVolume(GetClient()->Volume());
@@ -234,13 +259,12 @@ void WebMediaPlayerImpl::LoadMediaSource() {
 }
 
 void WebMediaPlayerImpl::LoadProgressive(
-    const GURL& url, scoped_ptr<BufferedDataSource> data_source,
-    CORSMode cors_mode) {
+    const GURL& url, scoped_ptr<BufferedDataSource> data_source) {
   TRACE_EVENT0("cobalt::media", "WebMediaPlayerImpl::LoadProgressive");
-
   DCHECK_EQ(main_loop_, MessageLoop::current());
 
   UMA_HISTOGRAM_ENUMERATION("Media.URLScheme", URLScheme(url), kMaxURLScheme);
+  DLOG(INFO) << "Start PROGRESSIVE playback";
 
   // Handle any volume changes that occured before load().
   SetVolume(GetClient()->Volume());
@@ -262,6 +286,8 @@ void WebMediaPlayerImpl::LoadProgressive(
   state_.is_progressive = true;
   StartPipeline(progressive_demuxer_.get());
 }
+
+#endif  // SB_HAS(PLAYER_WITH_URL)
 
 void WebMediaPlayerImpl::CancelLoad() {
   DCHECK_EQ(main_loop_, MessageLoop::current());
@@ -590,7 +616,8 @@ void WebMediaPlayerImpl::OnPipelineSeek(PipelineStatus status) {
   // Update our paused time.
   if (state_.paused) state_.paused_time = pipeline_->GetMediaTime();
 
-  GetClient()->TimeChanged();
+  const bool eos_played = false;
+  GetClient()->TimeChanged(eos_played);
 }
 
 void WebMediaPlayerImpl::OnPipelineEnded(PipelineStatus status) {
@@ -599,7 +626,9 @@ void WebMediaPlayerImpl::OnPipelineEnded(PipelineStatus status) {
     OnPipelineError(status);
     return;
   }
-  GetClient()->TimeChanged();
+
+  const bool eos_played = true;
+  GetClient()->TimeChanged(eos_played);
 }
 
 void WebMediaPlayerImpl::OnPipelineError(PipelineStatus error) {
@@ -691,6 +720,29 @@ void WebMediaPlayerImpl::OnDownloadingStatusChanged(bool is_downloading) {
                                      "is_downloading_data", is_downloading));
 }
 
+#if SB_HAS(PLAYER_WITH_URL)
+void WebMediaPlayerImpl::StartPipeline(const GURL& url) {
+  TRACE_EVENT0("cobalt::media", "WebMediaPlayerImpl::StartPipeline");
+
+  state_.starting = true;
+
+  pipeline_->SetDecodeToTextureOutputMode(client_->PreferDecodeToTexture());
+  pipeline_->Start(
+      NULL, BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::SetDrmSystemReadyCB),
+#if COBALT_MEDIA_ENABLE_VIDEO_DUMPER
+      BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::SetEMEInitDataReadyCB),
+#endif  // COBALT_MEDIA_ENABLE_VIDEO_DUMPER
+      BIND_TO_RENDER_LOOP(
+          &WebMediaPlayerImpl::OnEncryptedMediaInitDataEncountered),
+      url.spec(), BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnPipelineEnded),
+      BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnPipelineError),
+      BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnPipelineSeek),
+      BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnPipelineBufferingState),
+      BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnDurationChanged),
+      BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnOutputModeChanged),
+      BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnContentSizeChanged));
+}
+#else  // SB_HAS(PLAYER_WITH_URL)
 void WebMediaPlayerImpl::StartPipeline(Demuxer* demuxer) {
   TRACE_EVENT0("cobalt::media", "WebMediaPlayerImpl::StartPipeline");
 
@@ -702,13 +754,16 @@ void WebMediaPlayerImpl::StartPipeline(Demuxer* demuxer) {
 #if COBALT_MEDIA_ENABLE_VIDEO_DUMPER
       BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::SetEMEInitDataReadyCB),
 #endif  // COBALT_MEDIA_ENABLE_VIDEO_DUMPER
+      // SB_HAS(PLAYER_WITH_URL)
       BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnPipelineEnded),
       BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnPipelineError),
       BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnPipelineSeek),
       BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnPipelineBufferingState),
       BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnDurationChanged),
-      BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnOutputModeChanged));
+      BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnOutputModeChanged),
+      BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnContentSizeChanged));
 }
+#endif  // SB_HAS(PLAYER_WITH_URL)
 
 void WebMediaPlayerImpl::SetNetworkState(WebMediaPlayer::NetworkState state) {
   DCHECK_EQ(main_loop_, MessageLoop::current());
@@ -810,6 +865,10 @@ void WebMediaPlayerImpl::OnDurationChanged() {
 
 void WebMediaPlayerImpl::OnOutputModeChanged() {
   GetClient()->OutputModeChanged();
+}
+
+void WebMediaPlayerImpl::OnContentSizeChanged() {
+  GetClient()->ContentSizeChanged();
 }
 
 }  // namespace media

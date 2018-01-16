@@ -22,7 +22,9 @@ namespace starboard {
 namespace nplb {
 namespace {
 
-#if SB_HAS(PLAYER)
+#if SB_HAS(PLAYER_WITH_URL)
+// This test does not apply. See player_create_with_url_test.cc instead.
+#else
 
 #if SB_HAS(GLES2)
 void GlesContextRunner(
@@ -30,8 +32,10 @@ void GlesContextRunner(
     SbDecodeTargetGlesContextRunnerTarget target_function,
     void* target_function_context) {
   SB_UNREFERENCED_PARAMETER(graphics_context_provider);
-  SB_UNREFERENCED_PARAMETER(target_function);
-  SB_UNREFERENCED_PARAMETER(target_function_context);
+
+  // Just call the function directly in case the player implementation relies
+  // on this function call being made.
+  (*target_function)(target_function_context);
 }
 #endif  // SB_HAS(GLES2)
 
@@ -50,9 +54,9 @@ TEST(SbPlayerTest, SunnyDay) {
   audio_header.block_alignment = 4;
   audio_header.bits_per_sample = 32;
   audio_header.audio_specific_config_size = 0;
-#if SB_API_VERSION >= SB_AUDIO_SPECIFIC_CONFIG_AS_POINTER
+#if SB_API_VERSION >= 6
   audio_header.audio_specific_config = NULL;
-#endif  // SB_API_VERSION >= SB_AUDIO_SPECIFIC_CONFIG_AS_POINTER
+#endif  // SB_API_VERSION >= 6
   audio_header.average_bytes_per_second = audio_header.samples_per_second *
                                           audio_header.number_of_channels *
                                           audio_header.bits_per_sample / 8;
@@ -97,7 +101,7 @@ TEST(SbPlayerTest, SunnyDay) {
   SbWindowDestroy(window);
 }
 
-#endif  // SB_HAS(PLAYER)
+#endif  // SB_HAS(PLAYER_WITH_URL)
 
 }  // namespace
 }  // namespace nplb

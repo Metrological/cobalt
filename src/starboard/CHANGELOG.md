@@ -8,6 +8,28 @@ version previous to it.
 
 **NOTE: Starboard versions 3 and below are no longer supported.**
 
+## Version 8
+
+### Add `SbPlayerCreateWithUrl()`, `SbPlayerSetDrmSystem()`, `SbPlayerOutputModeSupportedWithUrl()`
+
+For platform media players that rely on using a URL (like an m3u playlist URL)
+for playback, add `SbPlayerCreateWithUrl()` which takes in a URL, no video or audio
+configs, and no DRM system. Allow the DRM system to be set on a running SbPlayer
+exactly once for SbPlayers created with a URL. Also, since URL players will not
+expose codec information, use a custom `SbPlayerOutputModeSupportedWithUrl()` to
+query player output mode support.
+
+### Add `kSbEventTypeWindowSizeChanged`
+
+An event indicating that an `SbWindow`'s size has changed. The event data is
+`SbEventWindowSizeChangedData`, containing a `SbWindow` and `SbWindowSize`.
+
+### Add `SbWindowShowOnScreenKeyboard()`, `SbWindowHideOnScreenKeyboard()`, `SbWindowIsOnScreenKeyboardShown()`
+
+These methods show and hide a native on screen keyboard and determine if the on
+screen keyboard is shown. The on screen keyboard also handles
+`kSbInputEventTypeInput`, which use a new field `input_text` of `SbInputData`.
+
 ## Version 7
 
 ### `SbDecodeTargetInfoPlane` can specify color plane information
@@ -71,6 +93,10 @@ This adds SbKey codes for:
   * Closed Caption key
   * Application launch key
   * Channel Up/Down keys
+  * Info key
+  * Guide key
+  * Last/Previous Channel key
+  * Media audio track select key
 
 ### `kSbEventTypeLowMemory`
 

@@ -17,11 +17,12 @@ import logging
 import os
 import sys
 
-import config.starboard
+import config.base
 import gyp_utils
+from starboard.tools.testing import test_filter
 
 
-class RaspiPlatformConfig(config.starboard.PlatformConfigStarboard):
+class RaspiPlatformConfig(config.base.PlatformConfigBase):
   """Starboard Raspberry Pi platform configuration."""
 
   def __init__(self, platform):
@@ -64,3 +65,54 @@ class RaspiPlatformConfig(config.starboard.PlatformConfigStarboard):
         'CXX': os.path.join(toolchain_bin_dir, 'arm-linux-gnueabihf-g++'),
     })
     return env_variables
+
+  def WebdriverBenchmarksEnabled(self):
+    return True
+
+  def GetTestFilters(self):
+    """Gets all tests to be excluded from a unit test run.
+
+    Returns:
+      A list of initialized TestFilter objects.
+    """
+    return [
+        # Fails with SpiderMonkey.
+        test_filter.TestFilter(
+            'bindings_test', ('GlobalInterfaceBindingsTest.'
+                              'PropertiesAndOperationsAreOwnProperties')),
+        test_filter.TestFilter(
+            'net_unittests', 'HostResolverImplDnsTest.DnsTaskUnspec'),
+
+        # The RasPi test devices don't have access to an IPV6 network, so
+        # disable the related tests.
+        test_filter.TestFilter(
+            'nplb', 'SbSocketAddressTypes/SbSocketGetInterfaceAddressTest.'
+                    'SunnyDayDestination/1'),
+        test_filter.TestFilter(
+            'nplb', 'SbSocketAddressTypes/SbSocketGetInterfaceAddressTest.'
+                    'SunnyDaySourceForDestination/1'),
+        test_filter.TestFilter(
+            'nplb', 'SbSocketAddressTypes/SbSocketGetInterfaceAddressTest.'
+                    'SunnyDaySourceNotLoopback/1'),
+
+        # These tests are currently producing slightly different images on the
+        # RasPi.
+        test_filter.TestFilter(
+            'renderer_test', 'PixelTest.CircularSubPixelBorder'),
+        test_filter.TestFilter(
+            'renderer_test', 'PixelTest.FilterBlurred100PxText'),
+
+        test_filter.TestFilter('starboard_platform_tests',
+                               test_filter.FILTER_ALL),
+        test_filter.TestFilter('nplb_blitter_pixel_tests',
+                               test_filter.FILTER_ALL),
+        test_filter.TestFilter('web_platform_tests', test_filter.FILTER_ALL)
+
+    ]
+
+  def GetTestEnvVariables(self):
+    return {
+        'base_unittests': {'ASAN_OPTIONS': 'detect_leaks=0'},
+        'crypto_unittests': {'ASAN_OPTIONS': 'detect_leaks=0'},
+        'net_unittests': {'ASAN_OPTIONS': 'detect_leaks=0'}
+    }

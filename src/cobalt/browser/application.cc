@@ -37,8 +37,11 @@
 #include "cobalt/base/init_cobalt.h"
 #include "cobalt/base/language.h"
 #include "cobalt/base/localized_strings.h"
+#include "cobalt/base/on_screen_keyboard_hidden_event.h"
+#include "cobalt/base/on_screen_keyboard_shown_event.h"
 #include "cobalt/base/startup_timer.h"
 #include "cobalt/base/user_log.h"
+#include "cobalt/base/window_size_changed_event.h"
 #include "cobalt/browser/memory_settings/auto_mem_settings.h"
 #include "cobalt/browser/memory_tracker/tool.h"
 #include "cobalt/browser/switches.h"
@@ -363,21 +366,6 @@ void ApplyCommandLineSettingsToRendererOptions(
                           &options->scratch_surface_cache_size_in_bytes);
 }
 
-// Restrict navigation to a couple of whitelisted URLs by default.
-const char kYouTubeTvLocationPolicy[] =
-    "h5vcc-location-src "
-    "https://s.ytimg.com/yts/cobalt/ "
-    "https://www.youtube.com/tv "
-    "https://www.youtube.com/tv/ "
-    "https://web-green-qa.youtube.com/tv "
-    "https://web-green-qa.youtube.com/tv/ "
-    "https://web-release-qa.youtube.com/tv "
-    "https://web-release-qa.youtube.com/tv/ "
-#if defined(ENABLE_ABOUT_SCHEME)
-    "about: "
-#endif
-    "h5vcc:";
-
 struct NonTrivialStaticFields {
   NonTrivialStaticFields() : system_language(base::GetSystemLanguage()) {}
 
@@ -467,7 +455,6 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   // Create the main components of our browser.
   BrowserModule::Options options(web_options);
   options.web_module_options.name = "MainWebModule";
-  options.language = language;
   options.initial_deep_link = GetInitialDeepLink();
   options.network_module_options.preferred_language = language;
   options.command_line_auto_mem_settings =
@@ -488,6 +475,12 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
     options.web_module_options.javascript_engine_options.disable_jit = true;
   }
 
+  if (command_line->HasSwitch(
+          browser::switches::kRetainRemoteTypefaceCacheDuringSuspend)) {
+    options.web_module_options.should_retain_remote_typeface_cache_on_suspend =
+        true;
+  }
+
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
   if (command_line->HasSwitch(browser::switches::kNullSavegame)) {
     options.storage_manager_options.savegame_options.factory =
@@ -495,24 +488,27 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   }
 #endif
 
+  base::optional<std::string> partition_key;
   if (command_line->HasSwitch(browser::switches::kLocalStoragePartitionUrl)) {
     std::string local_storage_partition_url = command_line->GetSwitchValueASCII(
         browser::switches::kLocalStoragePartitionUrl);
-    base::optional<std::string> partition_key =
-        base::GetApplicationKey(GURL(local_storage_partition_url));
+    partition_key = base::GetApplicationKey(GURL(local_storage_partition_url));
     CHECK(partition_key) << "local_storage_partition_url is not a valid URL.";
+  } else {
+    partition_key = base::GetApplicationKey(initial_url);
+  }
+  options.storage_manager_options.savegame_options.id = partition_key;
 
-    base::optional<std::string> default_partition_key =
-        base::GetApplicationKey(GURL(kDefaultURL));
-    if (*partition_key != *default_partition_key) {
-      options.storage_manager_options.savegame_options.id = *partition_key;
-    }
+  base::optional<std::string> default_key =
+      base::GetApplicationKey(GURL(kDefaultURL));
+  if (partition_key == default_key) {
+    options.storage_manager_options.savegame_options.fallback_to_default_id =
+        true;
   }
 
   // User can specify an extra search path entry for files loaded via file://.
   options.web_module_options.extra_web_file_dir = GetExtraWebFileDir();
   SecurityFlags security_flags{csp::kCSPRequired, network::kHTTPSRequired};
-  options.web_module_options.location_policy = kYouTubeTvLocationPolicy;
   // Set callback to be notified when a navigation occurs that destroys the
   // underlying WebModule.
   options.web_module_recreated_callback =
@@ -580,12 +576,14 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   if (command_line->HasSwitch(switches::kMemoryTracker)) {
     std::string command_arg =
         command_line->GetSwitchValueASCII(switches::kMemoryTracker);
-    memory_tracker_tool_ =
-        memory_tracker::CreateMemoryTrackerTool(command_arg);
+    memory_tracker_tool_ = memory_tracker::CreateMemoryTrackerTool(command_arg);
   }
 
   if (command_line->HasSwitch(switches::kDisableImageAnimations)) {
     options.web_module_options.enable_image_animations = false;
+  }
+  if (command_line->HasSwitch(switches::kDisableSplashScreenOnReloads)) {
+    options.enable_splash_screen_on_reloads = false;
   }
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
 
@@ -602,13 +600,6 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
       security_flags.https_requirement;
   options.web_module_options.require_csp = security_flags.csp_header_policy;
   options.web_module_options.csp_enforcement_mode = dom::kCspEnforcementEnable;
-
-  if (command_line->HasSwitch(browser::switches::kDisableNavigationWhitelist)) {
-    LOG(ERROR) << "\n"
-               << "  *** Disabling the default navigation whitelist! ***\n"
-               << "  *** Do not run in this mode in production!      ***";
-    options.web_module_options.location_policy = "h5vcc-location-src *";
-  }
 
   options.requested_viewport_size = requested_viewport_size;
   account_manager_.reset(new account::AccountManager());
@@ -630,7 +621,23 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
       base::Bind(&Application::OnDeepLinkEvent, base::Unretained(this));
   event_dispatcher_.AddEventCallback(base::DeepLinkEvent::TypeId(),
                                      deep_link_event_callback_);
-
+#if SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+  window_size_change_event_callback_ = base::Bind(
+      &Application::OnWindowSizeChangedEvent, base::Unretained(this));
+  event_dispatcher_.AddEventCallback(base::WindowSizeChangedEvent::TypeId(),
+                                     window_size_change_event_callback_);
+#endif  // SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+  on_screen_keyboard_shown_event_callback_ = base::Bind(
+      &Application::OnOnScreenKeyboardShownEvent, base::Unretained(this));
+  event_dispatcher_.AddEventCallback(base::OnScreenKeyboardShownEvent::TypeId(),
+                                     on_screen_keyboard_shown_event_callback_);
+  on_screen_keyboard_hidden_event_callback_ = base::Bind(
+      &Application::OnOnScreenKeyboardHiddenEvent, base::Unretained(this));
+  event_dispatcher_.AddEventCallback(
+      base::OnScreenKeyboardHiddenEvent::TypeId(),
+      on_screen_keyboard_hidden_event_callback_);
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 #if defined(ENABLE_WEBDRIVER)
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
   bool create_webdriver_module =
@@ -685,9 +692,12 @@ Application::~Application() {
   // Unregister event callbacks.
   event_dispatcher_.RemoveEventCallback(network::NetworkEvent::TypeId(),
                                         network_event_callback_);
-  event_dispatcher_.RemoveEventCallback(
-      base::DeepLinkEvent::TypeId(), deep_link_event_callback_);
-
+  event_dispatcher_.RemoveEventCallback(base::DeepLinkEvent::TypeId(),
+                                        deep_link_event_callback_);
+#if SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+  event_dispatcher_.RemoveEventCallback(base::WindowSizeChangedEvent::TypeId(),
+                                        window_size_change_event_callback_);
+#endif  // SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
   app_status_ = kShutDownAppStatus;
 }
 
@@ -736,11 +746,28 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
     case kSbEventTypeUnpause:
     case kSbEventTypeSuspend:
     case kSbEventTypeResume:
-#if SB_API_VERSION >= SB_LOW_MEMORY_EVENT_API_VERSION
+#if SB_API_VERSION >= 6
     case kSbEventTypeLowMemory:
-#endif  // SB_API_VERSION >= SB_LOW_MEMORY_EVENT_API_VERSION
+#endif  // SB_API_VERSION >= 6
       OnApplicationEvent(starboard_event->type);
       break;
+#if SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+    case kSbEventTypeWindowSizeChanged:
+      DispatchEventInternal(new base::WindowSizeChangedEvent(
+          static_cast<SbEventWindowSizeChangedData*>(starboard_event->data)
+              ->window,
+          static_cast<SbEventWindowSizeChangedData*>(starboard_event->data)
+              ->size));
+      break;
+#endif  // SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+    case kSbEventTypeOnScreenKeyboardShown:
+      DispatchEventInternal(new base::OnScreenKeyboardShownEvent());
+      break;
+    case kSbEventTypeOnScreenKeyboardHidden:
+      DispatchEventInternal(new base::OnScreenKeyboardHiddenEvent());
+      break;
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
     case kSbEventTypeNetworkConnect:
       DispatchEventInternal(
           new network::NetworkEvent(network::NetworkEvent::kConnection));
@@ -828,13 +855,13 @@ void Application::OnApplicationEvent(SbEventType event_type) {
       browser_module_->Resume();
       DLOG(INFO) << "Finished resuming.";
       break;
-#if SB_API_VERSION >= SB_LOW_MEMORY_EVENT_API_VERSION
+#if SB_API_VERSION >= 6
     case kSbEventTypeLowMemory:
       DLOG(INFO) << "Got low memory event.";
       browser_module_->ReduceMemory();
       DLOG(INFO) << "Finished reducing memory usage.";
       break;
-#endif  // SB_API_VERSION >= SB_LOW_MEMORY_EVENT_API_VERSION
+#endif  // SB_API_VERSION >= 6
     default:
       NOTREACHED() << "Unexpected event type: " << event_type;
       return;
@@ -850,6 +877,31 @@ void Application::OnDeepLinkEvent(const base::Event* event) {
     browser_module_->Navigate(GURL(deep_link_event->link()));
   }
 }
+
+#if SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+void Application::OnWindowSizeChangedEvent(const base::Event* event) {
+  TRACE_EVENT0("cobalt::browser", "Application::OnWindowSizeChangedEvent()");
+  const base::WindowSizeChangedEvent* window_size_change_event =
+      base::polymorphic_downcast<const base::WindowSizeChangedEvent*>(event);
+  browser_module_->OnWindowSizeChanged(window_size_change_event->size());
+}
+#endif  // SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+void Application::OnOnScreenKeyboardShownEvent(const base::Event* event) {
+  TRACE_EVENT0("cobalt::browser",
+               "Application::OnOnScreenKeyboardShownEvent()");
+  UNREFERENCED_PARAMETER(event);
+  browser_module_->OnOnScreenKeyboardShown();
+}
+
+void Application::OnOnScreenKeyboardHiddenEvent(const base::Event* event) {
+  TRACE_EVENT0("cobalt::browser",
+               "Application::OnOnScreenKeyboardHiddenEvent()");
+  UNREFERENCED_PARAMETER(event);
+  browser_module_->OnOnScreenKeyboardHidden();
+}
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
 void Application::WebModuleRecreated() {
   TRACE_EVENT0("cobalt::browser", "Application::WebModuleRecreated()");
@@ -904,9 +956,8 @@ void Application::RegisterUserLogs() {
                             &app_suspend_count_, sizeof(app_suspend_count_));
     base::UserLog::Register(base::UserLog::kAppResumeCountIndex, "ResumeCnt",
                             &app_resume_count_, sizeof(app_resume_count_));
-    base::UserLog::Register(base::UserLog::kNetworkStatusIndex,
-                            "NetworkStatus", &network_status_,
-                            sizeof(network_status_));
+    base::UserLog::Register(base::UserLog::kNetworkStatusIndex, "NetworkStatus",
+                            &network_status_, sizeof(network_status_));
     base::UserLog::Register(base::UserLog::kNetworkConnectCountIndex,
                             "ConnectCnt", &network_connect_count_,
                             sizeof(network_connect_count_));

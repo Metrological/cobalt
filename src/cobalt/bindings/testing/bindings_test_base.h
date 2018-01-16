@@ -67,18 +67,19 @@ class BindingsTestBase : public ::testing::Test {
     scoped_refptr<script::SourceCode> source =
         script::SourceCode::CreateSourceCode(
             script, base::SourceLocation("[object BindingsTestBase]", 1, 1));
-    return global_environment_->EvaluateScript(source, out_result);
+    return global_environment_->EvaluateScript(source, false /*mute_errors*/,
+                                               out_result);
   }
 
   bool EvaluateScript(const std::string& script,
                       const scoped_refptr<script::Wrappable>& owning_object,
-                      base::optional<script::OpaqueHandleHolder::Reference>*
-                          out_opaque_handle = NULL) {
+                      base::optional<script::ValueHandleHolder::Reference>*
+                          out_value_handle = NULL) {
     scoped_refptr<script::SourceCode> source =
         script::SourceCode::CreateSourceCode(
             script, base::SourceLocation("[object BindingsTestBase]", 1, 1));
-    return global_environment_->EvaluateScript(source, owning_object,
-                                               out_opaque_handle);
+    return global_environment_->EvaluateScript(
+        source, owning_object, false /*mute_errors*/, out_value_handle);
   }
 
   void CollectGarbage() { engine_->CollectGarbage(); }

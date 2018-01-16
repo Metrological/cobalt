@@ -15,7 +15,7 @@
 
 import logging
 
-import config.starboard
+import config.base
 
 
 def CreatePlatformConfig():
@@ -26,7 +26,7 @@ def CreatePlatformConfig():
     return None
 
 
-class _PlatformConfig(config.starboard.PlatformConfigStarboard):
+class _PlatformConfig(config.base.PlatformConfigBase):
   """Starboard Tizen Armv7l platform configuration."""
 
   def __init__(self, platform):
@@ -48,3 +48,11 @@ class _PlatformConfig(config.starboard.PlatformConfigStarboard):
         'CXX_host': 'armv7l-tizen-linux-gnueabi-g++',
     }
     return env_variables
+
+  def GetTestFilters(self):
+    """Gets all tests to be excluded from a unit test run.
+
+    Returns:
+      A list of initialized TestFilter objects.
+    """
+    return []

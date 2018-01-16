@@ -14,36 +14,42 @@
 
 #include "starboard/shared/uwp/application_uwp.h"
 
+#include <D3D11.h>
 #include <WinSock2.h>
 #include <mfapi.h>
 #include <ppltasks.h>
 #include <windows.h>
-#include <D3D11.h>
+#include <windows.system.display.h>
 
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "starboard/event.h"
+#include "starboard/input.h"
 #include "starboard/log.h"
 #include "starboard/mutex.h"
 #include "starboard/shared/starboard/application.h"
 #include "starboard/shared/starboard/audio_sink/audio_sink_internal.h"
 #include "starboard/shared/starboard/player/video_frame_internal.h"
+#include "starboard/shared/uwp/analog_thumbstick_input_thread.h"
+#include "starboard/shared/uwp/app_accessors.h"
 #include "starboard/shared/uwp/async_utils.h"
+#include "starboard/shared/uwp/log_file_impl.h"
 #include "starboard/shared/uwp/window_internal.h"
 #include "starboard/shared/win32/thread_private.h"
 #include "starboard/shared/win32/wchar_utils.h"
 #include "starboard/string.h"
 #include "starboard/system.h"
 
+namespace sbuwp = starboard::shared::uwp;
 namespace sbwin32 = starboard::shared::win32;
 
 using Microsoft::WRL::ComPtr;
 using starboard::shared::starboard::Application;
 using starboard::shared::starboard::CommandLine;
 using starboard::shared::uwp::ApplicationUwp;
-using starboard::shared::uwp::GetArgvZero;
+using starboard::shared::uwp::RunInMainThreadAsync;
 using starboard::shared::uwp::WaitForResult;
 using starboard::shared::win32::stringToPlatformString;
 using starboard::shared::win32::wchar_tToUTF8;
@@ -57,11 +63,16 @@ using Windows::ApplicationModel::Core::CoreApplicationView;
 using Windows::ApplicationModel::Core::IFrameworkView;
 using Windows::ApplicationModel::Core::IFrameworkViewSource;
 using Windows::ApplicationModel::SuspendingEventArgs;
+using Windows::Foundation::Collections::IVectorView;
 using Windows::Foundation::EventHandler;
 using Windows::Foundation::IAsyncOperation;
+using Windows::Foundation::Metadata::ApiInformation;
 using Windows::Foundation::TimeSpan;
 using Windows::Foundation::TypedEventHandler;
 using Windows::Foundation::Uri;
+using Windows::Graphics::Display::Core::HdmiDisplayInformation;
+using Windows::Graphics::Display::DisplayInformation;
+using Windows::Globalization::Calendar;
 using Windows::Media::Protection::HdcpProtection;
 using Windows::Media::Protection::HdcpSession;
 using Windows::Media::Protection::HdcpSetProtectionResult;
@@ -69,6 +80,8 @@ using Windows::Networking::Connectivity::ConnectionProfile;
 using Windows::Networking::Connectivity::NetworkConnectivityLevel;
 using Windows::Networking::Connectivity::NetworkInformation;
 using Windows::Networking::Connectivity::NetworkStatusChangedEventHandler;
+using Windows::Storage::KnownFolders;
+using Windows::Storage::StorageFolder;
 using Windows::System::Threading::ThreadPoolTimer;
 using Windows::System::Threading::TimerElapsedHandler;
 using Windows::System::UserAuthenticationStatus;
@@ -81,20 +94,69 @@ using Windows::UI::Popups::IUICommand;
 using Windows::UI::Popups::MessageDialog;
 using Windows::UI::Popups::UICommand;
 using Windows::UI::Popups::UICommandInvokedHandler;
+using Windows::UI::ViewManagement::ApplicationView;
 
 namespace {
 
-const HdcpProtection kHDCPProtectionMode =
-    HdcpProtection::OnWithTypeEnforcement;
+// Per Microsoft, HdcpProtection::On means HDCP 1.x required.
+const HdcpProtection kHDCPProtectionMode = HdcpProtection::On;
 
 const int kWinSockVersionMajor = 2;
 const int kWinSockVersionMinor = 2;
 
 const char kDialParamPrefix[] = "cobalt-dial:?";
+const char kLogPathSwitch[] = "xb1_log_file";
+const char kStarboardArgumentsPath[] = "arguments\\starboard_arguments.txt";
+const int64_t kMaxArgumentFileSizeBytes = 4 * 1024 * 1024;
 
 int main_return_value = 0;
 
+// IDisplayRequest is both "non-agile" and apparently
+// incompatible with Platform::Agile (it doesn't fully implement
+// a thread marshaller). We must neither use ComPtr or Platform::Agile
+// here. We manually create, access release on the main app thread only.
+ABI::Windows::System::Display::IDisplayRequest* display_request = nullptr;
+
+// If an argv[0] is required, fill it in with the result of
+// GetModuleFileName()
+std::string GetArgvZero() {
+  const size_t kMaxModuleNameSize = SB_FILE_MAX_NAME;
+  wchar_t buffer[kMaxModuleNameSize];
+  DWORD result = GetModuleFileName(NULL, buffer, kMaxModuleNameSize);
+  std::string arg;
+  if (result == 0) {
+    arg = "unknown";
+  } else {
+    arg = wchar_tToUTF8(buffer, result).c_str();
+  }
+  return arg;
+}
+
+int MakeDeviceId() {
+  // TODO: Devices MIGHT have colliding hashcodes. Some other unique int
+  // ID generation tool would be better.
+  using Windows::Security::ExchangeActiveSyncProvisioning::
+      EasClientDeviceInformation;
+  auto device_information = ref new EasClientDeviceInformation();
+  Platform::String ^ device_id_string = device_information->Id.ToString();
+  return device_id_string->GetHashCode();
+}
+
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
+
+void SplitArgumentsIntoVector(std::string* args,
+                              std::vector<std::string> *result) {
+  SB_DCHECK(args);
+  SB_DCHECK(result);
+  while (!args->empty()) {
+    size_t next = args->find(';');
+    result->push_back(args->substr(0, next));
+    if (next == std::string::npos) {
+      return;
+    }
+    *args = args->substr(next + 1);
+  }
+}
 
 // Parses a starboard: URI scheme by splitting args at ';' boundaries.
 std::vector<std::string> ParseStarboardUri(const std::string& uri) {
@@ -107,16 +169,39 @@ std::vector<std::string> ParseStarboardUri(const std::string& uri) {
   }
 
   std::string args = uri.substr(index + 1);
+  SplitArgumentsIntoVector(&args, &result);
 
-  while (!args.empty()) {
-    size_t next = args.find(';');
-    result.push_back(args.substr(0, next));
-    if (next == std::string::npos) {
-      return result;
-    }
-    args = args.substr(next + 1);
-  }
   return result;
+}
+
+void AddArgumentsFromFile(const char* path,
+  std::vector<std::string>* args) {
+  starboard::ScopedFile file(path, kSbFileOpenOnly | kSbFileRead);
+  if (!file.IsValid()) {
+    SB_LOG(INFO) << path << " is not valid for arguments.";
+    return;
+  }
+
+  int64_t file_size = file.GetSize();
+  if (file_size > kMaxArgumentFileSizeBytes) {
+    SB_DLOG(ERROR) << "The arguments file is too big.";
+    return;
+  }
+
+  if (file_size <= 0) {
+    SB_DLOG(INFO) << "Arguments file is empty.";
+    return;
+  }
+
+  std::string argument_string(file_size, '\0');
+  int return_value = file.ReadAll(&argument_string[0], file_size);
+  if (return_value < 0) {
+    SB_DLOG(ERROR) << "Error while reading arguments from file.";
+    return;
+  }
+  argument_string.resize(return_value);
+
+  SplitArgumentsIntoVector(&argument_string, args);
 }
 
 #endif  // defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
@@ -149,6 +234,16 @@ bool ends_with(const std::string& full_string, const std::string& substring) {
   return std::equal(substring.rbegin(), substring.rend(), full_string.rbegin());
 }
 
+std::string GetBinaryName() {
+  std::string full_binary_path = GetArgvZero();
+  std::string::size_type index = full_binary_path.rfind(SB_FILE_SEP_CHAR);
+  if (index == std::string::npos) {
+    return full_binary_path;
+  }
+
+  return full_binary_path.substr(index + 1);
+}
+
 }  // namespace
 
 // Note that this is a "struct" and not a "class" because
@@ -165,8 +260,8 @@ struct SbSystemPlatformErrorPrivate {
       : callback_(callback), user_data_(user_data) {
     SB_DCHECK(type == kSbSystemPlatformErrorTypeConnectionError);
 
-    ApplicationUwp* app = ApplicationUwp::Get();
-    app->RunInMainThreadAsync([this, callback, user_data, app]() {
+    RunInMainThreadAsync([this, callback, user_data]() {
+      ApplicationUwp* app = ApplicationUwp::Get();
       MessageDialog^ dialog = ref new MessageDialog(
           app->GetString("UNABLE_TO_CONTACT_YOUTUBE_1",
               "Sorry, could not connect to YouTube."));
@@ -203,7 +298,7 @@ struct SbSystemPlatformErrorPrivate {
   }
 
   void Clear() {
-    ApplicationUwp::Get()->RunInMainThreadAsync([this]() {
+    RunInMainThreadAsync([this]() {
       dialog_operation_->Cancel();
     });
   }
@@ -220,6 +315,14 @@ ref class App sealed : public IFrameworkView {
 
   // IFrameworkView methods.
   virtual void Initialize(CoreApplicationView^ applicationView) {
+    // The following incantation creates a DisplayRequest and obtains
+    // it's underlying COM interface.
+    ComPtr<IInspectable> inspectable = reinterpret_cast<IInspectable*>(
+        ref new Windows::System::Display::DisplayRequest());
+    ComPtr<ABI::Windows::System::Display::IDisplayRequest> dr;
+    inspectable.As(&dr);
+    display_request = dr.Detach();
+
     SbAudioSinkPrivate::Initialize();
     CoreApplication::Suspending +=
         ref new EventHandler<SuspendingEventArgs^>(this, &App::OnSuspending);
@@ -266,15 +369,23 @@ ref class App sealed : public IFrameworkView {
     window->KeyDown += ref new TypedEventHandler<CoreWindow^, KeyEventArgs^>(
       this, &App::OnKeyDown);
   }
-  virtual void Load(Platform::String^ entryPoint) {}
+
+  virtual void Load(Platform::String^ entry_point) {
+    entry_point_ = wchar_tToUTF8(entry_point->Data());
+  }
+
   virtual void Run() {
     main_return_value = application_.Run(
         static_cast<int>(argv_.size()), const_cast<char**>(argv_.data()));
   }
-  virtual void Uninitialize() { SbAudioSinkPrivate::TearDown(); }
+  virtual void Uninitialize() {
+    SbAudioSinkPrivate::TearDown();
+    display_request->Release();
+    display_request = nullptr;
+  }
 
   void OnSuspending(Platform::Object^ sender, SuspendingEventArgs^ args) {
-    SB_DLOG(INFO) << "Suspending";
+    SB_DLOG(INFO) << "Suspending application.";
     // Note if we dispatch "suspend" here before pause, application.cc
     // will inject the "pause" which will cause us to go async which
     // will cause us to not have completed the suspend operation before
@@ -358,9 +469,8 @@ ref class App sealed : public IFrameworkView {
           kDialParamPrefix + sbwin32::platformStringToString(arguments);
         ProcessDeepLinkUri(&uri_string);
       } else {
-        const char kYouTubeTVurl[] = "--url=https://www.youtube.com/tv?";
         std::string activation_args =
-            kYouTubeTVurl + sbwin32::platformStringToString(arguments);
+            entry_point_ + "?" + sbwin32::platformStringToString(arguments);
         SB_DLOG(INFO) << "Dial Activation url: " << activation_args;
         args_.push_back(GetArgvZero());
         args_.push_back(activation_args);
@@ -376,17 +486,74 @@ ref class App sealed : public IFrameworkView {
     if (!previously_activated_) {
       if (!command_line_set) {
         args_.push_back(GetArgvZero());
-        argv_.push_back(args_.begin()->c_str());
+#if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
+        char content_directory[SB_FILE_MAX_NAME];
+        content_directory[0] = '\0';
+        if (SbSystemGetPath(kSbSystemPathContentDirectory,
+                            content_directory,
+                            SB_ARRAY_SIZE_INT(content_directory))) {
+          std::string arguments_file_path = content_directory;
+          arguments_file_path += SB_FILE_SEP_STRING;
+          arguments_file_path += kStarboardArgumentsPath;
+          AddArgumentsFromFile(arguments_file_path.c_str(), &args_);
+        }
+#endif  // defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
+
+        for (auto& arg : args_) {
+          argv_.push_back(arg.c_str());
+        }
+        argv_.push_back(entry_point_.c_str());
         ApplicationUwp::Get()->SetCommandLine(
             static_cast<int>(argv_.size()), argv_.data());
       }
+
+      ApplicationUwp* application_uwp = ApplicationUwp::Get();
+      CommandLine* command_line =
+          ::starboard::shared::uwp::GetCommandLinePointer(application_uwp);
+
+#if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
+      if (command_line->HasSwitch(kLogPathSwitch)) {
+        std::string switch_val = command_line->GetSwitchValue(kLogPathSwitch);
+        sbuwp::OpenLogFile(
+            Windows::Storage::ApplicationData::Current->LocalCacheFolder,
+            switch_val.c_str());
+      } else {
+#if !defined(COBALT_BUILD_TYPE_GOLD)
+        // Log to a file on the last removable device available (probably the
+        // most recently added removable device).
+        try {
+          if (KnownFolders::RemovableDevices != nullptr) {
+            concurrency::create_task(
+                KnownFolders::RemovableDevices->GetFoldersAsync()).then(
+                [](IVectorView<StorageFolder^>^ results) {
+                  if (results->Size > 0) {
+                    StorageFolder^ folder = results->GetAt(results->Size - 1);
+                    Calendar^ now = ref new Calendar();
+                    char filename[128];
+                    SbStringFormatF(filename, sizeof(filename),
+                        "cobalt_log_%04d%02d%02d_%02d%02d%02d.txt",
+                        now->Year, now->Month, now->Day,
+                        now->Hour + now->FirstHourInThisPeriod,
+                        now->Minute, now->Second);
+                    sbuwp::OpenLogFile(folder, filename);
+                  }
+                });
+          }
+        } catch(Platform::Exception^) {
+          SB_LOG(ERROR) << "Unable to open log file in RemovableDevices";
+        }
+#endif  // !defined(COBALT_BUILD_TYPE_GOLD)
+      }
+#endif  // defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
+      SB_LOG(INFO) << "Starting " << GetBinaryName();
+
       CoreWindow::GetForCurrentThread()->Activate();
       // Call DispatchStart async so the UWP system thinks we're activated.
       // Some tools seem to want the application to be activated before
       // interacting with them, some things are disallowed during activation
       // (such as exiting), and DispatchStart (for example) runs
       // automated tests synchronously.
-      ApplicationUwp::Get()->RunInMainThreadAsync([this]() {
+      RunInMainThreadAsync([this]() {
         ApplicationUwp::Get()->DispatchStart();
       });
     }
@@ -431,6 +598,7 @@ ref class App sealed : public IFrameworkView {
     return false;
   }
 
+  std::string entry_point_;
   bool previously_activated_;
   bool has_internet_access_;
   // Only valid if previously_activated_ is true
@@ -453,25 +621,16 @@ namespace starboard {
 namespace shared {
 namespace uwp {
 
-// If an argv[0] is required, fill it in with the result of
-// GetModuleFileName()
-std::string GetArgvZero() {
-  const size_t kMaxModuleNameSize = 256;
-  wchar_t buffer[kMaxModuleNameSize];
-  DWORD result = GetModuleFileName(NULL, buffer, kMaxModuleNameSize);
-  std::string arg;
-  if (result == 0) {
-    arg = "unknown";
-  } else {
-    arg = wchar_tToUTF8(buffer, result).c_str();
-  }
-  return arg;
+ApplicationUwp::ApplicationUwp()
+    : window_(kSbWindowInvalid),
+      localized_strings_(SbSystemGetLocaleId()),
+      device_id_(MakeDeviceId()) {
+  analog_thumbstick_thread_.reset(new AnalogThumbstickThread(this));
 }
 
-ApplicationUwp::ApplicationUwp()
-    : window_(kSbWindowInvalid), localized_strings_(SbSystemGetLocaleId()) {}
-
-ApplicationUwp::~ApplicationUwp() {}
+ApplicationUwp::~ApplicationUwp() {
+  analog_thumbstick_thread_.reset(nullptr);
+}
 
 void ApplicationUwp::Initialize() {}
 
@@ -482,7 +641,7 @@ Application::Event* ApplicationUwp::GetNextEvent() {
   return nullptr;
 }
 
-SbWindow ApplicationUwp::CreateWindowForUWP(const SbWindowOptions* options) {
+SbWindow ApplicationUwp::CreateWindowForUWP(const SbWindowOptions*) {
   // TODO: Determine why SB_DCHECK(IsCurrentThread()) fails in nplb, fix it,
   // and add back this check.
 
@@ -490,7 +649,33 @@ SbWindow ApplicationUwp::CreateWindowForUWP(const SbWindowOptions* options) {
     return kSbWindowInvalid;
   }
 
-  window_ = new SbWindowPrivate(options);
+  // Get the logical resolution in pixels. See section "Bounds" in
+  // https://docs.microsoft.com/en-us/uwp/api/windows.ui.core.corewindow.
+  Windows::Foundation::Rect bounds_in_dips =
+      CoreWindow::GetForCurrentThread()->Bounds;
+  float dpi = DisplayInformation::GetForCurrentView()->LogicalDpi;
+  int width = static_cast<int>(bounds_in_dips.Width * dpi / 96.0f);
+  int height = static_cast<int>(bounds_in_dips.Height * dpi / 96.0f);
+
+  // For UWP on XB1, the logical resolution is always 1080p, regardless of the
+  // actual output resolution -- section "Scale factor and adaptive layout" in
+  // "https://docs.microsoft.com/en-us/windows/uwp/input-and-devices/
+  // designing-for-tv". However, if the swap chain uses a special surface
+  // format (R10G10B10A2), it can be passed to the output without scaling.
+  bool supports_hdmi_api = ApiInformation::IsApiContractPresent(
+      "Windows.Foundation.UniversalApiContract", 4);
+  bool is_fullscreen = ApplicationView::GetForCurrentView()->IsFullScreenMode;
+  if (supports_hdmi_api && is_fullscreen) {
+    // This reports the actual output resolution.
+    auto display_info = HdmiDisplayInformation::GetForCurrentView();
+    auto current_mode = display_info->GetCurrentDisplayMode();
+    width = static_cast<int>(current_mode->ResolutionWidthInRawPixels);
+    height = static_cast<int>(current_mode->ResolutionHeightInRawPixels);
+  }
+
+  SB_LOG(INFO) << "Window resolution is " << width << " x " << height;
+
+  window_ = new SbWindowPrivate(width, height);
   return window_;
 }
 
@@ -595,6 +780,43 @@ SbTimeMonotonic ApplicationUwp::GetNextTimedEventTargetTime() {
   SB_NOTIMPLEMENTED();
   return 0;
 }
+
+void ApplicationUwp::OnJoystickUpdate(SbKey key, SbInputVector input_vector) {
+  scoped_ptr<SbInputData> data(new SbInputData());
+  SbMemorySet(data.get(), 0, sizeof(*data));
+  data->window = window_;
+  data->type = kSbInputEventTypeMove;
+  data->device_type = kSbInputDeviceTypeGamepad;
+  data->device_id = device_id();
+  data->key = key;
+  data->character = 0;
+
+  data->key_modifiers = kSbKeyModifiersNone;
+  data->position = input_vector;
+
+  SbKeyLocation key_location = kSbKeyLocationUnspecified;
+  switch (key) {
+    case kSbKeyGamepadLeftStickLeft:
+    case kSbKeyGamepadLeftStickUp: {
+      key_location = kSbKeyLocationLeft;
+      break;
+    }
+    case kSbKeyGamepadRightStickLeft:
+    case kSbKeyGamepadRightStickUp: {
+      key_location = kSbKeyLocationRight;
+      break;
+    }
+    default: {
+      SB_NOTREACHED();
+      break;
+    }
+  }
+
+  data->key_location = key_location;
+  Inject(new Event(kSbEventTypeInput, data.release(),
+                   &Application::DeleteDestructor<SbInputData>));
+}
+
 SbSystemPlatformError ApplicationUwp::OnSbSystemRaisePlatformError(
     SbSystemPlatformErrorType type,
     SbSystemPlatformErrorCallback callback,
@@ -660,6 +882,31 @@ bool ApplicationUwp::TurnOffHdcp() {
   }
   bool success = !SbMediaIsOutputProtected();
   return success;
+}
+
+Platform::Agile<Windows::UI::Core::CoreDispatcher> GetDispatcher() {
+  return ApplicationUwp::Get()->GetDispatcher();
+}
+
+Platform::Agile<Windows::Media::SystemMediaTransportControls>
+    GetTransportControls() {
+  return ApplicationUwp::Get()->GetTransportControls();
+}
+
+void DisplayRequestActive() {
+  RunInMainThreadAsync([]() {
+    if (display_request != nullptr) {
+      display_request->RequestActive();
+    }
+  });
+}
+
+void DisplayRequestRelease() {
+  RunInMainThreadAsync([]() {
+    if (display_request != nullptr) {
+      display_request->RequestRelease();
+    }
+  });
 }
 
 }  // namespace uwp

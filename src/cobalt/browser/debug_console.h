@@ -25,8 +25,9 @@
 #include "cobalt/browser/lifecycle_observer.h"
 #include "cobalt/browser/web_module.h"
 #include "cobalt/debug/debug_hub.h"
+#include "cobalt/dom/input_event_init.h"
 #include "cobalt/dom/keyboard_event_init.h"
-#include "cobalt/media/media_module_stub.h"
+#include "cobalt/dom/window.h"
 #include "googleurl/src/gurl.h"
 
 namespace cobalt {
@@ -45,13 +46,22 @@ class DebugConsole : public LifecycleObserver {
       render_tree::ResourceProvider* resource_provider,
       float layout_refresh_rate,
       const debug::Debugger::GetDebugServerCallback& get_debug_server_callback,
-      const script::JavaScriptEngine::Options& javascript_engine_options);
+      const script::JavaScriptEngine::Options& javascript_engine_options,
+      const dom::Window::GetSbWindowCallback& get_sb_window_callback);
   ~DebugConsole();
 
   // Filters a key event.
   // Returns true if the event should be passed on to other handlers,
   // false if it was consumed within this function.
   bool FilterKeyEvent(base::Token type, const dom::KeyboardEventInit& event);
+
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+  // Inject an on screen keyboard input event.
+  // Returns true if the event should be passed on to other handlers,
+  // false if it was consumed within this function.
+  bool InjectOnScreenKeyboardInputEvent(base::Token type,
+                                        const dom::InputEventInit& event);
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
   const WebModule& web_module() const { return *web_module_; }
   WebModule& web_module() { return *web_module_; }
@@ -85,8 +95,6 @@ class DebugConsole : public LifecycleObserver {
   void OnError(const GURL& /* url */, const std::string& error) {
     LOG(ERROR) << error;
   }
-
-  media::MediaModuleStub stub_media_module_;
 
   // The current console visibility mode.  The mutex is required since the debug
   // console's visibility mode may be accessed from both the WebModule thread

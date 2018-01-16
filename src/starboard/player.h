@@ -21,8 +21,6 @@
 
 #include "starboard/configuration.h"
 
-#if SB_HAS(PLAYER)
-
 #include "starboard/decode_target.h"
 #include "starboard/drm.h"
 #include "starboard/export.h"
@@ -182,6 +180,21 @@ typedef void (*SbPlayerDeallocateSampleFunc)(SbPlayer player,
                                              void* context,
                                              const void* sample_buffer);
 
+#if SB_HAS(PLAYER_WITH_URL)
+// Callback to queue an encrypted event for initialization data
+// encountered in media data. |init_data_type| should be a string
+// matching one of the EME initialization data types : "cenc",
+// "fairplay", "keyids", or "webm", |init_data| is the initialization
+// data, and |init_data_length| is the length of the data.
+typedef void (*SbPlayerEncryptedMediaInitDataEncounteredCB)(
+    SbPlayer player,
+    void* context,
+    const char* init_data_type,
+    const unsigned char* init_data,
+    unsigned int init_data_length);
+#endif  // SB_API_VERSION >= SB_PLAYER_WITH_URL_API_VERSION  &&
+        // SB_HAS(PLAYER_WITH_URL)
+
 // --- Constants -------------------------------------------------------------
 
 // The value to pass into SbPlayerCreate's |duration_ptr| argument for cases
@@ -202,6 +215,43 @@ static SB_C_INLINE bool SbPlayerIsValid(SbPlayer player) {
 }
 
 // --- Functions -------------------------------------------------------------
+
+#if SB_HAS(PLAYER_WITH_URL)
+
+// Creates a URL-based SbPlayer that will be displayed on |window| for
+// the specified URL |url|, acquiring all resources needed to operate
+// it, and returning an opaque handle to it. The expectation is that a
+// new player will be created and destroyed for every playback.
+//
+// In many ways this function is similar to SbPlayerCreate, but it is
+// missing the input arguments related to the configuration and format
+// of the audio and video stream, as well as the DRM system. The DRM
+// system for a player created with SbPlayerCreateWithUrl can be set
+// after creation using SbPlayerSetDrmSystem. Because the DRM system
+// is not available at the time of SbPlayerCreateWithUrl, it takes in
+// a callback, |encrypted_media_init_data_encountered_cb|, which is
+// run when encrypted media initial data is encountered.
+SB_EXPORT SbPlayer
+SbPlayerCreateWithUrl(const char* url,
+                      SbWindow window,
+                      SbMediaTime duration_pts,
+                      SbPlayerStatusFunc player_status_func,
+                      SbPlayerEncryptedMediaInitDataEncounteredCB
+                          encrypted_media_init_data_encountered_cb,
+                      void* context);
+
+// Sets the DRM system of a running URL-based SbPlayer created with
+// SbPlayerCreateWithUrl. This may only be run once for a given
+// SbPlayer.
+SB_EXPORT void SbPlayerSetDrmSystem(SbPlayer player, SbDrmSystem drm_system);
+
+// Returns true if the given URL player output mode is supported by
+// the platform.  If this function returns true, it is okay to call
+// SbPlayerCreate() with the given |output_mode|.
+SB_EXPORT bool SbPlayerOutputModeSupportedWithUrl(
+    SbPlayerOutputMode output_mode);
+
+#else  // SB_HAS(PLAYER_WITH_URL)
 
 // Creates a player that will be displayed on |window| for the specified
 // |video_codec| and |audio_codec|, acquiring all resources needed to operate
@@ -242,11 +292,11 @@ static SB_C_INLINE bool SbPlayerIsValid(SbPlayer player) {
 // |audio_header|: Note that the caller must provide a populated |audio_header|
 //   if the audio codec is |kSbMediaAudioCodecAac|. Otherwise, |audio_header|
 //   can be NULL. See media.h for the format of the |SbMediaAudioHeader| struct.
-#if SB_API_VERSION >= SB_AUDIO_SPECIFIC_CONFIG_AS_POINTER
+#if SB_API_VERSION >= 6
 //   Note that |audio_specific_config| is a pointer and the content it points to
 //   is no longer valid after this function returns.  The implementation has to
 //   make a copy of the content if it is needed after the function returns.
-#endif  // SB_API_VERSION >= SB_AUDIO_SPECIFIC_CONFIG_AS_POINTER
+#endif  // SB_API_VERSION >= 6
 //
 // |sample_deallocator_func|: If not |NULL|, the player calls this function
 //   on an internal thread to free the sample buffers passed into
@@ -291,13 +341,14 @@ SbPlayerCreate(SbWindow window,
                void* context,
                SbPlayerOutputMode output_mode,
                SbDecodeTargetGraphicsContextProvider* context_provider);
-
 // Returns true if the given player output mode is supported by the platform.
 // If this function returns true, it is okay to call SbPlayerCreate() with
 // the given |output_mode|.
 SB_EXPORT bool SbPlayerOutputModeSupported(SbPlayerOutputMode output_mode,
                                            SbMediaVideoCodec codec,
                                            SbDrmSystem drm_system);
+
+#endif  // SB_HAS(PLAYER_WITH_URL)
 
 // Destroys |player|, freeing all associated resources. Each callback must
 // receive one more callback to say that the player was destroyed. Callbacks
@@ -377,13 +428,13 @@ SB_EXPORT void SbPlayerSeek(SbPlayer player,
 SB_EXPORT void SbPlayerWriteSample(
     SbPlayer player,
     SbMediaType sample_type,
-#if SB_API_VERSION >= SB_PLAYER_WRITE_SAMPLE_EXTRA_CONST_API_VERSION
+#if SB_API_VERSION >= 6
     const void* const* sample_buffers,
     const int* sample_buffer_sizes,
-#else   // SB_API_VERSION >= SB_PLAYER_WRITE_SAMPLE_EXTRA_CONST_API_VERSION
+#else   // SB_API_VERSION >= 6
     const void** sample_buffers,
     int* sample_buffer_sizes,
-#endif  // SB_API_VERSION >= SB_PLAYER_WRITE_SAMPLE_EXTRA_CONST_API_VERSION
+#endif  // SB_API_VERSION >= 6
     int number_of_sample_buffers,
     SbMediaTime sample_pts,
     const SbMediaVideoSampleInfo* video_sample_info,
@@ -466,7 +517,5 @@ SB_EXPORT SbDecodeTarget SbPlayerGetCurrentFrame(SbPlayer player);
 #ifdef __cplusplus
 }  // extern "C"
 #endif
-
-#endif  // SB_HAS(PLAYER)
 
 #endif  // STARBOARD_PLAYER_H_
