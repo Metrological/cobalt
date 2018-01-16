@@ -59,7 +59,8 @@
     {
       'target_name': 'libwebp_dsp_neon',
       'conditions': [
-        ['(target_arch == "arm" and arm_version >= 7) or (OS == "lb_shell" and target_arch == "android")', {
+        # TODO: Fix problems building neon for device on tvOS.
+        ['((target_arch == "arm" and arm_version >= 7) or (target_arch == "arm64")) and (target_os != "tvos")', {
           'type': 'static_library',
           'include_dirs': ['.'],
           'sources': [
@@ -73,7 +74,7 @@
         },{  # "target_arch != "arm" or arm_version < 7"
           'type': 'none',
         }],
-        ['target_arch == "arm" and arm_version >= 8', {
+        ['(target_arch == "arm" and arm_version >= 8) or (target_arch == "arm64")', {
           # NEON is implicit on ARMv8, and both clang and gcc don't like the
           # redundant flag.
           'cflags!': [ '-mfpu=neon' ],

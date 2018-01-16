@@ -24,16 +24,21 @@
 #include "cobalt/dom/screen.h"
 #include "cobalt/dom_parser/parser.h"
 #include "cobalt/loader/fetcher_factory.h"
-#include "cobalt/media/media_module_stub.h"
 #include "cobalt/media_session/media_session.h"
 #include "cobalt/network/network_module.h"
 #include "cobalt/network_bridge/net_poster.h"
 #include "googleurl/src/gurl.h"
+#include "starboard/window.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace cobalt {
 namespace dom {
+namespace {
+// Return a NULL SbWindow, since we do not need to pass a valid SbWindow to an
+// on screen keyboard.
+SbWindow GetNullSbWindow() { return NULL; }
+}  // namespace
 
 class MockErrorCallback : public base::Callback<void(const std::string&)> {
  public:
@@ -48,22 +53,21 @@ class WindowTest : public ::testing::Test {
         dom_parser_(new dom_parser::Parser(mock_error_callback_)),
         fetcher_factory_(new loader::FetcherFactory(&network_module_)),
         local_storage_database_(NULL),
-        stub_media_module_(new media::MediaModuleStub()),
         url_("about:blank"),
         window_(new Window(
             1920, 1080, 1.f, base::kApplicationStateStarted, css_parser_.get(),
             dom_parser_.get(), fetcher_factory_.get(), NULL, NULL, NULL, NULL,
-            NULL, NULL, &local_storage_database_, stub_media_module_.get(),
-            stub_media_module_.get(), NULL, NULL, NULL, NULL, NULL, url_, "",
-            "en-US", base::Callback<void(const GURL &)>(),
+            NULL, NULL, &local_storage_database_, NULL, NULL, NULL, NULL, NULL,
+            NULL, NULL, url_, "", "en-US", "en",
+            base::Callback<void(const GURL &)>(),
             base::Bind(&MockErrorCallback::Run,
                        base::Unretained(&mock_error_callback_)),
-            NULL, network_bridge::PostSender(),
-            std::string() /* default security policy */, csp::kCSPRequired,
+            NULL, network_bridge::PostSender(), csp::kCSPRequired,
             kCspEnforcementEnable, base::Closure() /* csp_policy_changed */,
             base::Closure() /* ran_animation_frame_callbacks */,
             dom::Window::CloseCallback() /* window_close */,
-            base::Closure() /* window_minimize */, NULL, NULL)) {}
+            base::Closure() /* window_minimize */, base::Bind(&GetNullSbWindow),
+            NULL, NULL)) {}
 
   ~WindowTest() OVERRIDE {}
 
@@ -74,7 +78,6 @@ class WindowTest : public ::testing::Test {
   network::NetworkModule network_module_;
   scoped_ptr<loader::FetcherFactory> fetcher_factory_;
   dom::LocalStorageDatabase local_storage_database_;
-  scoped_ptr<media::MediaModule> stub_media_module_;
   GURL url_;
   scoped_refptr<Window> window_;
 };

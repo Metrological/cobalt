@@ -14,8 +14,6 @@
 
 {
   'variables': {
-    'javascript_engine': 'mozjs-45',
-    'cobalt_enable_jit': 0,
     # TODO: In theory, there are tools that can combine static libraries into
     # thick static libraries with all their transitive dependencies. Using
     # shared_library here can have unexpected consequences. Explore building
@@ -27,6 +25,7 @@
     'angle_build_winrt': 0,
     'winrt': 0,
     'enable_d3d11_feature_level_11': 1,
+    'cobalt_user_on_exit_strategy': 'noexit',
   },
   'includes': [
     '../../shared/gyp_configuration.gypi',

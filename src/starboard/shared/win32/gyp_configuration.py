@@ -11,20 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import logging
+"""Starboard win32 shared platform configuration for gyp_cobalt."""
+
 import os
 import sys
 
-import config.starboard
+import config.base
 
+import starboard.shared.win32.sdk_configuration as sdk_configuration
 from starboard.tools.paths import STARBOARD_ROOT
+from starboard.tools.testing import test_filter
 
-import sdk_configuration
 
 def _QuotePath(path):
   return '"' + path + '"'
 
-class PlatformConfig(config.starboard.PlatformConfigStarboard):
+
+class PlatformConfig(config.base.PlatformConfigBase):
   """Starboard Microsoft Windows platform configuration."""
 
   def __init__(self, platform):
@@ -35,10 +38,10 @@ class PlatformConfig(config.starboard.PlatformConfigStarboard):
     sdk = self.sdk
     variables = super(PlatformConfig, self).GetVariables(configuration)
     variables.update({
-      'visual_studio_install_path': sdk.vs_install_dir_with_version,
-      'windows_sdk_path': sdk.windows_sdk_path,
-      'windows_sdk_version': sdk.required_sdk_version,
-      })
+        'visual_studio_install_path': sdk.vs_install_dir_with_version,
+        'windows_sdk_path': sdk.windows_sdk_path,
+        'windows_sdk_version': sdk.required_sdk_version,
+    })
     return variables
 
   def GetEnvironmentVariables(self):
@@ -87,3 +90,38 @@ class PlatformConfig(config.starboard.PlatformConfigStarboard):
         os.path.join(STARBOARD_ROOT, 'shared', 'msvc', 'uwp'))
     from msvc_toolchain import MSVCUWPToolchain  # pylint: disable=g-import-not-at-top,g-bad-import-order
     return MSVCUWPToolchain()
+
+  def GetTestFilters(self):
+    """Gets all tests to be excluded from a unit test run.
+
+    Returns:
+      A list of initialized TestFilter objects.
+    """
+    return [
+        # Fails on JSC.
+        test_filter.TestFilter(
+            'bindings_test', ('EvaluateScriptTest.ThreeArguments')),
+        test_filter.TestFilter(
+            'bindings_test', ('GarbageCollectionTest.*')),
+
+        test_filter.TestFilter('nplb', test_filter.FILTER_ALL),
+        test_filter.TestFilter('poem_unittests', test_filter.FILTER_ALL),
+
+        # The Windows platform uses D3D9 which doesn't let you create a D3D
+        # device without a display, causing these unit tests to erroneously
+        # fail on the buildbots, so they are disabled for Windows only.
+        test_filter.TestFilter('layout_tests', test_filter.FILTER_ALL),
+        test_filter.TestFilter('renderer_test', test_filter.FILTER_ALL),
+
+        # No network on Windows, yet.
+        test_filter.TestFilter('web_platform_tests', test_filter.FILTER_ALL),
+        test_filter.TestFilter('net_unittests', test_filter.FILTER_ALL),
+
+        test_filter.TestFilter('starboard_platform_tests',
+                               test_filter.FILTER_ALL),
+        test_filter.TestFilter('nplb_blitter_pixel_tests',
+                               test_filter.FILTER_ALL),
+        test_filter.TestFilter('webdriver_test',
+                               test_filter.FILTER_ALL)
+
+    ]

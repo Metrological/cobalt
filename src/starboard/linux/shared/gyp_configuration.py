@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2017 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@
 import imp
 import os
 
-import config.starboard
+import config.base
 import gyp_utils
-import starboard.tools.testing.test_filter as test_filter
+from starboard.tools.testing import test_filter
 
 
-class PlatformConfig(config.starboard.PlatformConfigStarboard):
+class PlatformConfig(config.base.PlatformConfigBase):
   """Starboard Linux platform configuration."""
 
   def __init__(self,
@@ -63,6 +63,9 @@ class PlatformConfig(config.starboard.PlatformConfigStarboard):
     launcher_module = imp.load_source('launcher', module_path)
     return launcher_module
 
+  def WebdriverBenchmarksEnabled(self):
+    return True
+
   def GetTestFilters(self):
     """Gets all tests to be excluded from a unit test run.
 
@@ -78,7 +81,16 @@ class PlatformConfig(config.starboard.PlatformConfigStarboard):
         test_filter.TestFilter(
             'nplb_blitter_pixel_tests', test_filter.FILTER_ALL),
         test_filter.TestFilter(
-            'web_platform_tests', 'xhr/WebPlatformTest.Run/125', 'debug'),
+            'web_platform_tests', 'xhr/WebPlatformTest.Run/130', 'debug'),
         test_filter.TestFilter(
-            'web_platform_tests', 'streams/WebPlatformTest.Run/11', 'debug')
+            'web_platform_tests', 'streams/WebPlatformTest.Run/11', 'debug'),
+        test_filter.TestFilter(
+            'starboard_platform_tests', test_filter.FILTER_ALL)
     ]
+
+  def GetTestEnvVariables(self):
+    return {
+        'base_unittests': {'ASAN_OPTIONS': 'detect_leaks=0'},
+        'crypto_unittests': {'ASAN_OPTIONS': 'detect_leaks=0'},
+        'net_unittests': {'ASAN_OPTIONS': 'detect_leaks=0'}
+    }

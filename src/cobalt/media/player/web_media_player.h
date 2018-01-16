@@ -83,10 +83,14 @@ class WebMediaPlayer {
 
   virtual ~WebMediaPlayer() {}
 
+#if SB_HAS(PLAYER_WITH_URL)
+  virtual void LoadUrl(const GURL& url) = 0;
+#else   // SB_HAS(PLAYER_WITH_URL)
   virtual void LoadMediaSource() = 0;
   virtual void LoadProgressive(const GURL& url,
-                               scoped_ptr<BufferedDataSource> data_source,
-                               CORSMode cors_mode) = 0;
+                               scoped_ptr<BufferedDataSource> data_source) = 0;
+#endif  // SB_HAS(PLAYER_WITH_URL)
+
   virtual void CancelLoad() = 0;
 
   // Playback controls.
@@ -194,9 +198,10 @@ class WebMediaPlayerClient {
  public:
   virtual void NetworkStateChanged() = 0;
   virtual void ReadyStateChanged() = 0;
-  virtual void TimeChanged() = 0;
+  virtual void TimeChanged(bool eos_played) = 0;
   virtual void DurationChanged() = 0;
   virtual void OutputModeChanged() = 0;
+  virtual void ContentSizeChanged() = 0;
   virtual void PlaybackStateChanged() = 0;
   // TODO: Revisit the necessity of the following function.
   virtual void SetOpaque(bool /* opaque */) {}

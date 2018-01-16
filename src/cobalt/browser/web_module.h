@@ -39,6 +39,7 @@
 #include "cobalt/dom/blob.h"
 #include "cobalt/dom/csp_delegate.h"
 #include "cobalt/dom/dom_settings.h"
+#include "cobalt/dom/input_event_init.h"
 #include "cobalt/dom/keyboard_event_init.h"
 #include "cobalt/dom/local_storage_database.h"
 #include "cobalt/dom/media_source.h"
@@ -49,7 +50,8 @@
 #include "cobalt/layout/layout_manager.h"
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/math/size.h"
-#include "cobalt/media/media_module.h"
+#include "cobalt/media/can_play_type_handler.h"
+#include "cobalt/media/web_media_player_factory.h"
 #include "cobalt/network/network_module.h"
 #include "cobalt/render_tree/resource_provider.h"
 #include "cobalt/script/global_environment.h"
@@ -122,12 +124,6 @@ class WebModule : public LifecycleObserver {
     // Options to customize DOMSettings.
     dom::DOMSettings::Options dom_settings_options;
 
-    // Location policy to enforce, formatted as a Content Security Policy
-    // directive, e.g. "h5vcc-location-src 'self'"
-    // This is used to implement a navigation jail, so that location
-    // can't be changed from the whitelisted origins.
-    std::string location_policy;
-
     // Whether Cobalt is forbidden to render without receiving CSP headers.
     csp::CSPHeaderPolicy require_csp;
 
@@ -185,6 +181,15 @@ class WebModule : public LifecycleObserver {
     // is true to enable them.
     bool enable_image_animations;
 
+    // Whether or not to retain the remote typeface cache when the app enters
+    // the suspend state.
+    bool should_retain_remote_typeface_cache_on_suspend;
+
+    // The language and script to use with fonts. If left empty, then the
+    // language-script combination provided by base::GetSystemLanguageScript()
+    // is used.
+    std::string font_language_script_override;
+
     // The splash screen cache object, owned by the BrowserModule.
     SplashScreenCache* splash_screen_cache;
 
@@ -213,12 +218,25 @@ class WebModule : public LifecycleObserver {
             const OnErrorCallback& error_callback,
             const CloseCallback& window_close_callback,
             const base::Closure& window_minimize_callback,
-            media::MediaModule* media_module,
+            const dom::Window::GetSbWindowCallback& get_sb_window_callback,
+            media::CanPlayTypeHandler* can_play_type_handler,
+            media::WebMediaPlayerFactory* web_media_player_factory,
             network::NetworkModule* network_module,
             const math::Size& window_dimensions, float video_pixel_ratio,
             render_tree::ResourceProvider* resource_provider,
             float layout_refresh_rate, const Options& options);
   ~WebModule();
+
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+  // Call this to inject an on screen keyboard input event into the web module.
+  // The value for type represents beforeinput or input.
+  void InjectOnScreenKeyboardInputEvent(base::Token type,
+                                        const dom::InputEventInit& event);
+  // Call this to inject an on screen keyboard shown event into the web module.
+  void InjectOnScreenKeyboardShownEvent();
+  // Call this to inject an on screen keyboard hidden event into the web module.
+  void InjectOnScreenKeyboardHiddenEvent();
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
   // Call this to inject a keyboard event into the web module. The value for
   // type represents the event name, for example 'keydown' or 'keyup'.
@@ -236,7 +254,7 @@ class WebModule : public LifecycleObserver {
 
   // Call this to inject a beforeunload event into the web module. If
   // this event is not handled by the web application,
-  // on_before_unload_fired_but_not_handled will be called.
+  // |on_before_unload_fired_but_not_handled_| will be called.
   void InjectBeforeUnloadEvent();
 
   // Call this to execute Javascript code in this web module.  The calling
@@ -266,7 +284,8 @@ class WebModule : public LifecycleObserver {
   void SetSize(const math::Size& window_dimensions, float video_pixel_ratio);
 
   void SetCamera3D(const scoped_refptr<input::Camera3D>& camera_3d);
-  void SetMediaModule(media::MediaModule* media_module);
+  void SetWebMediaPlayerFactory(
+      media::WebMediaPlayerFactory* web_media_player_factory);
   void SetImageCacheCapacity(int64_t bytes);
   void SetRemoteTypefaceCacheCapacity(int64_t bytes);
   void SetJavascriptGcThreshold(int64_t bytes);
@@ -294,7 +313,9 @@ class WebModule : public LifecycleObserver {
         const OnErrorCallback& error_callback,
         const CloseCallback& window_close_callback,
         const base::Closure& window_minimize_callback,
-        media::MediaModule* media_module,
+        const dom::Window::GetSbWindowCallback& get_sb_window_callback,
+        media::CanPlayTypeHandler* can_play_type_handler,
+        media::WebMediaPlayerFactory* web_media_player_factory,
         network::NetworkModule* network_module,
         const math::Size& window_dimensions, float video_pixel_ratio,
         render_tree::ResourceProvider* resource_provider,
@@ -306,7 +327,9 @@ class WebModule : public LifecycleObserver {
           error_callback(error_callback),
           window_close_callback(window_close_callback),
           window_minimize_callback(window_minimize_callback),
-          media_module(media_module),
+          get_sb_window_callback(get_sb_window_callback),
+          can_play_type_handler(can_play_type_handler),
+          web_media_player_factory(web_media_player_factory),
           network_module(network_module),
           window_dimensions(window_dimensions),
           video_pixel_ratio(video_pixel_ratio),
@@ -321,7 +344,9 @@ class WebModule : public LifecycleObserver {
     OnErrorCallback error_callback;
     const CloseCallback& window_close_callback;
     const base::Closure& window_minimize_callback;
-    media::MediaModule* media_module;
+    const dom::Window::GetSbWindowCallback& get_sb_window_callback;
+    media::CanPlayTypeHandler* can_play_type_handler;
+    media::WebMediaPlayerFactory* web_media_player_factory;
     network::NetworkModule* network_module;
     math::Size window_dimensions;
     float video_pixel_ratio;

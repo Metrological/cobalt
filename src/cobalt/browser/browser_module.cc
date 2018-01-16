@@ -38,6 +38,8 @@
 #include "cobalt/browser/switches.h"
 #include "cobalt/browser/webapi_extension.h"
 #include "cobalt/dom/csp_delegate_factory.h"
+#include "cobalt/dom/input_event_init.h"
+#include "cobalt/dom/keyboard_event_init.h"
 #include "cobalt/dom/keycode.h"
 #include "cobalt/dom/mutation_observer_task_manager.h"
 #include "cobalt/dom/window.h"
@@ -223,11 +225,13 @@ BrowserModule::BrowserModule(const GURL& url,
           new ResourceProviderArrayBufferAllocator(GetResourceProvider())),
       array_buffer_cache_(new dom::ArrayBuffer::Cache(3 * 1024 * 1024)),
 #endif  // defined(ENABLE_GPU_ARRAY_BUFFER_ALLOCATOR)
+      can_play_type_handler_(media::MediaModule::CreateCanPlayTypeHandler()),
       network_module_(&storage_manager_, event_dispatcher_,
                       options_.network_module_options),
       web_module_loaded_(true /* manually_reset */,
                          false /* initially_signalled */),
       web_module_recreated_callback_(options_.web_module_recreated_callback),
+      navigate_count_(0),
       navigate_time_("Time.Browser.Navigate", 0,
                      "The last time a navigation occurred."),
       on_load_event_time_("Time.Browser.OnLoadEvent", 0,
@@ -254,6 +258,7 @@ BrowserModule::BrowserModule(const GURL& url,
       render_timeout_count_(0),
 #endif
       on_error_retry_count_(0),
+      waiting_for_error_retry_(false),
       will_quit_(false),
       application_state_(initial_application_state),
       splash_screen_cache_(new SplashScreenCache()),
@@ -275,11 +280,22 @@ BrowserModule::BrowserModule(const GURL& url,
 #if defined(COBALT_CHECK_RENDER_TIMEOUT)
   timeout_polling_thread_.Start();
   timeout_polling_thread_.message_loop()->PostDelayedTask(
-      FROM_HERE, base::Bind(&BrowserModule::OnPollForRenderTimeout,
-                            base::Unretained(this), url),
+      FROM_HERE,
+      base::Bind(&BrowserModule::OnPollForRenderTimeout, base::Unretained(this),
+                 url),
       base::TimeDelta::FromSeconds(kRenderTimeOutPollingDelaySeconds));
 #endif
   TRACE_EVENT0("cobalt::browser", "BrowserModule::BrowserModule()");
+
+  // Create the main web module layer.
+  main_web_module_layer_ =
+      render_tree_combiner_.CreateLayer(kMainWebModuleZIndex);
+  // Create the splash screen layer.
+  splash_screen_layer_ = render_tree_combiner_.CreateLayer(kSplashScreenZIndex);
+// Create the debug console layer.
+#if defined(ENABLE_DEBUG_CONSOLE)
+  debug_console_layer_ = render_tree_combiner_.CreateLayer(kDebugConsoleZIndex);
+#endif
 
   // Setup our main web module to have the H5VCC API injected into it.
   DCHECK(!ContainsKey(options_.web_module_options.injected_window_attributes,
@@ -331,7 +347,8 @@ BrowserModule::BrowserModule(const GURL& url,
       &network_module_, GetViewportSize(), GetResourceProvider(),
       kLayoutMaxRefreshFrequencyInHz,
       base::Bind(&BrowserModule::GetDebugServer, base::Unretained(this)),
-      options_.web_module_options.javascript_engine_options));
+      options_.web_module_options.javascript_engine_options,
+      base::Bind(&BrowserModule::GetSbWindow, base::Unretained(this))));
   lifecycle_observers_.AddObserver(debug_console_.get());
 #endif  // defined(ENABLE_DEBUG_CONSOLE)
 
@@ -343,9 +360,7 @@ BrowserModule::BrowserModule(const GURL& url,
 
 BrowserModule::~BrowserModule() {
   DCHECK_EQ(MessageLoop::current(), self_message_loop_);
-  if (on_error_retry_timer_.IsRunning()) {
-    on_error_retry_timer_.Stop();
-  }
+  on_error_retry_timer_.Stop();
 #if SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
   SbCoreDumpUnregisterHandler(BrowserModule::CoreDumpHandler, this);
 #endif
@@ -373,9 +388,10 @@ void BrowserModule::Navigate(const GURL& url) {
     return;
   }
 
-  if (on_error_retry_timer_.IsRunning()) {
-    on_error_retry_timer_.Stop();
-  }
+  // Clear error handling once we're told to navigate, either because it's the
+  // retry from the error or something decided we should navigate elsewhere.
+  on_error_retry_timer_.Stop();
+  waiting_for_error_retry_ = false;
 
   // Navigations aren't allowed if the app is suspended. If this is the case,
   // simply set the pending navigate url, which will cause the navigation to
@@ -407,30 +423,28 @@ void BrowserModule::Navigate(const GURL& url) {
 
   // Wait until after the old WebModule is destroyed before setting the navigate
   // time so that it won't be included in the time taken to load the URL.
+  ++navigate_count_;
   navigate_time_ = base::TimeTicks::Now().ToInternalValue();
 
   // Show a splash screen while we're waiting for the web page to load.
   const math::Size& viewport_size = GetViewportSize();
 
   DestroySplashScreen(base::TimeDelta());
-  base::optional<std::string> key = SplashScreenCache::GetKeyForStartUrl(url);
-  if (fallback_splash_screen_url_ ||
-      (key && splash_screen_cache_->IsSplashScreenCached(*key))) {
-    // Create the splash screen layer.
-    if (render_tree_combiner_) {
-      splash_screen_layer_ =
-          render_tree_combiner_->CreateLayer(kSplashScreenZIndex);
+  if (options_.enable_splash_screen_on_reloads || navigate_count_ == 1) {
+    base::optional<std::string> key = SplashScreenCache::GetKeyForStartUrl(url);
+    if (fallback_splash_screen_url_ ||
+        (key && splash_screen_cache_->IsSplashScreenCached(*key))) {
+      splash_screen_.reset(new SplashScreen(
+          application_state_,
+          base::Bind(&BrowserModule::QueueOnSplashScreenRenderTreeProduced,
+                     base::Unretained(this)),
+          &network_module_, viewport_size, GetResourceProvider(),
+          kLayoutMaxRefreshFrequencyInHz, fallback_splash_screen_url_, url,
+          splash_screen_cache_.get(),
+          base::Bind(&BrowserModule::DestroySplashScreen, weak_this_),
+          base::Bind(&BrowserModule::GetSbWindow, base::Unretained(this))));
+      lifecycle_observers_.AddObserver(splash_screen_.get());
     }
-
-    splash_screen_.reset(new SplashScreen(
-        application_state_,
-        base::Bind(&BrowserModule::QueueOnSplashScreenRenderTreeProduced,
-                   base::Unretained(this)),
-        &network_module_, viewport_size, GetResourceProvider(),
-        kLayoutMaxRefreshFrequencyInHz, fallback_splash_screen_url_, url,
-        splash_screen_cache_.get(),
-        base::Bind(&BrowserModule::DestroySplashScreen, weak_this_)));
-    lifecycle_observers_.AddObserver(splash_screen_.get());
   }
 
   // Create new WebModule.
@@ -475,8 +489,10 @@ void BrowserModule::Navigate(const GURL& url) {
       base::Bind(&BrowserModule::OnError, base::Unretained(this)),
       base::Bind(&BrowserModule::OnWindowClose, base::Unretained(this)),
       base::Bind(&BrowserModule::OnWindowMinimize, base::Unretained(this)),
-      media_module_.get(), &network_module_, viewport_size, video_pixel_ratio,
-      GetResourceProvider(), kLayoutMaxRefreshFrequencyInHz, options));
+      base::Bind(&BrowserModule::GetSbWindow, base::Unretained(this)),
+      can_play_type_handler_.get(), media_module_.get(), &network_module_,
+      viewport_size, video_pixel_ratio, GetResourceProvider(),
+      kLayoutMaxRefreshFrequencyInHz, options));
   lifecycle_observers_.AddObserver(web_module_.get());
   if (!web_module_recreated_callback_.is_null()) {
     web_module_recreated_callback_.Run();
@@ -538,13 +554,17 @@ bool BrowserModule::WaitForLoad(const base::TimeDelta& timeout) {
 #if defined(ENABLE_SCREENSHOT)
 void BrowserModule::RequestScreenshotToFile(const FilePath& path,
                                             const base::Closure& done_cb) {
-  screen_shot_writer_->RequestScreenshot(path, done_cb);
+  if (screen_shot_writer_) {
+    screen_shot_writer_->RequestScreenshot(path, done_cb);
+  }
 }
 
 void BrowserModule::RequestScreenshotToBuffer(
     const ScreenShotWriter::PNGEncodeCompleteCallback&
         encode_complete_callback) {
-  screen_shot_writer_->RequestScreenshotToMemory(encode_complete_callback);
+  if (screen_shot_writer_) {
+    screen_shot_writer_->RequestScreenshotToMemory(encode_complete_callback);
+  }
 }
 #endif
 
@@ -594,8 +614,7 @@ void BrowserModule::OnRenderTreeProduced(
   if (splash_screen_ && !splash_screen_->ShutdownSignaled()) {
     splash_screen_->Shutdown();
   }
-  if (application_state_ == base::kApplicationStatePreloading ||
-      !render_tree_combiner_ || !main_web_module_layer_) {
+  if (application_state_ == base::kApplicationStatePreloading) {
     return;
   }
 
@@ -610,13 +629,15 @@ void BrowserModule::OnRenderTreeProduced(
   renderer_submission.on_rasterized_callback = base::Bind(
       &BrowserModule::OnRendererSubmissionRasterized, base::Unretained(this));
   if (!splash_screen_) {
-    render_tree_combiner_->SetTimelineLayer(main_web_module_layer_.get());
+    render_tree_combiner_.SetTimelineLayer(main_web_module_layer_.get());
   }
   main_web_module_layer_->Submit(renderer_submission);
 
 #if defined(ENABLE_SCREENSHOT)
-  screen_shot_writer_->SetLastPipelineSubmission(renderer::Submission(
-      layout_results.render_tree, layout_results.layout_time));
+  if (screen_shot_writer_) {
+    screen_shot_writer_->SetLastPipelineSubmission(renderer::Submission(
+        layout_results.render_tree, layout_results.layout_time));
+  }
 #endif
   SubmitCurrentRenderTreeToRenderer();
 }
@@ -628,7 +649,7 @@ void BrowserModule::OnSplashScreenRenderTreeProduced(
   DCHECK_EQ(MessageLoop::current(), self_message_loop_);
 
   if (application_state_ == base::kApplicationStatePreloading ||
-      !render_tree_combiner_ || !splash_screen_layer_) {
+      !splash_screen_) {
     return;
   }
 
@@ -654,7 +675,7 @@ void BrowserModule::OnSplashScreenRenderTreeProduced(
 
   renderer_submission.on_rasterized_callback = base::Bind(
       &BrowserModule::OnRendererSubmissionRasterized, base::Unretained(this));
-  render_tree_combiner_->SetTimelineLayer(splash_screen_layer_.get());
+  render_tree_combiner_.SetTimelineLayer(splash_screen_layer_.get());
   splash_screen_layer_->Submit(renderer_submission);
 
 #if defined(ENABLE_SCREENSHOT)
@@ -688,6 +709,41 @@ void BrowserModule::OnWindowMinimize() {
 
   SbSystemRequestSuspend();
 }
+
+#if SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+void BrowserModule::OnWindowSizeChanged(const SbWindowSize& size) {
+  math::Size math_size(size.width, size.height);
+  if (web_module_) {
+    web_module_->SetSize(math_size, size.video_pixel_ratio);
+  }
+#if defined(ENABLE_DEBUG_CONSOLE)
+  if (debug_console_) {
+    debug_console_->web_module().SetSize(math_size, size.video_pixel_ratio);
+  }
+#endif  // defined(ENABLE_DEBUG_CONSOLE)
+  if (splash_screen_) {
+    splash_screen_->web_module().SetSize(math_size, size.video_pixel_ratio);
+  }
+
+  return;
+}
+#endif  // SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+void BrowserModule::OnOnScreenKeyboardShown() {
+  // Only inject shown events to the main WebModule.
+  if (web_module_) {
+    web_module_->InjectOnScreenKeyboardShownEvent();
+  }
+}
+
+void BrowserModule::OnOnScreenKeyboardHidden() {
+  // Only inject hidden events to the main WebModule.
+  if (web_module_) {
+    web_module_->InjectOnScreenKeyboardHiddenEvent();
+  }
+}
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
 #if defined(ENABLE_DEBUG_CONSOLE)
 void BrowserModule::OnFuzzerToggle(const std::string& message) {
@@ -750,8 +806,7 @@ void BrowserModule::OnDebugConsoleRenderTreeProduced(
   TRACE_EVENT0("cobalt::browser",
                "BrowserModule::OnDebugConsoleRenderTreeProduced()");
   DCHECK_EQ(MessageLoop::current(), self_message_loop_);
-  if (application_state_ == base::kApplicationStatePreloading ||
-      !render_tree_combiner_ || !debug_console_layer_) {
+  if (application_state_ == base::kApplicationStatePreloading) {
     return;
   }
 
@@ -767,6 +822,33 @@ void BrowserModule::OnDebugConsoleRenderTreeProduced(
 }
 
 #endif  // defined(ENABLE_DEBUG_CONSOLE)
+
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+void BrowserModule::OnOnScreenKeyboardInputEventProduced(
+    base::Token type, const dom::InputEventInit& event) {
+  TRACE_EVENT0("cobalt::browser",
+               "BrowserModule::OnOnScreenKeyboardInputEventProduced()");
+  if (MessageLoop::current() != self_message_loop_) {
+    self_message_loop_->PostTask(
+        FROM_HERE,
+        base::Bind(&BrowserModule::OnOnScreenKeyboardInputEventProduced,
+                   weak_this_, type, event));
+    return;
+  }
+
+#if defined(ENABLE_DEBUG_CONSOLE)
+  // If the debug console is fully visible, it gets the next chance to handle
+  // input events.
+  if (debug_console_->GetMode() >= debug::DebugHub::kDebugConsoleOn) {
+    if (!debug_console_->InjectOnScreenKeyboardInputEvent(type, event)) {
+      return;
+    }
+  }
+#endif  // defined(ENABLE_DEBUG_CONSOLE)
+
+  InjectOnScreenKeyboardInputEventToMainWebModule(type, event);
+}
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
 void BrowserModule::OnKeyEventProduced(base::Token type,
                                        const dom::KeyboardEventInit& event) {
@@ -841,6 +923,30 @@ void BrowserModule::InjectKeyEventToMainWebModule(
   web_module_->InjectKeyboardEvent(type, event);
 }
 
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+void BrowserModule::InjectOnScreenKeyboardInputEventToMainWebModule(
+    base::Token type, const dom::InputEventInit& event) {
+  TRACE_EVENT0(
+      "cobalt::browser",
+      "BrowserModule::InjectOnScreenKeyboardInputEventToMainWebModule()");
+  if (MessageLoop::current() != self_message_loop_) {
+    self_message_loop_->PostTask(
+        FROM_HERE,
+        base::Bind(
+            &BrowserModule::InjectOnScreenKeyboardInputEventToMainWebModule,
+            weak_this_, type, event));
+    return;
+  }
+
+#if defined(ENABLE_DEBUG_CONSOLE)
+  trace_manager_.OnInputEventProduced();
+#endif  // defined(ENABLE_DEBUG_CONSOLE)
+
+  DCHECK(web_module_);
+  web_module_->InjectOnScreenKeyboardInputEvent(type, event);
+}
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+
 void BrowserModule::OnError(const GURL& url, const std::string& error) {
   TRACE_EVENT0("cobalt::browser", "BrowserModule::OnError()");
   if (MessageLoop::current() != self_message_loop_) {
@@ -885,6 +991,7 @@ void BrowserModule::OnError(const GURL& url, const std::string& error) {
 void BrowserModule::OnErrorRetry() {
   ++on_error_retry_count_;
   on_error_retry_time_ = base::TimeTicks::Now();
+  waiting_for_error_retry_ = true;
   TryURLHandlers(
       GURL("h5vcc://network-failure?retry-url=" + pending_navigate_url_));
 }
@@ -967,18 +1074,16 @@ void BrowserModule::DestroySplashScreen(base::TimeDelta close_time) {
   }
   if (splash_screen_) {
     lifecycle_observers_.RemoveObserver(splash_screen_.get());
-  }
-  if (splash_screen_layer_) {
-    if (!close_time.is_zero()) {
+    if (!close_time.is_zero() && renderer_module_) {
       // Ensure that the renderer renders each frame up until the window.close()
       // is called on the splash screen's timeline, in order to ensure that the
       // splash screen shutdown transition plays out completely.
       renderer_module_->pipeline()->TimeFence(close_time);
     }
-    splash_screen_layer_.reset(NULL);
+    splash_screen_layer_->Reset();
     SubmitCurrentRenderTreeToRenderer();
+    splash_screen_.reset(NULL);
   }
-  splash_screen_.reset(NULL);
 }
 
 #if defined(ENABLE_WEBDRIVER)
@@ -1042,6 +1147,7 @@ void BrowserModule::SetProxy(const std::string& proxy_rules) {
 
 void BrowserModule::Start() {
   TRACE_EVENT0("cobalt::browser", "BrowserModule::Start()");
+  DCHECK_EQ(MessageLoop::current(), self_message_loop_);
   DCHECK(application_state_ == base::kApplicationStatePreloading);
 
   SuspendInternal(true /*is_start*/);
@@ -1054,6 +1160,7 @@ void BrowserModule::Start() {
 
 void BrowserModule::Pause() {
   TRACE_EVENT0("cobalt::browser", "BrowserModule::Pause()");
+  DCHECK_EQ(MessageLoop::current(), self_message_loop_);
   DCHECK(application_state_ == base::kApplicationStateStarted);
   FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_, Pause());
   application_state_ = base::kApplicationStatePaused;
@@ -1061,6 +1168,7 @@ void BrowserModule::Pause() {
 
 void BrowserModule::Unpause() {
   TRACE_EVENT0("cobalt::browser", "BrowserModule::Unpause()");
+  DCHECK_EQ(MessageLoop::current(), self_message_loop_);
   DCHECK(application_state_ == base::kApplicationStatePaused);
   FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_, Unpause());
   application_state_ = base::kApplicationStateStarted;
@@ -1068,6 +1176,7 @@ void BrowserModule::Unpause() {
 
 void BrowserModule::Suspend() {
   TRACE_EVENT0("cobalt::browser", "BrowserModule::Suspend()");
+  DCHECK_EQ(MessageLoop::current(), self_message_loop_);
   DCHECK(application_state_ == base::kApplicationStatePaused ||
          application_state_ == base::kApplicationStatePreloading);
 
@@ -1078,6 +1187,7 @@ void BrowserModule::Suspend() {
 
 void BrowserModule::Resume() {
   TRACE_EVENT0("cobalt::browser", "BrowserModule::Resume()");
+  DCHECK_EQ(MessageLoop::current(), self_message_loop_);
   DCHECK(application_state_ == base::kApplicationStateSuspended);
 
   StartOrResumeInternalPreStateUpdate(false /*is_start*/);
@@ -1088,6 +1198,7 @@ void BrowserModule::Resume() {
 }
 
 void BrowserModule::ReduceMemory() {
+  DCHECK_EQ(MessageLoop::current(), self_message_loop_);
   if (splash_screen_) {
     splash_screen_->ReduceMemory();
   }
@@ -1106,6 +1217,7 @@ void BrowserModule::ReduceMemory() {
 void BrowserModule::CheckMemory(
     const int64_t& used_cpu_memory,
     const base::optional<int64_t>& used_gpu_memory) {
+  DCHECK_EQ(MessageLoop::current(), self_message_loop_);
   if (!auto_mem_) {
     return;
   }
@@ -1128,12 +1240,10 @@ void BrowserModule::OnRendererSubmissionRasterized() {
 void BrowserModule::OnPollForRenderTimeout(const GURL& url) {
   SbTime last_render_timestamp = static_cast<SbTime>(SbAtomicAcquire_Load64(
       non_trivial_global_variables.Get().last_render_timestamp));
-  base::Time last_render =
-      base::Time::FromSbTime(last_render_timestamp);
-  bool timeout_expiration =
-      base::Time::Now() -
-          base::TimeDelta::FromSeconds(kLastRenderTimeoutSeconds) >
-      last_render;
+  base::Time last_render = base::Time::FromSbTime(last_render_timestamp);
+  bool timeout_expiration = base::Time::Now() - base::TimeDelta::FromSeconds(
+                                                    kLastRenderTimeoutSeconds) >
+                            last_render;
   bool timeout_response_trigger = false;
   if (timeout_expiration) {
     // The timeout only triggers if the timeout expiration has been detected
@@ -1164,8 +1274,9 @@ void BrowserModule::OnPollForRenderTimeout(const GURL& url) {
     }
   } else {
     timeout_polling_thread_.message_loop()->PostDelayedTask(
-        FROM_HERE, base::Bind(&BrowserModule::OnPollForRenderTimeout,
-                              base::Unretained(this), url),
+        FROM_HERE,
+        base::Bind(&BrowserModule::OnPollForRenderTimeout,
+                   base::Unretained(this), url),
         base::TimeDelta::FromSeconds(kRenderTimeOutPollingDelaySeconds));
   }
 }
@@ -1186,45 +1297,57 @@ render_tree::ResourceProvider* BrowserModule::GetResourceProvider() {
 
 void BrowserModule::InitializeSystemWindow() {
   resource_provider_stub_ = base::nullopt;
+  DCHECK(!system_window_);
   system_window_.reset(new system_window::SystemWindow(
       event_dispatcher_, options_.requested_viewport_size));
-
   auto_mem_.reset(new memory_settings::AutoMem(
       GetViewportSize(), options_.command_line_auto_mem_settings,
       options_.build_auto_mem_settings));
   ApplyAutoMemSettings();
 
-  input_device_manager_ = input::InputDeviceManager::CreateFromWindow(
-                              base::Bind(&BrowserModule::OnKeyEventProduced,
-                                         base::Unretained(this)),
-                              base::Bind(&BrowserModule::OnPointerEventProduced,
-                                         base::Unretained(this)),
-                              base::Bind(&BrowserModule::OnWheelEventProduced,
-                                         base::Unretained(this)),
-                              system_window_.get())
-                              .Pass();
-  renderer_module_.reset(new renderer::RendererModule(
-      system_window_.get(),
-      RendererModuleWithCameraOptions(options_.renderer_module_options,
-                                      input_device_manager_->camera_3d())));
-
-  render_tree_combiner_.reset(new RenderTreeCombiner());
-  // Create the main web module layer.
-  main_web_module_layer_ =
-      render_tree_combiner_->CreateLayer(kMainWebModuleZIndex);
-// Create the debug console layer.
-#if defined(ENABLE_DEBUG_CONSOLE)
-  debug_console_layer_ =
-      render_tree_combiner_->CreateLayer(kDebugConsoleZIndex);
-#endif
-
-#if defined(ENABLE_SCREENSHOT)
-  screen_shot_writer_.reset(new ScreenShotWriter(renderer_module_->pipeline()));
-#endif  // defined(ENABLE_SCREENSHOT)
+  input_device_manager_ =
+      input::InputDeviceManager::CreateFromWindow(
+          base::Bind(&BrowserModule::OnKeyEventProduced,
+                     base::Unretained(this)),
+          base::Bind(&BrowserModule::OnPointerEventProduced,
+                     base::Unretained(this)),
+          base::Bind(&BrowserModule::OnWheelEventProduced,
+                     base::Unretained(this)),
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+          base::Bind(&BrowserModule::OnOnScreenKeyboardInputEventProduced,
+                     base::Unretained(this)),
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+          system_window_.get())
+          .Pass();
+  InstantiateRendererModule();
 
   media_module_ =
       media::MediaModule::Create(system_window_.get(), GetResourceProvider(),
                                  options_.media_module_options);
+}
+
+void BrowserModule::InstantiateRendererModule() {
+  DCHECK_EQ(MessageLoop::current(), self_message_loop_);
+  DCHECK(system_window_);
+  DCHECK(!renderer_module_);
+
+  renderer_module_.reset(new renderer::RendererModule(
+      system_window_.get(),
+      RendererModuleWithCameraOptions(options_.renderer_module_options,
+                                      input_device_manager_->camera_3d())));
+#if defined(ENABLE_SCREENSHOT)
+  screen_shot_writer_.reset(new ScreenShotWriter(renderer_module_->pipeline()));
+#endif  // defined(ENABLE_SCREENSHOT)
+}
+
+void BrowserModule::DestroyRendererModule() {
+  DCHECK_EQ(MessageLoop::current(), self_message_loop_);
+  DCHECK(renderer_module_);
+
+#if defined(ENABLE_SCREENSHOT)
+  screen_shot_writer_.reset();
+#endif  // defined(ENABLE_SCREENSHOT)
+  renderer_module_.reset();
 }
 
 void BrowserModule::UpdateFromSystemWindow() {
@@ -1242,7 +1365,7 @@ void BrowserModule::UpdateFromSystemWindow() {
 
   if (web_module_) {
     web_module_->SetCamera3D(input_device_manager_->camera_3d());
-    web_module_->SetMediaModule(media_module_.get());
+    web_module_->SetWebMediaPlayerFactory(media_module_.get());
     web_module_->SetSize(size, video_pixel_ratio);
   }
 }
@@ -1273,19 +1396,15 @@ void BrowserModule::SuspendInternal(bool is_start) {
 
   // Clear out the render tree combiner so that it doesn't hold on to any
   // render tree resources either.
-  if (main_web_module_layer_) {
-    main_web_module_layer_->Reset();
-  }
-  if (splash_screen_layer_) {
-    splash_screen_layer_->Reset();
-  }
-  if (debug_console_layer_) {
-    debug_console_layer_->Reset();
-  }
+  main_web_module_layer_->Reset();
+  splash_screen_layer_->Reset();
+#if defined(ENABLE_DEBUG_CONSOLE)
+  debug_console_layer_->Reset();
+#endif  // defined(ENABLE_DEBUG_CONSOLE)
 
 #if defined(ENABLE_GPU_ARRAY_BUFFER_ALLOCATOR)
   // Note that the following function call will leak the GPU memory allocated.
-  // This is because after renderer_module_->Suspend() is called it is no longer
+  // This is because after the renderer_module_ is destroyed it is no longer
   // safe to release the GPU memory allocated.
   //
   // The following code can call reset() to release the allocated memory but the
@@ -1300,9 +1419,9 @@ void BrowserModule::SuspendInternal(bool is_start) {
   }
 
   if (renderer_module_) {
-    // Place the renderer module into a suspended state where it releases all
-    // its graphical resources.
-    renderer_module_->Suspend();
+    // Destroy the renderer module into so that it releases all its graphical
+    // resources.
+    DestroyRendererModule();
   }
 }
 
@@ -1310,20 +1429,12 @@ void BrowserModule::StartOrResumeInternalPreStateUpdate(bool is_start) {
   TRACE_EVENT1("cobalt::browser",
                "BrowserModule::StartOrResumeInternalPreStateUpdate", "is_start",
                is_start ? "true" : "false");
-  render_tree::ResourceProvider* resource_provider = NULL;
-  if (!renderer_module_) {
+  if (!system_window_) {
     InitializeSystemWindow();
     UpdateFromSystemWindow();
-    resource_provider = GetResourceProvider();
   } else {
-    renderer_module_->Resume();
-
-    // Note that at this point, it is probable that this resource provider is
-    // different than the one that was managed in the associated call to
-    // Suspend().
-    resource_provider = GetResourceProvider();
-
-    media_module_->Resume(resource_provider);
+    InstantiateRendererModule();
+    media_module_->Resume(GetResourceProvider());
   }
 
 #if defined(ENABLE_GPU_ARRAY_BUFFER_ALLOCATOR)
@@ -1334,10 +1445,10 @@ void BrowserModule::StartOrResumeInternalPreStateUpdate(bool is_start) {
 
   if (is_start) {
     FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_,
-                      Start(resource_provider));
+                      Start(GetResourceProvider()));
   } else {
     FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_,
-                      Resume(resource_provider));
+                      Resume(GetResourceProvider()));
   }
 }
 
@@ -1345,8 +1456,8 @@ void BrowserModule::StartOrResumeInternalPostStateUpdate() {
   TRACE_EVENT0("cobalt::browser",
                "BrowserModule::StartOrResumeInternalPostStateUpdate");
   // If there's a navigation that's pending, then attempt to navigate to its
-  // specified URL now.
-  if (!pending_navigate_url_.empty()) {
+  // specified URL now, unless we're still waiting for an error retry.
+  if (!pending_navigate_url_.empty() && !waiting_for_error_retry_) {
     Navigate(GURL(pending_navigate_url_));
   }
 }
@@ -1419,11 +1530,22 @@ void BrowserModule::ApplyAutoMemSettings() {
 }
 
 void BrowserModule::SubmitCurrentRenderTreeToRenderer() {
+  if (!renderer_module_) {
+    return;
+  }
+
   base::optional<renderer::Submission> submission =
-      render_tree_combiner_->GetCurrentSubmission();
+      render_tree_combiner_.GetCurrentSubmission();
   if (submission) {
     renderer_module_->pipeline()->Submit(*submission);
   }
+}
+
+SbWindow BrowserModule::GetSbWindow() {
+  if (!system_window_) {
+    return NULL;
+  }
+  return system_window_->GetSbWindow();
 }
 
 }  // namespace browser

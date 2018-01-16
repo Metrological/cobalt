@@ -24,6 +24,7 @@
 #include "cobalt/dom/pointer_event_init.h"
 #include "cobalt/math/clamp.h"
 #include "cobalt/script/global_environment.h"
+#include "cobalt/script/logging_exception_state.h"
 #include "cobalt/webdriver/keyboard.h"
 #include "cobalt/webdriver/search.h"
 #include "cobalt/webdriver/util/call_on_message_loop.h"
@@ -147,8 +148,9 @@ ElementDriver* WindowDriver::GetElementDriver(
     DCHECK(thread_checker_.CalledOnValidThread());
     ElementDriver* result;
     bool success = util::TryCallOnMessageLoop(
-        window_message_loop_, base::Bind(&WindowDriver::GetElementDriver,
-                                         base::Unretained(this), element_id),
+        window_message_loop_,
+        base::Bind(&WindowDriver::GetElementDriver, base::Unretained(this),
+                   element_id),
         &result);
     return success ? result : NULL;
   }
@@ -292,8 +294,9 @@ util::CommandResult<void> WindowDriver::SendKeys(const protocol::Keys& keys) {
 
 util::CommandResult<protocol::ElementId> WindowDriver::GetActiveElement() {
   return util::CallOnMessageLoop(
-      window_message_loop_, base::Bind(&WindowDriver::GetActiveElementInternal,
-                                       base::Unretained(this)),
+      window_message_loop_,
+      base::Bind(&WindowDriver::GetActiveElementInternal,
+                 base::Unretained(this)),
       protocol::Response::kNoSuchWindow);
 }
 
@@ -530,7 +533,7 @@ void WindowDriver::InitPointerEvent(dom::PointerEventInit* event) {
 
   event->set_pointer_type("mouse");
   event->set_pointer_id(kWebDriverMousePointerId);
-#if SB_API_VERSION >= SB_POINTER_INPUT_API_VERSION
+#if SB_API_VERSION >= 6
   event->set_width(0.0f);
   event->set_height(0.0f);
   event->set_pressure(pointer_buttons_ ? 0.5f : 0.0f);

@@ -67,6 +67,7 @@ GraphicsContextEGL::GraphicsContextEGL(GraphicsSystem* parent_system,
   // when we need to make OpenGL calls that do not depend on a surface (e.g.
   // creating a texture).
   null_surface_ = new PBufferRenderTargetEGL(display, config, math::Size(0, 0));
+  CHECK(!null_surface_->CreationError());
 
   ScopedMakeCurrent scoped_current_context(this);
 
@@ -235,32 +236,48 @@ GraphicsContextEGL::~GraphicsContextEGL() {
   EGL_CALL(eglDestroyContext(display_, context_));
 }
 
+void GraphicsContextEGL::SafeEglMakeCurrent(RenderTargetEGL* surface) {
+  EGLSurface egl_surface = surface->GetSurface();
+
+  // This should only be used with egl surfaces (not framebuffer objects).
+  DCHECK_NE(egl_surface, EGL_NO_SURFACE);
+  DCHECK_EQ(surface->GetPlatformHandle(), 0);
+
+  if (surface->is_surface_bad()) {
+    // A surface may become invalid in the middle of shutdown processing. If
+    // this is a known bad surface, then bind the null surface just as if this
+    // is the first time it is found to be bad.
+    egl_surface = null_surface_->GetSurface();
+    EGL_CALL(eglMakeCurrent(display_, egl_surface, egl_surface, context_));
+    return;
+  }
+
+  eglMakeCurrent(display_, egl_surface, egl_surface, context_);
+  EGLint make_current_error = eglGetError();
+  if (make_current_error != EGL_SUCCESS) {
+    LOG(ERROR) << "eglMakeCurrent ERROR: " << make_current_error;
+    if (make_current_error == EGL_BAD_ALLOC ||
+        make_current_error == EGL_BAD_NATIVE_WINDOW) {
+      LOG(ERROR) << "eglMakeCurrent raised either EGL_BAD_ALLOC or "
+                    "EGL_BAD_NATIVE_WINDOW, continuing with null surface "
+                    "under the assumption that our window surface has become "
+                    "invalid due to a suspend or shutdown being triggered.";
+      surface->set_surface_bad();
+      egl_surface = null_surface_->GetSurface();
+      EGL_CALL(eglMakeCurrent(display_, egl_surface, egl_surface, context_));
+    } else {
+      NOTREACHED() << "Unexpected error when calling eglMakeCurrent().";
+    }
+  }
+}
+
 void GraphicsContextEGL::MakeCurrentWithSurface(RenderTargetEGL* surface) {
   DCHECK_NE(EGL_NO_SURFACE, surface) <<
       "Use ReleaseCurrentContext().";
 
   EGLSurface egl_surface = surface->GetSurface();
   if (egl_surface != EGL_NO_SURFACE) {
-    // This render target is not a frame buffer object. It has an EGLSurface
-    // that can be bound using eglMakeCurrent.
-    DCHECK_EQ(surface->GetPlatformHandle(), 0);
-
-    eglMakeCurrent(display_, egl_surface, egl_surface, context_);
-    EGLint make_current_error = eglGetError();
-    if (make_current_error != EGL_SUCCESS) {
-      LOG(ERROR) << "eglMakeCurrent ERROR: " << make_current_error;
-      if (make_current_error == EGL_BAD_ALLOC ||
-          make_current_error == EGL_BAD_NATIVE_WINDOW) {
-        LOG(ERROR) << "eglMakeCurrent raised either EGL_BAD_ALLOC or "
-                      "EGL_BAD_NATIVE_WINDOW, continuing with null surface "
-                      "under the assumption that our window surface has become "
-                      "invalid due to a suspend or shutdown being triggered.";
-        egl_surface = null_surface_->GetSurface();
-        EGL_CALL(eglMakeCurrent(display_, egl_surface, egl_surface, context_));
-      } else {
-        NOTREACHED() << "Unexpected error when calling eglMakeCurrent().";
-      }
-    }
+    SafeEglMakeCurrent(surface);
 
     // Minimize calls to glBindFramebuffer. Normally, nothing keeps their
     // framebuffer object bound, so 0 is normally bound at this point --
@@ -295,13 +312,13 @@ void GraphicsContextEGL::MakeCurrentWithSurface(RenderTargetEGL* surface) {
 
 void GraphicsContextEGL::ResetCurrentSurface() {
   if (is_current_ && current_surface_) {
-    EGLSurface egl_surface = current_surface_->GetSurface();
-    if (egl_surface == EGL_NO_SURFACE) {
-      DCHECK_NE(current_surface_->GetPlatformHandle(), 0);
-      egl_surface = null_surface_->GetSurface();
+    if (current_surface_->GetSurface() == EGL_NO_SURFACE) {
+      EGLSurface egl_surface = null_surface_->GetSurface();
+      EGL_CALL(eglMakeCurrent(display_, egl_surface, egl_surface, context_));
+    } else {
+      SafeEglMakeCurrent(current_surface_);
     }
 
-    EGL_CALL(eglMakeCurrent(display_, egl_surface, egl_surface, context_));
     GL_CALL(glBindFramebuffer(GL_FRAMEBUFFER,
         current_surface_->GetPlatformHandle()));
   }
@@ -348,7 +365,11 @@ scoped_refptr<RenderTarget> GraphicsContextEGL::CreateOffscreenRenderTarget(
   scoped_refptr<RenderTarget> render_target(new PBufferRenderTargetEGL(
       display_, config_, dimensions));
 
-  return render_target;
+  if (render_target->CreationError()) {
+    return scoped_refptr<RenderTarget>();
+  } else {
+    return render_target;
+  }
 }
 
 scoped_refptr<RenderTarget>
@@ -357,7 +378,11 @@ scoped_refptr<RenderTarget>
   scoped_refptr<RenderTarget> render_target(new FramebufferRenderTargetEGL(
       this, dimensions));
 
-  return render_target;
+  if (render_target->CreationError()) {
+    return scoped_refptr<RenderTarget>();
+  } else {
+    return render_target;
+  }
 }
 
 void GraphicsContextEGL::InitializeDebugContext() {
@@ -485,6 +510,10 @@ void GraphicsContextEGL::Blit(GLuint texture, int x, int y, int width,
 
 void GraphicsContextEGL::SwapBuffers(RenderTargetEGL* surface) {
   TRACE_EVENT0("cobalt::renderer", "GraphicsContextEGL::SwapBuffers()");
+  if (surface->is_surface_bad()) {
+    // The surface may become invalid during shutdown.
+    return;
+  }
 
   // SwapBuffers should have no effect for offscreen render targets. The
   // current implementation of eglSwapBuffers() does nothing for PBuffers,

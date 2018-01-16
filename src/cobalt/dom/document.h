@@ -110,7 +110,6 @@ class Document : public Node,
             const base::optional<math::Size>& viewport_size,
             network_bridge::CookieJar* cookie_jar,
             const network_bridge::PostSender& post_sender,
-            const std::string& location_policy,
             csp::CSPHeaderPolicy require_csp,
             CspEnforcementType csp_enforcement_mode,
             const base::Closure& csp_policy_changed_callback,
@@ -124,7 +123,6 @@ class Document : public Node,
           viewport_size(viewport_size),
           cookie_jar(cookie_jar),
           post_sender(post_sender),
-          location_policy(location_policy),
           require_csp(require_csp),
           csp_enforcement_mode(csp_enforcement_mode),
           csp_policy_changed_callback(csp_policy_changed_callback),
@@ -140,7 +138,6 @@ class Document : public Node,
     base::optional<math::Size> viewport_size;
     network_bridge::CookieJar* cookie_jar;
     network_bridge::PostSender post_sender;
-    std::string location_policy;
     csp::CSPHeaderPolicy require_csp;
     CspEnforcementType csp_enforcement_mode;
     base::Closure csp_policy_changed_callback;
@@ -218,6 +215,11 @@ class Document : public Node,
   }
 
   // https://www.w3.org/TR/html5/dom.html#dom-document-cookie
+  void set_cookie(const std::string& cookie,
+                  script::ExceptionState* exception_state);
+  std::string cookie(script::ExceptionState* exception_state) const;
+
+  // For Cobalt code use only. Logs warnings instead of raising exceptions.
   void set_cookie(const std::string& cookie);
   std::string cookie() const;
 
@@ -265,7 +267,7 @@ class Document : public Node,
   // Returns whether the document has browsing context. Having the browsing
   // context means the document is shown on the screen.
   //   https://www.w3.org/TR/html5/browsers.html#browsing-context
-  bool HasBrowsingContext() { return !!window_; }
+  bool HasBrowsingContext() const { return !!window_; }
 
   void set_window(Window* window) { window_ = window; }
   const scoped_refptr<Window> window();
@@ -430,6 +432,8 @@ class Document : public Node,
   // Compiles/updates a set of all declared CSS keyframes used to define CSS
   // Animations, using all the style sheets in the document.
   void UpdateKeyframes();
+
+  bool IsCookieAverseDocument() const;
 
   // Reference to HTML element context.
   HTMLElementContext* const html_element_context_;

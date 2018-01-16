@@ -60,7 +60,7 @@ FilterBasedPlayerWorkerHandler::FilterBasedPlayerWorkerHandler(
       volume_(1.0),
       output_mode_(output_mode),
       decode_target_graphics_context_provider_(provider) {
-#if SB_API_VERSION >= SB_AUDIO_SPECIFIC_CONFIG_AS_POINTER
+#if SB_API_VERSION >= 6
   if (audio_header_.audio_specific_config_size > 0) {
     audio_specific_config_.reset(
         new int8_t[audio_header_.audio_specific_config_size]);
@@ -69,7 +69,7 @@ FilterBasedPlayerWorkerHandler::FilterBasedPlayerWorkerHandler(
                  audio_header.audio_specific_config,
                  audio_header.audio_specific_config_size);
   }
-#endif  // SB_API_VERSION >= SB_AUDIO_SPECIFIC_CONFIG_AS_POINTER
+#endif  // SB_API_VERSION >= 6
 
   update_closure_ = Bind(&FilterBasedPlayerWorkerHandler::Update, this);
   bounds_ = PlayerWorker::Bounds();
@@ -123,6 +123,10 @@ bool FilterBasedPlayerWorkerHandler::Init(
 
   audio_renderer_->SetPlaybackRate(playback_rate_);
   audio_renderer_->SetVolume(volume_);
+  audio_renderer_->Initialize(
+      Bind(&FilterBasedPlayerWorkerHandler::OnError, this));
+  video_renderer_->Initialize(
+      Bind(&FilterBasedPlayerWorkerHandler::OnError, this));
 
   job_queue_->Schedule(update_closure_, kUpdateInterval);
 
@@ -143,8 +147,8 @@ bool FilterBasedPlayerWorkerHandler::Seek(SbMediaTime seek_to_pts, int ticket) {
   }
 
   audio_renderer_->Pause();
-  audio_renderer_->Seek(seek_to_pts);
   video_renderer_->Seek(seek_to_pts);
+  audio_renderer_->Seek(seek_to_pts);
   return true;
 }
 
@@ -298,6 +302,15 @@ bool FilterBasedPlayerWorkerHandler::SetBounds(
   }
 
   return true;
+}
+
+void FilterBasedPlayerWorkerHandler::OnError() {
+  if (!job_queue_->BelongsToCurrentThread()) {
+    job_queue_->Schedule(Bind(&FilterBasedPlayerWorkerHandler::OnError, this));
+    return;
+  }
+
+  (*player_worker_.*update_player_state_cb_)(kSbPlayerStateError);
 }
 
 // TODO: This should be driven by callbacks instead polling.

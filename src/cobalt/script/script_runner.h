@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 #ifndef COBALT_SCRIPT_SCRIPT_RUNNER_H_
 #define COBALT_SCRIPT_SCRIPT_RUNNER_H_
 
@@ -36,7 +37,7 @@ class ScriptRunner {
   //   script executed without errors.
   virtual std::string Execute(const std::string& script_utf8,
                               const base::SourceLocation& script_location,
-                              bool* out_succeeded) = 0;
+                              bool mute_errors, bool* out_succeeded) = 0;
   virtual GlobalEnvironment* GetGlobalEnvironment() const { return NULL; }
   virtual ~ScriptRunner() {}
 };

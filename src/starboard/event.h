@@ -86,6 +86,7 @@
 #include "starboard/export.h"
 #include "starboard/time.h"
 #include "starboard/types.h"
+#include "starboard/window.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -95,7 +96,7 @@ extern "C" {
 // system. Each event is accompanied by a void* data argument, and each event
 // must define the type of the value pointed to by that data argument, if any.
 typedef enum SbEventType {
-#if SB_API_VERSION >= SB_PRELOAD_API_VERSION
+#if SB_API_VERSION >= 6
   // Applications should perform initialization and prepare to react to
   // subsequent events, but must not initialize any graphics resources (through
   // GL or SbBlitter). The intent of this event is to allow the application to
@@ -112,7 +113,7 @@ typedef enum SbEventType {
   // call SbSystemRequestSuspend() when they are done preloading to request
   // this.
   kSbEventTypePreload,
-#endif  // SB_API_VERSION >= SB_PRELOAD_API_VERSION
+#endif  // SB_API_VERSION >= 6
 
   // The first event that an application receives on startup when starting
   // normally (i.e. not being preloaded). Applications should perform
@@ -204,14 +205,24 @@ typedef enum SbEventType {
   // new settings.
   kSbEventTypeAccessiblitySettingsChanged,
 
-#if SB_API_VERSION >= SB_LOW_MEMORY_EVENT_API_VERSION
+#if SB_API_VERSION >= 6
   // An optional event that platforms may send to indicate that the application
   // may soon be terminated (or crash) due to low memory availability. The
   // application may respond by reducing memory consumption by running a Garbage
   // Collection, flushing caches, or something similar. There is no requirement
   // to respond to or handle this event, it is only advisory.
   kSbEventTypeLowMemory,
-#endif  // SB_API_VERSION >= SB_LOW_MEMORY_EVENT_API_VERSION
+#endif  // SB_API_VERSION >= 6
+
+#if SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+  // The size or position of a SbWindow has changed. The data is
+  // SbEventWindowSizeChangedData.
+  kSbEventTypeWindowSizeChanged,
+#endif  // SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+  kSbEventTypeOnScreenKeyboardShown,
+  kSbEventTypeOnScreenKeyboardHidden,
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 } SbEventType;
 
 // Structure representing a Starboard event and its data.
@@ -241,6 +252,14 @@ typedef struct SbEventStartData {
   // The startup link, if any.
   const char* link;
 } SbEventStartData;
+
+#if SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+// Event data for kSbEventTypeWindowSizeChanged events.
+typedef struct SbEventWindowSizeChangedData {
+  SbWindow window;
+  SbWindowSize size;
+} SbEventWindowSizeChangedData;
+#endif  // SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
 
 #define kSbEventIdInvalid (SbEventId)0
 

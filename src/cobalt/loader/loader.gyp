@@ -27,6 +27,8 @@
         'cache_fetcher.h',
         'cors_preflight.cc',
         'cors_preflight.h',
+        'cors_preflight_cache.cc',
+        'cors_preflight_cache.h',
         'decoder.h',
         'embedded_fetcher.cc',
         'embedded_fetcher.h',
@@ -80,6 +82,8 @@
         'mesh/projection_codec/projection_decoder.h',
         'net_fetcher.cc',
         'net_fetcher.h',
+        'origin.cc',
+        'origin.h',
         'resource_cache.h',
         'sync_loader.cc',
         'sync_loader.h',
@@ -97,12 +101,6 @@
         'embed_resources_as_header_files',
       ],
       'conditions': [
-        ['target_arch == "ps3"', {
-          'sources': [
-            'image/jpeg_image_decoder_ps3.cc',
-            'image/jpeg_image_decoder_ps3.h',
-          ],
-        }],
         ['enable_about_scheme == 1', {
           'defines': [ 'ENABLE_ABOUT_SCHEME' ],
           'sources': [

@@ -22,6 +22,7 @@
 #include "base/threading/thread_checker.h"
 #include "cobalt/base/source_location.h"
 #include "cobalt/dom/html_element.h"
+#include "cobalt/dom/url_utils.h"
 #include "cobalt/loader/loader.h"
 
 namespace cobalt {
@@ -49,6 +50,9 @@ class HTMLScriptElement : public HTMLElement {
 
   bool async() const { return GetBooleanAttribute("async"); }
   void set_async(bool value) { SetBooleanAttribute("async", value); }
+
+  base::optional<std::string> cross_origin() const;
+  void set_cross_origin(const base::optional<std::string>& value);
 
   std::string nonce() const { return GetAttribute("nonce").value_or(""); }
   void set_nonce(const std::string& value) { SetAttribute("nonce", value); }
@@ -89,10 +93,12 @@ class HTMLScriptElement : public HTMLElement {
   //
   void Prepare();
 
-  void OnSyncLoadingDone(const std::string& content);
+  void OnSyncLoadingDone(const std::string& content,
+                         const loader::Origin& last_url_origin);
   void OnSyncLoadingError(const std::string& error);
 
-  void OnLoadingDone(const std::string& content);
+  void OnLoadingDone(const std::string& content,
+                     const loader::Origin& last_url_origin);
   void OnLoadingError(const std::string& error);
 
   void ExecuteExternal() {
@@ -138,6 +144,14 @@ class HTMLScriptElement : public HTMLElement {
 
   // Whether or not the script should execute at all.
   bool should_execute_;
+
+  // The request mode for the fetch request.
+  loader::RequestMode request_mode_;
+
+  // Will be compared with document's origin to derive mute_errors flag
+  // javascript parser takes in to record if the error reqort should be muted
+  // due to cross-origin fetched script.
+  loader::Origin fetched_last_url_origin_;
 };
 
 }  // namespace dom

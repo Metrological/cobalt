@@ -35,6 +35,7 @@
 #include "cobalt/dom/history.h"
 #include "cobalt/dom/html_element.h"
 #include "cobalt/dom/html_element_context.h"
+#include "cobalt/dom/input_event.h"
 #include "cobalt/dom/keyboard_event.h"
 #include "cobalt/dom/location.h"
 #include "cobalt/dom/media_source.h"
@@ -94,17 +95,18 @@ Window::Window(int width, int height, float device_pixel_ratio,
                MediaSource::Registry* media_source_registry,
                DomStatTracker* dom_stat_tracker, const GURL& url,
                const std::string& user_agent, const std::string& language,
+               const std::string& font_language_script,
                const base::Callback<void(const GURL&)> navigation_callback,
                const base::Callback<void(const std::string&)>& error_callback,
                network_bridge::CookieJar* cookie_jar,
                const network_bridge::PostSender& post_sender,
-               const std::string& default_security_policy,
                csp::CSPHeaderPolicy require_csp,
                CspEnforcementType csp_enforcement_mode,
                const base::Closure& csp_policy_changed_callback,
                const base::Closure& ran_animation_frame_callbacks_callback,
                const CloseCallback& window_close_callback,
                const base::Closure& window_minimize_callback,
+               const base::Callback<SbWindow()>& get_sb_window_callback,
                const scoped_refptr<input::Camera3D>& camera_3d,
                const scoped_refptr<MediaSession>& media_session,
                int csp_insecure_allowed_token, int dom_max_element_depth,
@@ -123,8 +125,9 @@ Window::Window(int width, int height, float device_pixel_ratio,
           web_media_player_factory, script_runner, script_value_factory,
           media_source_registry, resource_provider, animated_image_tracker,
           image_cache, reduced_image_cache_capacity_manager,
-          remote_typeface_cache, mesh_cache, dom_stat_tracker, language,
-          initial_application_state, video_playback_rate_multiplier)),
+          remote_typeface_cache, mesh_cache, dom_stat_tracker,
+          font_language_script, initial_application_state,
+          video_playback_rate_multiplier)),
       performance_(new Performance(
 #if defined(ENABLE_TEST_RUNNER)
           clock_type == kClockTypeTestRunner ? test_runner_->GetClock() :
@@ -137,10 +140,9 @@ Window::Window(int width, int height, float device_pixel_ratio,
               base::Bind(&Window::FireHashChangeEvent, base::Unretained(this)),
               performance_->timing()->GetNavigationStartClock(),
               navigation_callback, ParseUserAgentStyleSheet(css_parser),
-              math::Size(width_, height_), cookie_jar, post_sender,
-              default_security_policy, require_csp, csp_enforcement_mode,
-              csp_policy_changed_callback, csp_insecure_allowed_token,
-              dom_max_element_depth)))),
+              math::Size(width_, height_), cookie_jar, post_sender, require_csp,
+              csp_enforcement_mode, csp_policy_changed_callback,
+              csp_insecure_allowed_token, dom_max_element_depth)))),
       document_loader_(NULL),
       history_(new History()),
       navigator_(new Navigator(user_agent, language, media_session,
@@ -158,11 +160,18 @@ Window::Window(int width, int height, float device_pixel_ratio,
       ALLOW_THIS_IN_INITIALIZER_LIST(
           session_storage_(new Storage(this, Storage::kSessionStorage, NULL))),
       screen_(new Screen(width, height)),
+      preflight_cache_(new loader::CORSPreflightCache()),
       ran_animation_frame_callbacks_callback_(
           ran_animation_frame_callbacks_callback),
       window_close_callback_(window_close_callback),
       window_minimize_callback_(window_minimize_callback),
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+      on_screen_keyboard_(new OnScreenKeyboard(get_sb_window_callback)),
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
       splash_screen_cache_callback_(splash_screen_cache_callback) {
+#if !SB_HAS(ON_SCREEN_KEYBOARD)
+  UNREFERENCED_PARAMETER(get_sb_window_callback);
+#endif  // !SB_HAS(ON_SCREEN_KEYBOARD)
 #if !defined(ENABLE_TEST_RUNNER)
   UNREFERENCED_PARAMETER(clock_type);
 #endif
@@ -290,16 +299,24 @@ const scoped_refptr<Screen>& Window::screen() { return screen_; }
 
 scoped_refptr<Crypto> Window::crypto() const { return crypto_; }
 
-std::string Window::Btoa(const std::string& string_to_encode) {
+std::string Window::Btoa(const std::string& string_to_encode,
+                         script::ExceptionState* exception_state) {
   std::string output;
-  base::Base64Encode(string_to_encode, &output);
+  if (!base::Base64Encode(string_to_encode, &output)) {
+    DOMException::Raise(DOMException::kInvalidCharacterErr, exception_state);
+    return std::string();
+  }
   return output;
 }
 
-std::string Window::Atob(const std::string& encoded_string) {
+std::vector<uint8_t> Window::Atob(const std::string& encoded_string,
+                                  script::ExceptionState* exception_state) {
   std::string output;
-  base::Base64Decode(encoded_string, &output);
-  return output;
+  if (!base::Base64Decode(encoded_string, &output)) {
+    DOMException::Raise(DOMException::kInvalidCharacterErr, exception_state);
+    return {};
+  }
+  return {output.begin(), output.end()};
 }
 
 int Window::SetTimeout(const WindowTimers::TimerCallbackArg& handler,
@@ -433,6 +450,11 @@ void Window::InjectEvent(const scoped_refptr<Event>& event) {
       document_->active_element()->DispatchEvent(event);
     } else {
       document_->DispatchEvent(event);
+    }
+  } else if (event->GetWrappableType() == base::GetTypeId<InputEvent>()) {
+    // Dispatch any InputEvent directly to the OnScreenKeyboard element.
+    if (on_screen_keyboard_) {
+      on_screen_keyboard_->DispatchEvent(event);
     }
   } else if (event->GetWrappableType() == base::GetTypeId<PointerEvent>() ||
              event->GetWrappableType() == base::GetTypeId<MouseEvent>() ||
@@ -584,6 +606,10 @@ void Window::CacheSplashScreen(const std::string& content) {
   }
   DLOG(INFO) << "Caching splash screen for URL " << location()->url();
   splash_screen_cache_callback_.Run(location()->url(), content);
+}
+
+const scoped_refptr<OnScreenKeyboard>& Window::on_screen_keyboard() const {
+  return on_screen_keyboard_;
 }
 
 Window::~Window() {

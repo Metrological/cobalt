@@ -18,12 +18,12 @@ namespace cobalt {
 namespace dom {
 
 URLUtils::URLUtils(const GURL& url, bool is_opaque)
-    : url_(url), origin_(is_opaque ? Origin() : Origin(url)) {}
+    : url_(url), origin_(is_opaque ? loader::Origin() : loader::Origin(url)) {}
 URLUtils::URLUtils(const GURL& url, const UpdateStepsCallback& update_steps,
                    bool is_opaque)
     : url_(url),
       update_steps_(update_steps),
-      origin_(is_opaque ? Origin() : Origin(url)) {}
+      origin_(is_opaque ? loader::Origin() : loader::Origin(url)) {}
 
 std::string URLUtils::href() const { return url_.possibly_invalid_spec(); }
 

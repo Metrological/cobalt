@@ -69,10 +69,8 @@
 
 #if defined(OS_STARBOARD)
 
-#if SB_HAS(PLAYER)
 #define COBALT_USE_PUNCHOUT
 #define COBALT_SKIP_SEEK_REQUEST_NEAR_END
-#endif  // SB_HAS(PLAYER)
 
 #endif  // defined(OS_STARBOARD)
 
@@ -113,10 +111,13 @@ class WebMediaPlayerImpl : public WebMediaPlayer,
       const scoped_refptr<MediaLog>& media_log);
   ~WebMediaPlayerImpl() OVERRIDE;
 
+#if SB_HAS(PLAYER_WITH_URL)
+  void LoadUrl(const GURL& url) OVERRIDE;
+#else   // SB_HAS(PLAYER_WITH_URL)
   void LoadMediaSource() OVERRIDE;
   void LoadProgressive(const GURL& url,
-                       scoped_ptr<BufferedDataSource> data_source,
-                       CORSMode cors_mode) OVERRIDE;
+                       scoped_ptr<BufferedDataSource> data_source) OVERRIDE;
+#endif  // SB_HAS(PLAYER_WITH_URL)
   void CancelLoad() OVERRIDE;
 
   // Playback controls.
@@ -200,7 +201,11 @@ class WebMediaPlayerImpl : public WebMediaPlayer,
   void OnDownloadingStatusChanged(bool is_downloading);
 
   // Finishes starting the pipeline due to a call to load().
+#if SB_HAS(PLAYER_WITH_URL)
+  void StartPipeline(const GURL& url);
+#else   // SB_HAS(PLAYER_WITH_URL)
   void StartPipeline(Demuxer* demuxer);
+#endif  // SB_HAS(PLAYER_WITH_URL)
 
   // Helpers that set the network/ready state and notifies the client if
   // they've changed.
@@ -214,6 +219,9 @@ class WebMediaPlayerImpl : public WebMediaPlayer,
                                    bool* is_seeking) const;
   void OnEncryptedMediaInitDataEncountered(
       EmeInitDataType init_data_type, const std::vector<uint8_t>& init_data);
+  void OnEncryptedMediaInitDataEncounteredWrapper(
+      const char* init_data_type, const unsigned char* init_data,
+      unsigned int init_data_length);
 
   // Getter method to |client_|.
   WebMediaPlayerClient* GetClient();
@@ -222,6 +230,7 @@ class WebMediaPlayerImpl : public WebMediaPlayer,
   // Callbacks that forward duration change from |pipeline_| to |client_|.
   void OnDurationChanged();
   void OnOutputModeChanged();
+  void OnContentSizeChanged();
 
   base::Thread pipeline_thread_;
 

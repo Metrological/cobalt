@@ -18,12 +18,24 @@
 #include <string>
 
 #include "base/callback.h"
+#include "cobalt/dom/url_utils.h"
 #include "cobalt/loader/loader_types.h"
 #include "googleurl/src/gurl.h"
 #include "net/http/http_response_headers.h"
 
 namespace cobalt {
 namespace loader {
+
+// https://fetch.spec.whatwg.org/#concept-request-mode
+// Right now Cobalt only needs two modes.
+// We mix credentials mode with request mode for simplicity.
+// https://fetch.spec.whatwg.org/#concept-request-credentials-mode
+enum RequestMode {
+  kNoCORSMode,
+  kCORSModeOmitCredentials,
+  kCORSModeSameOriginCredentials,
+  kCORSModeIncludeCredentials,
+};
 
 class Fetcher {
  public:
@@ -63,11 +75,16 @@ class Fetcher {
   // Concrete Fetcher subclass should start fetching immediately in constructor.
   explicit Fetcher(Handler* handler) : handler_(handler) {}
 
+  const Origin& last_url_origin() { return last_url_origin_; }
+
   // Concrete Fetcher subclass should cancel fetching in destructor.
   virtual ~Fetcher() = 0;
 
  protected:
   Handler* handler() const { return handler_; }
+
+  // used by html elements to check if resource is cross-origin.
+  Origin last_url_origin_;
 
  private:
   Handler* handler_;

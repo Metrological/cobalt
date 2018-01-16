@@ -8,10 +8,14 @@ EXPORTS
     ; From starboard/shared/lib/exported/starboard_main.h:
     StarboardMain
 
+    ; From cobalt/network/lib/user_agent.h:
+    CbLibUserAgentSetPlatformNameSuffix
+
     ; From cobalt/browser/lib/exported/main.h:
     CbLibMainSetCallbackRegistrationReadyCallback
     CbLibMainSetOnCobaltInitializedCallback
     CbLibMainSetHandleEventCallback
+    CbLibMainGetSbWindow
 
     ; From cobalt/render/rasterizer/lib/exported/graphics.h:
     CbLibGraphicsSetContextCreatedCallback
@@ -21,10 +25,10 @@ EXPORTS
     CbLibGraphicsSetTargetMainTextureSize
 
     ; From cobalt/render/rasterizer/lib/exported/video.h:
-    CbLibVideoSetOnUpdateProjectionType
+    CbLibVideoSetOnUpdateProjectionTypeAndStereoMode
     CbLibVideoSetOnUpdateMeshes
-    CbLibVideoSetOnUpdateStereoMode
     CbLibVideoSetOnUpdateRgbTextureId
+    CbLibVideoSetOnUpdateAspectRatio
 
     ; Following GL functions are copied from libGLESv2.def and EGL from
     ; libEGL.def. We export these so that host-applications may use the same

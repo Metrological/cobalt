@@ -53,7 +53,8 @@
 // changes. It is reasonable to base a port on the Release Candidate API
 // version, but be aware that small incompatible changes may still be made to
 // it.
-#define SB_RELEASE_CANDIDATE_API_VERSION 6
+// The following will be uncommented when an API version is a release candidate.
+// #define SB_RELEASE_CANDIDATE_API_VERSION 8
 
 // --- Experimental Feature Defines ------------------------------------------
 
@@ -67,24 +68,11 @@
 //   //   exposes functionality for my new feature.
 //   #define SB_MY_EXPERIMENTAL_FEATURE_VERSION SB_EXPERIMENTAL_API_VERSION
 
-// --- Release Candidate Feature Defines -------------------------------------
-#define SB_DECODE_TARGET_PLANE_FORMAT_VERSION 7
+#define SB_PLAYER_WITH_URL_API_VERSION SB_EXPERIMENTAL_API_VERSION
+#define SB_WINDOW_SIZE_CHANGED_API_VERSION SB_EXPERIMENTAL_API_VERSION
+#define SB_INPUT_ON_SCREEN_KEYBOARD_API_VERSION SB_EXPERIMENTAL_API_VERSION
 
-#define SB_POINTER_INPUT_API_VERSION SB_RELEASE_CANDIDATE_API_VERSION
-#define SB_AUDIO_SPECIFIC_CONFIG_AS_POINTER SB_RELEASE_CANDIDATE_API_VERSION
-#define SB_TIME_ZONE_FLEXIBLE_API_VERSION SB_RELEASE_CANDIDATE_API_VERSION
-#define SB_DECODE_TARGET_PLANES_FOR_FORMAT SB_RELEASE_CANDIDATE_API_VERSION
-#define SB_PRELOAD_API_VERSION SB_RELEASE_CANDIDATE_API_VERSION
-#define SB_PLATFORM_ERROR_CLEANUP_API_VERSION SB_RELEASE_CANDIDATE_API_VERSION
-#define SB_DECODE_TARGET_UYVY_SUPPORT_API_VERSION \
-  SB_RELEASE_CANDIDATE_API_VERSION
-#define SB_NEW_KEYCODES_API_VERSION SB_RELEASE_CANDIDATE_API_VERSION
-#define SB_LOW_MEMORY_EVENT_API_VERSION SB_RELEASE_CANDIDATE_API_VERSION
-#define SB_PLAYER_WRITE_SAMPLE_EXTRA_CONST_API_VERSION \
-  SB_RELEASE_CANDIDATE_API_VERSION
-#define SB_DRM_KEY_STATUSES_UPDATE_SUPPORT_API_VERSION \
-  SB_RELEASE_CANDIDATE_API_VERSION
-#define SB_STORAGE_NAMES_API_VERSION SB_RELEASE_CANDIDATE_API_VERSION
+// --- Release Candidate Feature Defines -------------------------------------
 
 // --- Common Detected Features ----------------------------------------------
 
@@ -475,9 +463,13 @@ SB_COMPILE_ASSERT(sizeof(long) == 8,  // NOLINT(runtime/int)
 #error "Your platform must define SB_HAS_TIME_THREAD_NOW in API 3 or later."
 #endif
 
-#if defined(SB_IS_PLAYER_COMPOSITITED) || defined(SB_IS_PLAYER_PUNCHED_OUT) || \
+#if defined(SB_IS_PLAYER_COMPOSITED) || defined(SB_IS_PLAYER_PUNCHED_OUT) || \
     defined(SB_IS_PLAYER_PRODUCING_TEXTURE)
 #error "New versions of Starboard specify player output mode at runtime."
+#endif
+
+#if SB_HAS(PLAYER_WITH_URL) && SB_API_VERSION < SB_PLAYER_WITH_URL_API_VERSION
+#error "SB_HAS_PLAYER_WITH_URL is not supported in this API version."
 #endif
 
 #if (SB_HAS(MANY_CORES) && (SB_HAS(1_CORE) || SB_HAS(2_CORES) ||    \
@@ -548,11 +540,26 @@ SB_COMPILE_ASSERT(sizeof(long) == 8,  // NOLINT(runtime/int)
 #error "SB_MEDIA_GPU_BUFFER_BUDGET is deprecated."
 #endif  // defined(SB_MEDIA_GPU_BUFFER_BUDGET)
 
+#if SB_API_VERSION >= 6
+#if defined(SB_HAS_DRM_KEY_STATUSES)
+#if !SB_HAS(DRM_KEY_STATUSES)
+#error "SB_HAS_DRM_KEY_STATUSES is required for Starboard 6 or later."
+#endif  // !SB_HAS(DRM_KEY_STATUSES)
+#else   // defined(SB_HAS_DRM_KEY_STATUSES)
+#define SB_HAS_DRM_KEY_STATUSES 1
+#endif  // defined(SB_HAS_DRM_KEY_STATUSES)
+#endif  // SB_API_VERSION >= 6
+
 #if SB_API_VERSION >= 5
 #if !defined(SB_HAS_SPEECH_RECOGNIZER)
 #error "Your platform must define SB_HAS_SPEECH_RECOGNIZER."
 #endif  // !defined(SB_HAS_SPEECH_RECOGNIZER)
 #endif  // SB_API_VERSION >= 5
+
+#if SB_HAS(ON_SCREEN_KEYBOARD) && \
+    (SB_API_VERSION < SB_INPUT_ON_SCREEN_KEYBOARD_API_VERSION)
+#error "SB_HAS_ON_SCREEN_KEYBOARD not supported in this API version."
+#endif
 
 // --- Derived Configuration -------------------------------------------------
 

@@ -14,58 +14,62 @@
 # limitations under the License.
 """Linux implementation of Starboard launcher abstraction."""
 
-import importlib
 import os
-import sys
-
-if "environment" in sys.modules:
-  environment = sys.modules["environment"]
-else:
-  env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir,
-                                          os.pardir, "tools"))
-  if env_path not in sys.path:
-    sys.path.append(env_path)
-  environment = importlib.import_module("environment")
-
-
 import signal
 import socket
 import subprocess
+import sys
 
-import starboard.tools.abstract_launcher as abstract_launcher
+import _env  # pylint: disable=unused-import
+from starboard.tools import abstract_launcher
 
 
 class Launcher(abstract_launcher.AbstractLauncher):
   """Class for launching Cobalt/tools on Linux."""
 
-  def __init__(self, platform, target_name, config, device_id, args,
-               output_file, out_directory):
+  def __init__(self, platform, target_name, config, device_id, **kwargs):
     super(Launcher, self).__init__(platform, target_name, config, device_id,
-                                   args, output_file, out_directory)
+                                   **kwargs)
     if not self.device_id:
       if socket.has_ipv6:  #  If the device supports IPv6:
         self.device_id = "::1"  #  Use the only IPv6 loopback address
       else:
         self.device_id = socket.gethostbyname("localhost")
 
-    self.executable = abstract_launcher.GetDefaultTargetPath(
-        platform, config, target_name)
+    self.executable = self.GetTargetPath()
 
+    env = os.environ.copy()
+    env.update(self.env_variables)
+    self.full_env = env
+
+    self.proc = None
     self.pid = None
 
   def Run(self):
     """Runs launcher's executable."""
 
-    proc = subprocess.Popen([self.executable] + self.target_command_line_params,
-                            stdout=self.output_file, stderr=self.output_file)
-    self.pid = proc.pid
-    proc.wait()
-    return proc.returncode
+    self.proc = subprocess.Popen(
+        [self.executable] + self.target_command_line_params,
+        stdout=self.output_file,
+        stderr=self.output_file,
+        env=self.full_env)
+    self._CloseOutputFile()
+    self.pid = self.proc.pid
+    self.proc.wait()
+    return self.proc.returncode
 
   def Kill(self):
-    print "\n***Killing Launcher***\n"
+    sys.stderr.write("\n***Killing Launcher***\n")
     if self.pid:
       try:
         os.kill(self.pid, signal.SIGTERM)
-      except OSError:  # Process is already dead
-        raise OSError("Process already closed.")
+      except OSError:
+        sys.stderr.write("Cannot kill launcher.  Process already closed.\n")
+
+  def SendResume(self):
+    """Sends continue to the launcher's executable."""
+    sys.stderr.write("\n***Sending continue signal to executable***\n")
+    if self.proc:
+      self.proc.send_signal(signal.SIGCONT)
+    else:
+      sys.stderr.write("Cannot send continue to executable; it is closed.\n")

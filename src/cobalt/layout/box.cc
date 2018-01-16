@@ -547,21 +547,11 @@ void Box::RenderAndAnimate(
   render_tree::CompositionNode::Builder border_node_builder(border_box_offset);
   AnimateNode::Builder animate_node_builder;
 
-  base::optional<RoundedCorners> rounded_corners = ComputeRoundedCorners();
+  const base::optional<RoundedCorners> rounded_corners =
+      ComputeRoundedCorners();
 
-  // If we have rounded corners and a non-zero border, then we need to compute
-  // the "inner" rounded corners, as the ones specified by CSS apply to the
-  // outer border edge.
-  base::optional<RoundedCorners> padding_rounded_corners_if_different;
-  if (rounded_corners && !border_insets_.zero()) {
-    padding_rounded_corners_if_different = rounded_corners->Inset(math::InsetsF(
-        border_insets_.left().toFloat(), border_insets_.top().toFloat(),
-        border_insets_.right().toFloat(), border_insets_.bottom().toFloat()));
-  }
-  const base::optional<RoundedCorners>& padding_rounded_corners =
-      padding_rounded_corners_if_different
-          ? padding_rounded_corners_if_different
-          : rounded_corners;
+  const base::optional<RoundedCorners> padding_rounded_corners =
+      ComputePaddingRoundedCorners(rounded_corners);
 
   // The painting order is:
   // - background color.
@@ -594,8 +584,8 @@ void Box::RenderAndAnimate(
     }
     RenderAndAnimateBorder(rounded_corners, &border_node_builder,
                            &animate_node_builder);
-    RenderAndAnimateBoxShadow(rounded_corners, &border_node_builder,
-                              &animate_node_builder);
+    RenderAndAnimateBoxShadow(rounded_corners, padding_rounded_corners,
+                              &border_node_builder, &animate_node_builder);
   }
 
   const bool overflow_hidden =
@@ -744,8 +734,7 @@ void SetupBackgroundNodeFromStyle(
 
   if (rounded_corners) {
     rect_node_builder->rounded_corners =
-        scoped_ptr<RoundedCorners>(new RoundedCorners(
-            rounded_corners->Normalize(rect_node_builder->rect)));
+        scoped_ptr<RoundedCorners>(new RoundedCorners(*rounded_corners));
   }
 }
 
@@ -834,8 +823,7 @@ void SetupBorderNodeFromStyle(
 
   if (rounded_corners) {
     rect_node_builder->rounded_corners =
-        scoped_ptr<RoundedCorners>(new RoundedCorners(
-            rounded_corners->Normalize(rect_node_builder->rect)));
+        scoped_ptr<RoundedCorners>(new RoundedCorners(*rounded_corners));
   }
 }
 
@@ -851,8 +839,10 @@ void PopulateBaseStyleForOutlineNode(
 }
 
 void SetupOutlineNodeFromStyleWithOutset(
+    const math::RectF& rect,
     const scoped_refptr<const cssom::CSSComputedStyleData>& style,
     RectNode::Builder* rect_node_builder, float outset_width) {
+  rect_node_builder->rect = rect;
   rect_node_builder->rect.Outset(outset_width, outset_width);
   if (outset_width != 0) {
     rect_node_builder->border =
@@ -863,10 +853,11 @@ void SetupOutlineNodeFromStyleWithOutset(
 }
 
 void SetupOutlineNodeFromStyle(
+    const math::RectF& rect,
     const scoped_refptr<const cssom::CSSComputedStyleData>& style,
     RectNode::Builder* rect_node_builder) {
   SetupOutlineNodeFromStyleWithOutset(
-      style, rect_node_builder,
+      rect, style, rect_node_builder,
       GetUsedNonNegativeLength(style->outline_width()).toFloat());
 }
 }  // namespace
@@ -1225,7 +1216,7 @@ bool HasAnimatedOutline(const web_animations::AnimationSet* animation_set) {
 
 }  // namespace
 
-base::optional<render_tree::RoundedCorners> Box::ComputeRoundedCorners() {
+base::optional<render_tree::RoundedCorners> Box::ComputeRoundedCorners() const {
   UsedBorderRadiusProvider border_radius_provider(GetBorderBoxSize());
   render_tree::RoundedCorner border_top_left_radius;
   render_tree::RoundedCorner border_top_right_radius;
@@ -1269,13 +1260,36 @@ base::optional<render_tree::RoundedCorners> Box::ComputeRoundedCorners() {
     rounded_corners.emplace(border_top_left_radius, border_top_right_radius,
                             border_bottom_right_radius,
                             border_bottom_left_radius);
+    rounded_corners =
+        rounded_corners->Normalize(math::RectF(GetBorderBoxSize()));
   }
 
   return rounded_corners;
 }
 
+base::optional<render_tree::RoundedCorners> Box::ComputePaddingRoundedCorners(
+    const base::optional<RoundedCorners>& rounded_corners) const {
+  base::optional<RoundedCorners> padding_rounded_corners_if_different;
+
+  if (rounded_corners && !border_insets_.zero()) {
+    // If we have rounded corners and a non-zero border, then we need to
+    // compute the "inner" rounded corners, as the ones specified by CSS apply
+    // to the outer border edge.
+    padding_rounded_corners_if_different = rounded_corners->Inset(math::InsetsF(
+        border_insets_.left().toFloat(), border_insets_.top().toFloat(),
+        border_insets_.right().toFloat(), border_insets_.bottom().toFloat()));
+  }
+
+  const base::optional<RoundedCorners>& padding_rounded_corners =
+      padding_rounded_corners_if_different
+          ? padding_rounded_corners_if_different
+          : rounded_corners;
+  return padding_rounded_corners;
+}
+
 void Box::RenderAndAnimateBoxShadow(
-    const base::optional<RoundedCorners>& rounded_corners,
+    const base::optional<RoundedCorners>& outer_rounded_corners,
+    const base::optional<RoundedCorners>& inner_rounded_corners,
     CompositionNode::Builder* border_node_builder,
     AnimateNode::Builder* animate_node_builder) {
   UNREFERENCED_PARAMETER(animate_node_builder);
@@ -1327,9 +1341,13 @@ void Box::RenderAndAnimateBoxShadow(
       render_tree::RectShadowNode::Builder shadow_builder(
           math::RectF(rect_offset, shadow_rect_size), shadow,
           shadow_value->has_inset(), spread_radius);
-      if (rounded_corners) {
-        shadow_builder.rounded_corners = rounded_corners->Normalize(
-            shadow_builder.rect);
+
+      if (outer_rounded_corners) {
+        if (shadow_value->has_inset()) {
+          shadow_builder.rounded_corners = inner_rounded_corners;
+        } else {
+          shadow_builder.rounded_corners = outer_rounded_corners;
+        }
       }
 
       // Finally, create our shadow node.
@@ -1342,9 +1360,10 @@ void Box::RenderAndAnimateBoxShadow(
 }
 
 namespace {
-bool AllBorderSidesShareSameProperties(const Border& border) {
-  return border.left == border.top && border.left == border.right &&
-         border.left == border.bottom;
+bool AllBorderSidesShareSameStyle(const Border& border) {
+  return border.left.style == border.top.style &&
+         border.left.style == border.right.style &&
+         border.left.style == border.bottom.style;
 }
 }  // namespace
 
@@ -1366,10 +1385,10 @@ void Box::RenderAndAnimateBorder(
                            &rect_node_builder);
 
   if (rounded_corners &&
-      !AllBorderSidesShareSameProperties(*rect_node_builder.border)) {
+      !AllBorderSidesShareSameStyle(*rect_node_builder.border)) {
     LOG(WARNING)
         << "Cobalt does not support rounded corners borders whose edges do not "
-           "all share the same properties.";
+           "all share the same style.";
     return;
   }
 
@@ -1390,10 +1409,10 @@ void Box::RenderAndAnimateOutline(CompositionNode::Builder* border_node_builder,
   RectNode::Builder rect_node_builder(rect);
   bool has_animated_outline = HasAnimatedOutline(animations());
   if (has_animated_outline) {
-    SetupOutlineNodeFromStyleWithOutset(computed_style(), &rect_node_builder,
-                                        0);
+    SetupOutlineNodeFromStyleWithOutset(rect, computed_style(),
+                                        &rect_node_builder, 0);
   } else {
-    SetupOutlineNodeFromStyle(computed_style(), &rect_node_builder);
+    SetupOutlineNodeFromStyle(rect, computed_style(), &rect_node_builder);
   }
 
   scoped_refptr<RectNode> outline_node(new RectNode(rect_node_builder.Pass()));
@@ -1402,7 +1421,7 @@ void Box::RenderAndAnimateOutline(CompositionNode::Builder* border_node_builder,
 
   if (has_animated_outline) {
     AddAnimations<RectNode>(base::Bind(&PopulateBaseStyleForOutlineNode),
-                            base::Bind(&SetupOutlineNodeFromStyle),
+                            base::Bind(&SetupOutlineNodeFromStyle, rect),
                             *css_computed_style_declaration(), outline_node,
                             animate_node_builder);
   }
@@ -1484,8 +1503,7 @@ Box::RenderAndAnimateBackgroundImageResult Box::RenderAndAnimateBackgroundImage(
         // Apply rounded viewport filter to the background image.
         FilterNode::Builder filter_node_builder(background_node);
         filter_node_builder.viewport_filter =
-            ViewportFilter(image_frame,
-                           rounded_corners->Normalize(image_frame));
+            ViewportFilter(image_frame, *rounded_corners);
         background_node = new FilterNode(filter_node_builder);
       }
 
@@ -1548,18 +1566,11 @@ scoped_refptr<render_tree::Node> Box::RenderAndAnimateOpacity(
 scoped_refptr<render_tree::Node> Box::RenderAndAnimateOverflow(
     const scoped_refptr<render_tree::Node>& content_node,
     const math::Vector2dF& border_offset) {
-  base::optional<RoundedCorners> rounded_corners = ComputeRoundedCorners();
+  const base::optional<RoundedCorners> rounded_corners =
+      ComputeRoundedCorners();
 
-  base::optional<RoundedCorners> padding_rounded_corners_if_different;
-  if (rounded_corners && !border_insets_.zero()) {
-    padding_rounded_corners_if_different = rounded_corners->Inset(math::InsetsF(
-        border_insets_.left().toFloat(), border_insets_.top().toFloat(),
-        border_insets_.right().toFloat(), border_insets_.bottom().toFloat()));
-  }
-  const base::optional<RoundedCorners>& padding_rounded_corners =
-      padding_rounded_corners_if_different
-          ? padding_rounded_corners_if_different
-          : rounded_corners;
+  const base::optional<RoundedCorners> padding_rounded_corners =
+      ComputePaddingRoundedCorners(rounded_corners);
 
   return RenderAndAnimateOverflow(padding_rounded_corners, content_node, NULL,
                                   border_offset);
@@ -1584,9 +1595,7 @@ scoped_refptr<render_tree::Node> Box::RenderAndAnimateOverflow(
                   border_node_offset.y() + border_top_width().toFloat(),
                   padding_size.width(), padding_size.height()));
   if (rounded_corners) {
-    filter_node_builder.viewport_filter->set_rounded_corners(
-        rounded_corners->Normalize(
-            filter_node_builder.viewport_filter->viewport()));
+    filter_node_builder.viewport_filter->set_rounded_corners(*rounded_corners);
   }
 
   return scoped_refptr<render_tree::Node>(new FilterNode(filter_node_builder));
@@ -1703,16 +1712,22 @@ bool Box::ApplyTransformActionToCoordinates(
   // stop at the second transform and not the first (which is this box).
   Vector2dLayoutUnit containing_block_offset_from_root =
       GetContainingBlockOffsetFromRoot(true /*transform_forms_root*/);
-  Vector2dLayoutUnit border_box_offset_from_root =
-      (containing_block_offset_from_root +
-       margin_box_offset_from_containing_block() +
-       GetBorderBoxOffsetFromMarginBox());
+
+  // The transform rect always includes the offset from the containing block.
+  // However, in the case where the action is entering the transform, the full
+  // offset from the root needs to be included in the transform.
+  Vector2dLayoutUnit transform_rect_offset =
+      margin_box_offset_from_containing_block() +
+      GetBorderBoxOffsetFromMarginBox();
+  if (action == kEnterTransform) {
+    transform_rect_offset += containing_block_offset_from_root;
+  }
 
   // Transform the coordinates.
   math::Matrix3F matrix =
       GetCSSTransform(transform, computed_style()->transform_origin(),
-                      math::RectF(border_box_offset_from_root.x().toFloat(),
-                                  border_box_offset_from_root.y().toFloat(),
+                      math::RectF(transform_rect_offset.x().toFloat(),
+                                  transform_rect_offset.y().toFloat(),
                                   GetBorderBoxWidth().toFloat(),
                                   GetBorderBoxHeight().toFloat()));
   if (!matrix.IsIdentity()) {

@@ -15,38 +15,30 @@
 # limitations under the License.
 """Client to launch executables via the new launcher logic."""
 
-import importlib
-import os
 import sys
 
-if "environment" in sys.modules:
-  environment = sys.modules["environment"]
-else:
-  env_path = os.path.abspath(
-      os.path.join(os.path.dirname(__file__), os.pardir))
-  if env_path not in sys.path:
-    sys.path.append(env_path)
-  environment = importlib.import_module("environment")
-
+import _env  # pylint: disable=unused-import
 from starboard.tools import abstract_launcher
 from starboard.tools import command_line
 
 
 def main():
   parser = command_line.CreateParser()
+  parser.add_argument(
+      "-t",
+      "--target_name",
+      required=True,
+      help="Name of executable target.")
   args = parser.parse_args()
-  extra_args = {}
 
-  if not args.device_id:
-    args.device_id = None
-
-  extra_args = {}
+  target_params = []
   if args.target_params:
-    extra_args["target_params"] = args.target_params.split(" ")
+    target_params = args.target_params.split(" ")
 
   launcher = abstract_launcher.LauncherFactory(
       args.platform, args.target_name, args.config,
-      args.device_id, extra_args, out_directory=args.out_directory)
+      device_id=args.device_id, target_params=target_params,
+      out_directory=args.out_directory)
   return launcher.Run()
 
 if __name__ == "__main__":

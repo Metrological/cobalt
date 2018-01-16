@@ -43,7 +43,7 @@ DebugScriptRunner::DebugScriptRunner(
 }
 
 base::optional<std::string> DebugScriptRunner::CreateRemoteObject(
-    const script::OpaqueHandleHolder* object, const std::string& params) {
+    const script::ValueHandleHolder* object, const std::string& params) {
   // Callback function should have been set by runtime.js.
   DCHECK(create_remote_object_callback_);
 
@@ -82,7 +82,8 @@ bool DebugScriptRunner::EvaluateScript(const std::string& js_code,
       script::SourceCode::CreateSourceCode(js_code, GetInlineSourceLocation());
 
   ForceEnableEval();
-  bool succeeded = global_environment_->EvaluateScript(source_code, result);
+  bool succeeded = global_environment_->EvaluateScript(
+      source_code, false /*mute_errors*/, result);
   SetEvalAllowedFromCsp();
   return succeeded;
 }

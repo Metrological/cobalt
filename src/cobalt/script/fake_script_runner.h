@@ -27,10 +27,9 @@ namespace script {
 class FakeScriptRunner : public ScriptRunner {
  public:
   FakeScriptRunner() : fake_global_environment_(new FakeGlobalEnvironment()) {}
-  std::string Execute(
-      const std::string& /*script_utf8*/,
-      const base::SourceLocation& /*script_location*/,
-      bool* out_succeeded) OVERRIDE {
+  std::string Execute(const std::string& /*script_utf8*/,
+                      const base::SourceLocation& /*script_location*/,
+                      bool /*mute_errors*/, bool* out_succeeded) OVERRIDE {
     if (out_succeeded) {
       *out_succeeded = true;
     }

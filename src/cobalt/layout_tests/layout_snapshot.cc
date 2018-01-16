@@ -20,9 +20,10 @@
 #include "base/run_loop.h"
 #include "base/synchronization/waitable_event.h"
 #include "cobalt/browser/web_module.h"
-#include "cobalt/media/media_module_stub.h"
+#include "cobalt/dom/window.h"
 #include "cobalt/network/network_module.h"
 #include "cobalt/render_tree/resource_provider.h"
+#include "starboard/window.h"
 
 namespace cobalt {
 namespace layout_tests {
@@ -50,6 +51,10 @@ void WebModuleErrorCallback(base::RunLoop* run_loop, MessageLoop* message_loop,
   LOG(FATAL) << "Error loading document: " << error << ". URL: " << url;
   message_loop->PostTask(FROM_HERE, base::Bind(Quit, run_loop));
 }
+
+// Return a NULL SbWindow, since we do not need to pass a valid SbWindow to an
+// on screen keyboard.
+SbWindow GetNullSbWindow() { return NULL; }
 }  // namespace
 
 browser::WebModule::LayoutResults SnapshotURL(
@@ -63,10 +68,6 @@ browser::WebModule::LayoutResults SnapshotURL(
   // don't interfere.
   net_options.https_requirement = network::kHTTPSOptional;
   network::NetworkModule network_module(net_options);
-
-  // We do not support a media module in this mode.
-  scoped_ptr<media::MediaModule> stub_media_module(
-      new media::MediaModuleStub());
 
   // Use 128M of image cache to minimize the effect of image loading.
   const size_t kImageCacheCapacity = 128 * 1024 * 1024;
@@ -87,9 +88,10 @@ browser::WebModule::LayoutResults SnapshotURL(
                  MessageLoop::current()),
       base::Bind(&WebModuleErrorCallback, &run_loop, MessageLoop::current()),
       browser::WebModule::CloseCallback() /* window_close_callback */,
-      base::Closure() /* window_minimize_callback */, stub_media_module.get(),
-      &network_module, viewport_size, 1.f, resource_provider, 60.0f,
-      web_module_options);
+      base::Closure() /* window_minimize_callback */,
+      base::Bind(&GetNullSbWindow), NULL /* can_play_type_handler */,
+      NULL /* web_media_player_factory */, &network_module, viewport_size, 1.f,
+      resource_provider, 60.0f, web_module_options);
 
   run_loop.Run();
 
