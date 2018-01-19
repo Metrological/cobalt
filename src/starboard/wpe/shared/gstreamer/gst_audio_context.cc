@@ -7,7 +7,7 @@ namespace starboard {
 namespace shared {
 namespace gstreamer {
 
-AudioContext::AudioContext()
+AudioContext::AudioContext(int32_t number_of_channels)
 :sourceid(0) {
     if (!gst_is_initialized())
         gst_init(NULL, NULL);
@@ -21,15 +21,25 @@ AudioContext::AudioContext()
 
     src = (GstAppSrc*)gst_element_factory_make("appsrc", "audsrc");
     decoder = gst_element_factory_make("decodebin", "auddecoder");
+    convert = gst_element_factory_make("audioconvert", "audconvert");
+    resample = gst_element_factory_make("audioresample", "audresample");
+    capsfilter = gst_element_factory_make("capsfilter", "audcapsfilter");
     appsink = gst_element_factory_make ("appsink", "audappsink");
+
+    GstCaps *caps;
+    caps = gst_caps_new_simple ("audio/x-raw",
+            "channels", G_TYPE_INT, number_of_channels, NULL);
+    g_object_set(capsfilter, "caps", caps, NULL);
+    gst_caps_unref (caps);
 
     g_signal_connect(src, "need-data", G_CALLBACK(StartFeed), this);
     g_signal_connect(src, "enough-data", G_CALLBACK(StopFeed), this);
     g_signal_connect(decoder, "pad-added", G_CALLBACK(OnPadAdded), this);
 
     gst_bin_add_many(GST_BIN(pipeline),
-            (GstElement*)src, decoder, appsink, NULL);
+            (GstElement*)src, decoder, convert, resample, capsfilter, appsink, NULL);
     gst_element_link((GstElement*)src, decoder);
+    gst_element_link_many(convert, resample, capsfilter, appsink, NULL);
 
     g_object_set(appsink, "emit-signals", TRUE, "sync", FALSE, NULL);
     g_signal_connect(appsink, "new-sample", G_CALLBACK (NewSample), this);
@@ -136,10 +146,10 @@ void AudioContext::OnPadAdded(
         GstElement *element, GstPad *pad, void *context) {
     AudioContext *con = reinterpret_cast<AudioContext*>(context);
 
-    GstPad *appsinkpad;
-    appsinkpad = gst_element_get_static_pad(con->appsink, "sink");
-    gst_pad_link(pad, appsinkpad);
-    g_object_unref(appsinkpad);
+    GstPad *convertpad;
+    convertpad = gst_element_get_static_pad(con->convert, "sink");
+    gst_pad_link(pad, convertpad);
+    g_object_unref(convertpad);
 }
 
 gboolean AudioContext::ReadData (void *context) {

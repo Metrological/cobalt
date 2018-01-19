@@ -14,7 +14,7 @@ namespace gstreamer {
 class AudioContext {
 
 public:
-    AudioContext();
+    AudioContext(int32_t number_of_channels);
     ~AudioContext();
 
     void SetDecoder(void *audio_decoder);
@@ -38,6 +38,9 @@ private:
     GstPipeline *pipeline;
     GstAppSrc *src;
     GstElement *decoder;
+    GstElement *convert;
+    GstElement *resample;
+    GstElement *capsfilter;
     GstElement *appsink;
     guint sourceid;
     void *audio_decoder;

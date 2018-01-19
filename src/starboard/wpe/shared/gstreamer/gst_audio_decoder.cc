@@ -24,7 +24,7 @@ AudioDecoder::AudioDecoder(
 :sample_type_(GetSupportedSampleType()),
  audio_header_(audio_header),
  stream_ended_(false) {
-    AudioContext *con = new AudioContext();
+    AudioContext *con = new AudioContext(audio_header_.number_of_channels);
     audio_context = reinterpret_cast<void*>(con);
     con->SetDecoder(this);
     con->SetPlay();
@@ -87,8 +87,8 @@ void AudioDecoder::PushOutputBuffer(
         uint8_t *buffer, int64_t size, int64_t pts)
 {
     scoped_refptr<DecodedAudio> decoded_audio = new DecodedAudio(
-            2,
-            kSbMediaAudioSampleTypeInt16,
+            audio_header_.number_of_channels,
+            GetSampleType(),
             kSbMediaAudioFrameStorageTypeInterleaved,
             pts,
             size);
