@@ -17,7 +17,7 @@
 #include "starboard/log.h"
 
 namespace {
-const int32_t kLayer = 0;
+const int32_t kLayer = 1;
 }  // namespace
 
 using starboard::wpe::shared::DispmanxDisplay;
