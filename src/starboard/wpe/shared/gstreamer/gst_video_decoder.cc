@@ -36,9 +36,6 @@ VideoDecoder::~VideoDecoder() {
     while (!input_buffers_.empty()) {
         input_buffers_.pop();
     }
-    while (!decoded_videos_.empty()) {
-        decoded_videos_.pop();
-    }
     job_queue_->Remove(update_closure_);
 }
 
@@ -55,7 +52,7 @@ void VideoDecoder::WriteInputBuffer(
 
     input_buffers_.push(input_buffer);
 
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < 4; i++)
     {
         if (!TryToDeliverOneFrame()) {
             SbThreadSleep(kSbTimeMillisecond);
@@ -74,16 +71,18 @@ scoped_refptr<VideoDecoder::InputBuffer> VideoDecoder::GetInputBuffer()
     return input_buffer;
 }
 
-void VideoDecoder::PushOutputBuffer(
+bool VideoDecoder::PushOutputBuffer(
         uint8_t *buffer, int64_t size, int64_t pts,
         int32_t width, int32_t height,
         int32_t stride, int32_t slice_height) {
 
-    scoped_refptr<DecodedVideo> decoded_video =
-            new DecodedVideo(size, pts,
-                    width, height, stride, slice_height);
-    SbMemoryCopy(decoded_video->data(), buffer, size);
-    decoded_videos_.push(decoded_video);
+    if (scoped_refptr<VideoFrame> frame
+            = CreateFrame(buffer, size, pts,
+                    width, height, stride, slice_height)) {
+        host_->OnDecoderStatusUpdate(kNeedMoreInput, frame);
+        return true;
+    }
+    return false;
 }
 
 bool VideoDecoder::IfEndOfStream() {
@@ -103,14 +102,15 @@ void VideoDecoder::Reset() {
     while (!input_buffers_.empty()) {
         input_buffers_.pop();
     }
-    while (!decoded_videos_.empty()) {
-        decoded_videos_.pop();
-    }
     job_queue_->Schedule(update_closure_, kUpdateInterval);
     con->SetPlay();
 }
 
 void VideoDecoder::Update() {
+
+    VideoContext *con = reinterpret_cast<VideoContext*>(video_context);
+    con->updateState();
+
     if (eos_written_) {
         TryToDeliverOneFrame();
     }
@@ -119,23 +119,9 @@ void VideoDecoder::Update() {
 
 bool VideoDecoder::TryToDeliverOneFrame() {
 
-    if (!decoded_videos_.empty()) {
-        scoped_refptr<DecodedVideo> decoded_video =
-                decoded_videos_.front();
-        if (scoped_refptr<VideoFrame> frame
-                = CreateFrame(
-                        (uint8_t*)decoded_video->data(),
-                        decoded_video->size(),
-                        decoded_video->pts(),
-                        decoded_video->width(),
-                        decoded_video->height(),
-                        decoded_video->stride(),
-                        decoded_video->slice_height())) {
-            host_->OnDecoderStatusUpdate(kNeedMoreInput, frame);
-            decoded_videos_.pop();
-            return true;
-        }
-    }
+    VideoContext *con = reinterpret_cast<VideoContext*>(video_context);
+    if (con->fetchOutputBuffer())
+        return true;
     return false;
 }
 

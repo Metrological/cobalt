@@ -127,6 +127,7 @@
     'platform_libraries': [
       '-lasound',
       '-lgstreamer-1.0',
+      '-lgstvideo-1.0',
       '-lgstapp-1.0', 
       '-lgobject-2.0', 
       '-lglib-2.0', 

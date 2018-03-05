@@ -2,6 +2,9 @@
 #include "starboard/wpe/shared/gstreamer/gst_video_decoder.h"
 
 #include <string.h>
+#include <gst/video/video.h>
+
+#define GST_MAP_GL (GST_MAP_FLAG_LAST << 1)
 
 namespace starboard {
 namespace wpe {
@@ -21,15 +24,18 @@ VideoContext::VideoContext()
     gst_object_unref(bus);
 
     src = (GstAppSrc*)gst_element_factory_make("appsrc", "vidsrc");
-    decoder = gst_element_factory_make("decodebin", "viddecoder");
     appsink = gst_element_factory_make("appsink", "vidappsink");
     g_signal_connect(src, "need-data", G_CALLBACK(StartFeed), this);
     g_signal_connect(src, "enough-data", G_CALLBACK(StopFeed), this);
-    g_signal_connect(decoder, "pad-added", G_CALLBACK(OnPadAdded), this);
+
+    h264parse = gst_element_factory_make("h264parse", "vidh264parse");
+    omxh264dec = gst_element_factory_make("omxh264dec", "vidomxh264dec");
+    queue = gst_element_factory_make("queue", "vidqueue");
 
     gst_bin_add_many(GST_BIN(pipeline),
-            (GstElement*)src, decoder, appsink, NULL);
-    gst_element_link((GstElement*)src, decoder);
+            (GstElement*)src, h264parse, omxh264dec, queue, appsink, NULL);
+    gst_element_link_many(
+            (GstElement*)src, h264parse, omxh264dec, queue, appsink, NULL);
 
     g_object_set(appsink, "emit-signals", TRUE, "sync", FALSE, NULL);
     g_signal_connect(appsink, "new-sample", G_CALLBACK(NewSample), this);
@@ -43,6 +49,9 @@ VideoContext::VideoContext()
 
 VideoContext::~VideoContext() {
     gst_element_set_state((GstElement*)pipeline, GST_STATE_NULL);
+    while (!video_samples_.empty()) {
+        video_samples_.pop();
+    }
     g_main_loop_quit(loop);
     SbThreadJoin(main_thread_, NULL);
     if (sourceid != 0) {
@@ -66,6 +75,9 @@ void VideoContext::SetPlay() {
 
 void VideoContext::SetReady() {
     gst_element_set_state((GstElement*)pipeline, GST_STATE_READY);
+    while (!video_samples_.empty()) {
+        video_samples_.pop();
+    }
 }
 
 gboolean VideoContext::BusCallback(GstBus *bus, GstMessage *message, gpointer *ptr) {
@@ -133,35 +145,6 @@ void VideoContext::StopFeed(GstElement *pipeline, void *context) {
     }
 }
 
-void VideoContext::OnPadAdded(
-        GstElement *element, GstPad *pad, void *context) {
-    VideoContext *con = reinterpret_cast<VideoContext*>(context);
-
-    GstStructure *structure;
-    GstCaps *caps;
-    gint width, height;
-    gboolean ret;
-    const gchar *str;
-    const char *name;
-
-    caps = gst_pad_get_current_caps(pad);
-    structure = gst_caps_get_structure(caps, 0);
-    str = gst_structure_get_name(structure);
-    if (g_str_has_prefix(str, "video/x-raw")) {
-        ret = gst_structure_get_int(structure, "width", &width);
-        ret = gst_structure_get_int(structure, "height", &height);
-        con->width = width;
-        con->height = height;
-        con->stride = GST_ROUND_UP_4(width);
-        con->slice_height = height;
-    }
-
-    GstPad *appsinkpad;
-    appsinkpad = gst_element_get_static_pad(con->appsink, "sink");
-    gst_pad_link(pad, appsinkpad);
-    g_object_unref(appsinkpad);
-}
-
 gboolean VideoContext::ReadData(void *context) {
     VideoContext *con = reinterpret_cast<VideoContext*>(context);
     VideoDecoder *video_decoder =
@@ -198,21 +181,64 @@ GstFlowReturn VideoContext::NewSample(
             reinterpret_cast<VideoDecoder*>(con->GetDecoder());
 
     GstSample *sample;
-    GstBuffer *buffer;
     sample = gst_app_sink_pull_sample(GST_APP_SINK(sink));
-    buffer = gst_sample_get_buffer(sample);
 
-    GstMapInfo map;
-    gst_buffer_map(buffer, &map, GST_MAP_READ);
-
-    video_decoder->PushOutputBuffer(
-            map.data, gst_buffer_get_size(buffer),
-            GST_BUFFER_PTS(buffer),
-            con->width, con->height, con->stride, con->slice_height);
-
-    gst_buffer_unmap(buffer, &map);
-    gst_sample_unref(sample);
+    scoped_refptr<VideoSample> video_sample = new VideoSample(sample);
+    con->video_samples_.push(video_sample);
     return GST_FLOW_OK;
+}
+
+void VideoContext::updateState()
+{
+    guint size = video_samples_.size();
+
+    GstState state;
+    gst_element_get_state((GstElement*)pipeline, &state, nullptr, 0);
+
+    if (size > 60) {
+        if (state == GST_STATE_PLAYING)
+            gst_element_set_state((GstElement*)pipeline, GST_STATE_PAUSED);
+    }
+    else if (size < 30) {
+        if (state == GST_STATE_PAUSED)
+            gst_element_set_state((GstElement*)pipeline, GST_STATE_PLAYING);
+    }
+}
+
+gboolean VideoContext::fetchOutputBuffer() {
+    VideoDecoder *video_decoder =
+            reinterpret_cast<VideoDecoder*>(GetDecoder());
+
+    if (!video_samples_.empty()) {
+        scoped_refptr<VideoSample> video_sample = video_samples_.front();
+        GstSample *sample = video_sample->sample();
+
+        GstBuffer *buffer;
+        buffer = gst_sample_get_buffer(sample);
+
+        GstCaps* caps = gst_sample_get_caps(sample);
+
+        GstVideoInfo videoInfo;
+        gst_video_info_init(&videoInfo);
+        gst_video_info_from_caps(&videoInfo, caps);
+
+        GstVideoFrame videoFrame;
+        gst_video_frame_map(&videoFrame, &videoInfo,
+                buffer, static_cast<GstMapFlags>(GST_MAP_READ | GST_MAP_GL));
+
+        gboolean res = video_decoder->PushOutputBuffer(
+                (uint8_t*)videoFrame.data[0], gst_buffer_get_size(buffer),
+                GST_BUFFER_PTS(buffer), videoInfo.width, videoInfo.height,
+                videoInfo.stride[0], videoInfo.height);
+
+        gst_video_frame_unmap(&videoFrame);
+
+        if (res) {
+            video_samples_.pop();
+            return true;
+        }
+    }
+    return false;
 }
 
 }  // namespace gstreamer

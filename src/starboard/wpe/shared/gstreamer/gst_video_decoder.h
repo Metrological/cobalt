@@ -58,7 +58,7 @@ public:
     void WriteInputBuffer(const scoped_refptr
             <InputBuffer>& input_buffer) SB_OVERRIDE;
     scoped_refptr<InputBuffer> GetInputBuffer();
-    void PushOutputBuffer(
+    bool PushOutputBuffer(
             uint8_t *buffer, int64_t size, int64_t pts,
             int32_t width, int32_t height,
             int32_t stride, int32_t slice_height);
@@ -79,7 +79,6 @@ private:
     bool eos_written_;
     void *video_context;
     std::queue<scoped_refptr<InputBuffer> > input_buffers_;
-    std::queue<scoped_refptr<DecodedVideo> > decoded_videos_;
     JobQueue* job_queue_;
     Closure update_closure_;
 };

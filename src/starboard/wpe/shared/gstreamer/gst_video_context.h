@@ -1,6 +1,10 @@
 #ifndef STARBOARD_WPE_SHARED_GSTREAMER_VIDEO_CONTEXT_H_
 #define STARBOARD_WPE_SHARED_GSTREAMER_VIDEO_CONTEXT_H_
 
+#include "starboard/common/ref_counted.h"
+#include "starboard/common/scoped_ptr.h"
+#include <queue>
+
 #include "starboard/thread.h"
 #include "gst/gst.h"
 #include "gst/app/gstappsrc.h"
@@ -10,6 +14,23 @@ namespace starboard {
 namespace wpe {
 namespace shared {
 namespace gstreamer {
+
+class VideoSample : public RefCountedThreadSafe<VideoSample> {
+
+public:
+    VideoSample(GstSample *sample) {
+        sample_ = sample;
+    }
+    ~VideoSample() {
+        gst_sample_unref(sample_);
+    }
+    GstSample *sample() {
+        return sample_;
+    }
+
+private:
+    GstSample *sample_;
+};
 
 class VideoContext {
 
@@ -21,6 +42,8 @@ public:
     void *GetDecoder();
     void SetPlay();
     void SetReady();
+    gboolean fetchOutputBuffer();
+    void updateState();
 
 private:
     static gboolean BusCallback(GstBus *bus,
@@ -28,24 +51,23 @@ private:
     static void* MainThread(void* context);
     static void StartFeed(GstElement *pipeline, guint size, void *context);
     static void StopFeed(GstElement *pipeline, void *context);
-    static void OnPadAdded(GstElement *element, GstPad *pad, void *context);
     static gboolean ReadData(void *context);
     static GstFlowReturn NewSample(GstElement *sink, void *context);
 
     SbThread main_thread_;
     GMainLoop *loop;
 
-    int32_t width;
-    int32_t height;
-    int32_t stride;
-    int32_t slice_height;
     GstPipeline *pipeline;
     GstAppSrc *src;
-    GstElement *decoder;
+    GstElement *h264parse;
+    GstElement *omxh264dec;
+    GstElement *queue;
     GstElement *appsink;
     GstPad *pad;
     guint sourceid;
     void *video_decoder;
+
+    std::queue<scoped_refptr<VideoSample> > video_samples_;
 };
 
 }  // namespace gstreamer
