@@ -48,7 +48,7 @@ class RaspiPlatformConfig(platform_configuration.PlatformConfiguration):
 
   def GetVariables(self, configuration):
     raspi_home = self._GetRasPiHome()
-    sysroot = os.path.realpath(os.path.join(raspi_home, 'sysroot'))
+    sysroot = os.path.realpath(os.path.join(raspi_home, 'arm-buildroot-linux-gnueabihf/sysroot'))
     if not os.path.isdir(sysroot):
       logging.critical('RasPi builds require $RASPI_HOME/sysroot '
                        'to be a valid directory.')
@@ -62,18 +62,17 @@ class RaspiPlatformConfig(platform_configuration.PlatformConfiguration):
     return variables
 
   def GetEnvironmentVariables(self):
-    env_variables = build.GetHostCompilerEnvironment(
-        clang.GetClangSpecification())
+    env_variables = {}
     raspi_home = self._GetRasPiHome()
 
     toolchain = os.path.realpath(
         os.path.join(
             raspi_home,
-            'tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64'))
+            '.'))
     toolchain_bin_dir = os.path.join(toolchain, 'bin')
     env_variables.update({
-        'CC': os.path.join(toolchain_bin_dir, 'arm-linux-gnueabihf-gcc'),
-        'CXX': os.path.join(toolchain_bin_dir, 'arm-linux-gnueabihf-g++'),
+        'CC': os.path.join(toolchain_bin_dir, 'arm-buildroot-linux-gnueabihf-gcc'),
+        'CXX': os.path.join(toolchain_bin_dir, 'arm-buildroot-linux-gnueabihf-g++'),
     })
     return env_variables
 

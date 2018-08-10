@@ -16,9 +16,9 @@
 
 #include "starboard/common/ref_counted.h"
 #include "starboard/common/scoped_ptr.h"
-#include "starboard/raspi/shared/open_max/video_decoder.h"
+#include "starboard/raspi/shared/gstreamer/gst_video_decoder.h"
+#include "starboard/raspi/shared/gstreamer/gst_audio_decoder.h"
 #include "starboard/raspi/shared/video_renderer_sink_impl.h"
-#include "starboard/shared/ffmpeg/ffmpeg_audio_decoder.h"
 #include "starboard/shared/starboard/player/filter/audio_decoder_internal.h"
 #include "starboard/shared/starboard/player/filter/audio_renderer_sink_impl.h"
 #include "starboard/shared/starboard/player/filter/video_decoder_internal.h"
@@ -39,12 +39,12 @@ class PlayerComponentsImpl : public PlayerComponents {
       const AudioParameters& audio_parameters,
       scoped_ptr<AudioDecoder>* audio_decoder,
       scoped_ptr<AudioRendererSink>* audio_renderer_sink) override {
-    using AudioDecoderImpl = ::starboard::shared::ffmpeg::AudioDecoder;
+    using AudioDecoderImpl = ::starboard::shared::gstreamer::AudioDecoder;
 
     SB_DCHECK(audio_decoder);
     SB_DCHECK(audio_renderer_sink);
 
-    scoped_ptr<AudioDecoderImpl> audio_decoder_impl(AudioDecoderImpl::Create(
+    scoped_ptr<AudioDecoderImpl> audio_decoder_impl(new AudioDecoderImpl(
         audio_parameters.audio_codec, audio_parameters.audio_header));
     if (audio_decoder_impl->is_valid()) {
       audio_decoder->reset(audio_decoder_impl.release());
@@ -60,7 +60,7 @@ class PlayerComponentsImpl : public PlayerComponents {
       scoped_ptr<VideoDecoder>* video_decoder,
       scoped_ptr<VideoRenderAlgorithm>* video_render_algorithm,
       scoped_refptr<VideoRendererSink>* video_renderer_sink) override {
-    using VideoDecoderImpl = ::starboard::raspi::shared::open_max::VideoDecoder;
+    using VideoDecoderImpl = ::starboard::raspi::shared::gstreamer::VideoDecoder;
     using ::starboard::raspi::shared::VideoRendererSinkImpl;
 
     SB_DCHECK(video_decoder);

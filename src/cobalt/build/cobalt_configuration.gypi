@@ -569,6 +569,26 @@
           'DIAL_SERVER',
         ],
       }],
+      #shared_library
+      ['final_executable_type=="shared_library"', {
+        'target_conditions': [
+          ['_toolset=="target"', {
+            'defines': [
+              # Rewrite main() functions into StarboardMain. TODO: This is a
+              # hack, it would be better to be more surgical, here.
+              'main=StarboardMain',
+              'EXECUTABLE_TYPE_SHARED_LIBRARY=1'
+            ],
+            'cflags': [
+              # To link into a shared library on Linux and similar platforms,
+              # the compiler must be told to generate Position Independent Code.
+              # This appears to cause errors when linking the code statically,
+              # however.
+              '-fPIC',
+            ],
+          }],
+        ],
+      }],
       ['enable_spdy == 0', {
         'defines': [
           'COBALT_DISABLE_SPDY',

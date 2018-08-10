@@ -37,7 +37,7 @@ namespace shared {
 using ::starboard::shared::dev_input::DevInput;
 
 namespace {
-const int kVideoLayer = -1;
+const int kVideoLayer = 0;
 }  // namespace
 
 SbWindow ApplicationDispmanx::CreateWindow(const SbWindowOptions* options) {
