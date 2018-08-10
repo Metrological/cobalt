@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,15 +42,12 @@
         'proxy_config_service.h',
         'starboard/network_system.cc',
         'starboard/proxy_config_service.cc',
-        'starboard/user_agent_string_factory_starboard.cc',
         'switches.cc',
         'switches.h',
         'url_request_context.cc',
         'url_request_context.h',
         'url_request_context_getter.cc',
         'url_request_context_getter.h',
-        'user_agent_string_factory.cc',
-        'user_agent_string_factory.h',
       ],
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
@@ -79,9 +76,6 @@
             'ENABLE_NETWORK_LOGGING',
           ],
         }],
-        ['cobalt_enable_lib == 1', {
-          'defines' : ['COBALT_ENABLE_LIB'],
-        }],
       ],
       'export_dependent_settings': [
         '<(DEPTH)/net/net.gyp:net',
@@ -95,6 +89,11 @@
         'destination': '<(sb_static_contents_output_data_dir)/ssl',
         'files': ['<(static_contents_source_dir)/ssl/certs/'],
       }],
+      'all_dependent_settings': {
+        'variables': {
+          'content_deploy_subdirs': [ 'ssl/certs' ]
+        }
+      },
     },
     {
       'target_name': 'network_test',
@@ -102,7 +101,6 @@
       'sources': [
         'local_network_test.cc',
         'persistent_cookie_store_test.cc',
-        'user_agent_string_factory_test.cc',
       ],
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
@@ -121,7 +119,7 @@
       'variables': {
         'executable_name': 'network_test',
       },
-      'includes': [ '../../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ],
 }

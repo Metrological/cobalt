@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -228,7 +228,14 @@ typedef enum SbKey {
   //   https://apps.cablelabs.com/specification/opencable-application-platform-ocap/
   kSbKeyLast = 0x25f,
   kSbKeyPreviousChannel = kSbKeyLast,
+#endif  // SB_API_VERSION >= 6
 
+#if SB_API_VERSION >= 9
+  // Also from OCAP
+  kSbKeyInstantReplay = 0x273,
+#endif  // SB_API_VERSION >= 9
+
+#if SB_API_VERSION >= 6
   // Custom Starboard-defined keycodes.
 
   // A button that will directly launch the current application.
@@ -237,6 +244,11 @@ typedef enum SbKey {
   // A button that will switch between different available audio tracks.
   kSbKeyMediaAudioTrack = 0x3001,
 #endif  // SB_API_VERSION >= 6
+
+#if SB_API_VERSION >= 10
+  // A button that will trigger voice input.
+  kSbKeyMicrophone = 0x3002,
+#endif  // SB_API_VERSION >= 10
 
   // Mouse buttons, starting with the left mouse button.
   kSbKeyMouse1 = 0x7000,

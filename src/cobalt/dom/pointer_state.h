@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -71,6 +71,13 @@ class PointerState {
   //   https://www.w3.org/TR/2015/REC-pointerevents-20150224/#dfn-active-pointer
   void SetActive(int32_t pointer_id);
   void ClearActive(int32_t pointer_id);
+
+  // We will in general hold references back to window, which can result in
+  // leaking nearly the entire DOM if we don't forcibly clear them during
+  // shutdown.
+  void ClearForShutdown();
+
+  static bool CanQueueEvent(const scoped_refptr<Event>& event);
 
  private:
   // Stores pointer events until they are handled after a layout.

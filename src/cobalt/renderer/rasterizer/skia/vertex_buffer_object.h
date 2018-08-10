@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "base/memory/scoped_ptr.h"
+#include "base/threading/thread_checker.h"
 #include "cobalt/render_tree/mesh.h"
 
 namespace cobalt {
@@ -49,6 +50,7 @@ class VertexBufferObject {
   size_t vertex_count_;
   GLenum draw_mode_;
   GLuint mesh_vertex_buffer_;
+  base::ThreadChecker thread_checker_;
 
   DISALLOW_COPY_AND_ASSIGN(VertexBufferObject);
 };

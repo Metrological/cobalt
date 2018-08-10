@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,6 @@
 
 #include "starboard/raspi/shared/open_max/video_decoder.h"
 
-#include "starboard/shared/starboard/player/job_queue.h"
 #include "starboard/time.h"
 
 namespace starboard {
@@ -24,24 +23,22 @@ namespace open_max {
 
 namespace {
 
+using std::placeholders::_1;
+
 const size_t kResourcePoolSize = 26;
 // TODO: Make this configurable inside SbPlayerCreate().
 const SbTimeMonotonic kUpdateInterval = 5 * kSbTimeMillisecond;
 
 }  // namespace
 
-VideoDecoder::VideoDecoder(SbMediaVideoCodec video_codec, JobQueue* job_queue)
+VideoDecoder::VideoDecoder(SbMediaVideoCodec video_codec)
     : resource_pool_(new DispmanxResourcePool(kResourcePoolSize)),
-      host_(NULL),
       eos_written_(false),
       thread_(kSbThreadInvalid),
-      request_thread_termination_(false),
-      job_queue_(job_queue) {
+      request_thread_termination_(false) {
   SB_DCHECK(video_codec == kSbMediaVideoCodecH264);
-  SB_DCHECK(job_queue_ != NULL);
-  update_closure_ =
-      ::starboard::shared::starboard::player::Bind(&VideoDecoder::Update, this);
-  job_queue_->Schedule(update_closure_, kUpdateInterval);
+  update_job_ = std::bind(&VideoDecoder::Update, this);
+  update_job_token_ = Schedule(update_job_, kUpdateInterval);
 }
 
 VideoDecoder::~VideoDecoder() {
@@ -52,13 +49,18 @@ VideoDecoder::~VideoDecoder() {
     }
     SbThreadJoin(thread_, NULL);
   }
-  job_queue_->Remove(update_closure_);
+  RemoveJobByToken(update_job_token_);
 }
 
-void VideoDecoder::SetHost(Host* host) {
-  SB_DCHECK(host != NULL);
-  SB_DCHECK(host_ == NULL);
-  host_ = host;
+void VideoDecoder::Initialize(const DecoderStatusCB& decoder_status_cb,
+                              const ErrorCB& error_cb) {
+  SB_DCHECK(decoder_status_cb);
+  SB_DCHECK(!decoder_status_cb_);
+  SB_DCHECK(error_cb);
+  SB_DCHECK(!error_cb_);
+
+  decoder_status_cb_ = decoder_status_cb;
+  error_cb_ = error_cb;
 
   SB_DCHECK(!SbThreadIsValid(thread_));
   thread_ = SbThreadCreate(0, kSbThreadPriorityHigh, kSbThreadNoAffinity, true,
@@ -70,14 +72,14 @@ void VideoDecoder::SetHost(Host* host) {
 void VideoDecoder::WriteInputBuffer(
     const scoped_refptr<InputBuffer>& input_buffer) {
   SB_DCHECK(input_buffer);
-  SB_DCHECK(host_ != NULL);
+  SB_DCHECK(decoder_status_cb_);
 
   queue_.Put(new Event(input_buffer));
   if (!TryToDeliverOneFrame()) {
     SbThreadSleep(kSbTimeMillisecond);
     // Call the callback with NULL frame to ensure that the host know that more
     // data is expected.
-    host_->OnDecoderStatusUpdate(kNeedMoreInput, NULL);
+    decoder_status_cb_(kNeedMoreInput, NULL);
   }
 }
 
@@ -94,7 +96,7 @@ void VideoDecoder::Update() {
   if (eos_written_) {
     TryToDeliverOneFrame();
   }
-  job_queue_->Schedule(update_closure_, kUpdateInterval);
+  update_job_token_ = Schedule(update_job_, kUpdateInterval);
 }
 
 bool VideoDecoder::TryToDeliverOneFrame() {
@@ -114,7 +116,7 @@ bool VideoDecoder::TryToDeliverOneFrame() {
     filled_buffers_.pop();
     freed_buffers_.push(buffer);
   }
-  host_->OnDecoderStatusUpdate(kNeedMoreInput, frame);
+  decoder_status_cb_(kNeedMoreInput, frame);
   return true;
 }
 
@@ -162,8 +164,7 @@ void VideoDecoder::RunLoop() {
       while (offset < size) {
         int written = component.WriteData(
             current_buffer->data() + offset, size - offset,
-            OpenMaxComponent::kDataNonEOS,
-            current_buffer->pts() * kSbTimeSecond / kSbMediaTimeSecond);
+            OpenMaxComponent::kDataNonEOS, current_buffer->timestamp());
         SB_DCHECK(written >= 0);
         offset += written;
         if (written == 0) {
@@ -254,15 +255,14 @@ scoped_refptr<VideoDecoder::VideoFrame> VideoDecoder::CreateFrame(
 
     resource->WriteData(buffer->pBuffer);
 
-    SbMediaTime timestamp = ((buffer->nTimeStamp.nHighPart * 0x100000000ull) +
-                             buffer->nTimeStamp.nLowPart) *
-                            kSbMediaTimeSecond / kSbTimeSecond;
+    SbTime timestamp = ((buffer->nTimeStamp.nHighPart * 0x100000000ull) +
+                        buffer->nTimeStamp.nLowPart);
 
     resource_pool_->AddRef();
-    frame = new VideoFrame(
-        video_definition->nFrameWidth, video_definition->nFrameHeight,
-        timestamp, resource, resource_pool_,
-        &DispmanxResourcePool::DisposeDispmanxYUV420Resource);
+    frame = new DispmanxVideoFrame(
+        timestamp, resource,
+        std::bind(&DispmanxResourcePool::DisposeDispmanxYUV420Resource,
+                  resource_pool_, _1));
   }
   return frame;
 }

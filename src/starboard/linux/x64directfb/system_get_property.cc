@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -56,9 +56,11 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
     case kSbSystemPropertyPlatformName:
       return CopyStringAndTestIfSuccess(out_value, value_length, kPlatformName);
 
+#if SB_API_VERSION < 10
     case kSbSystemPropertyPlatformUuid:
       SB_NOTIMPLEMENTED();
       return CopyStringAndTestIfSuccess(out_value, value_length, "N/A");
+#endif  // SB_API_VERSION < 10
 
     default:
       SB_DLOG(WARNING) << __FUNCTION__

@@ -8,26 +8,239 @@ version previous to it.
 
 **NOTE: Starboard versions 3 and below are no longer supported.**
 
+## Experimental Version
+
+A description of all changes currently in the experimental Starboard version
+can be found in the comments of the "Experimental Feature Defines" section of
+[configuration.h](configuration.h).
+
+## Version 10
+
+### Introduce functions to query at runtime for media buffer settings
+
+In particular, the following methods are introduced:
+ - `SbMediaGetAudioBufferBudget`
+ - `SbMediaGetBufferAlignment`
+ - `SbMediaGetBufferAllocationUnit`
+ - `SbMediaGetBufferGarbageCollectionDurationThreshold`
+ - `SbMediaGetBufferPadding`
+ - `SbMediaGetBufferStorageType`
+ - `SbMediaGetInitialBufferCapacity`
+ - `SbMediaGetMaxBufferCapacity`
+ - `SbMediaGetProgressiveBufferBudget`
+ - `SbMediaGetVideoBufferBudget`
+ - `SbMediaIsBufferPoolAllocateOnDemand`
+ - `SbMediaIsBufferUsingMemoryPool`
+
+### Add support for player_filter_tests
+
+Require compiling 'player_filter_tests' test target sources on all
+platforms, including `audio_decoder_tests.cc` and `video_decoder_test.cc`. For
+this Starboard API version and beyond, `SB_HAS(PLAYER_FILTER_TESTS)` is true.
+
+### Deprecate SbMediaTime for SbTime
+
+SbMediaTime, which is 90khz based, was used to represent timestamps and
+duration related to SbPlayer.  As most of the platforms represent video
+related times in milliseconds or microseconds, this causes a lot of
+otherwise unnecessary conversion.  Now all timestamps and duration related
+to SbPlayer are represented by SbTime directly.
+
+### Refine sample writing of SbPlayer
+
+Added two new functions `SbPlayerGetMaximumNumberOfSamplesPerWrite()` and
+`SbPlayerWriteSample2()`.  The former allows implementation to specify the
+maximum numbers of samples that can be written using the latter at once.
+As it takes multiple thread context switches to call `SbPlayerWriteSample2()`
+once, it can optimize performance on low end platforms by reducing the
+frequence of calling `SbPlayerWriteSample2()`.
+
+### Add support for player error messages
+
+`SbPlayerCreate()` now accepts an additional parameter, `player_error_func`,
+that can be called when an error occurs to propagate the error to the
+application.
+
+### Add support for system-level closed caption settings
+
+`SbAccessibilityGetCaptionSettings()` and `SbAccessibilitySetCaptionsEnabled()`
+along with a number of supporting structure definitions have been added
+to `accessibility.h`.  Platforms will need to define SB_HAS_CAPTIONS to 1 in
+order to enable the interface.
+
+### Add support for audioless video playback
+
+SbPlayer can be created with only a video track, without any accompanying
+audio track.  The SbPlayer implementation must now be able to play back
+a sole video track.
+
+### Add support for audio only video playback
+
+SbPlayer can be created with only an audio track, without any accompanying
+video track.  The SbPlayer implementation must now be able to play back
+a sole audio track.
+
+### Require support for creating multiple SbPlayer instances
+
+Formerly, there were no tests ensuring that calling `SbPlayerCreate()` multiple
+times (without calling `SbPlayerDestroy()` in between) would not crash, and
+likewise no tests ensuring that calling `SbAudioSinkCreate()` multiple times
+(without calling `SbAudioSinkDestroy()` in between) would not crash.
+`SbPlayerCreate()` may return `kSbPlayerInvalid` if additional players are not
+supported. `SbAudioSinkCreate()` may return `kSbAudionSinkInvalid` if additional
+audio sinks are not supported.
+
+### Require stricter error handling on calls some SbPlayer* calls
+
+Specifically, `SbPlayerCreate()`,  `SbPlayerCreateWithUrl()` and
+`SbDrmCreateSystem()` must result in invalid return values (e.g.
+`kSbPlayerInvalid` or `kSbDrmSystemInvalid` appropriately).
+
+### Refine the DRM API
+
+Specifically, the following changes have been made:
+ 1. Add a callback to SbDrmCreateSystem that allows a DRM system to
+    signal that a DRM session has closed from the Starboard layer.
+    Previously, DRM sessions could only be closed from the application
+    layer.
+ 2. Allow calling `SbDrmSessionUpdateRequestFunc` and
+    `SbDrmSessionUpdatedFunc` with extra status and optional error message.
+ 3. Add request type parameter to `SbDrmSessionUpdateRequestFunc` to support
+    individualization, license renewal, and license release.
+
+### Remove kSbSystemPathSourceDirectory
+
+Test code looking for its static input files should instead use the `test`
+subdirectory in `kSbSystemPathContentDirectory`.
+
+### Remove kSbSystemPropertyPlatformUuid
+
+This property was only ever used in platforms using `in_app_dial`.
+The only usage of this system property was replaced with a
+self-contained mechanism.
+
+### Deprecate kSbMediaAudioSampleTypeInt16
+
+`SB_HAS_QUIRK_SUPPORT_INT16_AUDIO_SAMPLES` has to be defined to continue
+support int16 audio samples after this version.
+
+### Add kSbPlayerErrorCapabilityChanged to SbPlayerError
+
+This allows the SbPlayer implementation to notify the app that its playback
+capability has changed during a video playback.  For example, the system may
+support vp9 decoding with an external GPU.  When the external GPU is detached,
+this error code can signal the app to retry the playback, possibly with h264.
+
+### Add support for SbSystemSupportsResume()
+
+Platforms doesn't need to resume after suspend can return false in
+`SbSystemSupportsResume()` to free up the resource used by resume after
+suspend.
+Please see the comment in `system.h` for more details.
+
+### Support the `kSbKeyMicrophone` keycode
+
+### Add support for new decode target type, `kSbDecodeTargetFormat3Plane10BitYUVI420`
+
+Added `kSbDecodeTargetFormat3Plane10BitYUVI420` to the `SbDecodeTargetFormat`
+enum in order to support 10-bit YUV textures.
+
+### Optionally provide absolute timestamp to `SbAudioSinkConsumeFramesFunc()`
+
+`SbAudioSinkConsumeFramesFunc()` can now optionally accept an absolute
+timestamp parameter that indicates when the frames are consumed.
+Platforms that have the `frames_consumed` updated asynchronously can have
+more accurate audio time reporting with this extra parameter.
+Please see the comment in `audio_sink.h` for more details.
+
+### Add support for the `SbAtomic8` type and memory access functions
+
+### Introduce `SbMemoryProtect()`
+
+`SbMemoryProtect()` allows memory access permissions to be changed after they
+have been mapped with `SbMemoryMap`.
+
+### Add a `timestamp` field to `SbInputData`
+
+This allows platforms to provide more precise information on exactly when
+an input event was generated.  Note that if
+`SbSystemHasCapability(kSbSystemCapabilitySetsInputTimestamp)` returns false,
+the `timestamp` field of `SbInputData` should be ignored by applications.
+
+### Introduces `kSbMemoryMapProtectReserved` flag.
+
+`kSbMemoryMapProtectReserved`, which is identical to `SbMemoryMapFlags(0)`, is
+introduced.  When `SbMemoryMap()` is called with `kSbMemoryMapProtectReserved`,
+only virtual address space should be reserved for the mapped memory, and not
+actual physical memory.
+
+### Add support for multiple versions of ffmpeg
+
+An extra version agnostic ffmpeg dynamic dispatch layer is added in order to
+support multiple different versions of ffmpeg as may appear on user systems.
+
+### Make linux-x64x11 builds use GLX (via Angle) instead of EGL by default
+
+While common Cobalt code still targets EGL/GLES2, we now use Angle on
+linux-x64x11 builds to translate those calls to GLX/GL calls.  Thus, from
+the perspective of the system, linux-x64x11 builds now appear to use
+GLX/GL.  This change was made because GLX/GL was generally found to have
+better desktop support than EGL/GLES2.  The logic for this is added in the
+Starboard [enable_glx_via_angle.gypi](linux/x64x11/enable_glx_via_angle.gypi)
+file.
+
+### Split `base.gypi` into `cobalt_configuration.gypi` and `base_configuration.gypi`
+
+Up until now, both Cobalt-specific build configuration options as well as
+application-independent Starboard build configuration options were mixed
+together within base.gypi.  They have now been split apart, and the application
+independent options have been moved into Starboard under
+[base_configuration.gypi](build/base_configuration.gypi).  The Cobalt-specific
+options have been left in Cobalt, though renamed to `cobalt_configuration.gypi`.
+
+### Moved `tizen` to `contrib/tizen`.
+
+Please see [contrib/README.md](contrib/README.md) for description of
+expectations for contents in this directory.
+
+## Version 9
+
+### Add string label to `SbMicrophoneInfo`.
+
+This should indicate the friendly name of the microphone type.
+
+### Introduce additional SbSocketError enum values.
+
+Instead of the single generic kSbSocketErrorFailed to indicate socket errors,
+the enum kSbSocketErrorConnectionReset has been introduced corresponding to
+various dropped TCP connection errors.  This is particularly useful in
+identifying socket errors that can be retried.
+
+### Add new keycode kSbKeyInstantReplay
+
+Identical to OCAP's `VK_INSTANT_REPLAY`
+
 ## Version 8
 
 ### Add `SbPlayerCreateWithUrl()`, `SbPlayerSetDrmSystem()`, `SbPlayerOutputModeSupportedWithUrl()`
 
 For platform media players that rely on using a URL (like an m3u playlist URL)
-for playback, add `SbPlayerCreateWithUrl()` which takes in a URL, no video or audio
-configs, and no DRM system. Allow the DRM system to be set on a running SbPlayer
-exactly once for SbPlayers created with a URL. Also, since URL players will not
-expose codec information, use a custom `SbPlayerOutputModeSupportedWithUrl()` to
-query player output mode support.
+for playback, add `SbPlayerCreateWithUrl()` which takes in a URL, no video or
+audio configs, and no DRM system. Allow the DRM system to be set on a running
+SbPlayer exactly once for SbPlayers created with a URL. Also, since URL players
+will not expose codec information, use a custom
+`SbPlayerOutputModeSupportedWithUrl()` to query player output mode support.
 
 ### Add `kSbEventTypeWindowSizeChanged`
 
 An event indicating that an `SbWindow`'s size has changed. The event data is
 `SbEventWindowSizeChangedData`, containing a `SbWindow` and `SbWindowSize`.
 
-### Add `SbWindowShowOnScreenKeyboard()`, `SbWindowHideOnScreenKeyboard()`, `SbWindowIsOnScreenKeyboardShown()`
+### Add `SbWindowShowOnScreenKeyboard()`, `SbWindowHideOnScreenKeyboard()`, `SbWindowFocusOnScreenKeyboard()`, `SbWindowBlurOnScreenKeyboard()`, `SbWindowIsOnScreenKeyboardShown()`, `SbWindowSetOnScreenKeyboardKeepFocus()`
 
-These methods show and hide a native on screen keyboard and determine if the on
-screen keyboard is shown. The on screen keyboard also handles
+These methods show, hide, focus, and blur a native on screen keyboard,
+determine if the on screen keyboard is shown, and set whether focus is kept to
+the on screen keyboard. The on screen keyboard also handles
 `kSbInputEventTypeInput`, which use a new field `input_text` of `SbInputData`.
 
 ## Version 7

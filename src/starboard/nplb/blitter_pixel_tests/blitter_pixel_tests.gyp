@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,19 +30,19 @@
         '<(DEPTH)/starboard/starboard.gyp:starboard',
         # libpng is needed for the Blitter API pixel tests.
         '<(DEPTH)/third_party/libpng/libpng.gyp:libpng',
+        'nplb_blitter_pixel_tests_copy_test_data',
       ],
-      'actions': [
-        {
-          'action_name': 'nplb_copy_blitter_pixel_test_data',
-          'variables': {
-            'input_files': [
-              '<(DEPTH)/starboard/nplb/blitter_pixel_tests/data',
-            ],
-            'output_dir': 'starboard/nplb/blitter_pixel_tests',
-          },
-          'includes': ['../../build/copy_test_data.gypi'],
-        }
-      ],
+    },
+    {
+      'target_name': 'nplb_blitter_pixel_tests_copy_test_data',
+      'type': 'none',
+      'variables': {
+        'content_test_input_files': [
+          '<(DEPTH)/starboard/nplb/blitter_pixel_tests/data',
+        ],
+        'content_test_output_subdir': 'starboard/nplb/blitter_pixel_tests',
+      },
+      'includes': ['<(DEPTH)/starboard/build/copy_test_data.gypi'],
     },
     {
       'target_name': 'nplb_blitter_pixel_tests_deploy',
@@ -53,6 +53,7 @@
       'variables': {
         'executable_name': 'nplb_blitter_pixel_tests',
       },
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ],
 }

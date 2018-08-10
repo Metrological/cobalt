@@ -1,4 +1,4 @@
-# Copyright 2014 Google Inc. All Rights Reserved.
+# Copyright 2014 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,11 @@
     '../bindings/bindings.gypi',
   ],
   'variables': {
+    'variables': {
+      # By default enable MSE. This can be overriden by the port.
+      'enable_mse%': 1,
+    },
+
     # Base directory into which generated sources and intermediate files should
     # be generated.
     'bindings_output_dir': '<(SHARED_INTERMEDIATE_DIR)/bindings/browser',
@@ -53,20 +58,18 @@
         '../debug/debug_script_runner.idl',
 
         '../dom/animation_event.idl',
-        '../dom/array_buffer.idl',
-        '../dom/array_buffer_view.idl',
         '../dom/attr.idl',
         '../dom/audio_track.idl',
         '../dom/audio_track_list.idl',
         '../dom/blob.idl',
         '../dom/camera_3d.idl',
+        '../dom/captions/system_caption_settings.idl',
         '../dom/cdata_section.idl',
         '../dom/character_data.idl',
         '../dom/comment.idl',
         '../dom/console.idl',
         '../dom/crypto.idl',
         '../dom/custom_event.idl',
-        '../dom/data_view.idl',
         '../dom/device_orientation_event.idl',
         '../dom/document.idl',
         '../dom/document_timeline.idl',
@@ -84,8 +87,6 @@
         '../dom/event.idl',
         '../dom/event_listener.idl',
         '../dom/event_target.idl',
-        '../dom/float32_array.idl',
-        '../dom/float64_array.idl',
         '../dom/focus_event.idl',
         '../dom/history.idl',
         '../dom/html_anchor_element.idl',
@@ -113,7 +114,6 @@
         '../dom/location.idl',
         '../dom/media_error.idl',
         '../dom/media_query_list.idl',
-        '../dom/media_source.idl',
         '../dom/memory_info.idl',
         '../dom/message_event.idl',
         '../dom/mime_type_array.idl',
@@ -124,6 +124,7 @@
         '../dom/navigator.idl',
         '../dom/node.idl',
         '../dom/node_list.idl',
+        '../dom/on_error_event_listener.idl',
         '../dom/on_screen_keyboard.idl',
         '../dom/performance.idl',
         '../dom/performance_timing.idl',
@@ -131,9 +132,8 @@
         '../dom/pointer_event.idl',
         '../dom/progress_event.idl',
         '../dom/screen.idl',
+        '../dom/screenshot.idl',
         '../dom/security_policy_violation_event.idl',
-        '../dom/source_buffer.idl',
-        '../dom/source_buffer_list.idl',
         '../dom/storage.idl',
         '../dom/storage_event.idl',
         '../dom/test_runner.idl',
@@ -144,9 +144,6 @@
         '../dom/track_event.idl',
         '../dom/transition_event.idl',
         '../dom/ui_event.idl',
-        '../dom/uint16_array.idl',
-        '../dom/uint32_array.idl',
-        '../dom/uint8_array.idl',
         '../dom/url.idl',
         '../dom/video_playback_quality.idl',
         '../dom/video_track.idl',
@@ -179,8 +176,15 @@
         '../h5vcc/h5vcc_system.idl',
         '../h5vcc/h5vcc_trace_event.idl',
 
+        '../media_capture/blob_event.idl',
+        '../media_capture/media_device_info.idl',
+        '../media_capture/media_devices.idl',
+        '../media_capture/media_recorder.idl',
         '../media_session/media_metadata.idl',
         '../media_session/media_session.idl',
+        '../media_session/media_session_action_details.idl',
+        '../media_stream/media_stream.idl',
+        '../media_stream/media_stream_track.idl',
 
         '../speech/speech_recognition.idl',
         '../speech/speech_recognition_alternative.idl',
@@ -223,6 +227,12 @@
         '../audio/audio_node_channel_count_mode.idl',
         '../audio/audio_node_channel_interpretation.idl',
         '../dom/blob_property_bag.idl',
+        '../dom/captions/caption_character_edge_style.idl',
+        '../dom/captions/caption_color.idl',
+        '../dom/captions/caption_font_family.idl',
+        '../dom/captions/caption_font_size_percentage.idl',
+        '../dom/captions/caption_opacity_percentage.idl',
+        '../dom/captions/caption_state.idl',
         '../dom/custom_event_init.idl',
         '../dom/device_orientation_event_init.idl',
         '../dom/document_ready_state.idl',
@@ -242,10 +252,16 @@
         '../dom/source_buffer_append_mode.idl',
         '../dom/track_default_type.idl',
         '../dom/wheel_event_init.idl',
+        '../media_capture/blob_event_init.idl',
+        '../media_capture/media_device_kind.idl',
+        '../media_capture/media_recorder_options.idl',
+        '../media_capture/recording_state.idl',
         '../media_session/media_image.idl',
         '../media_session/media_metadata_init.idl',
         '../media_session/media_session_action.idl',
         '../media_session/media_session_playback_state.idl',
+        '../media_stream/media_stream_constraints.idl',
+        '../media_stream/media_track_settings.idl',
         '../page_visibility/visibility_state.idl',
         '../speech/speech_recognition_error_code.idl',
         '../speech/speech_synthesis_error_code.idl',
@@ -263,6 +279,7 @@
         '../cssom/link_style.idl',
 
         '../dom/buffer_source.idl',
+        '../dom/captions/navigator_system_caption_settings.idl',
         '../dom/document__web_animations_api.idl',
         '../dom/document_cobalt.idl',
         '../dom/document_cssom.idl',
@@ -294,6 +311,7 @@
         '../dom/window_on_screen_keyboard.idl',
         '../dom/window_session_storage.idl',
         '../dom/window_timers.idl',
+        '../media_capture/navigator.idl',
         '../media_session/navigator_media_session.idl',
         '../page_visibility/document.idl',
     ],
@@ -332,6 +350,16 @@
         ],
         'dependency_idl_files': [
             '../dom/html_media_element_eme_01b.idl',
+        ],
+      }],
+      ['enable_mse==1', {
+        'source_idl_files': [
+            '../dom/media_source.idl',
+            '../dom/source_buffer.idl',
+            '../dom/source_buffer_list.idl',
+        ],
+        'dependency_idl_files': [
+            '../dom/url_mse.idl',
         ],
       }],
     ],

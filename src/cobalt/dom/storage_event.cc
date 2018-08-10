@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,6 +39,10 @@ StorageEvent::StorageEvent(const base::optional<std::string>& key,
 
 scoped_refptr<Storage> StorageEvent::storage_area() const {
   return storage_area_;
+}
+
+void StorageEvent::TraceMembers(script::Tracer* tracer) {
+  tracer->Trace(storage_area_);
 }
 
 }  // namespace dom

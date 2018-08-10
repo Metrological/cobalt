@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include "cobalt/media_session/media_image.h"
 #include "cobalt/media_session/media_metadata_init.h"
 #include "cobalt/script/sequence.h"
+#include "cobalt/script/wrappable.h"
 
 namespace cobalt {
 namespace media_session {

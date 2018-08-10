@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -82,6 +82,24 @@ const float kBT709ColorMatrix[16] = {
     1.164f, 0.0f,   1.793f, -0.96925f, 1.164f, -0.213f, -0.533f, 0.30025f,
     1.164f, 2.112f, 0.0f,   -1.12875f, 0.0f,   0.0f,    0.0f,    1.0};
 
+// Used for 10bit unnormalized YUV images.
+const float k10BitBT2020ColorMatrix[16] = {64 * 1.163746465f,
+                                           -64 * 0.028815145f,
+                                           64 * 2.823537589f,
+                                           -1.470095f,
+                                           64 * 1.164383561f,
+                                           -64 * 0.258509894f,
+                                           64 * 0.379693635f,
+                                           -0.133366f,
+                                           64 * 1.164383561f,
+                                           64 * 2.385315708f,
+                                           64 * 0.021554502f,
+                                           -1.276209f,
+                                           0.0f,
+                                           0.0f,
+                                           0.0f,
+                                           1.0f};
+
 const float* GetColorMatrixForImageType(
     TexturedMeshRenderer::Image::Type type) {
   switch (type) {
@@ -92,6 +110,9 @@ const float* GetColorMatrixForImageType(
     case TexturedMeshRenderer::Image::YUV_3PLANE_BT709:
     case TexturedMeshRenderer::Image::YUV_UYVY_422_BT709: {
       return kBT709ColorMatrix;
+    } break;
+    case TexturedMeshRenderer::Image::YUV_3PLANE_10BIT_BT2020: {
+      return k10BitBT2020ColorMatrix;
     } break;
     default: { NOTREACHED(); }
   }
@@ -167,7 +188,7 @@ void TexturedMeshRenderer::RenderVBO(uint32 vbo, int num_vertices, uint32 mode,
 
 void TexturedMeshRenderer::RenderQuad(const Image& image,
                                       const glm::mat4& mvp_transform) {
-  RenderVBO(GetQuadVBO(), 4, GL_TRIANGLE_STRIP, image, mvp_transform);
+  RenderVBO(GetQuadVBO(), 6, GL_TRIANGLES, image, mvp_transform);
 }
 
 uint32 TexturedMeshRenderer::GetQuadVBO() {
@@ -181,11 +202,10 @@ uint32 TexturedMeshRenderer::GetQuadVBO() {
       float tex_coord_u;
       float tex_coord_v;
     };
-    const QuadVertex kBlitQuadVerts[4] = {
-        {-1.0f, -1.0f, 0.0f, 0.0f, 0.0f},
-        {1.0f, -1.0f, 0.0f, 1.0f, 0.0f},
-        {-1.0f, 1.0f, 0.0f, 0.0f, 1.0f},
-        {1.0f, 1.0, 0.0f, 1.0f, 1.0f},
+    const QuadVertex kBlitQuadVerts[6] = {
+        {-1.0f, -1.0f, 0.0f, 0.0f, 0.0f}, {1.0f, -1.0f, 0.0f, 1.0f, 0.0f},
+        {-1.0f, 1.0f, 0.0f, 0.0f, 1.0f},  {-1.0f, 1.0f, 0.0f, 0.0f, 1.0f},
+        {1.0f, -1.0f, 0.0f, 1.0f, 0.0f},  {1.0f, 1.0, 0.0f, 1.0f, 1.0f},
     };
 
     quad_vbo_ = 0;
@@ -522,11 +542,30 @@ TexturedMeshRenderer::ProgramInfo TexturedMeshRenderer::GetBlitProgram(
             color_matrix, texture_infos,
             CreateFragmentShader(texture_target, texture_infos));
       } break;
+      case Image::YUV_3PLANE_10BIT_BT2020:
       case Image::YUV_3PLANE_BT709: {
         std::vector<TextureInfo> texture_infos;
+#if SB_API_VERSION >= 7 && defined(GL_RED_EXT)
+        if (image.textures[0].texture->GetFormat() == GL_RED_EXT) {
+          texture_infos.push_back(TextureInfo("y", "r"));
+        } else {
+          texture_infos.push_back(TextureInfo("y", "a"));
+        }
+        if (image.textures[1].texture->GetFormat() == GL_RED_EXT) {
+          texture_infos.push_back(TextureInfo("u", "r"));
+        } else {
+          texture_infos.push_back(TextureInfo("u", "a"));
+        }
+        if (image.textures[2].texture->GetFormat() == GL_RED_EXT) {
+          texture_infos.push_back(TextureInfo("v", "r"));
+        } else {
+          texture_infos.push_back(TextureInfo("v", "a"));
+        }
+#else   // SB_API_VERSION >= 7 && defined(GL_RED_EXT)
         texture_infos.push_back(TextureInfo("y", "a"));
         texture_infos.push_back(TextureInfo("u", "a"));
         texture_infos.push_back(TextureInfo("v", "a"));
+#endif  // SB_API_VERSION >= 7 && defined(GL_RED_EXT)
         result = MakeBlitProgram(
             color_matrix, texture_infos,
             CreateFragmentShader(texture_target, texture_infos));

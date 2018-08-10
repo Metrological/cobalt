@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@
 #include "cobalt/renderer/rasterizer/skia/font.h"
 
 #include "third_party/harfbuzz-ng/src/hb.h"
+#include "third_party/skia/include/core/SkTypeface.h"
 
 namespace cobalt {
 namespace renderer {
@@ -39,11 +40,12 @@ class HarfBuzzFontProvider {
     HarfBuzzFace();
     ~HarfBuzzFace();
 
-    void Init(SkTypeface* skia_face);
+    void Init(const sk_sp<SkTypeface_Cobalt>& skia_face);
 
     hb_face_t* get();
 
    private:
+    sk_sp<SkTypeface_Cobalt> typeface_;
     hb_face_t* face_;
   };
 

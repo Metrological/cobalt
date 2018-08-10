@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ class TranslateFunction : public TransformFunction {
     DCHECK(offset);
   }
 
-  void Accept(TransformFunctionVisitor* visitor) const OVERRIDE;
+  void Accept(TransformFunctionVisitor* visitor) const override;
 
   OffsetType offset_type() const;
 
@@ -70,7 +70,7 @@ class TranslateFunction : public TransformFunction {
 
   Axis axis() const { return axis_; }
 
-  std::string ToString() const OVERRIDE;
+  std::string ToString() const override;
 
   bool operator==(const TranslateFunction& other) const {
     return offset_->Equals(*other.offset_) && axis_ == other.axis_;

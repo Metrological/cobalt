@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -65,7 +65,7 @@ class CspDelegatePermissive : public dom::CspDelegateSecure {
                                      require_csp, policy_changed_callback);
   }
 
-  bool OnReceiveHeaders(const csp::ResponseHeaders& headers) OVERRIDE {
+  bool OnReceiveHeaders(const csp::ResponseHeaders& headers) override {
     csp_->OnReceiveHeaders(headers);
     if (!policy_changed_callback_.is_null()) {
       policy_changed_callback_.Run();
@@ -182,7 +182,6 @@ std::string RunWebPlatformTest(const GURL& url, bool* got_results) {
       base::Bind(&WebModuleErrorCallback, &run_loop, MessageLoop::current()),
       browser::WebModule::CloseCallback() /* window_close_callback */,
       base::Closure() /* window_minimize_callback */,
-      base::Callback<SbWindow()>() /* get_sb_window */,
       can_play_type_handler.get(), media_module.get(), &network_module,
       kDefaultViewportSize, 1.f, &resource_provider, 60.0f, web_module_options);
   run_loop.Run();
@@ -198,10 +197,14 @@ std::vector<TestResult> ParseResults(const std::string& json_results) {
   std::vector<TestResult> test_results;
 
   scoped_ptr<base::Value> root;
-  base::JSONReader reader;
+  base::JSONReader reader(
+      base::JSONParserOptions::JSON_REPLACE_INVALID_CHARACTERS);
   root.reset(reader.ReadToValue(json_results));
+  // Expect that parsing test result succeeded.
+  EXPECT_EQ(base::JSONReader::JSON_NO_ERROR, reader.error_code());
   if (!root) {
     // Unparseable JSON, or empty string.
+    LOG(ERROR) << "Web Platform Tests returned unparseable JSON test result!";
     return test_results;
   }
 
@@ -316,6 +319,10 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::ValuesIn(EnumerateWebPlatformTests("XMLHttpRequest")));
 
 INSTANTIATE_TEST_CASE_P(
+    cobalt_special, WebPlatformTest,
+    ::testing::ValuesIn(EnumerateWebPlatformTests("cobalt_special")));
+
+INSTANTIATE_TEST_CASE_P(
     csp, WebPlatformTest,
     ::testing::ValuesIn(EnumerateWebPlatformTests("content-security-policy")));
 
@@ -329,6 +336,9 @@ INSTANTIATE_TEST_CASE_P(
     fetch, WebPlatformTest,
     ::testing::ValuesIn(EnumerateWebPlatformTests("fetch", "'fetch' in this")));
 
+INSTANTIATE_TEST_CASE_P(html, WebPlatformTest,
+                        ::testing::ValuesIn(EnumerateWebPlatformTests("html")));
+
 INSTANTIATE_TEST_CASE_P(
     mediasession, WebPlatformTest,
     ::testing::ValuesIn(EnumerateWebPlatformTests("mediasession")));
@@ -336,10 +346,6 @@ INSTANTIATE_TEST_CASE_P(
 INSTANTIATE_TEST_CASE_P(streams, WebPlatformTest,
                         ::testing::ValuesIn(EnumerateWebPlatformTests(
                             "streams", "'ReadableStream' in this")));
-
-INSTANTIATE_TEST_CASE_P(
-    cobalt_special, WebPlatformTest,
-    ::testing::ValuesIn(EnumerateWebPlatformTests("cobalt_special")));
 
 #endif  // !defined(COBALT_WIN)
 

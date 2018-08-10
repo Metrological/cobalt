@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -54,9 +54,15 @@ scoped_refptr<AudioBufferSourceNode> AudioContext::CreateBufferSource() {
   return scoped_refptr<AudioBufferSourceNode>(new AudioBufferSourceNode(this));
 }
 
+void AudioContext::TraceMembers(script::Tracer* tracer) {
+  dom::EventTarget::TraceMembers(tracer);
+
+  tracer->Trace(destination_);
+}
+
 void AudioContext::DecodeAudioData(
     script::EnvironmentSettings* settings,
-    const scoped_refptr<dom::ArrayBuffer>& audio_data,
+    const script::Handle<script::ArrayBuffer>& audio_data,
     const DecodeSuccessCallbackArg& success_handler) {
   DCHECK(main_message_loop_->BelongsToCurrentThread());
 
@@ -67,7 +73,7 @@ void AudioContext::DecodeAudioData(
 
 void AudioContext::DecodeAudioData(
     script::EnvironmentSettings* settings,
-    const scoped_refptr<dom::ArrayBuffer>& audio_data,
+    const script::Handle<script::ArrayBuffer>& audio_data,
     const DecodeSuccessCallbackArg& success_handler,
     const DecodeErrorCallbackArg& error_handler) {
   DCHECK(main_message_loop_->BelongsToCurrentThread());
@@ -84,28 +90,25 @@ void AudioContext::DecodeAudioDataInternal(
   const int callback_id = next_callback_id_++;
   CHECK(pending_decode_callbacks_.find(callback_id) ==
         pending_decode_callbacks_.end());
-  const scoped_refptr<dom::ArrayBuffer>& audio_data = info->audio_data;
+  script::Handle<script::ArrayBuffer> audio_data =
+      script::Handle<script::ArrayBuffer>(info->audio_data_reference);
   pending_decode_callbacks_[callback_id] = info.release();
 
   AsyncAudioDecoder::DecodeFinishCallback decode_callback = base::Bind(
       &AudioContext::DecodeFinish, base::Unretained(this), callback_id);
-  audio_decoder_.AsyncDecode(audio_data->data(), audio_data->byte_length(),
-                             decode_callback);
+  audio_decoder_.AsyncDecode(static_cast<const uint8*>(audio_data->Data()),
+                             audio_data->ByteLength(), decode_callback);
 }
 
 // Success callback and error callback should be scheduled to run on the main
 // thread's event loop.
 void AudioContext::DecodeFinish(int callback_id, float sample_rate,
-                                int32 number_of_frames,
-                                int32 number_of_channels,
-                                scoped_array<uint8> channels_data,
-                                SampleType sample_type) {
+                                scoped_ptr<ShellAudioBus> audio_bus) {
   if (!main_message_loop_->BelongsToCurrentThread()) {
     main_message_loop_->PostTask(
         FROM_HERE,
         base::Bind(&AudioContext::DecodeFinish, weak_this_, callback_id,
-                   sample_rate, number_of_frames, number_of_channels,
-                   base::Passed(&channels_data), sample_type));
+                   sample_rate, base::Passed(&audio_bus)));
     return;
   }
 
@@ -116,10 +119,9 @@ void AudioContext::DecodeFinish(int callback_id, float sample_rate,
   scoped_ptr<DecodeCallbackInfo> info(info_iterator->second);
   pending_decode_callbacks_.erase(info_iterator);
 
-  if (channels_data) {
+  if (audio_bus) {
     const scoped_refptr<AudioBuffer>& audio_buffer =
-        new AudioBuffer(info->env_settings, sample_rate, number_of_frames,
-                        number_of_channels, channels_data.Pass(), sample_type);
+        new AudioBuffer(sample_rate, audio_bus.Pass());
     info->success_callback.value().Run(audio_buffer);
   } else if (info->error_callback) {
     info->error_callback.value().value().Run();

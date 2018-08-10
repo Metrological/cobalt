@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ using cobalt::renderer::test::png_utils::DecodePNGToRGBA;
 namespace {
 FilePath GetPremultipliedAlphaTestImagePath() {
   FilePath data_directory;
-  CHECK(PathService::Get(base::DIR_SOURCE_ROOT, &data_directory));
+  CHECK(PathService::Get(base::DIR_TEST_DATA, &data_directory));
   return data_directory.Append(FILE_PATH_LITERAL("test"))
       .Append(FILE_PATH_LITERAL("png_utils"))
       .Append(FILE_PATH_LITERAL("png_premultiplied_alpha_test_image.png"));

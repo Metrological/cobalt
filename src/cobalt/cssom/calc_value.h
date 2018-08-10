@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ class CalcValue : public PropertyValue {
       : length_value_(new LengthValue(0.0f, kPixelsUnit)),
         percentage_value_(percentage_value) {}
 
-  void Accept(PropertyValueVisitor* visitor) OVERRIDE;
+  void Accept(PropertyValueVisitor* visitor) override;
 
   const scoped_refptr<LengthValue>& length_value() const {
     return length_value_;
@@ -56,7 +56,7 @@ class CalcValue : public PropertyValue {
     return percentage_value_.get();
   }
 
-  std::string ToString() const OVERRIDE;
+  std::string ToString() const override;
 
   bool operator==(const CalcValue& other) const {
     return *length_value_ == *other.length_value_ &&
@@ -66,7 +66,7 @@ class CalcValue : public PropertyValue {
   DEFINE_POLYMORPHIC_EQUATABLE_TYPE(CalcValue);
 
  private:
-  ~CalcValue() OVERRIDE {}
+  ~CalcValue() override {}
 
   const scoped_refptr<LengthValue> length_value_;
   const scoped_refptr<PercentageValue> percentage_value_;

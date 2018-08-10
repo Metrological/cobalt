@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -56,15 +56,13 @@ class MediaModule : public WebMediaPlayerFactory,
                     public WebMediaPlayerDelegate {
  public:
   struct Options {
-    Options()
-        : use_audio_decoder_stub(false),
-          use_null_audio_streamer(false),
-          use_video_decoder_stub(false),
-          disable_webm_vp9(false) {}
-    bool use_audio_decoder_stub;
-    bool use_null_audio_streamer;
-    bool use_video_decoder_stub;
-    bool disable_webm_vp9;
+    Options() {}
+
+    bool use_audio_decoder_stub = false;
+    bool use_null_audio_streamer = false;
+    bool use_video_decoder_stub = false;
+    bool disable_webm_vp9 = false;
+    bool allow_resume_after_suspend = true;
     base::optional<math::Size> output_resolution_override;
   };
 
@@ -113,8 +111,8 @@ class MediaModule : public WebMediaPlayerFactory,
   // TODO: Move the following methods into class like MediaModuleBase
   // to ensure that MediaModule is an interface.
   // WebMediaPlayerDelegate methods
-  void RegisterPlayer(WebMediaPlayer* player) OVERRIDE;
-  void UnregisterPlayer(WebMediaPlayer* player) OVERRIDE;
+  void RegisterPlayer(WebMediaPlayer* player) override;
+  void UnregisterPlayer(WebMediaPlayer* player) override;
 
   // This function should be defined on individual platform to create the
   // platform specific MediaModule.

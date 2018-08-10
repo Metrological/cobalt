@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,6 +22,10 @@ namespace cobalt {
 namespace h5vcc {
 
 H5vccAudioConfigArray::H5vccAudioConfigArray() : audio_config_updated_(false) {}
+
+void H5vccAudioConfigArray::TraceMembers(script::Tracer* tracer) {
+  tracer->TraceItems(audio_configs_);
+}
 
 void H5vccAudioConfigArray::MaybeRefreshAudioConfigs() {
 #if !defined(COBALT_MEDIA_SOURCE_2016)

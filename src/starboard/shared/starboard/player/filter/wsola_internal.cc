@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Modifications Copyright 2017 Google Inc. All Rights Reserved.
+// Modifications Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -298,12 +298,10 @@ int FullSearch(int low_limit,
 
 int OptimalIndex(const scoped_refptr<DecodedAudio>& search_block,
                  const scoped_refptr<DecodedAudio>& target_block,
-                 SbMediaAudioSampleType sample_type,
                  SbMediaAudioFrameStorageType storage_type,
                  Interval exclude_interval) {
   int channels = search_block->channels();
   SB_DCHECK(channels == target_block->channels());
-  SB_DCHECK(sample_type == kSbMediaAudioSampleTypeFloat32);
   SB_DCHECK(storage_type == kSbMediaAudioFrameStorageTypeInterleaved);
 
   int target_size = target_block->frames();

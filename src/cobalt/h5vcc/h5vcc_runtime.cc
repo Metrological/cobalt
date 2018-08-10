@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -61,6 +61,12 @@ const scoped_refptr<H5vccRuntimeEventTarget>& H5vccRuntime::on_pause() const {
 
 const scoped_refptr<H5vccRuntimeEventTarget>& H5vccRuntime::on_resume() const {
   return on_resume_;
+}
+
+void H5vccRuntime::TraceMembers(script::Tracer* tracer) {
+  tracer->Trace(on_deep_link_);
+  tracer->Trace(on_pause_);
+  tracer->Trace(on_resume_);
 }
 
 void H5vccRuntime::OnApplicationEvent(const base::Event* event) {

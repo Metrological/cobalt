@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,9 +24,11 @@
 #include "base/logging.h"
 #include "base/message_loop_proxy.h"
 #include "cobalt/media_session/media_session_action.h"
+#include "cobalt/media_session/media_session_action_details.h"
 #include "cobalt/media_session/media_session_playback_state.h"
 #include "cobalt/script/callback_function.h"
 #include "cobalt/script/script_value.h"
+#include "cobalt/script/wrappable.h"
 
 namespace cobalt {
 namespace media_session {
@@ -37,7 +39,9 @@ class MediaSession : public script::Wrappable {
   friend class MediaSessionClient;
 
  public:
-  typedef script::CallbackFunction<void()> MediaSessionActionHandler;
+  typedef script::CallbackFunction<void(
+      const scoped_refptr<MediaSessionActionDetails>& action_details)>
+          MediaSessionActionHandler;
   typedef script::ScriptValue<MediaSessionActionHandler>
       MediaSessionActionHandlerHolder;
   typedef script::ScriptValue<MediaSessionActionHandler>::Reference
@@ -50,7 +54,7 @@ class MediaSession : public script::Wrappable {
 
  public:
   explicit MediaSession(MediaSessionClient* client);
-  ~MediaSession() OVERRIDE;
+  ~MediaSession() override;
 
   scoped_refptr<MediaMetadata> metadata() const { return metadata_; }
 
@@ -64,6 +68,7 @@ class MediaSession : public script::Wrappable {
                         const MediaSessionActionHandlerHolder& handler);
 
   DEFINE_WRAPPABLE_TYPE(MediaSession);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   void MaybeQueueChangeTask();

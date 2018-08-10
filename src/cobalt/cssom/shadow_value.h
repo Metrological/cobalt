@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ class ShadowValue : public PropertyValue {
     }
   }
 
-  void Accept(PropertyValueVisitor* visitor) OVERRIDE;
+  void Accept(PropertyValueVisitor* visitor) override;
 
   const scoped_refptr<LengthValue>* lengths() const { return lengths_; }
 
@@ -78,14 +78,14 @@ class ShadowValue : public PropertyValue {
 
   bool has_inset() const { return has_inset_; }
 
-  std::string ToString() const OVERRIDE;
+  std::string ToString() const override;
 
   bool operator==(const ShadowValue& other) const;
 
   DEFINE_POLYMORPHIC_EQUATABLE_TYPE(ShadowValue);
 
  private:
-  ~ShadowValue() OVERRIDE {}
+  ~ShadowValue() override {}
 
   scoped_refptr<LengthValue> lengths_[kMaxLengths];
   const scoped_refptr<RGBAColorValue> color_;

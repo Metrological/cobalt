@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,12 +17,13 @@
 
 #include <string>
 
+#include "base/callback.h"
 #include "base/memory/scoped_ptr.h"
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/media/media_module.h"
 #include "googleurl/src/gurl.h"
 #if defined(COBALT_MEDIA_SOURCE_2016)
-#include "cobalt/media/base/shell_video_frame_provider.h"
+#include "cobalt/media/base/video_frame_provider.h"
 #include "cobalt/media/player/web_media_player.h"
 #else  // defined(COBALT_MEDIA_SOURCE_2016)
 #include "media/base/video_frame.h"
@@ -34,6 +35,7 @@ namespace media {
 namespace sandbox {
 
 #if !defined(COBALT_MEDIA_SOURCE_2016)
+typedef ::media::ChunkDemuxer ChunkDemuxer;
 typedef ::media::VideoFrame VideoFrame;
 typedef ::media::WebMediaPlayer WebMediaPlayer;
 #endif  // !defined(WebMediaPlayerDelegate)
@@ -43,13 +45,22 @@ typedef ::media::WebMediaPlayer WebMediaPlayer;
 // simplify the using of WebMediaPlayer.
 class WebMediaPlayerHelper {
  public:
-  explicit WebMediaPlayerHelper(MediaModule* media_module);
+  typedef base::Callback<void(ChunkDemuxer*)> ChunkDemuxerOpenCB;
+
+  // Ctor to create an adaptive pipeline.  |open_cb| will be called when the
+  // ChunkDemuxer is ready to add source buffers.
+  WebMediaPlayerHelper(MediaModule* media_module,
+                       const ChunkDemuxerOpenCB& chunk_demuxer_open_cb);
+  // Ctor to create a progressive pipeline.
   WebMediaPlayerHelper(MediaModule* media_module,
                        loader::FetcherFactory* fetcher_factory,
                        const GURL& video_url);
   ~WebMediaPlayerHelper();
 
+#if !defined(COBALT_MEDIA_SOURCE_2016)
   scoped_refptr<VideoFrame> GetCurrentFrame() const;
+#endif  // !defined(COBALT_MEDIA_SOURCE_2016)
+  SbDecodeTarget GetCurrentDecodeTarget() const;
   bool IsPlaybackFinished() const;
 
   WebMediaPlayer* player() { return player_.get(); }

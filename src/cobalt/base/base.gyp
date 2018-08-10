@@ -1,4 +1,4 @@
-# Copyright 2014 Google Inc. All Rights Reserved.
+# Copyright 2014 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -78,6 +78,8 @@
         'unused.h',
         'user_log.cc',
         'user_log.h',
+        'version_compatibility.cc',
+        'version_compatibility.h',
       ],
       'dependencies': [
         '<(DEPTH)/base/base.gyp:base',
@@ -127,7 +129,7 @@
       'variables': {
         'executable_name': 'base_test',
       },
-      'includes': [ '../../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ],
 }

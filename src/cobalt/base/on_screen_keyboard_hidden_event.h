@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,9 +22,14 @@ namespace base {
 
 class OnScreenKeyboardHiddenEvent : public Event {
  public:
-  OnScreenKeyboardHiddenEvent() {}
+  explicit OnScreenKeyboardHiddenEvent(int ticket) : ticket_(ticket) {}
+
+  int ticket() const { return ticket_; }
 
   BASE_EVENT_SUBCLASS(OnScreenKeyboardHiddenEvent);
+
+ private:
+  int ticket_;
 };
 
 }  // namespace base

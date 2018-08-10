@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,20 +26,26 @@ struct SbDrmSystemPrivate {
 
   virtual ~SbDrmSystemPrivate() {}
 
-  virtual void GenerateSessionUpdateRequest(
-      int ticket,
-      const char* type,
-      const void* initialization_data,
-      int initialization_data_size) = 0;
-  virtual void UpdateSession(
-      int ticket,
-      const void* key,
-      int key_size,
-      const void* session_id,
-      int session_id_size) = 0;
+  virtual void GenerateSessionUpdateRequest(int ticket,
+                                            const char* type,
+                                            const void* initialization_data,
+                                            int initialization_data_size) = 0;
+
+  virtual void UpdateSession(int ticket,
+                             const void* key,
+                             int key_size,
+                             const void* session_id,
+                             int session_id_size) = 0;
+
   virtual void CloseSession(const void* session_id, int session_id_size) = 0;
 
   virtual DecryptStatus Decrypt(InputBuffer* buffer) = 0;
+
+#if SB_API_VERSION >= SB_DRM_REFINEMENT_API_VERSION
+  virtual void UpdateServerCertificate(int ticket,
+                                       const void* certificate,
+                                       int certificate_size) = 0;
+#endif  // SB_API_VERSION >= SB_DRM_REFINEMENT_API_VERSION
 };
 
 #endif  // STARBOARD_SHARED_STARBOARD_DRM_DRM_SYSTEM_INTERNAL_H_

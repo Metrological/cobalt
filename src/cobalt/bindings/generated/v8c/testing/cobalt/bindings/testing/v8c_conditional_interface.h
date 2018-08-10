@@ -1,5 +1,5 @@
 
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2018 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,11 @@
 #ifndef V8cConditionalInterface_h
 #define V8cConditionalInterface_h
 
+
+// This must be included above the check for ENABLE_CONDITIONAL_INTERFACE, since
+// ENABLE_CONDITIONAL_INTERFACE may be defined within.
+#include "cobalt/bindings/shared/idl_conditional_macros.h"
+
 #if defined(ENABLE_CONDITIONAL_INTERFACE)
 
 #include "base/hash_tables.h"
@@ -40,9 +45,8 @@ namespace testing {
 
 class V8cConditionalInterface {
  public:
-  static v8::Local<v8::Object> CreateWrapper(script::v8c::V8cGlobalEnvironment* env, const scoped_refptr<script::Wrappable>& wrappable);
-  static v8::Local<v8::FunctionTemplate> CreateTemplate(script::v8c::V8cGlobalEnvironment* env);
-  // TODO: Add |GetInterfaceObject|.
+  static v8::Local<v8::Object> CreateWrapper(v8::Isolate* isolate, const scoped_refptr<script::Wrappable>& wrappable);
+  static v8::Local<v8::FunctionTemplate> GetTemplate(v8::Isolate* isolate);
 };
 
 }  // namespace testing

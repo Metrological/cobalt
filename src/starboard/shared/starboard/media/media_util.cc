@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ SbMediaTransferId GetTransferIdFromString(const std::string& eotf) {
 
 int GetBytesPerSample(SbMediaAudioSampleType sample_type) {
   switch (sample_type) {
-    case kSbMediaAudioSampleTypeInt16:
+    case kSbMediaAudioSampleTypeInt16Deprecated:
       return 2;
     case kSbMediaAudioSampleTypeFloat32:
       return 4;

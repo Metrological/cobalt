@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -57,64 +57,7 @@ class MozjsUserObjectHolder
     DCHECK(!persistent_root_);
   }
 
-  void RegisterOwner(Wrappable* owner) OVERRIDE {
-    JSAutoRequest auto_request(context_);
-    JS::RootedValue owned_value(context_, js_value());
-    DLOG_IF(WARNING, handle_->WasCollected())
-        << "Owned value has been garbage collected.";
-    // We have to check for null, because null is apparently a GC Thing.
-    if (!owned_value.isNullOrUndefined() && owned_value.isGCThing()) {
-      MozjsGlobalEnvironment* global_environment =
-          MozjsGlobalEnvironment::GetFromContext(context_);
-      intptr_t key = ReferencedObjectMap::GetKeyForWrappable(owner);
-      global_environment->referenced_objects()->AddReferencedObject(
-          key, owned_value);
-    }
-  }
-
-  void DeregisterOwner(Wrappable* owner) OVERRIDE {
-    // |owner| may be in the process of being destructed, so don't use it.
-    JSAutoRequest auto_request(context_);
-    JS::RootedValue owned_value(context_, js_value());
-    // We have to check for null, because null is apparently a GC Thing.
-    if (!owned_value.isNullOrUndefined() && owned_value.isGCThing()) {
-      MozjsGlobalEnvironment* global_environment =
-          MozjsGlobalEnvironment::GetFromContext(context_);
-      intptr_t key = ReferencedObjectMap::GetKeyForWrappable(owner);
-      global_environment->referenced_objects()->RemoveReferencedObject(
-          key, owned_value);
-    }
-  }
-
-  void PreventGarbageCollection() OVERRIDE {
-    if (prevent_garbage_collection_count_++ == 0 && handle_) {
-      JSAutoRequest auto_request(context_);
-      persistent_root_ = JS::PersistentRootedValue(context_, handle_->value());
-    }
-  }
-
-  void AllowGarbageCollection() OVERRIDE {
-    if (--prevent_garbage_collection_count_ == 0 && handle_) {
-      JSAutoRequest auto_request(context_);
-      persistent_root_ = base::nullopt;
-    }
-  }
-
-  const typename MozjsUserObjectType::BaseType* GetScriptValue()
-      const OVERRIDE {
-    return handle_ ? &handle_.value() : NULL;
-  }
-
-  scoped_ptr<BaseClass> MakeCopy() const OVERRIDE {
-    TRACK_MEMORY_SCOPE("Javascript");
-    DCHECK(handle_);
-    JSAutoRequest auto_request(context_);
-    JS::RootedValue rooted_value(context_, js_value());
-    return make_scoped_ptr<BaseClass>(
-        new MozjsUserObjectHolder(context_, rooted_value));
-  }
-
-  bool EqualTo(const BaseClass& other) const OVERRIDE {
+  bool EqualTo(const BaseClass& other) const override {
     const MozjsUserObjectHolder* mozjs_other =
         base::polymorphic_downcast<const MozjsUserObjectHolder*>(&other);
     if (!handle_) {
@@ -131,6 +74,65 @@ class MozjsUserObjectHolder
     return util::IsSameGcThing(context_, value1, value2);
   }
 
+  void RegisterOwner(Wrappable* owner) override {
+    JSAutoRequest auto_request(context_);
+    JS::RootedValue owned_value(context_, js_value());
+    DLOG_IF(WARNING, handle_->WasCollected())
+        << "Owned value has been garbage collected.";
+    // We have to check for null, because null is apparently a GC Thing.
+    if (!owned_value.isNullOrUndefined() && owned_value.isGCThing()) {
+      MozjsGlobalEnvironment* global_environment =
+          MozjsGlobalEnvironment::GetFromContext(context_);
+      global_environment->referenced_objects()->AddReferencedObject(
+          owner, owned_value);
+    }
+  }
+
+  void DeregisterOwner(Wrappable* owner) override {
+    // |owner| may be in the process of being destructed, so don't use it.
+    JSAutoRequest auto_request(context_);
+    JS::RootedValue owned_value(context_, js_value());
+    // We have to check for null, because null is apparently a GC Thing.
+    if (!owned_value.isNullOrUndefined() && owned_value.isGCThing()) {
+      MozjsGlobalEnvironment* global_environment =
+          MozjsGlobalEnvironment::GetFromContext(context_);
+      global_environment->referenced_objects()->RemoveReferencedObject(
+          owner, owned_value);
+    }
+  }
+
+  void PreventGarbageCollection() override {
+    if (prevent_garbage_collection_count_++ == 0 && handle_) {
+      JSAutoRequest auto_request(context_);
+      persistent_root_ = JS::PersistentRootedValue(context_, handle_->value());
+    }
+  }
+
+  void AllowGarbageCollection() override {
+    if (--prevent_garbage_collection_count_ == 0 && handle_) {
+      JSAutoRequest auto_request(context_);
+      persistent_root_ = base::nullopt;
+    }
+  }
+
+  typename MozjsUserObjectType::BaseType* GetValue() override {
+    return const_cast<typename MozjsUserObjectType::BaseType*>(
+        static_cast<const MozjsUserObjectHolder*>(this)->GetValue());
+  }
+
+  const typename MozjsUserObjectType::BaseType* GetValue() const override {
+    return handle_ ? &handle_.value() : NULL;
+  }
+
+  scoped_ptr<BaseClass> MakeCopy() const override {
+    TRACK_MEMORY_SCOPE("Javascript");
+    DCHECK(handle_);
+    JSAutoRequest auto_request(context_);
+    JS::RootedValue rooted_value(context_, js_value());
+    return make_scoped_ptr<BaseClass>(
+        new MozjsUserObjectHolder(context_, rooted_value));
+  }
+
   const JS::Value& js_value() const {
     DCHECK(handle_);
     return handle_->value();
@@ -141,14 +143,16 @@ class MozjsUserObjectHolder
     return handle_->handle();
   }
 
- private:
-  typedef base::hash_map<const Wrappable*, base::WeakPtr<WrapperPrivate> >
-      WrappableAndPrivateHashMap;
+  JSContext* context() const {
+    DCHECK(context_);
+    return context_;
+  }
 
+ private:
   JSContext* context_;
   base::optional<MozjsUserObjectType> handle_;
   int prevent_garbage_collection_count_;
-  base::optional<JS::Value> persistent_root_;
+  base::optional<JS::PersistentRootedValue> persistent_root_;
 };
 
 }  // namespace mozjs

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_ptr.h"
-#include "cobalt/dom/array_buffer.h"
 #include "cobalt/dom/blob.h"
 #include "cobalt/dom/mutation_observer_task_manager.h"
 #include "cobalt/dom/url_registry.h"
@@ -49,17 +48,6 @@ class DOMSettings : public script::EnvironmentSettings {
   typedef UrlRegistry<MediaSource> MediaSourceRegistry;
   // Hold optional settings for DOMSettings.
   struct Options {
-    Options() : array_buffer_allocator(NULL), array_buffer_cache(NULL) {}
-
-    // ArrayBuffer allocates its memory on the heap by default and ArrayBuffers
-    // may occupy a lot of memory.  It is possible to provide an allocator via
-    // the following member on some platforms so ArrayBuffer can possibly use
-    // memory that is not part of the heap.
-    ArrayBuffer::Allocator* array_buffer_allocator;
-    // When array_buffer_allocator is provided, we still need to hold certain
-    // amount of ArrayBuffer inside main memory.  So we have provide the
-    // following cache to manage ArrayBuffer in main memory.
-    ArrayBuffer::Cache* array_buffer_cache;
     // Microphone options.
     speech::Microphone::Options microphone_options;
   };
@@ -75,7 +63,7 @@ class DOMSettings : public script::EnvironmentSettings {
               script::GlobalEnvironment* global_environment_proxy,
               MutationObserverTaskManager* mutation_observer_task_manager,
               const Options& options = Options());
-  ~DOMSettings() OVERRIDE;
+  ~DOMSettings() override;
 
   int max_dom_element_depth() { return max_dom_element_depth_; }
   const speech::Microphone::Options& microphone_options() const {
@@ -84,12 +72,6 @@ class DOMSettings : public script::EnvironmentSettings {
 
   void set_window(const scoped_refptr<Window>& window);
   scoped_refptr<Window> window() const;
-
-  ArrayBuffer::Allocator* array_buffer_allocator() const {
-    return array_buffer_allocator_;
-  }
-
-  ArrayBuffer::Cache* array_buffer_cache() const { return array_buffer_cache_; }
 
   void set_fetcher_factory(loader::FetcherFactory* fetcher_factory) {
     fetcher_factory_ = fetcher_factory;
@@ -120,7 +102,7 @@ class DOMSettings : public script::EnvironmentSettings {
   virtual const GURL& base_url() const;
 
   // Return's document's origin.
-  const loader::Origin& document_origin() const;
+  loader::Origin document_origin() const;
 
  private:
   const int max_dom_element_depth_;
@@ -128,8 +110,6 @@ class DOMSettings : public script::EnvironmentSettings {
   loader::FetcherFactory* fetcher_factory_;
   network::NetworkModule* network_module_;
   scoped_refptr<Window> window_;
-  ArrayBuffer::Allocator* array_buffer_allocator_;
-  ArrayBuffer::Cache* array_buffer_cache_;
   MediaSourceRegistry* media_source_registry_;
   Blob::Registry* blob_registry_;
   media::CanPlayTypeHandler* can_play_type_handler_;

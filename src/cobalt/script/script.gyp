@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,9 +20,12 @@
       'target_name': 'script',
       'type': 'static_library',
       'sources': [
+        'array_buffer.h',
+        'array_buffer_view.h',
         'call_frame.h',
         'callback_function.h',
         'callback_interface_traits.h',
+        'data_view.h',
         'environment_settings.h',
         'error_report.h',
         'exception_message.cc',
@@ -50,6 +53,8 @@
         'source_provider.h',
         'stack_frame.cc',
         'stack_frame.h',
+        'tracer.h',
+        'typed_arrays.h',
         'union_type.h',
         'union_type_internal.h',
         'util/stack_trace_helpers.h',

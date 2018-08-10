@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,6 +32,8 @@ class ScopedTraceToFile {
  public:
   explicit ScopedTraceToFile(const FilePath& output_path_relative_to_logs);
   ~ScopedTraceToFile();
+
+  const FilePath& absolute_output_path() const { return absolute_output_path_; }
 
  private:
   FilePath absolute_output_path_;

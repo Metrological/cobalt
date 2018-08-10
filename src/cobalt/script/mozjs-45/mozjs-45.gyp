@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,10 +23,16 @@
         'conversion_helpers.h',
         'convert_callback_return_value.h',
         'interface_data.h',
+        'mozjs_array_buffer.cc',
+        'mozjs_array_buffer.h',
+        'mozjs_array_buffer_view.cc',
+        'mozjs_array_buffer_view.h',
         'mozjs_callback_function.h',
         'mozjs_callback_interface.cc',
         'mozjs_callback_interface.h',
         'mozjs_callback_interface_holder.h',
+        'mozjs_data_view.cc',
+        'mozjs_data_view.h',
         'mozjs_engine.cc',
         'mozjs_engine.h',
         'mozjs_exception_state.cc',
@@ -39,7 +45,12 @@
         'mozjs_script_value_factory.h',
         'mozjs_source_code.cc',
         'mozjs_source_code.h',
+        'mozjs_tracer.cc',
+        'mozjs_tracer.h',
+        'mozjs_typed_arrays.cc',
+        'mozjs_typed_arrays.h',
         'mozjs_user_object_holder.h',
+        'mozjs_value_handle.cc',
         'mozjs_value_handle.h',
         'mozjs_wrapper_handle.h',
         'native_promise.h',
@@ -79,7 +90,6 @@
           # SpiderMonkey bindings implements indexed deleters.
           'ENGINE_SUPPORTS_INDEXED_DELETERS',
           'ENGINE_SUPPORTS_INT64',
-          'ENGINE_SUPPORTS_STACK_TRACE_COLUMNS',
           # TODO: Remove this when exact rooting and generational GC is enabled.
           'ENGINE_USES_CONSERVATIVE_ROOTING',
         ],

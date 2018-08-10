@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,8 +40,8 @@ class CSSAnimationsAdapter : public cssom::AnimationSet::EventHandler {
   virtual ~CSSAnimationsAdapter();
 
   // From cssom::AnimationSet::EventHandler.
-  void OnAnimationStarted(const cssom::Animation& css_animation) OVERRIDE;
-  void OnAnimationRemoved(const cssom::Animation& css_animation) OVERRIDE;
+  void OnAnimationStarted(const cssom::Animation& css_animation) override;
+  void OnAnimationRemoved(const cssom::Animation& css_animation) override;
 
  private:
   // The AnimationWithEventHandler struct maintains a reference to the Animation

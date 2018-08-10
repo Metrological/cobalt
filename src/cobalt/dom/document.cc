@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -69,6 +69,7 @@ Document::Document(HTMLElementContext* html_element_context,
                    const Options& options)
     : ALLOW_THIS_IN_INITIALIZER_LIST(Node(this)),
       html_element_context_(html_element_context),
+      page_visibility_state_(html_element_context_->page_visibility_state()),
       window_(options.window),
       implementation_(new DOMImplementation(html_element_context)),
       style_sheets_(new cssom::StyleSheetList()),
@@ -92,11 +93,12 @@ Document::Document(HTMLElementContext* html_element_context,
       user_agent_style_sheet_(options.user_agent_style_sheet),
       initial_computed_style_declaration_(
           new cssom::CSSComputedStyleDeclaration()),
+      ready_state_(kDocumentReadyStateComplete),
       dom_max_element_depth_(options.dom_max_element_depth),
       render_postponed_(false) {
   DCHECK(html_element_context_);
   DCHECK(options.url.is_empty() || options.url.is_valid());
-  html_element_context_->page_visibility_state()->AddObserver(this);
+  page_visibility_state_->AddObserver(this);
 
   if (options.viewport_size) {
     SetViewport(*options.viewport_size);
@@ -359,6 +361,10 @@ scoped_refptr<HTMLHeadElement> Document::head() const {
   return NULL;
 }
 
+bool Document::HasFocus() const {
+  return page_visibility_state()->HasWindowFocus();
+}
+
 // https://www.w3.org/TR/html5/editing.html#dom-document-activeelement
 scoped_refptr<Element> Document::active_element() const {
   // The activeElement attribute on Document objects must return the element in
@@ -396,7 +402,7 @@ void Document::set_cookie(const std::string& cookie,
                      "setting cookie.";
     return;
   }
-  if (location_->OriginObject().is_opaque()) {
+  if (location_->GetOriginAsObject().is_opaque()) {
     DOMException::Raise(DOMException::kSecurityErr,
                         "Document origin is opaque, cookie setting failed",
                         exception_state);
@@ -414,7 +420,7 @@ std::string Document::cookie(script::ExceptionState* exception_state) const {
                      "empty cookie.";
     return "";
   }
-  if (location_->OriginObject().is_opaque()) {
+  if (location_->GetOriginAsObject().is_opaque()) {
     DOMException::Raise(DOMException::kSecurityErr,
                         "Document origin is opaque, cookie getting failed",
                         exception_state);
@@ -434,7 +440,7 @@ void Document::set_cookie(const std::string& cookie) {
                      "setting cookie.";
     return;
   }
-  if (location_->OriginObject().is_opaque()) {
+  if (location_->GetOriginAsObject().is_opaque()) {
     DLOG(WARNING) << "Document origin is opaque, cookie setting failed";
     return;
   }
@@ -449,7 +455,7 @@ std::string Document::cookie() const {
                      "empty cookie.";
     return "";
   }
-  if (location_->OriginObject().is_opaque()) {
+  if (location_->GetOriginAsObject().is_opaque()) {
     DLOG(WARNING) << "Document origin is opaque, cookie getting failed";
     return "";
   }
@@ -495,12 +501,22 @@ void Document::SetActiveElement(Element* active_element) {
 
 void Document::SetIndicatedElement(HTMLElement* indicated_element) {
   if (indicated_element != indicated_element_) {
-    is_selector_tree_dirty_ = true;
     if (indicated_element_) {
+      // Clear the rule matching state on this element and its ancestors, as
+      // their hover state may be changing. However, the tree's matching rules
+      // only need to be invalidated once, so only do it here if it won't occur
+      // below.
+      bool invalidate_tree_matching_rules = (indicated_element == NULL);
+      indicated_element_->ClearRuleMatchingStateOnElementAndAncestors(
+          invalidate_tree_matching_rules);
       indicated_element_->OnCSSMutation();
     }
     if (indicated_element) {
       indicated_element_ = base::AsWeakPtr(indicated_element);
+      // Clear the rule matching state on this element and its ancestors, as
+      // their hover state may be changing.
+      indicated_element_->ClearRuleMatchingStateOnElementAndAncestors(
+          true /*invalidate_tree_matching_rules*/);
       indicated_element_->OnCSSMutation();
     } else {
       indicated_element_.reset();
@@ -558,6 +574,20 @@ void Document::DoSynchronousLayout() {
   }
 }
 
+scoped_refptr<render_tree::Node>
+Document::DoSynchronousLayoutAndGetRenderTree() {
+  TRACE_EVENT0("cobalt::dom",
+               "Document::DoSynchronousLayoutAndGetRenderTree()");
+
+  if (synchronous_layout_and_produce_render_tree_callback_.is_null()) {
+    DLOG(WARNING)
+        << "|synchronous_layout_and_produce_render_tree_callback_| is null";
+    return nullptr;
+  }
+
+  return synchronous_layout_and_produce_render_tree_callback_.Run();
+}
+
 void Document::NotifyUrlChanged(const GURL& url) {
   location_->set_url(url);
   csp_delegate_->NotifyUrlChanged(url);
@@ -592,7 +622,7 @@ void Document::OnCSSMutation() {
 
 void Document::OnDOMMutation() {
   // Something in the document's DOM has been modified, but we don't know what,
-  // so set the flag indicating that rule matching needs to be done.
+  // so set the flag indicating that computed styles need to be updated.
   is_computed_style_dirty_ = true;
 
   RecordMutation();
@@ -701,12 +731,15 @@ void Document::UpdateComputedStyles() {
     scoped_refptr<HTMLElement> root = html();
     if (root) {
       DCHECK_EQ(this, root->parent_node());
-      // First update the computed style for root element.
+      // First, update the matching rules for all elements.
+      root->UpdateMatchingRulesRecursively();
+
+      // Then, update the computed style for the root element.
       root->UpdateComputedStyle(
           initial_computed_style_declaration_, initial_computed_style_data_,
           style_change_event_time, HTMLElement::kAncestorsAreDisplayed);
 
-      // Then update the computed styles for the other elements.
+      // Finally, update the computed styles for the other elements.
       root->UpdateComputedStyleRecursively(
           root->css_computed_style_declaration(), root->computed_style(),
           style_change_event_time, true, 0 /* current_element_depth */);
@@ -762,9 +795,13 @@ bool Document::UpdateComputedStyleOnElementAndAncestor(HTMLElement* element) {
   for (std::vector<HTMLElement*>::reverse_iterator it = ancestors.rbegin();
        it != ancestors.rend(); ++it) {
     HTMLElement* current_element = *it;
-    bool is_valid = ancestors_were_valid &&
-                    current_element->matching_rules_valid() &&
-                    current_element->computed_style_valid();
+
+    // Ensure that the matching rules are up to date prior to updating the
+    // computed style.
+    current_element->UpdateMatchingRules();
+
+    bool is_valid =
+        ancestors_were_valid && current_element->AreComputedStylesValid();
     if (!is_valid) {
       DCHECK(initial_computed_style_declaration_);
       DCHECK(initial_computed_style_data_);
@@ -847,7 +884,9 @@ void Document::SetViewport(const math::Size& viewport_size) {
 }
 
 Document::~Document() {
-  html_element_context_->page_visibility_state()->RemoveObserver(this);
+  if (page_visibility_state_) {
+    page_visibility_state_->RemoveObserver(this);
+  }
   // Ensure that all outstanding weak ptrs become invalid.
   // Some objects that will be released while this destructor runs may
   // have weak ptrs to |this|.
@@ -894,9 +933,15 @@ void Document::UpdateSelectorTree() {
       AppendRulesFromCSSStyleSheetToSelectorTree(css_style_sheet,
                                                  selector_tree_.get());
     }
+#if defined(COBALT_ENABLE_VERSION_COMPATIBILITY_VALIDATIONS)
+    // Now that the selector tree is fully updated, validate its version
+    // compatibility.
+    selector_tree_->ValidateVersionCompatibility();
+#endif  // defined(COBALT_ENABLE_VERSION_COMPATIBILITY_VALIDATIONS)
+
     scoped_refptr<HTMLHtmlElement> current_html = html();
     if (current_html) {
-      current_html->InvalidateMatchingRulesRecursively();
+      current_html->ClearRuleMatchingStateOnElementAndDescendants();
     }
 
     is_selector_tree_dirty_ = false;
@@ -950,16 +995,12 @@ void Document::TraceMembers(script::Tracer* tracer) {
 
   tracer->Trace(implementation_);
   tracer->Trace(style_sheets_);
-  for (std::deque<HTMLScriptElement*>::iterator it =
-           scripts_to_be_executed_.begin();
-       it != scripts_to_be_executed_.end(); ++it) {
-    tracer->Trace(static_cast<Wrappable*>(*it));
-  }
-  for (cssom::CSSKeyframesRule::NameMap::iterator it = keyframes_map_.begin();
-       it != keyframes_map_.end(); ++it) {
-    tracer->Trace(it->second);
-  }
+  tracer->TraceItems(scripts_to_be_executed_);
+  tracer->TraceValues(keyframes_map_);
   tracer->Trace(location_);
+  tracer->Trace(active_element_);
+  tracer->Trace(indicated_element_);
+  tracer->Trace(default_timeline_);
   tracer->Trace(user_agent_style_sheet_);
   tracer->Trace(initial_computed_style_declaration_);
 }

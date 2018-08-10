@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -58,31 +58,31 @@ class HTMLLinkElement : public HTMLElement {
 
   // Custom, not in any spec.
   //
-  scoped_refptr<HTMLLinkElement> AsHTMLLinkElement() OVERRIDE { return this; }
+  scoped_refptr<HTMLLinkElement> AsHTMLLinkElement() override { return this; }
 
   // From Node.
-  void OnInsertedIntoDocument() OVERRIDE;
-  void OnRemovedFromDocument() OVERRIDE;
+  void OnInsertedIntoDocument() override;
+  void OnRemovedFromDocument() override;
 
   DEFINE_WRAPPABLE_TYPE(HTMLLinkElement);
 
  private:
-  ~HTMLLinkElement() OVERRIDE {}
+  ~HTMLLinkElement() override {}
 
   void ResolveAndSetAbsoluteURL();
 
   // From the spec: HTMLLinkElement.
   void Obtain();
 
-  void OnLoadingDone(const std::string& content,
-                     const loader::Origin& last_url_origin);
+  void OnLoadingDone(const loader::Origin& last_url_origin,
+                     scoped_ptr<std::string> content);
   void OnLoadingError(const std::string& error);
   void OnSplashscreenLoaded(Document* document, const std::string& content);
   void OnStylesheetLoaded(Document* document, const std::string& content);
   void ReleaseLoader();
 
   // Add this element's style sheet to the style sheet vector.
-  void CollectStyleSheet(cssom::StyleSheetVector* style_sheets) const OVERRIDE;
+  void CollectStyleSheet(cssom::StyleSheetVector* style_sheets) const override;
 
   // Thread checker ensures all calls to DOM element are made from the same
   // thread that it is created in.

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Google Inc. All rights reserved.
+ * Copyright (C) 2013 Google Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -28,7 +28,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Modifications Copyright 2017 Google Inc. All Rights Reserved.
+// Modifications Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ class SourceBufferList : public EventTarget {
   // Custom, not in any spec.
   //
   explicit SourceBufferList(EventQueue* event_queue);
-  ~SourceBufferList() OVERRIDE;
+  ~SourceBufferList() override;
 
   // Web API: SourceBuffer
   //
@@ -83,13 +83,12 @@ class SourceBufferList : public EventTarget {
   bool Contains(const scoped_refptr<SourceBuffer>& source_buffer) const;
   void Clear();
 
-  void TraceMembers(script::Tracer* tracer) OVERRIDE;
-
   DEFINE_WRAPPABLE_TYPE(SourceBufferList);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   // From EventTarget.
-  std::string GetDebugName() OVERRIDE { return "SourceBufferList"; }
+  std::string GetDebugName() override { return "SourceBufferList"; }
   void ScheduleEvent(base::Token event_name);
 
   // Use vector so we can reserve memory in ctor.

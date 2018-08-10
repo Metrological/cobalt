@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,13 +16,13 @@
 //
 // Defines functions for memory allocation, alignment, copying, and comparing.
 //
-// #### Porters
+// # Porters
 //
 // All of the "Unchecked" and "Free" functions must be implemented, but they
 // should not be called directly. The Starboard platform wraps them with extra
 // accounting under certain circumstances.
 //
-// #### Porters and Application Developers
+// # Porters and Application Developers
 //
 // Nobody should call the "Checked", "Unchecked" or "Free" functions directly
 // because that evades Starboard's memory tracking. In both port
@@ -53,6 +53,11 @@ extern "C" {
 // The bitwise OR of these flags should be passed to SbMemoryMap to indicate
 // how the mapped memory can be used.
 typedef enum SbMemoryMapFlags {
+// No flags set: Reserves virtual address space. SbMemoryProtect() can later
+// make it accessible.
+#if SB_API_VERSION >= 10
+  kSbMemoryMapProtectReserved = 0,
+#endif
   kSbMemoryMapProtectRead = 1 << 0,   // Mapped memory can be read.
   kSbMemoryMapProtectWrite = 1 << 1,  // Mapped memory can be written to.
 #if SB_CAN(MAP_EXECUTABLE_MEMORY)
@@ -189,13 +194,18 @@ SB_DEPRECATED_EXTERNAL(
     SB_EXPORT void SbMemoryFreeAligned(void* memory));
 
 #if SB_HAS(MMAP)
-// Allocates |size_bytes| worth of physical memory pages and maps them into an
-// available virtual region. This function returns |SB_MEMORY_MAP_FAILED| on
-// failure. |NULL| is a valid return value.
+// Allocates |size_bytes| worth of physical memory pages and maps them into
+// an available virtual region. This function returns |SB_MEMORY_MAP_FAILED|
+// on failure. |NULL| is a valid return value.
 //
 // |size_bytes|: The amount of physical memory pages to be allocated.
 // |flags|: The bitwise OR of the protection flags for the mapped memory
-//   as specified in |SbMemoryMapFlags|.
+//   as specified in |SbMemoryMapFlags|. Allocating executable memory is not
+//   allowed and will fail. If executable memory is needed, map non-executable
+//   memory first and then switch access to executable using SbMemoryProtect.
+//   When kSbMemoryMapProtectReserved is used, the address space will not be
+//   accessible and, if possible, the platform should not count it against any
+//   memory budget.
 // |name|: A value that appears in the debugger on some platforms. The value
 //   can be up to 32 bytes.
 SB_EXPORT void* SbMemoryMap(int64_t size_bytes, int flags, const char* name);
@@ -209,6 +219,14 @@ SB_EXPORT void* SbMemoryMap(int64_t size_bytes, int flags, const char* name);
 // |SbMemoryMap(0x1000)| returns |(void*)0xB000|,
 // |SbMemoryUnmap(0xA000, 0x2000)| should free both regions.
 SB_EXPORT bool SbMemoryUnmap(void* virtual_address, int64_t size_bytes);
+
+#if SB_API_VERSION >= 10
+// Change the protection of |size_bytes| of memory regions, starting from
+// |virtual_address|, to |flags|, returning |true| on success.
+SB_EXPORT bool SbMemoryProtect(void* virtual_address,
+                               int64_t size_bytes,
+                               int flags);
+#endif
 
 #if SB_CAN(MAP_EXECUTABLE_MEMORY)
 // Flushes any data in the given virtual address range that is cached locally in

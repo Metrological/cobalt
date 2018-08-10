@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -73,7 +73,7 @@ class UIEventWithKeyState : public UIEvent {
                                const scoped_refptr<Window>& view, int32 detail,
                                bool ctrl_key, bool alt_key, bool shift_key,
                                bool meta_key);
-  ~UIEventWithKeyState() OVERRIDE {}
+  ~UIEventWithKeyState() override {}
 
   bool ctrl_key_;
   bool shift_key_;

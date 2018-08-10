@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -60,6 +60,10 @@ DebugHub::DebugHub(
 DebugHub::~DebugHub() {
   base::LogMessageHandler::GetInstance()->RemoveCallback(
       log_message_handler_callback_id_);
+}
+
+void DebugHub::TraceMembers(script::Tracer* tracer) {
+  tracer->Trace(debugger_);
 }
 
 bool DebugHub::OnLogMessage(int severity, const char* file, int line,

@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@
 // copies, and also avoiding pushing data between CPU and GPU memory
 // unnecessarily.
 //
-// #### SbDecodeTargetFormat
+// # SbDecodeTargetFormat
 //
 // SbDecodeTargets support several different formats that can be used to decode
 // into and render from. Some formats may be easier to decode into, and others
@@ -34,7 +34,7 @@
 // an error. Each decoder provides a way to check if a given
 // SbDecodeTargetFormat is supported by that decoder.
 //
-// #### SbDecodeTargetGraphicsContextProvider
+// # SbDecodeTargetGraphicsContextProvider
 //
 // Some components may need to acquire SbDecodeTargets compatible with a certain
 // rendering context, which may need to be created on a particular thread. The
@@ -50,7 +50,7 @@
 // The primary usage is likely to be the the SbPlayer implementation on some
 // platforms.
 //
-// #### SbDecodeTarget Example
+// # SbDecodeTarget Example
 //
 // Let's say that we are an application and we would like to use the interface
 // defined in starboard/image.h to decode an imaginary "image/foo" image type.
@@ -134,6 +134,12 @@ typedef enum SbDecodeTargetFormat {
 
   // A decoder target format consisting of Y, U, and V planes, in that order.
   kSbDecodeTargetFormat3PlaneYUVI420,
+
+#if SB_API_VERSION >= 10
+  // A decoder target format consisting of 10bit Y, U, and V planes, in that
+  // order.
+  kSbDecodeTargetFormat3Plane10BitYUVI420,
+#endif
 
 #if SB_API_VERSION >= 6
   // A decoder target format consisting of a single plane with pixels layed out
@@ -334,6 +340,9 @@ static SB_C_INLINE int SbDecodeTargetNumberOfPlanesForFormat(
       return 1;
     case kSbDecodeTargetFormat2PlaneYUVNV12:
       return 2;
+#if SB_API_VERSION >= 10
+    case kSbDecodeTargetFormat3Plane10BitYUVI420:
+#endif
     case kSbDecodeTargetFormat3PlaneYUVI420:
       return 3;
     default:

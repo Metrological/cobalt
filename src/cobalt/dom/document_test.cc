@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ using script::testing::MockExceptionState;
 class DocumentTest : public ::testing::Test {
  protected:
   DocumentTest();
-  ~DocumentTest() OVERRIDE;
+  ~DocumentTest() override;
 
   scoped_ptr<css_parser::Parser> css_parser_;
   scoped_ptr<DomStatTracker> dom_stat_tracker_;
@@ -68,10 +68,10 @@ class DocumentTest : public ::testing::Test {
 DocumentTest::DocumentTest()
     : css_parser_(css_parser::Parser::Create()),
       dom_stat_tracker_(new DomStatTracker("DocumentTest")),
-      html_element_context_(NULL, css_parser_.get(), NULL, NULL, NULL, NULL,
+      html_element_context_(NULL, NULL, css_parser_.get(), NULL, NULL, NULL,
                             NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                            dom_stat_tracker_.get(), "",
-                            base::kApplicationStateStarted) {
+                            NULL, dom_stat_tracker_.get(), "",
+                            base::kApplicationStateStarted, NULL) {
   EXPECT_TRUE(GlobalStats::GetInstance()->CheckNoLeaks());
 }
 

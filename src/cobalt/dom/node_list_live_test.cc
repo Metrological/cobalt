@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,12 +28,12 @@ class NodeListLiveTest : public ::testing::Test {
   NodeListLiveTest()
       : dom_stat_tracker_("NodeListLiveTest"),
         html_element_context_(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                              NULL, NULL, NULL, NULL, NULL, NULL,
+                              NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                               &dom_stat_tracker_, "",
-                              base::kApplicationStateStarted),
+                              base::kApplicationStateStarted, NULL),
         document_(new Document(&html_element_context_)) {}
 
-  ~NodeListLiveTest() OVERRIDE {}
+  ~NodeListLiveTest() override {}
 
   DomStatTracker dom_stat_tracker_;
   HTMLElementContext html_element_context_;

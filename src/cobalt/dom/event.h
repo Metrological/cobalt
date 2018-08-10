@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ class Event : public script::Wrappable {
   Event(base::Token type, Bubbles bubbles, Cancelable cancelable);
   Event(base::Token type, const EventInit& init_dict);
 
-  ~Event() OVERRIDE;
+  ~Event() override;
 
   // Web API: Event
   //
@@ -126,9 +126,15 @@ class Event : public script::Wrappable {
     return immediate_propagation_stopped_;
   }
 
-  void TraceMembers(script::Tracer* tracer) OVERRIDE;
+  // https://developer.mozilla.org/en-US/docs/Web/API/Event/timeStamp
+  // An event's timeStamp should represent time since document creation, not
+  // real time. However, the old spec specifies time since 1970. To facilitate
+  // the transition to the new spec, use this function to calculate an event's
+  // time stamp.
+  static uint64 GetEventTime(SbTimeMonotonic monotonic_time);
 
   DEFINE_WRAPPABLE_TYPE(Event);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   void InitEventInternal(base::Token type, bool bubbles, bool cancelable);

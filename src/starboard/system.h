@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -55,8 +55,11 @@ typedef enum SbSystemPathId {
   // usable by Starboard applications.
   kSbSystemPathFontConfigurationDirectory,
 
-  // Path to the directory containing the root of the source tree.
+#if SB_API_VERSION < 10
+  // Deprecated and unused. Tests looking for static data should instead look
+  // in the 'test' subdirectory of kSbSystemPathContentDirectory.
   kSbSystemPathSourceDirectory,
+#endif  // SB_API_VERSION < 10
 
   // Path to a directory where temporary files can be written.
   kSbSystemPathTempDirectory,
@@ -104,8 +107,10 @@ typedef enum SbSystemPropertyId {
   // User-Agent, say.
   kSbSystemPropertyPlatformName,
 
+#if SB_API_VERSION < 10
   // A universally-unique ID for the current user.
   kSbSystemPropertyPlatformUuid,
+#endif  // SB_API_VERSION < 10
 
   // The Google Speech API key. The platform manufacturer is responsible
   // for registering a Google Speech API key for their products. In the API
@@ -170,10 +175,19 @@ typedef enum SbSystemCapabilityId {
   kSbSystemCapabilityReversedEnterAndBack,
 
   // Whether this system has the ability to report on GPU memory usage.
-  // If (and only if) a system has this capcability will
+  // If (and only if) a system has this capability will
   // SbSystemGetTotalGPUMemory() and SbSystemGetUsedGPUMemory() be valid to
   // call.
   kSbSystemCapabilityCanQueryGPUMemoryStats,
+
+#if SB_API_VERSION >= 10
+  // Whether this system sets the |timestamp| field of SbInputData. If the
+  // system does not set this field, then it will automatically be set; however,
+  // the relative time between input events likely will not be preserved, so
+  // time-related calculations (e.g. velocity for move events) will be
+  // incorrect.
+  kSbSystemCapabilitySetsInputTimestamp,
+#endif
 } SbSystemCapabilityId;
 
 // Enumeration of possible values for the |type| parameter passed to  the
@@ -528,6 +542,17 @@ SB_EXPORT void SbSystemSort(void* base,
 // is displayed while the application is loading. This function may be called
 // from any thread and must be idempotent.
 SB_EXPORT void SbSystemHideSplashScreen();
+
+#if SB_API_VERSION >= 10
+// Returns false if the platform doesn't need resume after suspend support. In
+// such case Cobalt will free up the resource it retains for resume after
+// suspend.
+// Note that if this function returns false, the Starboard implementation cannot
+// send kSbEventTypeResume to the event handler.
+// The return value of this function cannot change over the life time of the
+// application.
+bool SbSystemSupportsResume();
+#endif  // SB_API_VERSION >= 10
 
 #ifdef __cplusplus
 }  // extern "C"

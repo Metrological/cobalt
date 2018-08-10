@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,10 +15,12 @@
 #include "cobalt/dom/navigator.h"
 
 #include "base/optional.h"
+#include "cobalt/dom/captions/system_caption_settings.h"
 #include "cobalt/dom/dom_exception.h"
 #if defined(COBALT_MEDIA_SOURCE_2016)
 #include "cobalt/dom/eme/media_key_system_access.h"
 #endif  // defined(COBALT_MEDIA_SOURCE_2016)
+#include "cobalt/media_capture/media_devices.h"
 #include "cobalt/media_session/media_session_client.h"
 #include "cobalt/script/script_value_factory.h"
 #include "starboard/media.h"
@@ -29,13 +31,16 @@ namespace cobalt {
 namespace dom {
 
 Navigator::Navigator(const std::string& user_agent, const std::string& language,
-                     scoped_refptr<MediaSession> media_session,
-                     script::ScriptValueFactory* script_value_factory)
+    scoped_refptr<MediaSession> media_session,
+    scoped_refptr<cobalt::dom::captions::SystemCaptionSettings> captions,
+    script::ScriptValueFactory* script_value_factory)
     : user_agent_(user_agent),
       language_(language),
       mime_types_(new MimeTypeArray()),
       plugins_(new PluginArray()),
       media_session_(media_session),
+      media_devices_(new media_capture::MediaDevices(script_value_factory)),
+      system_caption_settings_(captions),
       script_value_factory_(script_value_factory) {}
 
 const std::string& Navigator::language() const { return language_; }
@@ -45,6 +50,10 @@ const std::string& Navigator::user_agent() const { return user_agent_; }
 bool Navigator::java_enabled() const { return false; }
 
 bool Navigator::cookie_enabled() const { return false; }
+
+scoped_refptr<media_capture::MediaDevices> Navigator::media_devices() {
+  return media_devices_;
+}
 
 const scoped_refptr<MimeTypeArray>& Navigator::mime_types() const {
   return mime_types_;
@@ -200,23 +209,22 @@ base::optional<eme::MediaKeySystemConfiguration> TryGetSupportedConfiguration(
 
 // See
 // https://www.w3.org/TR/encrypted-media/#dom-navigator-requestmediakeysystemaccess.
-scoped_ptr<Navigator::InterfacePromiseValue>
+script::Handle<Navigator::InterfacePromise>
 Navigator::RequestMediaKeySystemAccess(
     const std::string& key_system,
     const script::Sequence<eme::MediaKeySystemConfiguration>&
         supported_configurations) {
-  scoped_ptr<InterfacePromiseValue> promise =
+  script::Handle<InterfacePromise> promise =
       script_value_factory_
-          ->CreateInterfacePromise<scoped_refptr<eme::MediaKeySystemAccess> >();
-  InterfacePromiseValue::StrongReference promise_reference(*promise);
+          ->CreateInterfacePromise<scoped_refptr<eme::MediaKeySystemAccess>>();
 
   // 1. If |keySystem| is the empty string, return a promise rejected
   //    with a newly created TypeError.
   // 2. If |supportedConfigurations| is empty, return a promise rejected
   //    with a newly created TypeError.
   if (key_system.empty() || supported_configurations.empty()) {
-    promise_reference.value().Reject(script::kTypeError);
-    return promise.Pass();
+    promise->Reject(script::kTypeError);
+    return promise;
   }
 
   // 6.3. For each value in |supportedConfigurations|:
@@ -234,18 +242,30 @@ Navigator::RequestMediaKeySystemAccess(
                                         *maybe_supported_configuration,
                                         script_value_factory_));
       // 6.3.3.2. Resolve promise.
-      promise_reference.value().Resolve(media_key_system_access);
-      return promise.Pass();
+      promise->Resolve(media_key_system_access);
+      return promise;
     }
   }
 
   // 6.4. Reject promise with a NotSupportedError.
-  promise_reference.value().Reject(
-      new DOMException(DOMException::kNotSupportedErr));
-  return promise.Pass();
+  promise->Reject(new DOMException(DOMException::kNotSupportedErr));
+  return promise;
 }
 
 #endif  // defined(COBALT_MEDIA_SOURCE_2016)
+
+const scoped_refptr<cobalt::dom::captions::SystemCaptionSettings>&
+    Navigator::system_caption_settings() const {
+  return system_caption_settings_;
+}
+
+void Navigator::TraceMembers(script::Tracer* tracer) {
+  tracer->Trace(mime_types_);
+  tracer->Trace(plugins_);
+  tracer->Trace(media_session_);
+  tracer->Trace(media_devices_);
+  tracer->Trace(system_caption_settings_);
+}
 
 }  // namespace dom
 }  // namespace cobalt

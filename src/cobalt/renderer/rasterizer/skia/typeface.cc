@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,13 +23,13 @@ namespace renderer {
 namespace rasterizer {
 namespace skia {
 
-SkiaTypeface::SkiaTypeface(SkTypeface_Cobalt* typeface)
-    : typeface_(SkRef(typeface)) {
+SkiaTypeface::SkiaTypeface(const sk_sp<SkTypeface_Cobalt>& typeface)
+    : typeface_(typeface) {
   character_glyph_thread_checker_.DetachFromThread();
 }
 
-SkTypeface_Cobalt* SkiaTypeface::GetSkTypeface() const {
-  return SkRef(typeface_.get());
+const sk_sp<SkTypeface_Cobalt>& SkiaTypeface::GetSkTypeface() const {
+  return typeface_;
 }
 
 render_tree::TypefaceId SkiaTypeface::GetId() const {

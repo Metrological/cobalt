@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@
 #include "base/string_util.h"
 #include "base/time.h"
 #include "build/build_config.h"
+#include "cobalt/base/accessibility_caption_settings_changed_event.h"
 #include "cobalt/base/accessibility_settings_changed_event.h"
 #include "cobalt/base/application_event.h"
 #include "cobalt/base/cobalt_paths.h"
@@ -37,10 +38,15 @@
 #include "cobalt/base/init_cobalt.h"
 #include "cobalt/base/language.h"
 #include "cobalt/base/localized_strings.h"
+#include "cobalt/base/on_screen_keyboard_blurred_event.h"
+#include "cobalt/base/on_screen_keyboard_focused_event.h"
 #include "cobalt/base/on_screen_keyboard_hidden_event.h"
 #include "cobalt/base/on_screen_keyboard_shown_event.h"
 #include "cobalt/base/startup_timer.h"
 #include "cobalt/base/user_log.h"
+#if defined(COBALT_ENABLE_VERSION_COMPATIBILITY_VALIDATIONS)
+#include "cobalt/base/version_compatibility.h"
+#endif  // defined(COBALT_ENABLE_VERSION_COMPATIBILITY_VALIDATIONS)
 #include "cobalt/base/window_size_changed_event.h"
 #include "cobalt/browser/memory_settings/auto_mem_settings.h"
 #include "cobalt/browser/memory_tracker/tool.h"
@@ -51,7 +57,7 @@
 #include "cobalt/script/javascript_engine.h"
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
 #include "cobalt/storage/savegame_fake.h"
-#endif
+#endif  // defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
 #include "cobalt/system_window/input_event.h"
 #include "cobalt/trace_event/scoped_trace_to_file.h"
 #include "googleurl/src/gurl.h"
@@ -81,11 +87,11 @@ int GetRemoteDebuggingPort() {
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
   CommandLine* command_line = CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(switches::kRemoteDebuggingPort)) {
-    const std::string switchValue =
+    std::string switch_value =
         command_line->GetSwitchValueASCII(switches::kRemoteDebuggingPort);
-    if (!base::StringToInt(switchValue, &remote_debugging_port)) {
+    if (!base::StringToInt(switch_value, &remote_debugging_port)) {
       DLOG(ERROR) << "Invalid port specified for remote debug server: "
-                  << switchValue
+                  << switch_value
                   << ". Using default port: " << kDefaultRemoteDebuggingPort;
       remote_debugging_port = kDefaultRemoteDebuggingPort;
     }
@@ -279,17 +285,17 @@ base::optional<math::Size> GetRequestedViewportSize(CommandLine* command_line) {
     return base::nullopt;
   }
 
-  const std::string switchValue =
+  std::string switch_value =
       command_line->GetSwitchValueASCII(browser::switches::kViewport);
-  std::vector<ParsedIntValue> parsed_ints = ParseDimensions(switchValue);
+  std::vector<ParsedIntValue> parsed_ints = ParseDimensions(switch_value);
   if (parsed_ints.size() < 1) {
     return base::nullopt;
   }
 
   const ParsedIntValue parsed_width = parsed_ints[0];
   if (parsed_width.error_) {
-    DLOG(ERROR) << "Invalid value specified for viewport width: " << switchValue
-                << ". Using default viewport size.";
+    DLOG(ERROR) << "Invalid value specified for viewport width: "
+                << switch_value << ". Using default viewport size.";
     return base::nullopt;
   }
 
@@ -311,7 +317,7 @@ base::optional<math::Size> GetRequestedViewportSize(CommandLine* command_line) {
 
   if (parsed_height_ptr->error_) {
     DLOG(ERROR) << "Invalid value specified for viewport height: "
-                << switchValue << ". Using default viewport size.";
+                << switch_value << ". Using default viewport size.";
     return base::nullopt;
   }
 
@@ -360,10 +366,16 @@ void SetIntegerIfSwitchIsSet(const char* switch_name, int* output) {
 
 void ApplyCommandLineSettingsToRendererOptions(
     renderer::RendererModule::Options* options) {
-  SetIntegerIfSwitchIsSet(browser::switches::kSurfaceCacheSizeInBytes,
-                          &options->surface_cache_size_in_bytes);
   SetIntegerIfSwitchIsSet(browser::switches::kScratchSurfaceCacheSizeInBytes,
                           &options->scratch_surface_cache_size_in_bytes);
+#if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
+  auto command_line = CommandLine::ForCurrentProcess();
+  if (command_line->HasSwitch(browser::switches::kDisableRasterizerCaching) ||
+      command_line->HasSwitch(
+          browser::switches::kForceDeterministicRendering)) {
+    options->force_deterministic_rendering = true;
+  }
+#endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
 }
 
 struct NonTrivialStaticFields {
@@ -407,6 +419,7 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
     : message_loop_(MessageLoop::current()),
       quit_closure_(quit_closure),
       stats_update_timer_(true, true) {
+  DCHECK(!quit_closure_.is_null());
   // Check to see if a timed_trace has been set, indicating that we should
   // begin a timed trace upon startup.
   base::TimeDelta trace_duration = GetTimedTraceDuration();
@@ -486,7 +499,22 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
     options.storage_manager_options.savegame_options.factory =
         &storage::SavegameFake::Create;
   }
-#endif
+#endif  // defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
+
+#if defined(COBALT_ENABLE_VERSION_COMPATIBILITY_VALIDATIONS)
+  constexpr int kDefaultMinCompatibilityVersion = 1;
+  int minimum_version = kDefaultMinCompatibilityVersion;
+#if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
+  if (command_line->HasSwitch(browser::switches::kMinCompatibilityVersion)) {
+    std::string switch_value =
+        command_line->GetSwitchValueASCII(switches::kMinCompatibilityVersion);
+    if (!base::StringToInt(switch_value, &minimum_version)) {
+      DLOG(ERROR) << "Invalid min_compatibility_version provided.";
+    }
+  }
+#endif  // defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
+  base::VersionCompatibility::GetInstance()->SetMinimumVersion(minimum_version);
+#endif  // defined(COBALT_ENABLE_VERSION_COMPATIBILITY_VALIDATIONS)
 
   base::optional<std::string> partition_key;
   if (command_line->HasSwitch(browser::switches::kLocalStoragePartitionUrl)) {
@@ -621,12 +649,12 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
       base::Bind(&Application::OnDeepLinkEvent, base::Unretained(this));
   event_dispatcher_.AddEventCallback(base::DeepLinkEvent::TypeId(),
                                      deep_link_event_callback_);
-#if SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+#if SB_API_VERSION >= 8
   window_size_change_event_callback_ = base::Bind(
       &Application::OnWindowSizeChangedEvent, base::Unretained(this));
   event_dispatcher_.AddEventCallback(base::WindowSizeChangedEvent::TypeId(),
                                      window_size_change_event_callback_);
-#endif  // SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+#endif  // SB_API_VERSION >= 8
 #if SB_HAS(ON_SCREEN_KEYBOARD)
   on_screen_keyboard_shown_event_callback_ = base::Bind(
       &Application::OnOnScreenKeyboardShownEvent, base::Unretained(this));
@@ -637,7 +665,24 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   event_dispatcher_.AddEventCallback(
       base::OnScreenKeyboardHiddenEvent::TypeId(),
       on_screen_keyboard_hidden_event_callback_);
+  on_screen_keyboard_focused_event_callback_ = base::Bind(
+      &Application::OnOnScreenKeyboardFocusedEvent, base::Unretained(this));
+  event_dispatcher_.AddEventCallback(
+      base::OnScreenKeyboardFocusedEvent::TypeId(),
+      on_screen_keyboard_focused_event_callback_);
+  on_screen_keyboard_blurred_event_callback_ = base::Bind(
+      &Application::OnOnScreenKeyboardBlurredEvent, base::Unretained(this));
+  event_dispatcher_.AddEventCallback(
+      base::OnScreenKeyboardBlurredEvent::TypeId(),
+      on_screen_keyboard_blurred_event_callback_);
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+
+#if SB_HAS(CAPTIONS)
+  event_dispatcher_.AddEventCallback(
+      base::AccessibilityCaptionSettingsChangedEvent::TypeId(),
+      base::Bind(&Application::OnCaptionSettingsChangedEvent,
+                 base::Unretained(this)));
+#endif  // SB_HAS(CAPTIONS)
 #if defined(ENABLE_WEBDRIVER)
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
   bool create_webdriver_module =
@@ -650,8 +695,10 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
         GetWebDriverPort(), GetWebDriverListenIp(),
         base::Bind(&BrowserModule::CreateSessionDriver,
                    base::Unretained(browser_module_.get())),
+        // Webdriver spec requires us to encode to PNG format.
         base::Bind(&BrowserModule::RequestScreenshotToBuffer,
-                   base::Unretained(browser_module_.get())),
+                   base::Unretained(browser_module_.get()),
+                   loader::image::EncodedStaticImage::ImageFormat::kPNG),
         base::Bind(&BrowserModule::SetProxy,
                    base::Unretained(browser_module_.get())),
         base::Bind(&Application::Quit, base::Unretained(this))));
@@ -694,10 +741,10 @@ Application::~Application() {
                                         network_event_callback_);
   event_dispatcher_.RemoveEventCallback(base::DeepLinkEvent::TypeId(),
                                         deep_link_event_callback_);
-#if SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+#if SB_API_VERSION >= 8
   event_dispatcher_.RemoveEventCallback(base::WindowSizeChangedEvent::TypeId(),
                                         window_size_change_event_callback_);
-#endif  // SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+#endif  // SB_API_VERSION >= 8
   app_status_ = kShutDownAppStatus;
 }
 
@@ -723,11 +770,7 @@ void Application::Quit() {
     return;
   }
 
-  DCHECK(!quit_closure_.is_null());
-  if (!quit_closure_.is_null()) {
-    quit_closure_.Run();
-  }
-
+  quit_closure_.Run();
   app_status_ = kQuitAppStatus;
 }
 
@@ -751,7 +794,7 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
 #endif  // SB_API_VERSION >= 6
       OnApplicationEvent(starboard_event->type);
       break;
-#if SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+#if SB_API_VERSION >= 8
     case kSbEventTypeWindowSizeChanged:
       DispatchEventInternal(new base::WindowSizeChangedEvent(
           static_cast<SbEventWindowSizeChangedData*>(starboard_event->data)
@@ -759,13 +802,25 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
           static_cast<SbEventWindowSizeChangedData*>(starboard_event->data)
               ->size));
       break;
-#endif  // SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+#endif  // SB_API_VERSION >= 8
 #if SB_HAS(ON_SCREEN_KEYBOARD)
     case kSbEventTypeOnScreenKeyboardShown:
-      DispatchEventInternal(new base::OnScreenKeyboardShownEvent());
+      DCHECK(starboard_event->data);
+      DispatchEventInternal(new base::OnScreenKeyboardShownEvent(
+          *static_cast<int*>(starboard_event->data)));
       break;
     case kSbEventTypeOnScreenKeyboardHidden:
-      DispatchEventInternal(new base::OnScreenKeyboardHiddenEvent());
+      DispatchEventInternal(new base::OnScreenKeyboardHiddenEvent(
+          *static_cast<int*>(starboard_event->data)));
+      break;
+    case kSbEventTypeOnScreenKeyboardFocused:
+      DCHECK(starboard_event->data);
+      DispatchEventInternal(new base::OnScreenKeyboardFocusedEvent(
+          *static_cast<int*>(starboard_event->data)));
+      break;
+    case kSbEventTypeOnScreenKeyboardBlurred:
+      DispatchEventInternal(new base::OnScreenKeyboardBlurredEvent(
+          *static_cast<int*>(starboard_event->data)));
       break;
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
     case kSbEventTypeNetworkConnect:
@@ -784,7 +839,23 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
     case kSbEventTypeAccessiblitySettingsChanged:
       DispatchEventInternal(new base::AccessibilitySettingsChangedEvent());
       break;
-    default:
+#if SB_HAS(CAPTIONS)
+    case kSbEventTypeAccessibilityCaptionSettingsChanged:
+      DispatchEventInternal(
+          new base::AccessibilityCaptionSettingsChangedEvent());
+      break;
+#endif  // SB_HAS(CAPTIONS)
+    // Explicitly list unhandled cases here so that the compiler can give a
+    // warning when a value is added, but not handled.
+    case kSbEventTypeInput:
+#if SB_API_VERSION >= 6
+    case kSbEventTypePreload:
+#endif  // SB_API_VERSION >= 6
+    case kSbEventTypeScheduled:
+    case kSbEventTypeStart:
+    case kSbEventTypeStop:
+    case kSbEventTypeUser:
+    case kSbEventTypeVerticalSync:
       DLOG(WARNING) << "Unhandled Starboard event of type: "
                     << starboard_event->type;
   }
@@ -849,6 +920,9 @@ void Application::OnApplicationEvent(SbEventType event_type) {
       DLOG(INFO) << "Finished suspending.";
       break;
     case kSbEventTypeResume:
+#if SB_API_VERSION >= 10
+      DCHECK(SbSystemSupportsResume());
+#endif  // SB_API_VERSION >= 10
       DLOG(INFO) << "Got resume event.";
       app_status_ = kPausedAppStatus;
       ++app_resume_count_;
@@ -861,8 +935,29 @@ void Application::OnApplicationEvent(SbEventType event_type) {
       browser_module_->ReduceMemory();
       DLOG(INFO) << "Finished reducing memory usage.";
       break;
+    // All of the remaining event types are unexpected:
+    case kSbEventTypePreload:
 #endif  // SB_API_VERSION >= 6
-    default:
+#if SB_API_VERSION >= 8
+    case kSbEventTypeWindowSizeChanged:
+#endif
+#if SB_HAS(CAPTIONS)
+    case kSbEventTypeAccessibilityCaptionSettingsChanged:
+#endif  // SB_HAS(CAPTIONS)
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+    case kSbEventTypeOnScreenKeyboardBlurred:
+    case kSbEventTypeOnScreenKeyboardFocused:
+    case kSbEventTypeOnScreenKeyboardHidden:
+    case kSbEventTypeOnScreenKeyboardShown:
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+    case kSbEventTypeAccessiblitySettingsChanged:
+    case kSbEventTypeInput:
+    case kSbEventTypeLink:
+    case kSbEventTypeNetworkConnect:
+    case kSbEventTypeNetworkDisconnect:
+    case kSbEventTypeScheduled:
+    case kSbEventTypeUser:
+    case kSbEventTypeVerticalSync:
       NOTREACHED() << "Unexpected event type: " << event_type;
       return;
   }
@@ -878,30 +973,58 @@ void Application::OnDeepLinkEvent(const base::Event* event) {
   }
 }
 
-#if SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+#if SB_API_VERSION >= 8
 void Application::OnWindowSizeChangedEvent(const base::Event* event) {
   TRACE_EVENT0("cobalt::browser", "Application::OnWindowSizeChangedEvent()");
   const base::WindowSizeChangedEvent* window_size_change_event =
       base::polymorphic_downcast<const base::WindowSizeChangedEvent*>(event);
   browser_module_->OnWindowSizeChanged(window_size_change_event->size());
 }
-#endif  // SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+#endif  // SB_API_VERSION >= 8
 
 #if SB_HAS(ON_SCREEN_KEYBOARD)
 void Application::OnOnScreenKeyboardShownEvent(const base::Event* event) {
   TRACE_EVENT0("cobalt::browser",
                "Application::OnOnScreenKeyboardShownEvent()");
-  UNREFERENCED_PARAMETER(event);
-  browser_module_->OnOnScreenKeyboardShown();
+  browser_module_->OnOnScreenKeyboardShown(
+      base::polymorphic_downcast<const base::OnScreenKeyboardShownEvent*>(
+          event));
 }
 
 void Application::OnOnScreenKeyboardHiddenEvent(const base::Event* event) {
   TRACE_EVENT0("cobalt::browser",
                "Application::OnOnScreenKeyboardHiddenEvent()");
-  UNREFERENCED_PARAMETER(event);
-  browser_module_->OnOnScreenKeyboardHidden();
+  browser_module_->OnOnScreenKeyboardHidden(
+      base::polymorphic_downcast<const base::OnScreenKeyboardHiddenEvent*>(
+          event));
+}
+
+void Application::OnOnScreenKeyboardFocusedEvent(const base::Event* event) {
+  TRACE_EVENT0("cobalt::browser",
+               "Application::OnOnScreenKeyboardFocusedEvent()");
+  browser_module_->OnOnScreenKeyboardFocused(
+      base::polymorphic_downcast<const base::OnScreenKeyboardFocusedEvent*>(
+          event));
+}
+
+void Application::OnOnScreenKeyboardBlurredEvent(const base::Event* event) {
+  TRACE_EVENT0("cobalt::browser",
+               "Application::OnOnScreenKeyboardBlurredEvent()");
+  browser_module_->OnOnScreenKeyboardBlurred(
+      base::polymorphic_downcast<const base::OnScreenKeyboardBlurredEvent*>(
+          event));
 }
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+
+#if SB_HAS(CAPTIONS)
+void Application::OnCaptionSettingsChangedEvent(const base::Event* event) {
+  TRACE_EVENT0("cobalt::browser",
+               "Application::OnCaptionSettingsChangedEvent()");
+  browser_module_->OnCaptionSettingsChanged(
+      base::polymorphic_downcast<
+          const base::AccessibilityCaptionSettingsChangedEvent*>(event));
+}
+#endif  // SB_HAS(CAPTIONS)
 
 void Application::WebModuleRecreated() {
   TRACE_EVENT0("cobalt::browser", "Application::WebModuleRecreated()");
@@ -917,10 +1040,6 @@ Application::CValStats::CValStats()
                       "Total free application CPU memory remaining."),
       used_cpu_memory("Memory.CPU.Used", 0,
                       "Total CPU memory allocated via the app's allocators."),
-      js_reserved_memory("Memory.JS", 0,
-                         "The total memory that is reserved by the engine, "
-                         "including the part that is actually occupied by "
-                         "JS objects, and the part that is not yet."),
       app_start_time("Time.Cobalt.Start",
                      base::StartupTimer::StartTime().ToInternalValue(),
                      "Start time of the application in microseconds."),
@@ -1002,8 +1121,7 @@ void Application::UpdatePeriodicStats() {
     *c_val_stats_.used_gpu_memory = *used_gpu_memory;
   }
 
-  c_val_stats_.js_reserved_memory =
-      script::JavaScriptEngine::UpdateMemoryStatsAndReturnReserved();
+  browser_module_->UpdateJavaScriptHeapStatistics();
 
   browser_module_->CheckMemory(used_cpu_memory, used_gpu_memory);
 }

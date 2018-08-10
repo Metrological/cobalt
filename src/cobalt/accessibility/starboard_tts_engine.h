@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,9 +26,9 @@ namespace accessibility {
 // Implementation of TTSEngine using the Starboard Speech Synthesis API.
 class StarboardTTSEngine : public TTSEngine {
  public:
-  void SpeakNow(const std::string& text) OVERRIDE;
-  void Speak(const std::string& text) OVERRIDE;
-  ~StarboardTTSEngine() OVERRIDE {}
+  void SpeakNow(const std::string& text) override;
+  void Speak(const std::string& text) override;
+  ~StarboardTTSEngine() override {}
 };
 }  // namespace accessibility
 }  // namespace cobalt

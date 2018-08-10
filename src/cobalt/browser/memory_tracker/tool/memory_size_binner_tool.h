@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,8 +35,8 @@ class MemorySizeBinnerTool : public AbstractTool {
   // memory_scope_name represents the memory scope that is to be investigated.
   explicit MemorySizeBinnerTool(const std::string& memory_scope_name);
 
-  virtual void Run(Params* params) OVERRIDE;
-  virtual std::string tool_name() const OVERRIDE;
+  void Run(Params* params) override;
+  std::string tool_name() const override;
 
  private:
   std::string memory_scope_name_;

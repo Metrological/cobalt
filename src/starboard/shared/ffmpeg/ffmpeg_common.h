@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
-#include <libavresample/avresample.h>
 #include <libavutil/avutil.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
@@ -27,22 +26,33 @@ extern "C" {
 
 #include "starboard/shared/internal_only.h"
 
-namespace starboard {
-namespace shared {
-namespace ffmpeg {
+#if !defined(LIBAVUTIL_VERSION_MAJOR)
+#error "LIBAVUTIL_VERSION_MAJOR not defined"
+#endif  // !defined(LIBAVUTIL_VERSION_MAJOR)
 
-void InitializeFfmpeg();
+#if LIBAVUTIL_VERSION_MAJOR > 52
+#define PIX_FMT_NONE AV_PIX_FMT_NONE
+#define PIX_FMT_YUV420P AV_PIX_FMT_YUV420P
+#define PIX_FMT_YUVJ420P AV_PIX_FMT_YUVJ420P
+#endif  // LIBAVUTIL_VERSION_MAJOR > 52
 
-// In Ffmpeg, the calls to avcodec_open2() and avcodec_close() are not
-// synchronized internally so it is the responsibility of its user to ensure
-// that these calls don't overlap.  The following functions acquires a lock
-// internally before calling avcodec_open2() and avcodec_close() to enforce
-// this.
-int OpenCodec(AVCodecContext* codec_context, const AVCodec* codec);
-void CloseCodec(AVCodecContext* codec_context);
+#if !defined(LIBAVCODEC_VERSION_MAJOR)
+#error "LIBAVCODEC_VERSION_MAJOR not defined"
+#endif  // !defined(LIBAVCODEC_VERSION_MAJOR)
 
-}  // namespace ffmpeg
-}  // namespace shared
-}  // namespace starboard
+#if !defined(LIBAVCODEC_VERSION_MICRO)
+#error "LIBAVCODEC_VERSION_MICRO not defined"
+#endif  // !defined(LIBAVCODEC_VERSION_MICRO)
+
+#if LIBAVCODEC_VERSION_MICRO >= 100
+#define LIBAVCODEC_LIBRARY_IS_FFMPEG 1
+#else
+#define LIBAVCODEC_LIBRARY_IS_FFMPEG 0
+#endif  // LIBAVCODEC_VERSION_MICRO >= 100
+
+// Use the major version number of libavcodec plus a single digit distinguishing
+// between ffmpeg and libav as the template parameter for the
+// explicit specialization of the audio and video decoder classes.
+#define FFMPEG ((LIBAVCODEC_VERSION_MAJOR * 10) + LIBAVCODEC_LIBRARY_IS_FFMPEG)
 
 #endif  // STARBOARD_SHARED_FFMPEG_FFMPEG_COMMON_H_

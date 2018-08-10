@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -173,7 +173,7 @@ void DrawRectRadialGradient::InitializeLookupTexture(
     while (texel > position_next) {
       position_prev = position_next;
       color_prev = color_next;
-      if (color_index < color_stops.size()) {
+      if (color_index + 1 < color_stops.size()) {
         // Advance to the next color stop.
         ++color_index;
         position_next = color_stops[color_index].position * kStopToTexel;

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,16 +39,16 @@ class PolymorphicEquatable {
 // PolymorphicEquatable type is unknown.  For any class T that is intended to be
 // a descendant of PolymorphicEquatable, it should call this macro in the public
 // section of its class declaration.
-#define DEFINE_POLYMORPHIC_EQUATABLE_TYPE(DerivedClassType)                   \
-  bool Equals(const PolymorphicEquatable& other) const OVERRIDE {             \
-    return base::GetTypeId<DerivedClassType>() == other.GetTypeId() &&        \
-           *this ==                                                           \
-           *base::polymorphic_downcast<const DerivedClassType*>(&other);      \
-  }                                                                           \
-                                                                              \
-  base::TypeId GetTypeId() const OVERRIDE {                                   \
-    return base::GetTypeId<DerivedClassType>();                               \
-  }                                                                           \
+#define DEFINE_POLYMORPHIC_EQUATABLE_TYPE(DerivedClassType)                  \
+  bool Equals(const PolymorphicEquatable& other) const override {            \
+    return base::GetTypeId<DerivedClassType>() == other.GetTypeId() &&       \
+           *this ==                                                          \
+               *base::polymorphic_downcast<const DerivedClassType*>(&other); \
+  }                                                                          \
+                                                                             \
+  base::TypeId GetTypeId() const override {                                  \
+    return base::GetTypeId<DerivedClassType>();                              \
+  }
 
 }  // namespace base
 

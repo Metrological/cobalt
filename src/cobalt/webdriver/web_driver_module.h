@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include "base/file_path.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/threading/thread_checker.h"
+#include "cobalt/dom/window.h"
 #include "cobalt/webdriver/dispatcher.h"
 #include "cobalt/webdriver/protocol/button.h"
 #include "cobalt/webdriver/protocol/capabilities.h"
@@ -43,7 +44,8 @@ class WebDriverModule {
  public:
   typedef base::Callback<scoped_ptr<SessionDriver>(const protocol::SessionId&)>
       CreateSessionDriverCB;
-  typedef base::Callback<void(scoped_array<uint8>, size_t)>
+  typedef base::Callback<void(
+      const scoped_refptr<loader::image::EncodedStaticImage>& image_data)>
       ScreenshotCompleteCallback;
   typedef base::Callback<void(const ScreenshotCompleteCallback&)>
       GetScreenshotFunction;

@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -491,9 +491,6 @@ Token Scanner::Scan(TokenValue* token_value, YYLTYPE* token_location) {
         return ScanFromVerticalBar();
       case kTildeCharacter:
         return ScanFromTilde();
-      default:
-        NOTREACHED();
-        break;
     }
   }
 }
@@ -2274,6 +2271,10 @@ bool Scanner::DetectPropertyValueToken(const TrivialStringPiece& name,
       }
       if (IsEqualToCssIdentifier(name.begin, cssom::kTransparentKeywordName)) {
         *property_value_token = kTransparentToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kRectangularKeywordName)) {
+        *property_value_token = kRectangularToken;
         return true;
       }
       return false;

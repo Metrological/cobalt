@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
       ],
       'sources': [
         'external_rasterizer.cc',
-        'renderer_module_default_options_lib.cc'
+        'get_default_rasterizer_for_platform_lib.cc'
       ],
        'dependencies': [
          '<(DEPTH)/base/base.gyp:base',
@@ -36,6 +36,11 @@
       'conditions': [
         ['enable_map_to_mesh == 1', {
           'defines' : ['ENABLE_MAP_TO_MESH'],
+        }],
+        ['gl_type == "angle"', {
+          'dependencies': [
+             '<(DEPTH)/third_party/angle/angle.gyp:libANGLE',
+           ],
         }],
       ],
     }

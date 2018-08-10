@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -254,8 +254,7 @@ void ImageDecoder::DecodeChunkInternal(const uint8* input_bytes, size_t size) {
     } break;
     case kNotApplicable:
     case kUnsupportedImageFormat:
-    case kSuspended:
-    default: {
+    case kSuspended: {
       // Do not attempt to continue processing data.
       DCHECK(!decoder_);
     } break;
@@ -276,8 +275,8 @@ const char* GetMimeTypeFromImageType(ImageDecoder::ImageType image_type) {
       return "image/webp";
     case ImageDecoder::kImageTypeInvalid:
       return NULL;
-    default: { NOTREACHED(); }
   }
+  NOTREACHED();
   return NULL;
 }
 

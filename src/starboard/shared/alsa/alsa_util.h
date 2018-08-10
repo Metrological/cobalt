@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ int AlsaWriteFrames(void* playback_handle,
                     int frames_to_write);
 int AlsaGetBufferedFrames(void* playback_handle);
 void AlsaCloseDevice(void* playback_handle);
-void AlsaDrain(void* playback_handle);
+bool AlsaDrain(void* playback_handle);
 
 }  // namespace alsa
 }  // namespace shared

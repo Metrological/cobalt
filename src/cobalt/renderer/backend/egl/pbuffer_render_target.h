@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,17 +31,17 @@ class PBufferRenderTargetEGL : public RenderTargetEGL {
   PBufferRenderTargetEGL(
       EGLDisplay display, EGLConfig config, const math::Size& dimensions);
 
-  const math::Size& GetSize() const OVERRIDE;
+  const math::Size& GetSize() const override;
 
-  EGLSurface GetSurface() const OVERRIDE;
+  EGLSurface GetSurface() const override;
 
   EGLDisplay display() const { return display_; }
   EGLConfig config() const { return config_; }
 
-  bool CreationError() OVERRIDE { return surface_ == EGL_NO_SURFACE; }
+  bool CreationError() override { return surface_ == EGL_NO_SURFACE; }
 
  private:
-  ~PBufferRenderTargetEGL() OVERRIDE;
+  ~PBufferRenderTargetEGL() override;
 
   EGLDisplay display_;
   EGLConfig config_;

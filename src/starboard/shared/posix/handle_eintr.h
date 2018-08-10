@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
 
 #define HANDLE_EINTR(x)                                 \
   ({                                                    \
-    typeof(x) __eintr_result__;                         \
+    decltype(x) __eintr_result__;                       \
     do {                                                \
       __eintr_result__ = (x);                           \
     } while (__eintr_result__ == -1 && errno == EINTR); \

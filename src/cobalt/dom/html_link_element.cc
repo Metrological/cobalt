@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -173,22 +173,27 @@ void HTMLLinkElement::Obtain() {
   }
 
   request_mode_ = GetRequestMode(GetAttribute("crossOrigin"));
-  loader_ = make_scoped_ptr(new loader::Loader(
-      base::Bind(
-          &loader::FetcherFactory::CreateSecureFetcher,
-          base::Unretained(document->html_element_context()->fetcher_factory()),
-          absolute_url_, csp_callback, request_mode_,
-          document->location() ? document->location()->OriginObject()
-                               : loader::Origin()),
-      scoped_ptr<loader::Decoder>(new loader::TextDecoder(
-          base::Bind(&HTMLLinkElement::OnLoadingDone, base::Unretained(this)))),
-      base::Bind(&HTMLLinkElement::OnLoadingError, base::Unretained(this))));
+
+  DCHECK(!loader_);
+  loader::Origin origin = document->location()
+                              ? document->location()->GetOriginAsObject()
+                              : loader::Origin();
+
+  loader_ = html_element_context()->loader_factory()
+                ->CreateLinkLoader(
+                    absolute_url_, origin, csp_callback, request_mode_,
+                    base::Bind(&HTMLLinkElement::OnLoadingDone,
+                               base::Unretained(this)),
+                    base::Bind(&HTMLLinkElement::OnLoadingError,
+                               base::Unretained(this)))
+                .Pass();
 }
 
-void HTMLLinkElement::OnLoadingDone(const std::string& content,
-                                    const loader::Origin& last_url_origin) {
-  TRACK_MEMORY_SCOPE("DOM");
+void HTMLLinkElement::OnLoadingDone(const loader::Origin& last_url_origin,
+                                    scoped_ptr<std::string> content) {
   DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK(content);
+  TRACK_MEMORY_SCOPE("DOM");
   TRACE_EVENT0("cobalt::dom", "HTMLLinkElement::OnLoadingDone()");
 
   // Get resource's final destination url from loader.
@@ -196,9 +201,9 @@ void HTMLLinkElement::OnLoadingDone(const std::string& content,
 
   Document* document = node_document();
   if (rel() == "stylesheet") {
-    OnStylesheetLoaded(document, content);
+    OnStylesheetLoaded(document, *content);
   } else if (rel() == "splashscreen") {
-    OnSplashscreenLoaded(document, content);
+    OnSplashscreenLoaded(document, *content);
   } else {
     NOTIMPLEMENTED();
     return;
@@ -265,7 +270,7 @@ void HTMLLinkElement::OnStylesheetLoaded(Document* document,
   // origin as the document, set origin-clean flag to true.
   if (request_mode_ != loader::kNoCORSMode || !loader_ ||
       document->url_as_gurl().SchemeIsFile() ||
-      (fetched_last_url_origin_ == document->location()->OriginObject())) {
+      (fetched_last_url_origin_ == document->location()->GetOriginAsObject())) {
     css_style_sheet->SetOriginClean(true);
   }
   style_sheet_ = css_style_sheet;

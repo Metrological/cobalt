@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,8 +38,8 @@ class LogWriterTool : public AbstractTool {
   virtual ~LogWriterTool();
 
   // Interface AbstrctMemoryTrackerTool
-  virtual std::string tool_name() const OVERRIDE;
-  virtual void Run(Params* params) OVERRIDE;
+  std::string tool_name() const override;
+  void Run(Params* params) override;
 
   void OnMemoryAllocation(const void* memory_block, size_t size);
   void OnMemoryDeallocation(const void* memory_block);

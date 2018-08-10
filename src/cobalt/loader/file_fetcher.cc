@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -70,11 +70,11 @@ void FileFetcher::BuildSearchPath(const FilePath& extra_search_dir) {
   PathService::Get(paths::DIR_COBALT_WEB_ROOT, &search_dir);
   search_path_.push_back(search_dir);
 
-// We also search DIR_SOURCE_ROOT in non-release builds.
-#if defined(ENABLE_DIR_SOURCE_ROOT_ACCESS)
-  PathService::Get(base::DIR_SOURCE_ROOT, &search_dir);
+// We also search DIR_TEST_DATA in non-release builds.
+#if defined(ENABLE_TEST_DATA)
+  PathService::Get(base::DIR_TEST_DATA, &search_dir);
   search_path_.push_back(search_dir);
-#endif  // ENABLE_DIR_SOURCE_ROOT_ACCESS
+#endif  // ENABLE_TEST_DATA
 }
 
 void FileFetcher::TryFileOpen() {
@@ -150,7 +150,6 @@ const char* FileFetcher::PlatformFileErrorToString(
     case base::PLATFORM_FILE_ERROR_INVALID_OPERATION:
     case base::PLATFORM_FILE_ERROR_NOT_EMPTY:
     case base::PLATFORM_FILE_ERROR_MAX:
-    default:
       break;
   }
   return kPlatformFileErrorNotDefined;

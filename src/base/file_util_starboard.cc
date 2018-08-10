@@ -326,6 +326,15 @@ bool CreateNewTempDirectory(const FilePath::StringType &prefix,
 
 bool CreateDirectory(const FilePath &full_path) {
   base::ThreadRestrictions::AssertIOAllowed();
+
+  // Fast-path: can the full path be resolved from the full path?
+  if (DirectoryExists(full_path) ||
+      SbDirectoryCreate(full_path.value().c_str())) {
+    return true;
+  }
+
+  // Slow-path: iterate through the paths and resolve from the root
+  // to the leaf.
   std::vector<FilePath> subpaths;
 
   // Collect a list of all parent directories.
@@ -338,14 +347,33 @@ bool CreateDirectory(const FilePath &full_path) {
     last_path = path;
   }
 
+  // Root path is now at index 0.
+  std::reverse(subpaths.begin(), subpaths.end());
+
+  int existing_directory_index = -1;
+
+  // Some platforms disallow access to some parent folders in the hierarchy.
+  for (size_t i = 0; i < subpaths.size(); ++i) {
+    const auto& path = subpaths[i];
+    if (DirectoryExists(path)) {
+      existing_directory_index = static_cast<int>(i);
+    }
+  }
+
+  // No sub-directories existed, including the root.
+  if (existing_directory_index < 0) {
+    return false;
+  }
+
   // Iterate through the parents and create the missing ones.
-  for (std::vector<FilePath>::reverse_iterator i = subpaths.rbegin();
-       i != subpaths.rend(); ++i) {
-    if (DirectoryExists(*i)) {
+  for (size_t i = static_cast<size_t>(existing_directory_index);
+       i < subpaths.size(); ++i) {
+    const auto& path = subpaths[i];
+    if (DirectoryExists(path)) {
       continue;
     }
 
-    if (!SbDirectoryCreate(i->value().c_str())) {
+    if (!SbDirectoryCreate(path.value().c_str())) {
       return false;
     }
   }

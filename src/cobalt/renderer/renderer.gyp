@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@
         'pipeline.h',
         'renderer_module.cc',
         'renderer_module.h',
+        'renderer_module_default_options.cc',
         'smoothed_value.cc',
         'smoothed_value.h',
         'submission.h',
@@ -98,24 +99,24 @@
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
         'render_tree_pixel_tester',
+        'renderer_copy_test_data',
       ],
       'conditions': [
         ['enable_map_to_mesh == 1', {
           'defines' : ['ENABLE_MAP_TO_MESH'],
         }],
       ],
-      'actions': [
-        {
-          'action_name': 'renderer_copy_test_data',
-          'variables': {
-            'input_files': [
-              '<(DEPTH)/cobalt/renderer/rasterizer/testdata',
-            ],
-            'output_dir': 'cobalt/renderer/rasterizer',
-          },
-          'includes': ['../build/copy_test_data.gypi'],
-        }
-      ],
+    },
+    {
+      'target_name': 'renderer_copy_test_data',
+      'type': 'none',
+      'variables': {
+        'content_test_input_files': [
+          '<(DEPTH)/cobalt/renderer/rasterizer/testdata',
+        ],
+        'content_test_output_subdir': 'cobalt/renderer/rasterizer',
+      },
+      'includes': ['<(DEPTH)/starboard/build/copy_test_data.gypi'],
     },
     {
       'target_name': 'renderer_test_deploy',
@@ -126,7 +127,7 @@
       'variables': {
         'executable_name': 'renderer_test',
       },
-      'includes': [ '../../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
 
     {
@@ -152,7 +153,7 @@
       'variables': {
         'executable_name': 'renderer_benchmark',
       },
-      'includes': [ '../../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ],
 }

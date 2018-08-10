@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,11 +28,11 @@ class RenderTargetStub : public RenderTarget {
  public:
   explicit RenderTargetStub(const math::Size& size) : size_(size) {}
 
-  const math::Size& GetSize() const OVERRIDE { return size_; }
+  const math::Size& GetSize() const override { return size_; }
 
-  intptr_t GetPlatformHandle() const OVERRIDE { return 0; }
+  intptr_t GetPlatformHandle() const override { return 0; }
 
-  bool CreationError() OVERRIDE { return false; }
+  bool CreationError() override { return false; }
 
  private:
   ~RenderTargetStub() {}

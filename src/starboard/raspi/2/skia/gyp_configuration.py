@@ -1,4 +1,4 @@
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2017 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,21 +13,11 @@
 # limitations under the License.
 """Starboard Raspberry Pi 2 platform configuration for gyp_cobalt."""
 
-import logging
-import os
-import sys
+import importlib
 
-_SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
-sys.path.insert(0, os.path.join(_SCRIPT_DIR, '../..'))
-
-# pylint: disable=g-import-not-at-top
-from shared.gyp_configuration import RaspiPlatformConfig
-
+# pylint: disable=invalid-name
+Raspi2PlatformConfig = importlib.import_module(
+    'starboard.raspi.2.gyp_configuration').Raspi2PlatformConfig
 
 def CreatePlatformConfig():
-  try:
-    return RaspiPlatformConfig('raspi-2-skia')
-  except RuntimeError as e:
-    logging.critical(e)
-    return None
-
+  return Raspi2PlatformConfig('raspi-2-skia')

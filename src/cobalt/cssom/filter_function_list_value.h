@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,16 +33,16 @@ class FilterFunctionListValue : public ScopedListValue<FilterFunction> {
       ScopedListValue<FilterFunction>::Builder value)
       : ScopedListValue<FilterFunction>(value.Pass()) {}
 
-  void Accept(PropertyValueVisitor* visitor) OVERRIDE {
+  void Accept(PropertyValueVisitor* visitor) override {
     visitor->VisitFilterFunctionList(this);
   }
 
-  std::string ToString() const OVERRIDE;
+  std::string ToString() const override;
 
   DEFINE_POLYMORPHIC_EQUATABLE_TYPE(FilterFunctionListValue);
 
  private:
-  virtual ~FilterFunctionListValue() OVERRIDE {}
+  ~FilterFunctionListValue() override {}
 };
 
 }  // namespace cssom

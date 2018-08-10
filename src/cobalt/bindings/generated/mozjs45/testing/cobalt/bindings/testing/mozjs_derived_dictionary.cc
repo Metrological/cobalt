@@ -1,18 +1,16 @@
-/*
- * Copyright 2017 Google Inc. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2018 The Cobalt Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // clang-format off
 
@@ -60,8 +58,14 @@ void FromJSValue(JSContext* context, JS::HandleValue value,
                  int conversion_flags, ExceptionState* exception_state,
                  DerivedDictionary* out_dictionary) {
   DCHECK_EQ(0, conversion_flags) << "Unexpected conversion flags.";
+  MozjsExceptionState* mozjs_exception_state = base::polymorphic_downcast<MozjsExceptionState*>(exception_state);
+  DCHECK(!mozjs_exception_state->is_exception_set());
+
   FromJSValue(context, value, conversion_flags, exception_state,
       static_cast<cobalt::bindings::testing::TestDictionary*>(out_dictionary));
+  if (mozjs_exception_state->is_exception_set()) {
+    return;
+  }
   // https://heycam.github.io/webidl/#es-dictionary
 
   if (value.isUndefined() || value.isNull()) {

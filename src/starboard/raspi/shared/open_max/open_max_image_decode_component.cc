@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -85,7 +85,7 @@ SbDecodeTarget OpenMaxImageDecodeComponent::Decode(
     if (write_size > 0) {
       write_size =
           WriteData(reinterpret_cast<const uint8_t*>(data) + data_size_written,
-                    write_size, kDataEOS, SbTimeGetNow());
+                    write_size, kDataEOS, SbTimeGetMonotonicNow());
       SB_DCHECK(write_size >= 0);
       data_size_written += write_size;
     }

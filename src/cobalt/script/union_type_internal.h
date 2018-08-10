@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@
 #include "base/optional.h"
 #include "cobalt/base/enable_if.h"
 #include "cobalt/base/type_id.h"
+#include "cobalt/script/array_buffer_view.h"
 #include "cobalt/script/sequence.h"
 
 namespace cobalt {
@@ -41,6 +42,10 @@ struct UnionTypeDefaultTraits {
   static const bool is_numeric_type = false;
   static const bool is_sequence_type = false;
   static const bool is_string_type = false;
+  // e.g. ScriptValue<Uint8Array>* needs to be casted to
+  // ScriptValue<ArrayBufferView>* manually.
+  static const bool is_array_buffer_view_type = false;
+  static const bool is_script_value_type = false;
 };
 
 // Default traits for types with no specialization
@@ -55,6 +60,18 @@ struct UnionTypeTraits<scoped_refptr<T> >
     : UnionTypeDefaultTraits<scoped_refptr<T> > {
   static base::TypeId GetTypeID() { return base::GetTypeId<T>(); }
   static const bool is_interface_type = true;
+};
+
+template <>
+struct UnionTypeTraits<Handle<ArrayBufferView>>
+    : UnionTypeDefaultTraits<Handle<ArrayBufferView>> {
+  static const bool is_array_buffer_view_type = true;
+};
+
+// script::Handle is always used to hold ScriptValues.
+template <typename T>
+struct UnionTypeTraits<Handle<T>> : UnionTypeDefaultTraits<Handle<T>> {
+  static const bool is_script_value_type = true;
 };
 
 template <>

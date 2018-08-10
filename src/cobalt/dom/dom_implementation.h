@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ class DOMImplementation : public script::Wrappable {
   explicit DOMImplementation(script::EnvironmentSettings* settings);
   explicit DOMImplementation(HTMLElementContext* html_element_context)
       : html_element_context_(html_element_context) {}
-  ~DOMImplementation() OVERRIDE {}
+  ~DOMImplementation() override {}
 
   // Web API: DOMImplementation
   scoped_refptr<XMLDocument> CreateDocument(

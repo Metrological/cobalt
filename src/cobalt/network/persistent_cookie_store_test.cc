@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,8 +28,6 @@
 #include "cobalt/storage/storage_manager.h"
 #include "googleurl/src/gurl.h"
 #include "net/cookies/canonical_cookie.h"
-#include "sql/connection.h"
-#include "sql/statement.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace cobalt {
@@ -97,30 +95,9 @@ class CookieLoader : public CallbackWaiter {
   DISALLOW_COPY_AND_ASSIGN(CookieLoader);
 };
 
-class CookieVerifier : public CallbackWaiter {
- public:
-  explicit CookieVerifier(net::CanonicalCookie* test_cookie)
-      : test_cookie(test_cookie) {}
-  void SqlSelect(storage::SqlContext* sql_context) {
-    std::string statement =
-        base::StringPrintf("SELECT url FROM CookieTable WHERE url = \"%s\";",
-                           test_cookie->Source().c_str());
-    sql::Statement get_cookie(
-        sql_context->sql_connection()->GetUniqueStatement(statement.c_str()));
-    EXPECT_EQ(true, get_cookie.Step());
-    EXPECT_EQ(test_cookie->Source(), get_cookie.ColumnString(0));
-    Signal();
-  }
-
-  net::CanonicalCookie* test_cookie;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(CookieVerifier);
-};
-
 class DummyUpgradeHandler : public storage::StorageManager::UpgradeHandler {
   void OnUpgrade(storage::StorageManager* /*storage*/, const char* /*data*/,
-                 int /*size*/) OVERRIDE {}
+                 int /*size*/) override {}
 };
 
 std::string GetSavePath() {
@@ -155,7 +132,7 @@ class PersistentCookieStoreTest : public ::testing::Test {
 };
 }  // namespace
 
-TEST_F(PersistentCookieStoreTest, LoadGetsCookies) {
+TEST_F(PersistentCookieStoreTest, LoadGetsAddedCookies) {
   // Put a cookie into the database. Flush, then reload and make sure
   // the Loaded callback contains it.
   scoped_ptr<net::CanonicalCookie> test_cookie(CreateTestCookie());
@@ -175,22 +152,5 @@ TEST_F(PersistentCookieStoreTest, LoadGetsCookies) {
   ASSERT_EQ(1, loader.cookies.size());
   EXPECT_TRUE(test_cookie->IsEquivalent(*loader.cookies[0]));
 }
-
-TEST_F(PersistentCookieStoreTest, AddCookie) {
-  CookieLoader loader;
-  cookie_store_->Load(
-      base::Bind(&CookieLoader::OnCookieLoad, base::Unretained(&loader)));
-  message_loop_.RunUntilIdle();
-
-  scoped_ptr<net::CanonicalCookie> test_cookie(CreateTestCookie());
-  cookie_store_->AddCookie(*test_cookie);
-
-  CookieVerifier verifier(test_cookie.get());
-  storage_manager_->GetSqlContext(
-      base::Bind(&CookieVerifier::SqlSelect, base::Unretained(&verifier)));
-  message_loop_.RunUntilIdle();
-  EXPECT_TRUE(verifier.TimedWait());
-}
-
 }  // namespace network
 }  // namespace cobalt

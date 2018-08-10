@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,14 +21,28 @@
 namespace cobalt {
 namespace dom {
 
-uint32 MemoryInfo::total_js_heap_size() const {
+uint32 MemoryInfo::total_js_heap_size(
+    script::EnvironmentSettings* environment_settings) const {
+  if (!environment_settings) {
+    return 0u;
+  }
   return static_cast<uint32>(
-      script::JavaScriptEngine::UpdateMemoryStatsAndReturnReserved());
+      base::polymorphic_downcast<DOMSettings*>(environment_settings)
+          ->javascript_engine()
+          ->GetHeapStatistics()
+          .total_heap_size);
 }
 
-uint32 MemoryInfo::used_js_heap_size() const {
+uint32 MemoryInfo::used_js_heap_size(
+    script::EnvironmentSettings* environment_settings) const {
+  if (!environment_settings) {
+    return 0u;
+  }
   return static_cast<uint32>(
-      script::JavaScriptEngine::UpdateMemoryStatsAndReturnReserved());
+      base::polymorphic_downcast<DOMSettings*>(environment_settings)
+          ->javascript_engine()
+          ->GetHeapStatistics()
+          .used_heap_size);
 }
 
 }  // namespace dom

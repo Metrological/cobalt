@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,11 +27,14 @@ double Performance::Now() const {
   return timing_->GetNavigationStartClock()->Now().InMillisecondsF();
 }
 
-Performance::~Performance() {}
-
 scoped_refptr<PerformanceTiming> Performance::timing() const { return timing_; }
 
 scoped_refptr<MemoryInfo> Performance::memory() const { return memory_; }
+
+void Performance::TraceMembers(script::Tracer* tracer) {
+  tracer->Trace(timing_);
+  tracer->Trace(memory_);
+}
 
 }  // namespace dom
 }  // namespace cobalt

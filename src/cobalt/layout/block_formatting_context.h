@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ namespace layout {
 class BlockFormattingContext : public FormattingContext {
  public:
   explicit BlockFormattingContext(const LayoutParams& layout_params);
-  ~BlockFormattingContext() OVERRIDE;
+  ~BlockFormattingContext() override;
 
   // Calculates the position and size of the given child box and updates
   // the internal state in the preparation for the next child.

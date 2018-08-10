@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@ extern "C" void _sanitizer_options_link_helper() { }
 SANITIZER_HOOK_ATTRIBUTE const char* __lsan_default_suppressions() {
   return
       "leak:egl_gallium.so\n"
+      "leak:nvidia\n"
       "leak:libspeechd.so\n";
 }
 

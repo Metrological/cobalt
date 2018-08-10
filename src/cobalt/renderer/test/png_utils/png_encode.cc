@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 #include <vector>
 
+#include "base/debug/trace_event.h"
 #include "base/file_util.h"
 #include "base/logging.h"
 #include "third_party/libpng/png.h"
@@ -58,6 +59,7 @@ void EncodeRGBAToPNG(const FilePath& png_file_path, const uint8_t* pixel_data,
 scoped_array<uint8> EncodeRGBAToBuffer(const uint8_t* pixel_data, int width,
                                        int height, int pitch_in_bytes,
                                        size_t* out_size) {
+  TRACE_EVENT0("cobalt::renderer", "PNGEncode::EncodeRGBAToBuffer()");
   // Initialize png library and headers for writing.
   png_structp png =
       png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);

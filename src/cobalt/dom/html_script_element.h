@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 
 #include "base/memory/scoped_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/synchronization/waitable_event.h"
 #include "base/threading/thread_checker.h"
 #include "cobalt/base/source_location.h"
 #include "cobalt/dom/html_element.h"
@@ -71,42 +72,38 @@ class HTMLScriptElement : public HTMLElement {
   // Custom, not in any spec.
   //
   // From Node.
-  void OnInsertedIntoDocument() OVERRIDE;
+  void OnInsertedIntoDocument() override;
 
   // From Element.
   void OnParserStartTag(
-      const base::SourceLocation& opening_tag_location) OVERRIDE;
-  void OnParserEndTag() OVERRIDE;
+      const base::SourceLocation& opening_tag_location) override;
+  void OnParserEndTag() override;
 
   // From HTMLElement.
-  scoped_refptr<HTMLScriptElement> AsHTMLScriptElement() OVERRIDE;
+  scoped_refptr<HTMLScriptElement> AsHTMLScriptElement() override;
 
   DEFINE_WRAPPABLE_TYPE(HTMLScriptElement);
 
  protected:
-  scoped_refptr<Node> Duplicate() const OVERRIDE;
+  scoped_refptr<Node> Duplicate() const override;
 
  private:
-  ~HTMLScriptElement() OVERRIDE;
+  ~HTMLScriptElement() override;
 
   // From the spec: HTMLScriptElement.
   //
   void Prepare();
 
-  void OnSyncLoadingDone(const std::string& content,
-                         const loader::Origin& last_url_origin);
+  void OnSyncLoadingDone(const loader::Origin& last_url_origin,
+                         scoped_ptr<std::string> content);
   void OnSyncLoadingError(const std::string& error);
 
-  void OnLoadingDone(const std::string& content,
-                     const loader::Origin& last_url_origin);
+  void OnLoadingDone(const loader::Origin& last_url_origin,
+                     scoped_ptr<std::string> content);
   void OnLoadingError(const std::string& error);
 
-  void ExecuteExternal() {
-    Execute(content_, base::SourceLocation(url_.spec(), 1, 1), true);
-  }
-  void ExecuteInternal() {
-    Execute(text_content().value(), inline_script_location_, false);
-  }
+  void ExecuteExternal();
+  void ExecuteInternal();
   void Execute(const std::string& content,
                const base::SourceLocation& script_location, bool is_external);
 
@@ -114,6 +111,7 @@ class HTMLScriptElement : public HTMLElement {
       const tracked_objects::Location& location, const base::Token& token);
   void PreventGarbageCollection();
   void AllowGarbageCollection();
+  void ReleaseLoader();
 
   // Whether the script has been started.
   bool is_already_started_;
@@ -137,8 +135,8 @@ class HTMLScriptElement : public HTMLElement {
   bool is_sync_load_successful_;
   // Resolved URL of the script.
   GURL url_;
-  // Content of the script.
-  std::string content_;
+  // Content of the script. Released after Execute is called.
+  scoped_ptr<std::string> content_;
   // Active requests disabling garbage collection.
   int prevent_garbage_collection_count_;
 
@@ -152,6 +150,8 @@ class HTMLScriptElement : public HTMLElement {
   // javascript parser takes in to record if the error reqort should be muted
   // due to cross-origin fetched script.
   loader::Origin fetched_last_url_origin_;
+
+  base::WaitableEvent* synchronous_loader_interrupt_;
 };
 
 }  // namespace dom

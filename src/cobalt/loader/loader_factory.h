@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,11 +19,13 @@
 
 #include "base/threading/thread.h"
 #include "cobalt/csp/content_security_policy.h"
+#include "cobalt/loader/fetcher.h"
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/loader/font/typeface_decoder.h"
 #include "cobalt/loader/image/image_decoder.h"
 #include "cobalt/loader/loader.h"
 #include "cobalt/loader/mesh/mesh_decoder.h"
+#include "cobalt/loader/text_decoder.h"
 #include "cobalt/render_tree/resource_provider.h"
 #include "googleurl/src/gurl.h"
 
@@ -41,24 +43,39 @@ class LoaderFactory {
 
   // Creates a loader that fetches and decodes an image.
   scoped_ptr<Loader> CreateImageLoader(
-      const GURL& url, const csp::SecurityCallback& url_security_callback,
+      const GURL& url, const Origin& origin,
+      const csp::SecurityCallback& url_security_callback,
       const image::ImageDecoder::SuccessCallback& success_callback,
-      const image::ImageDecoder::ErrorCallback& error_callback,
-      const Origin& origin);
+      const image::ImageDecoder::ErrorCallback& error_callback);
 
   // Creates a loader that fetches and decodes a render_tree::Typeface.
   scoped_ptr<Loader> CreateTypefaceLoader(
-      const GURL& url, const csp::SecurityCallback& url_security_callback,
+      const GURL& url, const Origin& orgin,
+      const csp::SecurityCallback& url_security_callback,
       const font::TypefaceDecoder::SuccessCallback& success_callback,
-      const font::TypefaceDecoder::ErrorCallback& error_callback,
-      const Origin& orgin);
+      const font::TypefaceDecoder::ErrorCallback& error_callback);
 
   // Creates a loader that fetches and decodes a Mesh.
   scoped_ptr<Loader> CreateMeshLoader(
-      const GURL& url, const csp::SecurityCallback& url_security_callback,
+      const GURL& url, const Origin& origin,
+      const csp::SecurityCallback& url_security_callback,
       const mesh::MeshDecoder::SuccessCallback& success_callback,
-      const mesh::MeshDecoder::ErrorCallback& error_callback,
-      const Origin& origin);
+      const mesh::MeshDecoder::ErrorCallback& error_callback);
+
+  // Creates a loader that fetches and decodes a Javascript resource.
+  scoped_ptr<Loader> CreateScriptLoader(
+      const GURL& url, const Origin& origin,
+      const csp::SecurityCallback& url_security_callback,
+      const TextDecoder::SuccessCallback& success_callback,
+      const Loader::OnErrorFunction& loader_error_callback);
+
+  // Creates a loader that fetches and decodes a link resources.
+  scoped_ptr<Loader> CreateLinkLoader(
+      const GURL& url, const Origin& origin,
+      const csp::SecurityCallback& url_security_callback,
+      const loader::RequestMode cors_mode,
+      const TextDecoder::SuccessCallback& success_callback,
+      const Loader::OnErrorFunction& loader_error_callback);
 
   // Clears out the loader factory's resource provider, aborting any in-progress
   // loads.

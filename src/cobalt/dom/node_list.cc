@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,6 +35,10 @@ void NodeList::Clear() { collection_.clear(); }
 
 void NodeList::AppendNode(const scoped_refptr<Node>& node) {
   collection_.push_back(node);
+}
+
+void NodeList::TraceMembers(script::Tracer* tracer) {
+  tracer->TraceItems(collection_);
 }
 
 NodeList::~NodeList() { GlobalStats::GetInstance()->Remove(this); }

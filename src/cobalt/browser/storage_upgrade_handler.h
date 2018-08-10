@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,14 +28,14 @@ class StorageUpgradeHandler : public storage::StorageManager::UpgradeHandler {
   explicit StorageUpgradeHandler(const GURL& gurl);
 
   void OnUpgrade(storage::StorageManager* storage, const char* data,
-                 int size) OVERRIDE;
+                 int size) override;
 
-  const std::string& default_local_storage_id() const {
-    return default_local_storage_id_;
+  const loader::Origin& default_local_storage_origin() const {
+    return default_local_storage_origin_;
   }
 
  private:
-  std::string default_local_storage_id_;
+  loader::Origin default_local_storage_origin_;
 };
 
 }  // namespace browser

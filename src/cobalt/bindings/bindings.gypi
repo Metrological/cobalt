@@ -1,4 +1,4 @@
-# Copyright 2014 Google Inc. All Rights Reserved.
+# Copyright 2014 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -65,14 +65,6 @@
       '../../third_party/blink/Source/bindings/scripts/scripts.gypi',
     ],
     'variables': {
-      # Legend has it that experienced Chrome developers can actually nest
-      # variables up to four levels.  Here, we keep things simple and only do
-      # three.  We do this because "engine_variables.gypi" will create another
-      # variables scope and then branch on |javascript_engine|, which requires
-      # a default value to be provided one level lower.
-      'variables': {
-        'javascript_engine%': '<(default_javascript_engine)',
-      },
       # Specify a default component for generated window IDL. This should be
       # removed when the concept of 'components' in the blink IDL parsing scripts
       # is refactored out, since it doesn't really apply to Cobalt.
@@ -408,7 +400,8 @@
       ],
       'sources': [
         '<@(source_idl_files)',
-        '<@(generated_header_idl_files)'
+        '<@(generated_header_idl_files)',
+        'shared/idl_conditional_macros.h',
       ],
       'actions': [{
         'action_name': 'generate_type_conversion_header',

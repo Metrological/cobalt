@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,16 +35,27 @@ namespace media {
 // from the same thread where |DrmSystem| was instantiated.
 class DrmSystem : public base::RefCounted<DrmSystem> {
  public:
-  typedef base::Callback<void(scoped_array<uint8> message, int message_size)>
+  typedef base::Callback<void(SbDrmSessionRequestType type,
+                              scoped_array<uint8> message, int message_size)>
       SessionUpdateRequestGeneratedCallback;
-  typedef base::Callback<void()> SessionUpdateRequestDidNotGenerateCallback;
+  typedef base::Callback<void(SbDrmStatus status,
+                              const std::string& error_message)>
+      SessionUpdateRequestDidNotGenerateCallback;
   typedef base::Callback<void()> SessionUpdatedCallback;
-  typedef base::Callback<void()> SessionDidNotUpdateCallback;
+  typedef base::Callback<void(SbDrmStatus status,
+                              const std::string& error_message)>
+      SessionDidNotUpdateCallback;
 #if SB_HAS(DRM_KEY_STATUSES)
   typedef base::Callback<void(const std::vector<std::string>& key_ids,
                               const std::vector<SbDrmKeyStatus>& key_statuses)>
       SessionUpdateKeyStatusesCallback;
 #endif  // SB_HAS(DRM_KEY_STATUSES)
+#if SB_HAS(DRM_SESSION_CLOSED)
+  typedef base::Callback<void()> SessionClosedCallback;
+#endif  // SB_HAS(DRM_SESSION_CLOSED)
+  typedef base::Callback<void(SbDrmStatus status,
+                              const std::string& error_message)>
+      ServerCertificateUpdatedCallback;
 
   // Flyweight that provides RAII semantics for sessions.
   // Most of logic is implemented by |DrmSystem| and thus sessions must be
@@ -93,6 +104,10 @@ class DrmSystem : public base::RefCounted<DrmSystem> {
             ,
             SessionUpdateKeyStatusesCallback update_key_statuses_callback
 #endif          // SB_HAS(DRM_KEY_STATUSES)
+#if SB_HAS(DRM_SESSION_CLOSED)
+            ,
+            SessionClosedCallback session_closed_callback
+#endif          // SB_HAS(SESSION_CLOSED)
             );  // NOLINT(whitespace/parens)
     void set_id(const std::string& id) { id_ = id; }
     const SessionUpdateRequestGeneratedCallback&
@@ -105,15 +120,23 @@ class DrmSystem : public base::RefCounted<DrmSystem> {
       return update_key_statuses_callback_;
     }
 #endif  // SB_HAS(DRM_KEY_STATUSES)
+#if SB_HAS(DRM_SESSION_CLOSED)
+    const SessionClosedCallback& session_closed_callback() const {
+      return session_closed_callback_;
+    }
+#endif  // SB_HAS(DRM_SESSION_CLOSED)
 
     DrmSystem* const drm_system_;
+#if SB_HAS(DRM_KEY_STATUSES)
+    SessionUpdateKeyStatusesCallback update_key_statuses_callback_;
+#endif  // SB_HAS(DRM_KEY_STATUSES)
+#if SB_HAS(DRM_SESSION_CLOSED)
+    SessionClosedCallback session_closed_callback_;
+#endif  // SB_HAS(DRM_SESSION_CLOSED)
     bool closed_;
     base::optional<std::string> id_;
     // Supports spontaneous invocations of |SbDrmSessionUpdateRequestFunc|.
     SessionUpdateRequestGeneratedCallback update_request_generated_callback_;
-#if SB_HAS(DRM_KEY_STATUSES)
-    SessionUpdateKeyStatusesCallback update_key_statuses_callback_;
-#endif  // SB_HAS(DRM_KEY_STATUSES)
 
     friend class DrmSystem;
 
@@ -129,7 +152,16 @@ class DrmSystem : public base::RefCounted<DrmSystem> {
 #if SB_HAS(DRM_KEY_STATUSES)
       SessionUpdateKeyStatusesCallback session_update_key_statuses_callback
 #endif    // SB_HAS(DRM_KEY_STATUSES)
+#if SB_HAS(DRM_SESSION_CLOSED)
+      ,
+      SessionClosedCallback session_closed_callback
+#endif    // SB_HAS(DRM_SESSION_CLOSED)
       );  // NOLINT(whitespace/parens)
+
+  bool IsServerCertificateUpdatable();
+  void UpdateServerCertificate(
+      const uint8_t* certificate, int certificate_size,
+      ServerCertificateUpdatedCallback server_certificate_updated_callback);
 
  private:
   // Stores context of |GenerateSessionUpdateRequest|.
@@ -143,12 +175,22 @@ class DrmSystem : public base::RefCounted<DrmSystem> {
 
   typedef base::hash_map<std::string, Session*> IdToSessionMap;
 
+  typedef base::hash_map<int, ServerCertificateUpdatedCallback>
+      TicketToServerCertificateUpdatedMap;
+
   // Stores context of |Session::Update|.
   struct SessionUpdate {
     SessionUpdatedCallback updated_callback;
     SessionDidNotUpdateCallback did_not_update_callback;
   };
   typedef base::hash_map<int, SessionUpdate> TicketToSessionUpdateMap;
+
+  // Defined to work around the limitation on number of parameters of
+  // base::Bind().
+  struct SessionTicketAndOptionalId {
+    int ticket;
+    base::optional<std::string> id;
+  };
 
   // Private API for |Session|.
   void GenerateSessionUpdateRequest(
@@ -166,16 +208,38 @@ class DrmSystem : public base::RefCounted<DrmSystem> {
   // Called on the constructor thread, parameters are copied and owned by these
   // methods.
   void OnSessionUpdateRequestGenerated(
-      int ticket, const base::optional<std::string>& session_id,
+      SessionTicketAndOptionalId ticket_and_optional_id, SbDrmStatus status,
+      SbDrmSessionRequestType type, const std::string& error_message,
       scoped_array<uint8> message, int message_size);
-  void OnSessionUpdated(int ticket, bool succeeded);
+  void OnSessionUpdated(int ticket, SbDrmStatus status,
+                        const std::string& error_message);
 #if SB_HAS(DRM_KEY_STATUSES)
   void OnSessionKeyStatusChanged(
       const std::string& session_id, const std::vector<std::string>& key_ids,
       const std::vector<SbDrmKeyStatus>& key_statuses);
 #endif  // SB_HAS(DRM_KEY_STATUSES)
-
+#if SB_API_VERSION >= 10
+  void OnServerCertificateUpdated(int ticket, SbDrmStatus status,
+                                  const std::string& error_message);
+#endif  // SB_API_VERSION >= 10
+#if SB_HAS(DRM_SESSION_CLOSED)
+  void OnSessionClosed(const std::string& session_id);
+#endif  // SB_HAS(DRM_SESSION_CLOSED)
   // Called on any thread, parameters need to be copied immediately.
+
+#if SB_API_VERSION >= 10
+  static void OnSessionUpdateRequestGeneratedFunc(
+      SbDrmSystem wrapped_drm_system, void* context, int ticket,
+      SbDrmStatus status, SbDrmSessionRequestType type,
+      const char* error_message, const void* session_id, int session_id_size,
+      const void* content, int content_size, const char* url);
+  static void OnSessionUpdatedFunc(SbDrmSystem wrapped_drm_system,
+                                   void* context, int ticket,
+                                   SbDrmStatus status,
+                                   const char* error_message,
+                                   const void* session_id,
+                                   int session_id_length);
+#else   // SB_API_VERSION >= 10
   static void OnSessionUpdateRequestGeneratedFunc(
       SbDrmSystem wrapped_drm_system, void* context, int ticket,
       const void* session_id, int session_id_size, const void* content,
@@ -184,12 +248,28 @@ class DrmSystem : public base::RefCounted<DrmSystem> {
                                    void* context, int ticket,
                                    const void* session_id,
                                    int session_id_length, bool succeeded);
+#endif  // SB_API_VERSION >= 10
+
 #if SB_HAS(DRM_KEY_STATUSES)
   static void OnSessionKeyStatusesChangedFunc(
       SbDrmSystem wrapped_drm_system, void* context, const void* session_id,
       int session_id_size, int number_of_keys, const SbDrmKeyId* key_ids,
       const SbDrmKeyStatus* key_statuses);
 #endif  // SB_HAS(DRM_KEY_STATUSES)
+
+#if SB_HAS(DRM_SESSION_CLOSED)
+  static void OnSessionClosedFunc(SbDrmSystem wrapped_drm_system,
+                                  void* context,
+                                  const void* session_id,
+                                  int session_id_size);
+#endif  // SB_HAS(DRM_SESSION_CLOSED)
+
+#if SB_API_VERSION >= 10
+  static void OnServerCertificateUpdatedFunc(SbDrmSystem wrapped_drm_system,
+                                             void* context, int ticket,
+                                             SbDrmStatus status,
+                                             const char* error_message);
+#endif  // SB_API_VERSION >= 10
 
   const SbDrmSystem wrapped_drm_system_;
   MessageLoop* const message_loop_;
@@ -206,6 +286,8 @@ class DrmSystem : public base::RefCounted<DrmSystem> {
 
   // Supports spontaneous invocations of |SbDrmSessionUpdateRequestFunc|.
   IdToSessionMap id_to_session_map_;
+
+  TicketToServerCertificateUpdatedMap ticket_to_server_certificate_updated_map_;
 
   // Supports concurrent calls to |Session::Update|.
   int next_session_update_ticket_;

@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,19 @@
 
 #include <algorithm>
 #include <iomanip>
+
+#include <directfb/directfb_version.h>  // NOLINT(build/include_order)
+
+// Anything less than 1.7.x needs special behavior on teardown.
+// Issue confirmed on 1.7.7, and separate issue perhaps seen on 1.2.x
+#define NEEDS_DIRECTFB_TEARDOWN_WORKAROUND \
+    ((DIRECTFB_MAJOR_VERSION == 1) && (DIRECTFB_MINOR_VERSION <= 7))
+
+#if NEEDS_DIRECTFB_TEARDOWN_WORKAROUND
+#include <setjmp.h>
+#include <signal.h>
+#include <unistd.h>
+#endif
 
 #include "starboard/input.h"
 #include "starboard/key.h"
@@ -379,6 +392,26 @@ bool ApplicationDirectFB::DestroyWindow(SbWindow window) {
 }
 
 IDirectFB* ApplicationDirectFB::GetDirectFB() {
+  if (!directfb_) {
+    // We only support one DirectFB device, so set it up and return it here.
+    int argc = 0;
+    if (DirectFBInit(&argc, NULL) != DFB_OK) {
+      SB_NOTREACHED() << "Error calling DirectFBInit().";
+    }
+
+    // Setup DirectFB to not provide any default window background.
+    DirectFBSetOption("bg-none", NULL);
+    // Setup DirectFB to not show their default mouse cursor.
+    DirectFBSetOption("no-cursor", NULL);
+
+    // Create the DirectFB object.
+    if (DirectFBCreate(&directfb_) != DFB_OK) {
+      SB_NOTREACHED() << "Error calling DirectFBCreate().";
+    }
+    if (directfb_->SetCooperativeLevel(directfb_, DFSCL_NORMAL) != DFB_OK) {
+      SB_NOTREACHED() << "Error calling SetCooperativeLevel().";
+    }
+  }
   return directfb_;
 }
 
@@ -387,29 +420,60 @@ SbWindow ApplicationDirectFB::GetWindow() {
 }
 
 void ApplicationDirectFB::Initialize() {
-  // We only support one DirectFB device, so set it up and return it here.
-  int argc = 0;
-  if (DirectFBInit(&argc, NULL) != DFB_OK) {
-    SB_NOTREACHED() << "Error calling DirectFBInit().";
-  }
-
-  // Setup DirectFB to not provide any default window background.
-  DirectFBSetOption("bg-none", NULL);
-  // Setup DirectFB to not show their default mouse cursor.
-  DirectFBSetOption("no-cursor", NULL);
-
-  // Create the DirectFB object.
-  if (DirectFBCreate(&directfb_) != DFB_OK) {
-    SB_NOTREACHED() << "Error calling DirectFBCreate().";
-  }
-  if (directfb_->SetCooperativeLevel(directfb_, DFSCL_NORMAL) != DFB_OK) {
-    SB_NOTREACHED() << "Error calling SetCooperativeLevel().";
-  }
 }
+
+namespace {
+
+#if NEEDS_DIRECTFB_TEARDOWN_WORKAROUND
+jmp_buf signal_jmp_buffer;
+
+void on_segv(int sig /*, siginfo_t *info, void *ucontext*/) {
+  siglongjmp(signal_jmp_buffer, 1);
+}
+#endif  // NEEDS_DIRECTFB_TEARDOWN_WORKAROUND
+
+}  // namespace
 
 void ApplicationDirectFB::Teardown() {
   SB_DCHECK(!SbWindowIsValid(window_));
-  directfb_->Release(directfb_);
+
+  if (directfb_) {
+    // DirectFB 1.7.7 has an uninitialized variable that causes
+    // crashes at teardown time.
+    // We swallow this crash here so that automated testing continues to
+    // work.
+    // See: http://lists.openembedded.org/pipermail/openembedded-core/2016-June/122843.html
+    // We've also seen teardown problems on 1.2.x.
+#if NEEDS_DIRECTFB_TEARDOWN_WORKAROUND
+    if (sigsetjmp(signal_jmp_buffer, 1)) {
+      SB_LOG(WARNING) << "DirectFB segv during teardown. Expect memory leaks.";
+      // Calling _exit here to skip atexit handlers because we've seen
+      // directfb 1.2.10 hang on shutdown after this during an atexit handler.
+      // Note we exit with success so unit tests pass.
+      _exit(0);
+    } else {
+      struct sigaction sigaction_config;
+      SbMemorySet(&sigaction_config, 0, sizeof(sigaction_config));
+
+      sigaction_config.sa_handler = on_segv;
+      sigemptyset(&sigaction_config.sa_mask);
+      sigaction_config.sa_flags = 0;
+
+      // Unblock SIGSEGV, which has been blocked earlier (perhaps by libdirectfb)
+      sigset_t set;
+      sigemptyset(&set);
+      sigaddset(&set, SIGSEGV);
+      sigprocmask(SIG_UNBLOCK, &set, nullptr);
+
+      int err = sigaction(SIGSEGV, &sigaction_config, nullptr);
+
+      directfb_->Release(directfb_);
+    }
+#else  // NEEDS_DIRECTFB_TEARDOWN_WORKAROUND
+    directfb_->Release(directfb_);
+#endif  // NEEDS_DIRECTFB_TEARDOWN_WORKAROUND
+    directfb_ = nullptr;
+  }
 }
 
 shared::starboard::Application::Event*

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@
 #include "cobalt/base/console_commands.h"
 #include "cobalt/base/source_location.h"
 #include "cobalt/browser/lifecycle_observer.h"
+#include "cobalt/browser/screen_shot_writer.h"
 #include "cobalt/browser/splash_screen_cache.h"
 #include "cobalt/css_parser/parser.h"
 #if defined(ENABLE_DEBUG_CONSOLE)
@@ -43,7 +44,9 @@
 #include "cobalt/dom/keyboard_event_init.h"
 #include "cobalt/dom/local_storage_database.h"
 #include "cobalt/dom/media_source.h"
+#include "cobalt/dom/on_screen_keyboard_bridge.h"
 #include "cobalt/dom/pointer_event_init.h"
+#include "cobalt/dom/screenshot_manager.h"
 #include "cobalt/dom/wheel_event_init.h"
 #include "cobalt/dom/window.h"
 #include "cobalt/dom_parser/parser.h"
@@ -53,6 +56,7 @@
 #include "cobalt/media/can_play_type_handler.h"
 #include "cobalt/media/web_media_player_factory.h"
 #include "cobalt/network/network_module.h"
+#include "cobalt/render_tree/node.h"
 #include "cobalt/render_tree/resource_provider.h"
 #include "cobalt/script/global_environment.h"
 #include "cobalt/script/javascript_engine.h"
@@ -136,6 +140,9 @@ class WebModule : public LifecycleObserver {
     // Mesh cache capacity in bytes.
     int mesh_cache_capacity;
 
+    // Whether map-to-mesh for rectangular videos is enabled.
+    bool enable_map_to_mesh_rectangular;
+
     // Content Security Policy enforcement mode for this web module.
     dom::CspEnforcementType csp_enforcement_mode;
 
@@ -204,6 +211,27 @@ class WebModule : public LifecycleObserver {
     // Whether or not the WebModule is allowed to fetch from cache via
     // h5vcc-cache://.
     bool can_fetch_cache;
+
+    // The dom::OnScreenKeyboard forwards calls to this interface.
+    dom::OnScreenKeyboardBridge* on_screen_keyboard_bridge = NULL;
+
+    // This function takes in a render tree as input, and then calls the 2nd
+    // argument (which is another callback) when the screenshot is available.
+    // The callback's first parameter points to an unencoded image, where the
+    // format is R8G8B8A8 pixels (with no padding at the end of each row),
+    // and the second parameter is the dimensions of the image.
+    // Note that the callback could be called on a different thread, and is not
+    // guaranteed to be called on the caller thread.
+    // By using Callbacks here, it is easier to write tests, and use this
+    // functionality in Cobalt.
+    dom::ScreenshotManager::ProvideScreenshotFunctionCallback
+        provide_screenshot_function;
+
+    // If true, the initial containing block's background color will be applied
+    // as a clear, i.e. with blending disabled.  This means that a background
+    // color of transparent will replace existing pixel values, effectively
+    // clearing the screen.
+    bool clear_window_with_background_color;
   };
 
   typedef layout::LayoutManager::LayoutResults LayoutResults;
@@ -211,6 +239,8 @@ class WebModule : public LifecycleObserver {
       OnRenderTreeProducedCallback;
   typedef base::Callback<void(const GURL&, const std::string&)> OnErrorCallback;
   typedef dom::Window::CloseCallback CloseCallback;
+  typedef base::Callback<void(const script::HeapStatistics&)>
+      JavaScriptHeapStatisticsCallback;
 
   WebModule(const GURL& initial_url,
             base::ApplicationState initial_application_state,
@@ -218,7 +248,6 @@ class WebModule : public LifecycleObserver {
             const OnErrorCallback& error_callback,
             const CloseCallback& window_close_callback,
             const base::Closure& window_minimize_callback,
-            const dom::Window::GetSbWindowCallback& get_sb_window_callback,
             media::CanPlayTypeHandler* can_play_type_handler,
             media::WebMediaPlayerFactory* web_media_player_factory,
             network::NetworkModule* network_module,
@@ -228,38 +257,43 @@ class WebModule : public LifecycleObserver {
   ~WebModule();
 
 #if SB_HAS(ON_SCREEN_KEYBOARD)
-  // Call this to inject an on screen keyboard input event into the web module.
-  // The value for type represents beforeinput or input.
+  // Injects an on screen keyboard input event into the web module. The value
+  // for type represents beforeinput or input.
   void InjectOnScreenKeyboardInputEvent(base::Token type,
                                         const dom::InputEventInit& event);
-  // Call this to inject an on screen keyboard shown event into the web module.
-  void InjectOnScreenKeyboardShownEvent();
-  // Call this to inject an on screen keyboard hidden event into the web module.
-  void InjectOnScreenKeyboardHiddenEvent();
+  // Injects an on screen keyboard shown event into the web module.
+  void InjectOnScreenKeyboardShownEvent(int ticket);
+  // Injects an on screen keyboard hidden event into the web module.
+  void InjectOnScreenKeyboardHiddenEvent(int ticket);
+  // Injects an on screen keyboard focused event into the web module.
+  void InjectOnScreenKeyboardFocusedEvent(int ticket);
+  // Injects an on screen keyboard blurred event into the web module.
+  void InjectOnScreenKeyboardBlurredEvent(int ticket);
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
-  // Call this to inject a keyboard event into the web module. The value for
-  // type represents the event name, for example 'keydown' or 'keyup'.
+  // Injects a keyboard event into the web module. The value for type
+  // represents the event name, for example 'keydown' or 'keyup'.
   void InjectKeyboardEvent(base::Token type,
                            const dom::KeyboardEventInit& event);
 
-  // Call this to inject a pointer event into the web module. The value for type
-  // represents the event name, for example 'pointerdown', 'pointerup', or
-  // 'pointermove'.
+  // Injects a pointer event into the web module. The value for type represents
+  // the event name, for example 'pointerdown', 'pointerup', or 'pointermove'.
   void InjectPointerEvent(base::Token type, const dom::PointerEventInit& event);
 
-  // Call this to inject a wheel event into the web module. The value for type
-  // represents the event name, for example 'wheel'.
+  // Injects a wheel event into the web module. The value for type represents
+  // the event name, for example 'wheel'.
   void InjectWheelEvent(base::Token type, const dom::WheelEventInit& event);
 
-  // Call this to inject a beforeunload event into the web module. If
-  // this event is not handled by the web application,
-  // |on_before_unload_fired_but_not_handled_| will be called.
+  // Injects a beforeunload event into the web module. If this event is not
+  // handled by the web application, |on_before_unload_fired_but_not_handled_|
+  // will be called.
   void InjectBeforeUnloadEvent();
 
-  // Call this to execute Javascript code in this web module.  The calling
-  // thread will block until the JavaScript has executed and the output results
-  // are available.
+  void InjectCaptionSettingsChangedEvent();
+
+  // Executes Javascript code in this web module.  The calling thread will
+  // block until the JavaScript has executed and the output results are
+  // available.
   std::string ExecuteJavascript(const std::string& script_utf8,
                                 const base::SourceLocation& script_location,
                                 bool* out_succeeded);
@@ -288,19 +322,26 @@ class WebModule : public LifecycleObserver {
       media::WebMediaPlayerFactory* web_media_player_factory);
   void SetImageCacheCapacity(int64_t bytes);
   void SetRemoteTypefaceCacheCapacity(int64_t bytes);
-  void SetJavascriptGcThreshold(int64_t bytes);
 
   // LifecycleObserver implementation
-  void Prestart() OVERRIDE;
-  void Start(render_tree::ResourceProvider* resource_provider) OVERRIDE;
-  void Pause() OVERRIDE;
-  void Unpause() OVERRIDE;
-  void Suspend() OVERRIDE;
-  void Resume(render_tree::ResourceProvider* resource_provider) OVERRIDE;
+  void Prestart() override;
+  void Start(render_tree::ResourceProvider* resource_provider) override;
+  void Pause() override;
+  void Unpause() override;
+  void Suspend() override;
+  void Resume(render_tree::ResourceProvider* resource_provider) override;
 
   // Attempt to reduce overall memory consumption. Called in response to a
   // system indication that memory usage is nearing a critical level.
   void ReduceMemory();
+
+  // Post a task that gets the current |script::HeapStatistics| for our
+  // |JavaScriptEngine| to the web module thread, and then passes that to
+  // |callback|.  Note that |callback| will be called on the main web module
+  // thread.  It is the responsibility of |callback| to get back to its
+  // intended thread should it want to.
+  void RequestJavaScriptHeapStatistics(
+      const JavaScriptHeapStatisticsCallback& callback);
 
  private:
   // Data required to construct a WebModule, initialized in the constructor and
@@ -313,7 +354,6 @@ class WebModule : public LifecycleObserver {
         const OnErrorCallback& error_callback,
         const CloseCallback& window_close_callback,
         const base::Closure& window_minimize_callback,
-        const dom::Window::GetSbWindowCallback& get_sb_window_callback,
         media::CanPlayTypeHandler* can_play_type_handler,
         media::WebMediaPlayerFactory* web_media_player_factory,
         network::NetworkModule* network_module,
@@ -327,7 +367,6 @@ class WebModule : public LifecycleObserver {
           error_callback(error_callback),
           window_close_callback(window_close_callback),
           window_minimize_callback(window_minimize_callback),
-          get_sb_window_callback(get_sb_window_callback),
           can_play_type_handler(can_play_type_handler),
           web_media_player_factory(web_media_player_factory),
           network_module(network_module),
@@ -344,7 +383,6 @@ class WebModule : public LifecycleObserver {
     OnErrorCallback error_callback;
     const CloseCallback& window_close_callback;
     const base::Closure& window_minimize_callback;
-    const dom::Window::GetSbWindowCallback& get_sb_window_callback;
     media::CanPlayTypeHandler* can_play_type_handler;
     media::WebMediaPlayerFactory* web_media_player_factory;
     network::NetworkModule* network_module;
@@ -364,7 +402,7 @@ class WebModule : public LifecycleObserver {
   class DestructionObserver : public MessageLoop::DestructionObserver {
    public:
     explicit DestructionObserver(WebModule* web_module);
-    void WillDestroyCurrentMessageLoop() OVERRIDE;
+    void WillDestroyCurrentMessageLoop() override;
 
    private:
     WebModule* web_module_;
@@ -375,6 +413,8 @@ class WebModule : public LifecycleObserver {
   void Initialize(const ConstructionData& data);
 
   void ClearAllIntervalsAndTimeouts();
+
+  void CancelSynchronousLoads();
 
 #if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
   void OnPartialLayoutConsoleCommandReceived(const std::string& message);

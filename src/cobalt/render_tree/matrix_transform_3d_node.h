@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ namespace render_tree {
 class MatrixTransform3DNode : public Node {
  public:
   struct Builder {
+    Builder(const Builder&) = default;
     Builder(const scoped_refptr<Node>& source, const glm::mat4& transform)
         : source(source), transform(transform) {}
 
@@ -49,16 +50,14 @@ class MatrixTransform3DNode : public Node {
     glm::mat4 transform;
   };
 
-  MatrixTransform3DNode(const scoped_refptr<Node>& source,
-                        const glm::mat4& transform)
-      : data_(source, transform) {}
+  // Forwarding constructor to the set of Builder constructors.
+  template <typename... Args>
+  MatrixTransform3DNode(Args&&... args) : data_(std::forward<Args>(args)...) {}
 
-  explicit MatrixTransform3DNode(const Builder& builder) : data_(builder) {}
+  void Accept(NodeVisitor* visitor) override;
+  math::RectF GetBounds() const override;
 
-  void Accept(NodeVisitor* visitor) OVERRIDE;
-  math::RectF GetBounds() const OVERRIDE;
-
-  base::TypeId GetTypeId() const OVERRIDE {
+  base::TypeId GetTypeId() const override {
     return base::GetTypeId<MatrixTransform3DNode>();
   }
 

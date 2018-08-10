@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,9 +29,9 @@ class URLRequestContextGetter : public net::URLRequestContextGetter {
                           base::Thread* io_thread);
 
   // Implementation for net::UrlRequestContextGetter.
-  net::URLRequestContext* GetURLRequestContext() OVERRIDE;
+  net::URLRequestContext* GetURLRequestContext() override;
   scoped_refptr<base::SingleThreadTaskRunner> GetNetworkTaskRunner()
-      const OVERRIDE;
+      const override;
 
  protected:
   virtual ~URLRequestContextGetter();

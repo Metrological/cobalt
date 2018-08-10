@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ struct ImageDecoderCallback {
 
 std::vector<FilePath> GetImagePaths(const char* extention) {
   FilePath image_path;
-  CHECK(PathService::Get(base::DIR_SOURCE_ROOT, &image_path));
+  CHECK(PathService::Get(base::DIR_TEST_DATA, &image_path));
   image_path = image_path.Append(FILE_PATH_LITERAL("cobalt"))
                    .Append(FILE_PATH_LITERAL("loader"))
                    .Append(FILE_PATH_LITERAL("testdata"));

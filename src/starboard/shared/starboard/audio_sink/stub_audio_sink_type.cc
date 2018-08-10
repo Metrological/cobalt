@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,15 +34,15 @@ class StubAudioSink : public SbAudioSinkPrivate {
                 SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
                 SbAudioSinkConsumeFramesFunc consume_frame_func,
                 void* context);
-  ~StubAudioSink() SB_OVERRIDE;
+  ~StubAudioSink() override;
 
-  bool IsType(Type* type) SB_OVERRIDE { return type_ == type; }
-  void SetPlaybackRate(double playback_rate) SB_OVERRIDE {
+  bool IsType(Type* type) override { return type_ == type; }
+  void SetPlaybackRate(double playback_rate) override {
     SB_UNREFERENCED_PARAMETER(playback_rate);
     SB_NOTIMPLEMENTED();
   }
 
-  void SetVolume(double volume) SB_OVERRIDE {
+  void SetVolume(double volume) override {
     SB_UNREFERENCED_PARAMETER(volume);
   }
 
@@ -118,7 +118,11 @@ void StubAudioSink::AudioThreadFunc() {
           std::min(kMaxFramesToConsumePerRequest, frames_in_buffer);
 
       SbThreadSleep(frames_to_consume * kSbTimeSecond / sampling_frequency_hz_);
-      consume_frame_func_(frames_to_consume, context_);
+      consume_frame_func_(frames_to_consume,
+#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+                          SbTimeGetMonotonicNow(),
+#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+                          context_);
     } else {
       // Wait for five millisecond if we are paused.
       SbThreadSleep(kSbTimeMillisecond * 5);

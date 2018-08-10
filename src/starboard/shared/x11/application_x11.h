@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@
 
 #include <X11/Xlib.h>
 
-#include <map>
 #include <queue>
+#include <unordered_map>
 #include <vector>
 
 #include "base/memory/scoped_ptr.h"
@@ -39,7 +39,7 @@ namespace x11 {
 class ApplicationX11 : public shared::starboard::QueueApplication {
  public:
   ApplicationX11();
-  ~ApplicationX11() SB_OVERRIDE;
+  ~ApplicationX11() override;
 
   static ApplicationX11* Get() {
     return static_cast<ApplicationX11*>(shared::starboard::Application::Get());
@@ -48,7 +48,24 @@ class ApplicationX11 : public shared::starboard::QueueApplication {
   SbWindow CreateWindow(const SbWindowOptions* options);
   bool DestroyWindow(SbWindow window);
 
+  // Make the current GL layer and video layer visible.
   void Composite();
+
+  // Call this function before updating the GL layer.
+  void SwapBuffersBegin();
+
+  // Call this function after the GL layer has been updated.
+  void SwapBuffersEnd();
+
+  // This is called immediately when SbPlayerSetBounds is called. The
+  // application will queue the new bounds until the UI frame using these
+  // bounds is rendered.
+  void PlayerSetBounds(SbPlayer player,
+                       int z_index,
+                       int x,
+                       int y,
+                       int width,
+                       int height);
 
  protected:
   void AcceptFrame(SbPlayer player,
@@ -57,29 +74,28 @@ class ApplicationX11 : public shared::starboard::QueueApplication {
                    int x,
                    int y,
                    int width,
-                   int height) SB_OVERRIDE;
+                   int height) override;
 
 #if SB_API_VERSION >= 6
-  bool IsStartImmediate() SB_OVERRIDE { return !HasPreloadSwitch(); }
-  bool IsPreloadImmediate() SB_OVERRIDE { return HasPreloadSwitch(); }
+  bool IsStartImmediate() override { return !HasPreloadSwitch(); }
+  bool IsPreloadImmediate() override { return HasPreloadSwitch(); }
 #endif  // SB_API_VERSION >= 6
 
  protected:
   // --- Application overrides ---
-  void Initialize() SB_OVERRIDE;
-  void Teardown() SB_OVERRIDE;
+  void Initialize() override;
+  void Teardown() override;
 
   // --- QueueApplication overrides ---
-  bool MayHaveSystemEvents() SB_OVERRIDE;
-  Event* WaitForSystemEventWithTimeout(SbTime time) SB_OVERRIDE;
-  void WakeSystemEventWait() SB_OVERRIDE;
+  bool MayHaveSystemEvents() override;
+  Event* WaitForSystemEventWithTimeout(SbTime time) override;
+  void WakeSystemEventWait() override;
 
  private:
   typedef std::vector<SbWindow> SbWindowVector;
 
   struct FrameInfo {
     SbPlayer player;
-    scoped_refptr<VideoFrame> frame;
     int z_index;
     int x;
     int y;
@@ -110,12 +126,19 @@ class ApplicationX11 : public shared::starboard::QueueApplication {
 
   SbEventId composite_event_id_;
   Mutex frame_mutex_;
-  int frame_read_index_;
-  bool frames_updated_;
 
-  static const int kNumFrames = 2;
-  // Video frames from different videos sorted by their z indices.
-  std::map<int, FrameInfo> frame_infos_[kNumFrames];
+  // The latest frame for every active player.
+  std::unordered_map<SbPlayer, scoped_refptr<VideoFrame>> next_video_frames_;
+
+  // Raw player frames need to be translated to a new format before compositing.
+  std::unordered_map<SbPlayer, scoped_refptr<VideoFrame>> current_video_frames_;
+
+  // Data for the upcoming render frame's video bounds.
+  std::unordered_map<SbPlayer, FrameInfo> next_video_bounds_;
+
+  // Sorted array (according to the z_index) of the current render frame's
+  // video bounds.
+  std::vector<FrameInfo> current_video_bounds_;
 
   Display* display_;
   SbWindowVector windows_;

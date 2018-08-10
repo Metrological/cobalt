@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -64,6 +64,14 @@ void SpeechSynthesis::Resume() {
       if (utterances_.empty()) break;
     }
   }
+}
+
+void SpeechSynthesis::TraceMembers(script::Tracer* tracer) {
+  dom::EventTarget::TraceMembers(tracer);
+
+  tracer->TraceItems(utterances_);
+  tracer->TraceItems(voices_);
+  tracer->Trace(navigator_);
 }
 
 void SpeechSynthesis::DispatchErrorEvent(

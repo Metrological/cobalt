@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -69,7 +69,7 @@ class RadialGradientValue : public PropertyValue {
         position_(position),
         color_stop_list_(color_stop_list.Pass()) {}
 
-  void Accept(PropertyValueVisitor* visitor) OVERRIDE;
+  void Accept(PropertyValueVisitor* visitor) override;
 
   const Shape& shape() const { return shape_; }
 
@@ -84,14 +84,14 @@ class RadialGradientValue : public PropertyValue {
     return color_stop_list_;
   }
 
-  std::string ToString() const OVERRIDE;
+  std::string ToString() const override;
 
   bool operator==(const RadialGradientValue& other) const;
 
   DEFINE_POLYMORPHIC_EQUATABLE_TYPE(RadialGradientValue);
 
  private:
-  ~RadialGradientValue() OVERRIDE {}
+  ~RadialGradientValue() override {}
 
   const Shape shape_;
 

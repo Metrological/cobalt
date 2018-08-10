@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,5 +16,5 @@
 // screen keyboard.
 
 partial interface Window {
-  readonly attribute OnScreenKeyboard onScreenKeyboard;
+[ Conditional=COBALT_ENABLE_ON_SCREEN_KEYBOARD ] readonly attribute OnScreenKeyboard onScreenKeyboard;
 };

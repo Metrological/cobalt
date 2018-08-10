@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,12 +21,13 @@ namespace dom {
 
 MediaKeyMessageEvent::MediaKeyMessageEvent(
     const std::string& key_system, const std::string& session_id,
-    const scoped_refptr<Uint8Array>& message, const std::string& default_url)
+    const script::Handle<script::Uint8Array>& message,
+    const std::string& default_url)
     : Event(base::Tokens::keymessage(), kNotBubbles, kNotCancelable),
       key_system_(key_system),
       session_id_(session_id),
       default_url_(default_url),
-      message_(message) {}
+      message_reference_(this, message) {}
 
 }  // namespace dom
 }  // namespace cobalt

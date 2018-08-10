@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,8 +28,8 @@ class SourceListDirective : public Directive {
  public:
   class LocalNetworkChecker : public SourceList::LocalNetworkCheckerInterface {
    public:
-    bool IsIPInLocalNetwork(const SbSocketAddress& destination) const OVERRIDE;
-    bool IsIPInPrivateRange(const SbSocketAddress& destination) const OVERRIDE;
+    bool IsIPInLocalNetwork(const SbSocketAddress& destination) const override;
+    bool IsIPInPrivateRange(const SbSocketAddress& destination) const override;
   };
 
   SourceListDirective(const std::string& name, const std::string& value,

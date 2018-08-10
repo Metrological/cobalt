@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,7 +35,12 @@ void UpdateSourceStatusFuncStub(int* frames_in_buffer,
   *is_eos_reached = false;
 }
 
-void ConsumeFramesFuncStub(int frames_consumed, void* context) {}
+void ConsumeFramesFuncStub(int frames_consumed,
+#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+                           SbTime frames_consumed_at,
+#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+                           void* context) {
+}
 
 }  // namespace
 
@@ -55,10 +60,39 @@ TEST(SbAudioSinkCreateTest, SunnyDay) {
   SbAudioSinkDestroy(audio_sink);
 }
 
+#if SB_API_VERSION >= 10
+TEST(SbAudioSinkCreateTest, MultiSink) {
+  ASSERT_GE(SbAudioSinkGetMaxChannels(), 1);
+
+  AudioSinkTestFrameBuffers frame_buffers(SbAudioSinkGetMaxChannels());
+
+  const int kMaxSinks = 16;
+  std::vector<SbAudioSink> created_sinks;
+  for (int i = 0; i < kMaxSinks; ++i) {
+    created_sinks.push_back(SbAudioSinkCreate(
+        frame_buffers.channels(),
+        SbAudioSinkGetNearestSupportedSampleFrequency(44100),
+        frame_buffers.sample_type(), frame_buffers.storage_type(),
+        frame_buffers.frame_buffers(), frame_buffers.frames_per_channel(),
+        UpdateSourceStatusFuncStub, ConsumeFramesFuncStub,
+        reinterpret_cast<void*>(1)));
+    if (!SbAudioSinkIsValid(created_sinks[i])) {
+      created_sinks.pop_back();
+      break;
+    }
+  }
+  SB_DLOG(INFO) << "Created " << created_sinks.size() << " valid audio sinks";
+  for (auto sink : created_sinks) {
+    SbAudioSinkDestroy(sink);
+  }
+}
+#endif  // SB_API_VERSION >= 10
+
 TEST(SbAudioSinkCreateTest, SunnyDayAllCombinations) {
   std::vector<SbMediaAudioSampleType> sample_types;
-  if (SbAudioSinkIsAudioSampleTypeSupported(kSbMediaAudioSampleTypeInt16)) {
-    sample_types.push_back(kSbMediaAudioSampleTypeInt16);
+  if (SbAudioSinkIsAudioSampleTypeSupported(
+          kSbMediaAudioSampleTypeInt16Deprecated)) {
+    sample_types.push_back(kSbMediaAudioSampleTypeInt16Deprecated);
   }
   if (SbAudioSinkIsAudioSampleTypeSupported(kSbMediaAudioSampleTypeFloat32)) {
     sample_types.push_back(kSbMediaAudioSampleTypeFloat32);
@@ -142,13 +176,14 @@ TEST(SbAudioSinkCreateTest, RainyDayInvalidFrequency) {
 
 TEST(SbAudioSinkCreateTest, RainyDayInvalidSampleType) {
   SbMediaAudioSampleType invalid_sample_type;
-  if (SbAudioSinkIsAudioSampleTypeSupported(kSbMediaAudioSampleTypeInt16)) {
+  if (SbAudioSinkIsAudioSampleTypeSupported(
+          kSbMediaAudioSampleTypeInt16Deprecated)) {
     if (SbAudioSinkIsAudioSampleTypeSupported(kSbMediaAudioSampleTypeFloat32)) {
       return;
     }
     invalid_sample_type = kSbMediaAudioSampleTypeFloat32;
   } else {
-    invalid_sample_type = kSbMediaAudioSampleTypeInt16;
+    invalid_sample_type = kSbMediaAudioSampleTypeInt16Deprecated;
   }
 
   AudioSinkTestFrameBuffers frame_buffers(SbAudioSinkGetMaxChannels(),

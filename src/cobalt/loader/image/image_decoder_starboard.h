@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,17 +34,17 @@ class ImageDecoderStarboard : public ImageDataDecoder {
   explicit ImageDecoderStarboard(
       render_tree::ResourceProvider* resource_provider, const char* mime_type,
       SbDecodeTargetFormat format);
-  ~ImageDecoderStarboard() OVERRIDE;
+  ~ImageDecoderStarboard() override;
 
   // From ImageDataDecoder
-  std::string GetTypeString() const OVERRIDE { return "ImageDecoderStarboard"; }
+  std::string GetTypeString() const override { return "ImageDecoderStarboard"; }
 
-  SbDecodeTarget RetrieveSbDecodeTarget() OVERRIDE { return target_; }
+  SbDecodeTarget RetrieveSbDecodeTarget() override { return target_; }
 
  private:
   // From ImageDataDecoder
-  size_t DecodeChunkInternal(const uint8* data, size_t size) OVERRIDE;
-  void FinishInternal() OVERRIDE;
+  size_t DecodeChunkInternal(const uint8* data, size_t size) override;
+  void FinishInternal() override;
 
   const char* mime_type_;
   SbDecodeTargetFormat format_;

@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -87,6 +87,7 @@ extern const char kPreKeywordName[];
 extern const char kPreLineKeywordName[];
 extern const char kPreWrapKeywordName[];
 extern const char kPurpleKeywordName[];
+extern const char kRectangularKeywordName[];
 extern const char kRedKeywordName[];
 extern const char kRelativeKeywordName[];
 extern const char kRepeatKeywordName[];

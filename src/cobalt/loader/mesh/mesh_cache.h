@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -48,9 +48,10 @@ typedef ResourceCache<MeshResourceCacheType> MeshCache;
 inline static scoped_ptr<MeshCache> CreateMeshCache(
     const std::string& name, uint32 cache_capacity,
     loader::LoaderFactory* loader_factory) {
-  return make_scoped_ptr<MeshCache>(new MeshCache(
-      name, cache_capacity, base::Bind(&loader::LoaderFactory::CreateMeshLoader,
-                                       base::Unretained(loader_factory))));
+  return make_scoped_ptr<MeshCache>(
+      new MeshCache(name, cache_capacity, false /*are_loading_retries_enabled*/,
+                    base::Bind(&loader::LoaderFactory::CreateMeshLoader,
+                               base::Unretained(loader_factory))));
 }
 
 }  // namespace mesh

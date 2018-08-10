@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,16 +34,16 @@ class DisplayRenderTargetBlitter : public RenderTargetBlitter {
   DisplayRenderTargetBlitter(SbBlitterDevice device,
                              system_window::SystemWindow* system_window);
 
-  const math::Size& GetSize() const OVERRIDE;
+  const math::Size& GetSize() const override;
 
-  SbBlitterRenderTarget GetSbRenderTarget() const OVERRIDE;
+  SbBlitterRenderTarget GetSbRenderTarget() const override;
 
-  void Flip() OVERRIDE;
+  void Flip() override;
 
-  bool CreationError() OVERRIDE { return false; }
+  bool CreationError() override { return false; }
 
  private:
-  ~DisplayRenderTargetBlitter() OVERRIDE;
+  ~DisplayRenderTargetBlitter() override;
 
   SbBlitterSwapChain swap_chain_;
   SbBlitterRenderTarget render_target_;

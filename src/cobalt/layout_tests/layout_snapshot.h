@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 #define COBALT_LAYOUT_TESTS_LAYOUT_SNAPSHOT_H_
 
 #include "cobalt/browser/web_module.h"
+#include "cobalt/dom/screenshot_manager.h"
 #include "cobalt/render_tree/resource_provider.h"
 #include "googleurl/src/gurl.h"
 
@@ -29,7 +30,9 @@ namespace layout_tests {
 // tests.
 browser::WebModule::LayoutResults SnapshotURL(
     const GURL& url, const math::Size& viewport_size,
-    render_tree::ResourceProvider* resource_provider);
+    render_tree::ResourceProvider* resource_provider,
+    const dom::ScreenshotManager::ProvideScreenshotFunctionCallback&
+        screenshot_provider);
 
 }  // namespace layout_tests
 }  // namespace cobalt

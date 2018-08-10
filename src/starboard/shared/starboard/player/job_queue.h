@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,46 +15,88 @@
 #ifndef STARBOARD_SHARED_STARBOARD_PLAYER_JOB_QUEUE_H_
 #define STARBOARD_SHARED_STARBOARD_PLAYER_JOB_QUEUE_H_
 
+#include <functional>
 #include <map>
 
-#include "starboard/common/scoped_ptr.h"
 #include "starboard/condition_variable.h"
-#include "starboard/log.h"
 #include "starboard/mutex.h"
-#include "starboard/queue.h"
 #include "starboard/shared/internal_only.h"
-#include "starboard/shared/starboard/player/closure.h"
 #include "starboard/time.h"
 
 #ifndef __cplusplus
 #error "Only C++ files can include this header."
 #endif
 
+// Uncomment the following statement to enable JobQueue profiling, which will
+// log the stack trace of the job that takes the longest time to execute every a
+// while.
+// #define ENABLE_JOB_QUEUE_PROFILING 1
+
 namespace starboard {
 namespace shared {
 namespace starboard {
 namespace player {
 
-// This class implements a job queue where closures can be posted to it on any
+// This class implements a job queue where jobs can be posted to it on any
 // thread and will be processed on one thread that this job queue is linked to.
 // A thread can only have one job queue.
 class JobQueue {
  public:
+  typedef std::function<void()> Job;
+
+  class JobToken {
+   public:
+    static const int64_t kInvalidToken = -1;
+
+    explicit JobToken(int64_t token = kInvalidToken) : token_(token) {}
+
+    void ResetToInvalid() { token_ = kInvalidToken; }
+    bool is_valid() const { return token_ != kInvalidToken; }
+    bool operator==(const JobToken& that) const {
+      return token_ == that.token_;
+    }
+
+   private:
+    int64_t token_;
+  };
+
   class JobOwner {
-   protected:
+   public:
     explicit JobOwner(JobQueue* job_queue = JobQueue::current())
         : job_queue_(job_queue) {
       SB_DCHECK(job_queue);
     }
+    JobOwner(const JobOwner&) = delete;
     ~JobOwner() { CancelPendingJobs(); }
+
     bool BelongsToCurrentThread() const {
       return job_queue_->BelongsToCurrentThread();
     }
-    void Schedule(Closure closure, SbTimeMonotonic delay = 0) {
-      job_queue_->Schedule(closure, this, delay);
+
+    JobToken Schedule(Job job, SbTimeMonotonic delay = 0) {
+      return job_queue_->Schedule(job, this, delay);
     }
-    void Remove(Closure closure) { job_queue_->Remove(closure); }
-    void CancelPendingJobs() { job_queue_->RemoveJobsByToken(this); }
+
+    void RemoveJobByToken(JobToken job_token) {
+      return job_queue_->RemoveJobByToken(job_token);
+    }
+    void CancelPendingJobs() { job_queue_->RemoveJobsByOwner(this); }
+
+   protected:
+    enum DetachedState { kDetached };
+
+    explicit JobOwner(DetachedState detached_state) : job_queue_(NULL) {
+      SB_DCHECK(detached_state == kDetached);
+    }
+
+    // Allow |JobOwner| created on another thread to run on the current thread
+    // if it is created with |kDetached|.
+    // Note that this operation is not thread safe.  It is the caller's
+    // responsilibity to ensure that concurrency hasn't happened yet.
+    void AttachToCurrentThread() {
+      SB_DCHECK(job_queue_ == NULL);
+      job_queue_ = JobQueue::current();
+    }
 
    private:
     JobQueue* job_queue_;
@@ -63,8 +105,8 @@ class JobQueue {
   JobQueue();
   ~JobQueue();
 
-  void Schedule(Closure closure, SbTimeMonotonic delay = 0);
-  void Remove(Closure closure);
+  JobToken Schedule(Job job, SbTimeMonotonic delay = 0);
+  void RemoveJobByToken(JobToken job_token);
 
   // The processing of jobs may not be stopped when this function returns, but
   // it is guaranteed that the processing will be stopped very soon.  So it is
@@ -78,14 +120,25 @@ class JobQueue {
   static JobQueue* current();
 
  private:
-  struct Job {
-    Closure closure;
-    JobOwner* owner;
-  };
-  typedef std::multimap<SbTimeMonotonic, Job> TimeToJobMap;
+#if ENABLE_JOB_QUEUE_PROFILING
+  // Reset the max value periodically to catch all local peaks.
+  static const SbTime kProfileResetInterval = kSbTimeSecond;
+  static const int kProfileStackDepth = 10;
+#endif  // ENABLE_JOB_QUEUE_PROFILING
 
-  void Schedule(Closure closure, JobOwner* owner, SbTimeMonotonic delay);
-  void RemoveJobsByToken(JobOwner* owner);
+  struct JobRecord {
+    JobToken job_token;
+    Job job;
+    JobOwner* owner;
+#if ENABLE_JOB_QUEUE_PROFILING
+    void* stack[kProfileStackDepth];
+    int stack_size;
+#endif  // ENABLE_JOB_QUEUE_PROFILING
+  };
+  typedef std::multimap<SbTimeMonotonic, JobRecord> TimeToJobRecordMap;
+
+  JobToken Schedule(Job job, JobOwner* owner, SbTimeMonotonic delay);
+  void RemoveJobsByOwner(JobOwner* owner);
   // Return true if a job is run, otherwise return false.  When there is no job
   // ready to run currently and |wait_for_next_job| is true, the function will
   // wait to until a job is available or if the |queue_| is woken up.  Note that
@@ -96,8 +149,15 @@ class JobQueue {
   SbThreadId thread_id_;
   Mutex mutex_;
   ConditionVariable condition_;
-  TimeToJobMap time_to_job_map_;
-  bool stopped_;
+  int64_t current_job_token_ = JobToken::kInvalidToken + 1;
+  TimeToJobRecordMap time_to_job_record_map_;
+  bool stopped_ = false;
+
+#if ENABLE_JOB_QUEUE_PROFILING
+  SbTimeMonotonic last_reset_time_ = SbTimeGetMonotonicNow();
+  JobRecord job_record_with_max_interval_;
+  SbTimeMonotonic max_job_interval_ = 0;
+#endif  // ENABLE_JOB_QUEUE_PROFILING
 };
 
 }  // namespace player

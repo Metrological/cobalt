@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -69,13 +69,14 @@ class NetworkModule {
     std::string custom_proxy;
   };
 
-  // Default constructor, for use by unit tests.
-  NetworkModule();
-  explicit NetworkModule(const Options& options);
+  // Simple constructor intended to be used only by tests.
+  explicit NetworkModule(const Options& options = Options());
+
   // Constructor for production use.
-  NetworkModule(storage::StorageManager* storage_manager,
+  NetworkModule(const std::string& user_agent_string,
+                storage::StorageManager* storage_manager,
                 base::EventDispatcher* event_dispatcher,
-                const Options& options);
+                const Options& options = Options());
   ~NetworkModule();
 
   URLRequestContext* url_request_context() const {
@@ -105,7 +106,8 @@ class NetworkModule {
   void SetProxy(const std::string& custom_proxy_rules);
 
  private:
-  void Initialize(base::EventDispatcher* event_dispatcher);
+  void Initialize(const std::string& user_agent_string,
+                  base::EventDispatcher* event_dispatcher);
   void OnCreate(base::WaitableEvent* creation_event);
   scoped_ptr<network_bridge::NetPoster> CreateNetPoster();
 

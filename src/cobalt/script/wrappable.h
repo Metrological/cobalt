@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,17 +21,13 @@
 #include "base/memory/scoped_ptr.h"
 #include "cobalt/base/source_location.h"
 #include "cobalt/base/type_id.h"
+#include "cobalt/script/sequence.h"
+#include "cobalt/script/tracer.h"
 
 namespace cobalt {
 namespace script {
 
-class Wrappable;
-class Tracer {
- public:
-  virtual void Trace(Wrappable* wrappable) = 0;
-};
-
-class Wrappable : public base::RefCounted<Wrappable> {
+class Wrappable : public base::RefCounted<Wrappable>, public Traceable {
  public:
   // A handle to this Wrappable's corresponding Wrapper object. It may be
   // NULL if no wrapper has been created. A Wrapper may get garbage collected
@@ -65,18 +61,10 @@ class Wrappable : public base::RefCounted<Wrappable> {
 
   virtual base::SourceLocation GetInlineSourceLocation() const = 0;
 
-  // If this function returns true, the JavaScript engine will keep the wrapper
-  // for this Wrappable from being garbage collected even if there are no strong
-  // references to it. If this Wrappable is no longer referenced from anything
-  // other than the wrapper, the wrappable will be garbage collected despite
-  // this (which will result in the Wrappable being destructed as well.)
-  virtual bool ShouldKeepWrapperAlive() { return false; }
-
-  // Trace all native |Wrappable|s accessible by the |Wrappable|. Must be
-  // manually implemented by the |Wrappable|.
-  // TODO: Should be pure virtual after static analysis tool for |Wrappable|s
-  // is created.
-  virtual void TraceMembers(Tracer* /*tracer*/) {}
+  // Our implementation of the |Traceable| interface.  All |Wrappable|s that
+  // own any |Traceable|s must override |TraceMembers| and trace them.
+  void TraceMembers(Tracer* /*tracer*/) override {}
+  bool IsWrappable() const final { return true; }
 
  protected:
   virtual ~Wrappable() { }
@@ -109,13 +97,13 @@ class Wrappable : public base::RefCounted<Wrappable> {
   static base::TypeId INTERFACE_NAME##WrappableType() {           \
     return base::GetTypeId<INTERFACE_NAME>();                     \
   }                                                               \
-  base::TypeId GetWrappableType() const OVERRIDE {                \
+  base::TypeId GetWrappableType() const override {                \
     return INTERFACE_NAME##WrappableType();                       \
   }                                                               \
   static const char* GetSourceLocationName() {                    \
     return "[object " #INTERFACE_NAME "]";                        \
   }                                                               \
-  base::SourceLocation GetInlineSourceLocation() const OVERRIDE { \
+  base::SourceLocation GetInlineSourceLocation() const override { \
     return base::SourceLocation(GetSourceLocationName(), 1, 1);   \
   }
 

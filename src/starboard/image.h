@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@
 // All functions in this module are safe to call from any thread at any point
 // in time.
 //
-// #### SbImageIsDecodeSupported and SbImageDecode Example
+// # SbImageIsDecodeSupported and SbImageDecode Example
 //
 // Let's assume that we're on a Blitter platform.
 //

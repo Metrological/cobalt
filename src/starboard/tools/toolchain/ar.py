@@ -1,4 +1,4 @@
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2017 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -50,8 +50,10 @@ class StaticLinker(StaticLinkerBase, abstract.StaticLinker):
   def __init__(self, **kwargs):
     super(StaticLinker, self).__init__(**kwargs)
 
-  def GetCommand(self, path, extra_flags, flags):
-    return '{0} rcs {1} $out @$rspfile'.format(path, extra_flags)
+  def GetCommand(self, path, extra_flags, flags, shell):
+    del flags  # Not used.
+    return shell.And('rm -f $out',
+                     '{0} rcs {1} $out @$rspfile'.format(path, extra_flags))
 
 
 class StaticThinLinker(StaticLinkerBase, abstract.StaticThinLinker):
@@ -60,5 +62,7 @@ class StaticThinLinker(StaticLinkerBase, abstract.StaticThinLinker):
   def __init__(self, **kwargs):
     super(StaticThinLinker, self).__init__(**kwargs)
 
-  def GetCommand(self, path, extra_flags, flags):
-    return '{0} rcsT {1} $out @$rspfile'.format(path, extra_flags)
+  def GetCommand(self, path, extra_flags, flags, shell):
+    del flags  # Not used.
+    return shell.And('rm -f $out',
+                     '{0} rcsT {1} $out @$rspfile'.format(path, extra_flags))

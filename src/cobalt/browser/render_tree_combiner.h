@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -50,6 +50,13 @@ class RenderTreeCombiner {
     // received should be stored.
     void Submit(
         const base::optional<renderer::Submission>& render_tree_submission);
+
+    bool HasRenderTree() { return !!render_tree_; }
+
+    // Returns a current submission object that can be passed into a renderer
+    // for rasterization.  If the render tree does not exist, this will
+    // return a base::nullopt.
+    base::optional<renderer::Submission> GetCurrentSubmission();
 
    private:
     friend class RenderTreeCombiner;

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 #define COBALT_RENDER_TREE_FILTER_NODE_H_
 
 #include "base/compiler_specific.h"
+#include "base/logging.h"
 #include "base/optional.h"
 #include "cobalt/base/type_id.h"
 #include "cobalt/render_tree/blur_filter.h"
@@ -35,6 +36,7 @@ namespace render_tree {
 class FilterNode : public Node {
  public:
   struct Builder {
+    Builder(const Builder&) = default;
     explicit Builder(const scoped_refptr<render_tree::Node>& source);
 
     Builder(const OpacityFilter& opacity_filter,
@@ -81,26 +83,18 @@ class FilterNode : public Node {
     base::optional<MapToMeshFilter> map_to_mesh_filter;
   };
 
-  explicit FilterNode(const Builder& builder) : data_(builder) {
-    AssertValid();
+  // Forwarding constructor to the set of Builder constructors.
+  template <typename... Args>
+  FilterNode(Args&&... args) : data_(std::forward<Args>(args)...) {
+    if (DCHECK_IS_ON()) {
+      AssertValid();
+    }
   }
 
-  FilterNode(const OpacityFilter& opacity_filter,
-             const scoped_refptr<render_tree::Node>& source);
+  void Accept(NodeVisitor* visitor) override;
+  math::RectF GetBounds() const override { return data_.GetBounds(); }
 
-  FilterNode(const ViewportFilter& viewport_filter,
-             const scoped_refptr<render_tree::Node>& source);
-
-  FilterNode(const BlurFilter& blur_filter,
-             const scoped_refptr<render_tree::Node>& source);
-
-  FilterNode(const MapToMeshFilter& map_to_mesh_filter,
-             const scoped_refptr<render_tree::Node>& source);
-
-  void Accept(NodeVisitor* visitor) OVERRIDE;
-  math::RectF GetBounds() const OVERRIDE { return data_.GetBounds(); }
-
-  base::TypeId GetTypeId() const OVERRIDE {
+  base::TypeId GetTypeId() const override {
     return base::GetTypeId<FilterNode>();
   }
 

@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,13 +34,9 @@ static inline void* throw_on_failure(size_t size, void* p) {
   return p;
 }
 
-void sk_throw() {
-  SkDEBUGFAIL("sk_throw");
-  SbSystemBreakIntoDebugger();
-}
+void sk_abort_no_print() { SbSystemBreakIntoDebugger(); }
 
 void sk_out_of_memory(void) {
-  SkDEBUGFAIL("sk_out_of_memory");
   SbSystemBreakIntoDebugger();
 }
 

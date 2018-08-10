@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,7 +24,8 @@ namespace cobalt {
 namespace renderer {
 
 RendererModule::Options::Options()
-    : purge_skia_font_caches_on_destruction(true),
+    : force_deterministic_rendering(false),
+      purge_skia_font_caches_on_destruction(true),
       enable_fps_stdout(false),
       enable_fps_overlay(false) {
   // These default values may ultimately be overridden by AutoMem.
@@ -36,16 +37,13 @@ RendererModule::Options::Options()
 #if SB_HAS(GLES2)
 #if defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
   software_surface_cache_size_in_bytes = 0;
-  surface_cache_size_in_bytes = 0;
   offscreen_target_cache_size_in_bytes = 4 * 1024 * 1024;
 #else
   software_surface_cache_size_in_bytes = 0;
-  surface_cache_size_in_bytes = 0;
   offscreen_target_cache_size_in_bytes = 0;
 #endif
 #else
   software_surface_cache_size_in_bytes = 8 * 1024 * 1024;
-  surface_cache_size_in_bytes = 0;
   offscreen_target_cache_size_in_bytes = 0;
 #endif
 
@@ -60,7 +58,7 @@ RendererModule::RendererModule(system_window::SystemWindow* system_window,
   // Load up the platform's default graphics system.
   {
     TRACE_EVENT0("cobalt::renderer", "backend::CreateDefaultGraphicsSystem()");
-    graphics_system_ = backend::CreateDefaultGraphicsSystem();
+    graphics_system_ = backend::CreateDefaultGraphicsSystem(system_window_);
   }
 
   // Create/initialize the display using the system window

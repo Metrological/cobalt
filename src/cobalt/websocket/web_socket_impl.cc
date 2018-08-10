@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -476,7 +476,6 @@ void WebSocketImpl::ProcessControlMessage(
     case net::WebSocketFrameHeader::kOpCodeContinuation:
     case net::WebSocketFrameHeader::kOpCodeText:
     case net::WebSocketFrameHeader::kOpCodeBinary:
-    default:
       NOTREACHED() << "Invalid case " << header_pointer->opcode;
 
       CloseInfo close_info(net::kWebSocketErrorInternalServerError,

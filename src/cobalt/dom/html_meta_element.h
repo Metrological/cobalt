@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -50,15 +50,15 @@ class HTMLMetaElement : public HTMLElement {
 
   // Custom, not in any spec.
   //
-  scoped_refptr<HTMLMetaElement> AsHTMLMetaElement() OVERRIDE { return this; }
+  scoped_refptr<HTMLMetaElement> AsHTMLMetaElement() override { return this; }
 
   // From Node.
-  void OnInsertedIntoDocument() OVERRIDE;
+  void OnInsertedIntoDocument() override;
 
   DEFINE_WRAPPABLE_TYPE(HTMLMetaElement);
 
  private:
-  ~HTMLMetaElement() OVERRIDE {}
+  ~HTMLMetaElement() override {}
 
   bool IsDescendantOfHeadElement() const;
 };

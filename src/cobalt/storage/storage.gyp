@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,24 +27,19 @@
         'savegame.h',
         'savegame_thread.cc',
         'savegame_thread.h',
-        'sql_vfs.cc',
-        'sql_vfs.h',
         'savegame_fake.cc',
         'savegame_starboard.cc',
         'storage_manager.cc',
         'storage_manager.h',
         'upgrade/upgrade_reader.cc',
         'upgrade/upgrade_reader.h',
-        'virtual_file.cc',
-        'virtual_file.h',
-        'virtual_file_system.cc',
-        'virtual_file_system.h',
       ],
       'dependencies': [
         '<(DEPTH)/base/base.gyp:base',
         '<(DEPTH)/cobalt/base/base.gyp:base',
+        '<(DEPTH)/cobalt/storage/store/store.gyp:memory_store',
+        '<(DEPTH)/cobalt/storage/store_upgrade/upgrade.gyp:storage_upgrade',
         '<(DEPTH)/net/net.gyp:net',
-        '<(DEPTH)/sql/sql.gyp:sql',
       ],
     },
     {
@@ -54,7 +49,6 @@
         'savegame_test.cc',
         'storage_manager_test.cc',
         'upgrade/storage_upgrade_test.cc',
-        'virtual_file_system_test.cc',
       ],
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
@@ -74,23 +68,18 @@
       'variables': {
         'executable_name': 'storage_test',
       },
-      'includes': [ '../../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
     {
       'target_name': 'storage_upgrade_copy_test_data',
       'type': 'none',
-      'actions': [
-        {
-          'action_name': 'storage_upgrade_copy_test_data',
-          'variables': {
-            'input_files': [
-              '<(DEPTH)/cobalt/storage/upgrade/testdata/',
-            ],
-            'output_dir': 'cobalt/storage/upgrade/testdata/',
-          },
-          'includes': [ '../build/copy_test_data.gypi' ],
-        },
-      ],
+      'variables': {
+        'content_test_input_files': [
+          '<(DEPTH)/cobalt/storage/upgrade/testdata/',
+        ],
+        'content_test_output_subdir': 'cobalt/storage/upgrade/testdata/',
+      },
+      'includes': [ '<(DEPTH)/starboard/build/copy_test_data.gypi' ],
     },
   ],
 }

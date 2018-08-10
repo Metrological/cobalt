@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,8 +15,6 @@
 // https://www.w3.org/TR/2014/WD-url-1-20141209/#dom-url
 
 interface URL {
-  [CallWith=EnvironmentSettings] static DOMString
-      createObjectURL(MediaSource mediaSource);
   [CallWith=EnvironmentSettings] static DOMString
       createObjectURL(Blob blob);
   [CallWith=EnvironmentSettings] static void revokeObjectURL(DOMString url);

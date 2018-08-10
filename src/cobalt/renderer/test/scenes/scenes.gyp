@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -44,19 +44,19 @@
         '<(DEPTH)/cobalt/render_tree/render_tree.gyp:render_tree',
         '<(DEPTH)/cobalt/renderer/test/png_utils/png_utils.gyp:png_utils',
         '<(DEPTH)/cobalt/trace_event/trace_event.gyp:trace_event',
+        'scenes_copy_test_data',
       ],
-      'actions': [
-        {
-          'action_name': 'copy_data',
-          'variables': {
-            'input_files': [
-              'demo_image.png',
-            ],
-            'output_dir': 'test/scenes',
-          },
-          'includes': ['../../../build/copy_test_data.gypi'],
-        },
-      ],
+    },
+    {
+      'target_name': 'scenes_copy_test_data',
+      'type': 'none',
+      'variables': {
+        'content_test_input_files': [
+          'demo_image.png',
+        ],
+        'content_test_output_subdir': 'test/scenes',
+      },
+      'includes': ['<(DEPTH)/starboard/build/copy_test_data.gypi'],
     },
   ],
 }

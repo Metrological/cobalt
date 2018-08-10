@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc. All Rights Reserved.
+ * Copyright 2017 The Cobalt Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ class SoftwareMesh : public render_tree::Mesh {
     DCHECK(vertices_);
   }
 
-  uint32 GetEstimatedSizeInBytes() const OVERRIDE {
+  uint32 GetEstimatedSizeInBytes() const override {
     return static_cast<uint32>(vertices_->size() * 5 * sizeof(float) +
                                sizeof(DrawMode));
   }

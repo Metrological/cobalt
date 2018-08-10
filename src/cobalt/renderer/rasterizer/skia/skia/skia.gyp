@@ -30,6 +30,7 @@
       'includes': [
         'skia_common.gypi',
         'skia_library.gypi',
+        'skia_sksl.gypi',
       ],
     },
 
@@ -56,7 +57,7 @@
       'variables': {
         'executable_name': 'filter_fuzz_stub',
       },
-      'includes': [ '../../../../../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ],
 }

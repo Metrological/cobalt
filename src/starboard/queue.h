@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -128,6 +128,16 @@ class Queue {
     ScopedLock lock(mutex_);
     queue_.erase(std::remove(queue_.begin(), queue_.end(), value),
                  queue_.end());
+  }
+
+  void Clear() {
+    ScopedLock lock(mutex_);
+    queue_.clear();
+  }
+
+  size_t Size() {
+    ScopedLock lock(mutex_);
+    return queue_.size();
   }
 
  private:

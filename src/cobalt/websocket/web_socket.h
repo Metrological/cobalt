@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,14 +23,14 @@
 #include "base/optional.h"
 #include "cobalt/base/compiler.h"
 #include "cobalt/base/tokens.h"
-#include "cobalt/dom/array_buffer.h"
-#include "cobalt/dom/array_buffer_view.h"
 #include "cobalt/dom/blob.h"
 #include "cobalt/dom/csp_delegate.h"
 #include "cobalt/dom/dom_exception.h"
 #include "cobalt/dom/dom_settings.h"
 #include "cobalt/dom/event_target.h"
 #include "cobalt/dom/message_event.h"
+#include "cobalt/script/array_buffer.h"
+#include "cobalt/script/array_buffer_view.h"
 #include "cobalt/script/wrappable.h"
 #include "cobalt/websocket/web_socket_event_interface.h"
 #include "cobalt/websocket/web_socket_impl.h"
@@ -84,9 +84,9 @@ class WebSocket : public dom::EventTarget, public WebsocketEventInterface {
   void Send(const std::string& data, script::ExceptionState* exception_state);
   void Send(const scoped_refptr<dom::Blob>& data,
             script::ExceptionState* exception_state);
-  void Send(const scoped_refptr<dom::ArrayBuffer>& data,
+  void Send(const script::Handle<script::ArrayBuffer>& data,
             script::ExceptionState* exception_state);
-  void Send(const scoped_refptr<dom::ArrayBufferView>& data,
+  void Send(const script::Handle<script::ArrayBufferView>& data,
             script::ExceptionState* exception_state);
 
   // EventHandlers.
@@ -152,19 +152,19 @@ class WebSocket : public dom::EventTarget, public WebsocketEventInterface {
             script::ExceptionState* exception_state,
             const bool require_network_module);
 
-  void OnConnected(const std::string& selected_subprotocol) OVERRIDE;
+  void OnConnected(const std::string& selected_subprotocol) override;
 
   void OnDisconnected(bool was_clean, uint16 code,
-                      const std::string& reason) OVERRIDE;
+                      const std::string& reason) override;
 
-  void OnSentData(int amount_sent) OVERRIDE {
+  void OnSentData(int amount_sent) override {
     DCHECK_GE(buffered_amount_, amount_sent);
     buffered_amount_ -= amount_sent;
     PotentiallyAllowGarbageCollection();
   }
   void OnReceivedData(bool is_text_frame,
-                      scoped_refptr<net::IOBufferWithSize> data) OVERRIDE;
-  void OnError() OVERRIDE {
+                      scoped_refptr<net::IOBufferWithSize> data) override;
+  void OnError() override {
     this->DispatchEvent(new dom::Event(base::Tokens::error()));
   }
 

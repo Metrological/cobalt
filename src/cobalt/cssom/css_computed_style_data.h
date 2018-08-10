@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,7 +33,8 @@ class CSSComputedStyleDeclaration;
 
 // CSSComputedStyleData which has PropertyValue type properties only used
 // internally and it is not exposed to JavaScript.
-class CSSComputedStyleData : public base::RefCounted<CSSComputedStyleData> {
+class CSSComputedStyleData
+    : public base::RefCountedThreadSafe<CSSComputedStyleData> {
  public:
   // This class provides the ability to determine whether the properties of two
   // CSSComputedStyleData objects match for a given set of property keys.

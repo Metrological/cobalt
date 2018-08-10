@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,33 +29,44 @@ using ::media::WebMediaPlayerClient;
 class WebMediaPlayerHelper::WebMediaPlayerClientStub
     : public WebMediaPlayerClient {
  public:
+  WebMediaPlayerClientStub() {}
+  explicit WebMediaPlayerClientStub(
+      const ChunkDemuxerOpenCB& chunk_demuxer_open_cb)
+      : chunk_demuxer_open_cb_(chunk_demuxer_open_cb) {
+    DCHECK(!chunk_demuxer_open_cb_.is_null());
+  }
   ~WebMediaPlayerClientStub() {}
 
  private:
   // WebMediaPlayerClient methods
-  void NetworkStateChanged() OVERRIDE {}
-  void ReadyStateChanged() OVERRIDE {}
-  void TimeChanged(bool) OVERRIDE {}
-  void DurationChanged() OVERRIDE {}
-  void OutputModeChanged() OVERRIDE {}
-  void ContentSizeChanged() OVERRIDE {}
-  void PlaybackStateChanged() OVERRIDE {}
-  void SawUnsupportedTracks() OVERRIDE {}
-  float Volume() const OVERRIDE { return 1.f; }
-#if defined(COBALT_MEDIA_SOURCE_2016)
-  void SourceOpened(ChunkDemuxer*) OVERRIDE {}
-#else   // defined(COBALT_MEDIA_SOURCE_2016)
-  void SourceOpened() OVERRIDE {}
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
-  std::string SourceURL() const OVERRIDE { return ""; }
+  void NetworkStateChanged() override {}
+  void NetworkError(const std::string&) override {}
+  void ReadyStateChanged() override {}
+  void TimeChanged(bool) override {}
+  void DurationChanged() override {}
+  void OutputModeChanged() override {}
+  void ContentSizeChanged() override {}
+  void PlaybackStateChanged() override {}
+  void SawUnsupportedTracks() override {}
+  float Volume() const override { return 1.f; }
+  void SourceOpened(ChunkDemuxer* chunk_demuxer) override {
+    DCHECK(!chunk_demuxer_open_cb_.is_null());
+    chunk_demuxer_open_cb_.Run(chunk_demuxer);
+  }
+  std::string SourceURL() const override { return ""; }
+  bool PreferDecodeToTexture() { return true; }
+
 #if defined(COBALT_MEDIA_SOURCE_2016)
   void EncryptedMediaInitDataEncountered(EmeInitDataType, const unsigned char*,
-                                         unsigned) OVERRIDE {}
+                                         unsigned) override {}
 #endif  // defined(COBALT_MEDIA_SOURCE_2016)
+
+  ChunkDemuxerOpenCB chunk_demuxer_open_cb_;
 };
 
-WebMediaPlayerHelper::WebMediaPlayerHelper(MediaModule* media_module)
-    : client_(new WebMediaPlayerClientStub),
+WebMediaPlayerHelper::WebMediaPlayerHelper(MediaModule* media_module,
+                                           const ChunkDemuxerOpenCB& open_cb)
+    : client_(new WebMediaPlayerClientStub(open_cb)),
       player_(media_module->CreateWebMediaPlayer(client_)) {
   player_->SetRate(1.0);
 // TODO: Investigate a better way to exclude this when SB_HAS(PLAYER_WITH_URL)
@@ -89,8 +100,14 @@ WebMediaPlayerHelper::~WebMediaPlayerHelper() {
   delete client_;
 }
 
+#if !defined(COBALT_MEDIA_SOURCE_2016)
 scoped_refptr<VideoFrame> WebMediaPlayerHelper::GetCurrentFrame() const {
   return player_->GetVideoFrameProvider()->GetCurrentFrame();
+}
+#endif  // !defined(COBALT_MEDIA_SOURCE_2016)
+
+SbDecodeTarget WebMediaPlayerHelper::GetCurrentDecodeTarget() const {
+  return player_->GetVideoFrameProvider()->GetCurrentSbDecodeTarget();
 }
 
 bool WebMediaPlayerHelper::IsPlaybackFinished() const {

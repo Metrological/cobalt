@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,16 +25,6 @@
 
 namespace cobalt {
 namespace layout_tests {
-
-// Returns the root directory that all test input can be found in (e.g.
-// the HTML files that define the tests, and the PNG/TXT files that define
-// the expected output).
-FilePath GetTestInputRootDirectory();
-
-// Returns the root directory that all output will be placed within.  Output
-// is generated when rebaselining test expected output, or when test details
-// have been chosen to be output.
-FilePath GetTestOutputRootDirectory();
 
 // Final parsed information about an individual Layout Test entry.
 struct TestInfo {

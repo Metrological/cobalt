@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -114,9 +114,6 @@ class DrawObject {
 
   DrawObject();
   explicit DrawObject(const BaseState& base_state);
-
-  // Extract the scale vector from this object's transform.
-  math::Vector2dF GetScale() const;
 
   // Remove scale from the transform, and return the scale vector.
   math::Vector2dF RemoveScaleFromTransform();

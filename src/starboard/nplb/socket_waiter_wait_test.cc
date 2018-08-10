@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -95,6 +95,20 @@ TEST_P(PairSbSocketWaiterWaitTest, SunnyDay) {
   EXPECT_FALSE(SbSocketWaiterAdd(waiter, trio.client_socket, &values,
                                  &FailSocketWaiterCallback,
                                  kSbSocketWaiterInterestRead, false));
+
+  WaitShouldNotBlock(waiter);
+
+  EXPECT_EQ(1, values.count);  // Check that the callback was called once.
+  EXPECT_EQ(waiter, values.waiter);
+  EXPECT_EQ(trio.client_socket, values.socket);
+  EXPECT_EQ(&values, values.context);
+  EXPECT_EQ(kSbSocketWaiterInterestWrite, values.ready_interests);
+
+  // Try again to make sure writable sockets are still writable
+  values.count = 0;
+  EXPECT_TRUE(SbSocketWaiterAdd(
+      waiter, trio.client_socket, &values, &TestSocketWaiterCallback,
+      kSbSocketWaiterInterestRead | kSbSocketWaiterInterestWrite, false));
 
   WaitShouldNotBlock(waiter);
 

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -83,10 +83,9 @@ const char* Console::GetLevelAsString(Level level) {
       return kLogString;
     case kWarning:
       return kWarningString;
-    default:
-      NOTREACHED();
-      return "";
   }
+  NOTREACHED();
+  return "";
 }
 
 void Console::AddListener(Listener* listener) { listeners_.insert(listener); }

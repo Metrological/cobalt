@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -51,9 +51,7 @@ void SetSignalHandler(int signal_id, SignalHandlerFunction handler) {
 
 void SuspendDone(void* /*context*/) {
   // Stop all thread execution after fully transitioning into Suspended.
-#ifndef EXECUTABLE_TYPE_SHARED_LIBRARY
   raise(SIGSTOP);
-#endif
 }
 
 void Suspend(int signal_id) {

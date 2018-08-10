@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -315,8 +315,6 @@ void LinkReceiver::Impl::Run() {
     waiter_initialized_.Put();
     return;
   }
-
-  SB_LOG(INFO) << "LinkReceiver port: " << actual_port_;
 
   char port_string[32] = {0};
   SbStringFormatF(port_string, SB_ARRAY_SIZE(port_string), "%d", actual_port_);

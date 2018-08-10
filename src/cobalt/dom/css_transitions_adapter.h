@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,8 +40,8 @@ class CSSTransitionsAdapter : public cssom::TransitionSet::EventHandler {
       const scoped_refptr<dom::DOMAnimatable>& target);
   ~CSSTransitionsAdapter();
 
-  void OnTransitionStarted(const cssom::Transition& transition) OVERRIDE;
-  void OnTransitionRemoved(const cssom::Transition& transition) OVERRIDE;
+  void OnTransitionStarted(const cssom::Transition& transition) override;
+  void OnTransitionRemoved(const cssom::Transition& transition) override;
 
  private:
   // The AnimationWithEventHandler struct maintains a reference to the Animation

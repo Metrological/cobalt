@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -99,6 +99,29 @@ SbAtomicRelease_Load(volatile const SbAtomic32* ptr) {
   SbAtomicMemoryBarrier();
   return __atomic_load_n(ptr, __ATOMIC_RELAXED);
 }
+
+// 8-bit atomic operations.
+#if SB_API_VERSION >= 10
+static SB_C_FORCE_INLINE SbAtomic8
+SbAtomicRelease_CompareAndSwap8(volatile SbAtomic8* ptr,
+                               SbAtomic8 old_value,
+                               SbAtomic8 new_value) {
+  bool result = __atomic_compare_exchange_n(ptr, &old_value, new_value, false,
+                              __ATOMIC_RELEASE, __ATOMIC_RELAXED);
+  SB_UNREFERENCED_PARAMETER(result);  // Make gcc compiler happy.
+  return old_value;
+}
+
+static SB_C_FORCE_INLINE void
+SbAtomicNoBarrier_Store8(volatile SbAtomic8* ptr, SbAtomic8 value) {
+  __atomic_store_n(ptr, value, __ATOMIC_RELAXED);
+}
+
+static SB_C_FORCE_INLINE SbAtomic8
+SbAtomicNoBarrier_Load8(volatile const SbAtomic8* ptr) {
+  return __atomic_load_n(ptr, __ATOMIC_RELAXED);
+}
+#endif  // SB_API_VERSION >= 10
 
 // 64-bit atomic operations (only available on 64-bit processors).
 #if SB_HAS(64_BIT_ATOMICS)

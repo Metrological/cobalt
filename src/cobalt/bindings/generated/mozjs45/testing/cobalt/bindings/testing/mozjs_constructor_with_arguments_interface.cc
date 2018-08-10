@@ -1,4 +1,6 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+
+
+// Copyright 2018 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,10 +33,14 @@
 #include "cobalt/script/exception_state.h"
 #include "cobalt/script/mozjs-45/callback_function_conversion.h"
 #include "cobalt/script/mozjs-45/conversion_helpers.h"
+#include "cobalt/script/mozjs-45/mozjs_array_buffer.h"
+#include "cobalt/script/mozjs-45/mozjs_array_buffer_view.h"
 #include "cobalt/script/mozjs-45/mozjs_callback_function.h"
+#include "cobalt/script/mozjs-45/mozjs_data_view.h"
 #include "cobalt/script/mozjs-45/mozjs_exception_state.h"
 #include "cobalt/script/mozjs-45/mozjs_global_environment.h"
 #include "cobalt/script/mozjs-45/mozjs_property_enumerator.h"
+#include "cobalt/script/mozjs-45/mozjs_typed_arrays.h"
 #include "cobalt/script/mozjs-45/mozjs_user_object_holder.h"
 #include "cobalt/script/mozjs-45/mozjs_value_handle.h"
 #include "cobalt/script/mozjs-45/native_promise.h"
@@ -46,6 +52,7 @@
 #include "cobalt/script/sequence.h"
 #include "third_party/mozjs-45/js/src/jsapi.h"
 #include "third_party/mozjs-45/js/src/jsfriendapi.h"
+
 
 namespace {
 using cobalt::bindings::testing::ConstructorWithArgumentsInterface;
@@ -87,7 +94,14 @@ namespace cobalt {
 namespace bindings {
 namespace testing {
 
+
 namespace {
+
+
+
+
+
+
 
 class MozjsConstructorWithArgumentsInterfaceHandler : public ProxyHandler {
  public:
@@ -107,6 +121,7 @@ MozjsConstructorWithArgumentsInterfaceHandler::named_property_hooks = {
   NULL,
   NULL,
 };
+
 ProxyHandler::IndexedPropertyHooks
 MozjsConstructorWithArgumentsInterfaceHandler::indexed_property_hooks = {
   NULL,
@@ -120,6 +135,8 @@ static base::LazyInstance<MozjsConstructorWithArgumentsInterfaceHandler>
     proxy_handler;
 
 bool Constructor(JSContext* context, unsigned int argc, JS::Value* vp);
+
+
 bool HasInstance(JSContext *context, JS::HandleObject type,
                    JS::MutableHandleValue vp, bool *success) {
   JS::RootedObject global_object(
@@ -325,6 +342,7 @@ bool get_stringArg(
 
 
 const JSPropertySpec prototype_properties[] = {
+
   {  // Readonly attribute
     "longArg",
     JSPROP_SHARED | JSPROP_ENUMERATE,
@@ -351,6 +369,7 @@ const JSFunctionSpec prototype_functions[] = {
 };
 
 const JSPropertySpec interface_object_properties[] = {
+
   JS_PS_END
 };
 
@@ -391,17 +410,25 @@ void InitializePrototypeAndInterfaceObject(
   JS::RootedObject function_prototype(
       context, JS_GetFunctionPrototype(context, global_object));
   DCHECK(function_prototype);
-  // Create the Interface object.
-  interface_data->interface_object = JS_NewObjectWithGivenProto(
-      context, &interface_object_class_definition,
-      function_prototype);
+
+  const char name[] =
+      "ConstructorWithArgumentsInterface";
+
+  JSFunction* function = js::NewFunctionWithReserved(
+      context,
+      Constructor,
+      2,
+      JSFUN_CONSTRUCTOR,
+      name);
+  interface_data->interface_object = JS_GetFunctionObject(function);
 
   // Add the InterfaceObject.name property.
   JS::RootedObject rooted_interface_object(
       context, interface_data->interface_object);
   JS::RootedValue name_value(context);
-  const char name[] =
-      "ConstructorWithArgumentsInterface";
+
+  js::SetPrototype(context, rooted_interface_object, function_prototype);
+
   name_value.setString(JS_NewStringCopyZ(context, name));
   success = JS_DefineProperty(
       context, rooted_interface_object, "name", name_value, JSPROP_READONLY,
@@ -458,6 +485,7 @@ JSObject* MozjsConstructorWithArgumentsInterface::CreateProxy(
       MozjsGlobalEnvironment::GetFromContext(context)->global_object());
   DCHECK(global_object);
 
+  JSAutoCompartment auto_compartment(context, global_object);
   InterfaceData* interface_data = GetInterfaceData(context);
   JS::RootedObject prototype(context, GetPrototype(context, global_object));
   DCHECK(prototype);
@@ -516,8 +544,10 @@ JSObject* MozjsConstructorWithArgumentsInterface::GetInterfaceObject(
   return interface_data->interface_object;
 }
 
-
 namespace {
+
+
+
 bool Constructor(JSContext* context, unsigned int argc, JS::Value* vp) {
   MozjsExceptionState exception_state(context);
   JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
@@ -530,7 +560,7 @@ bool Constructor(JSContext* context, unsigned int argc, JS::Value* vp) {
   TypeTraits<int32_t >::ConversionType arg1;
   TypeTraits<bool >::ConversionType arg2;
   // Optional arguments with default values
-  TypeTraits<std::string >::ConversionType default_arg =
+  TypeTraits<std::string >::ConversionType defaultArg =
       "default";
 
   DCHECK_LT(0, args.length());
@@ -562,20 +592,22 @@ bool Constructor(JSContext* context, unsigned int argc, JS::Value* vp) {
                 optional_value0,
                 kNoConversionFlags,
                 &exception_state,
-                &default_arg);
+                &defaultArg);
     if (exception_state.is_exception_set()) {
       return false;
     }
   }
 
   scoped_refptr<ConstructorWithArgumentsInterface> new_object =
-      new ConstructorWithArgumentsInterface(arg1, arg2, default_arg);
+      new ConstructorWithArgumentsInterface(arg1, arg2, defaultArg);
   JS::RootedValue result_value(context);
   ToJSValue(context, new_object, &result_value);
   DCHECK(result_value.isObject());
   args.rval().setObject(result_value.toObject());
   return true;
 }
+
+
 }  // namespace
 
 

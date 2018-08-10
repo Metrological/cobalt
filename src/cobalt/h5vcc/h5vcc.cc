@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,6 +36,20 @@ H5vcc::H5vcc(const Settings& settings, const scoped_refptr<dom::Window>& window,
   storage_ = new H5vccStorage(settings.network_module);
   system_ = new H5vccSystem();
   trace_event_ = new H5vccTraceEvent();
+}
+
+void H5vcc::TraceMembers(script::Tracer* tracer) {
+  tracer->Trace(accessibility_);
+  tracer->Trace(account_info_);
+  tracer->Trace(audio_config_array_);
+  tracer->Trace(c_val_);
+  tracer->Trace(crash_log_);
+  tracer->Trace(runtime_);
+  tracer->Trace(settings_);
+  tracer->Trace(sso_);
+  tracer->Trace(storage_);
+  tracer->Trace(system_);
+  tracer->Trace(trace_event_);
 }
 
 }  // namespace h5vcc

@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,13 +52,9 @@ SpeechSynthesisUtterance::SpeechSynthesisUtterance(
           .referenced_value());
 }
 
-SpeechSynthesisUtterance::~SpeechSynthesisUtterance() {
-  SB_DCHECK(!pending_speak_) << "Destructed utterance has a pending Speak()";
-}
-
 void SpeechSynthesisUtterance::DispatchErrorCancelledEvent() {
   if (pending_speak_) {
-    SB_DLOG(INFO) << "Utterance has a pending Speak()";
+    DLOG(INFO) << "Utterance has a pending Speak()";
     DispatchErrorEvent(kSpeechSynthesisErrorCodeCanceled);
   }
 }
@@ -78,6 +74,16 @@ void SpeechSynthesisUtterance::DispatchErrorEvent(
     SpeechSynthesisErrorCode error_code) {
   pending_speak_ = false;
   DispatchEvent(new SpeechSynthesisErrorEvent(error_code, this));
+}
+
+void SpeechSynthesisUtterance::TraceMembers(script::Tracer* tracer) {
+  dom::EventTarget::TraceMembers(tracer);
+
+  tracer->Trace(voice_);
+}
+
+SpeechSynthesisUtterance::~SpeechSynthesisUtterance() {
+  DCHECK(!pending_speak_) << "Destructed utterance has a pending Speak()";
 }
 
 }  // namespace speech

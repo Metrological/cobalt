@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ class URLRequestContext : public net::URLRequestContext {
   URLRequestContext(storage::StorageManager* storage_manager,
                     const std::string& custom_proxy, net::NetLog* net_log,
                     bool ignore_certificate_errors);
-  ~URLRequestContext() OVERRIDE;
+  ~URLRequestContext() override;
 
   void SetProxy(const std::string& custom_proxy_rules);
 

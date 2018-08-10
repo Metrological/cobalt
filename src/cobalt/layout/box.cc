@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@
 #include "cobalt/math/vector2d_f.h"
 #include "cobalt/render_tree/border.h"
 #include "cobalt/render_tree/brush.h"
+#include "cobalt/render_tree/clear_rect_node.h"
 #include "cobalt/render_tree/color_rgba.h"
 #include "cobalt/render_tree/filter_node.h"
 #include "cobalt/render_tree/matrix_transform_node.h"
@@ -47,6 +48,7 @@
 
 using cobalt::render_tree::Border;
 using cobalt::render_tree::Brush;
+using cobalt::render_tree::ClearRectNode;
 using cobalt::render_tree::CompositionNode;
 using cobalt::render_tree::FilterNode;
 using cobalt::render_tree::MatrixTransformNode;
@@ -716,7 +718,7 @@ void Box::DumpWithIndent(std::ostream* stream, int indent) const {
 #endif  // COBALT_BOX_DUMP_ENABLED
 
 namespace {
-void PopulateBaseStyleForBackgroundNode(
+void PopulateBaseStyleForBackgroundColorNode(
     const scoped_refptr<const cssom::CSSComputedStyleData>& source_style,
     const scoped_refptr<cssom::CSSComputedStyleData>& destination_style) {
   // NOTE: Properties set by PopulateBaseStyleForBackgroundNode() should match
@@ -724,7 +726,7 @@ void PopulateBaseStyleForBackgroundNode(
   destination_style->set_background_color(source_style->background_color());
 }
 
-void SetupBackgroundNodeFromStyle(
+void SetupBackgroundColorNodeFromStyle(
     const base::optional<RoundedCorners>& rounded_corners,
     const scoped_refptr<const cssom::CSSComputedStyleData>& style,
     RectNode::Builder* rect_node_builder) {
@@ -1284,7 +1286,12 @@ base::optional<render_tree::RoundedCorners> Box::ComputePaddingRoundedCorners(
       padding_rounded_corners_if_different
           ? padding_rounded_corners_if_different
           : rounded_corners;
-  return padding_rounded_corners;
+
+  if (padding_rounded_corners) {
+    return padding_rounded_corners->Normalize(math::RectF(GetPaddingBoxSize()));
+  } else {
+    return padding_rounded_corners;
+  }
 }
 
 void Box::RenderAndAnimateBoxShadow(
@@ -1427,26 +1434,40 @@ void Box::RenderAndAnimateOutline(CompositionNode::Builder* border_node_builder,
   }
 }
 
+math::RectF Box::GetBackgroundRect() {
+  return math::RectF(
+      math::PointF(border_left_width().toFloat(), border_top_width().toFloat()),
+      GetPaddingBoxSize());
+}
+
 void Box::RenderAndAnimateBackgroundColor(
     const base::optional<RoundedCorners>& rounded_corners,
     render_tree::CompositionNode::Builder* border_node_builder,
     AnimateNode::Builder* animate_node_builder) {
+  bool background_color_animated =
+      animations()->IsPropertyAnimated(cssom::kBackgroundColorProperty);
+
+  if (!blend_background_color_) {
+    // Usually this code is executed only on the initial containing block box.
+    DCHECK(!rounded_corners);
+    DCHECK(!background_color_animated);
+    border_node_builder->AddChild(
+        new ClearRectNode(GetBackgroundRect(),
+                          GetUsedColor(computed_style()->background_color())));
+    return;
+  }
+
   // Only create the RectNode if the background color is not the initial value
   // (which we know is transparent) and not transparent.  If it's animated,
   // add it no matter what since its value may change over time to be
   // non-transparent.
   bool background_color_transparent =
       GetUsedColor(computed_style()->background_color()).a() == 0.0f;
-  bool background_color_animated =
-      animations()->IsPropertyAnimated(cssom::kBackgroundColorProperty);
   if (!background_color_transparent || background_color_animated) {
-    RectNode::Builder rect_node_builder(
-        math::RectF(math::PointF(border_left_width().toFloat(),
-                                 border_top_width().toFloat()),
-                    GetPaddingBoxSize()),
-        scoped_ptr<Brush>());
-    SetupBackgroundNodeFromStyle(rounded_corners, computed_style(),
-                                 &rect_node_builder);
+    RectNode::Builder rect_node_builder(GetBackgroundRect(),
+                                        scoped_ptr<Brush>());
+    SetupBackgroundColorNodeFromStyle(rounded_corners, computed_style(),
+                                      &rect_node_builder);
     if (!rect_node_builder.rect.IsEmpty()) {
       scoped_refptr<RectNode> rect_node(new RectNode(rect_node_builder.Pass()));
       border_node_builder->AddChild(rect_node);
@@ -1455,8 +1476,8 @@ void Box::RenderAndAnimateBackgroundColor(
       // instead here.
       if (background_color_animated) {
         AddAnimations<RectNode>(
-            base::Bind(&PopulateBaseStyleForBackgroundNode),
-            base::Bind(&SetupBackgroundNodeFromStyle, rounded_corners),
+            base::Bind(&PopulateBaseStyleForBackgroundColorNode),
+            base::Bind(&SetupBackgroundColorNodeFromStyle, rounded_corners),
             *css_computed_style_declaration(), rect_node, animate_node_builder);
       }
     }
@@ -1474,9 +1495,7 @@ Box::RenderAndAnimateBackgroundImageResult Box::RenderAndAnimateBackgroundImage(
   base::optional<CompositionNode::Builder> composition;
   result.is_opaque = false;
 
-  math::RectF image_frame(
-      math::PointF(border_left_width().toFloat(), border_top_width().toFloat()),
-      GetPaddingBoxSize());
+  math::RectF image_frame(GetBackgroundRect());
 
   cssom::PropertyListValue* property_list =
       base::polymorphic_downcast<cssom::PropertyListValue*>(

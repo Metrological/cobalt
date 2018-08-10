@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +19,9 @@
 
 #include "base/callback.h"
 #include "cobalt/base/clock.h"
+#include "cobalt/dom/dom_settings.h"
+#include "cobalt/script/callback_function.h"
+#include "cobalt/script/script_value.h"
 #include "cobalt/script/wrappable.h"
 
 namespace cobalt {
@@ -29,6 +32,9 @@ namespace dom {
 // analogous to the object by the same name inside of WebKit.
 class TestRunner : public script::Wrappable {
  public:
+  typedef script::CallbackFunction<void()> TestRunnerCallback;
+  typedef script::ScriptValue<TestRunnerCallback> TestRunnerCallbackArg;
+
   TestRunner();
 
   // These methods are used in applications that wait for the onload event to
@@ -49,6 +55,9 @@ class TestRunner : public script::Wrappable {
   // Increment's the web page's clock by the specified number of milliseconds.
   // This will result in the advance of animations.
   void AdvanceClockByMs(uint64 amount);
+
+  void CollectGarbageAndThenDo(script::EnvironmentSettings* settings,
+                               const TestRunnerCallbackArg& callback_arg);
 
   // Returns the clock controlled by test runner.
   scoped_refptr<base::Clock> GetClock();

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -76,9 +76,18 @@ void RunRenderTreeSceneBenchmark(SceneCreateFunction scene_create_function,
   // be done.
   base::debug::TraceLog::GetInstance()->SetEnabled(false);
 
+  base::EventDispatcher event_dispatcher;
+  scoped_ptr<SystemWindow> test_system_window;
+  if (output_surface_type == kOutputSurfaceTypeDisplay) {
+    test_system_window.reset(new cobalt::system_window::SystemWindow(
+        &event_dispatcher,
+        cobalt::math::Size(kViewportWidth, kViewportHeight)));
+  }
+
   // Setup our graphics system.
   scoped_ptr<GraphicsSystem> graphics_system =
-      cobalt::renderer::backend::CreateDefaultGraphicsSystem();
+      cobalt::renderer::backend::CreateDefaultGraphicsSystem(
+          test_system_window.get());
   scoped_ptr<GraphicsContext> graphics_context =
       graphics_system->CreateGraphicsContext();
 
@@ -86,21 +95,17 @@ void RunRenderTreeSceneBenchmark(SceneCreateFunction scene_create_function,
   scoped_ptr<Rasterizer> rasterizer =
       CreateDefaultRasterizer(graphics_context.get());
 
-  base::EventDispatcher event_dispatcher;
-  scoped_ptr<SystemWindow> test_system_window;
   scoped_ptr<Display> test_display;
   scoped_refptr<RenderTarget> test_surface;
   if (output_surface_type == kOutputSurfaceTypeDisplay) {
-    test_system_window.reset(new cobalt::system_window::SystemWindow(
-        &event_dispatcher, cobalt::math::Size(kViewportWidth, kViewportHeight)));
     test_display = graphics_system->CreateDisplay(test_system_window.get());
     test_surface = test_display->GetRenderTarget();
   } else if (output_surface_type == kOutputSurfaceTypeOffscreen) {
     // Create our offscreen surface that will be the target of our test
     // rasterizations.
     const Size kTestOffscreenDimensions(1920, 1080);
-    test_surface =
-        graphics_context->CreateOffscreenRenderTarget(kTestOffscreenDimensions);
+    test_surface = graphics_context->CreateDownloadableOffscreenRenderTarget(
+        kTestOffscreenDimensions);
   } else {
     DLOG(FATAL) << "Unknown output surface type.";
   }
@@ -114,10 +119,10 @@ void RunRenderTreeSceneBenchmark(SceneCreateFunction scene_create_function,
   for (int i = 0; i < kRenderIterationCount; ++i) {
     AnimateNode* animate_node =
         base::polymorphic_downcast<AnimateNode*>(scene.get());
-    scoped_refptr<Node> animated =
-        animate_node->Apply(base::TimeDelta::FromSecondsD(
-                                i * kFixedTimeStepInSecondsPerFrame))
-            .animated;
+    scoped_refptr<Node> animated = animate_node
+                                       ->Apply(base::TimeDelta::FromSecondsD(
+                                           i * kFixedTimeStepInSecondsPerFrame))
+                                       .animated->source();
 
     // Submit the render tree to be rendered.
     rasterizer->Submit(animated, test_surface);
@@ -191,12 +196,23 @@ void RunCreateImageViaResourceProviderBenchmark(AlphaFormat alpha_format) {
 
   const int kIterationCount = 20;
   const Size kImageSize(400, 400);
+  cobalt::render_tree::PixelFormat pixel_format =
+      cobalt::render_tree::kPixelFormatRGBA8;
+  if (!resource_provider->PixelFormatSupported(pixel_format)) {
+    pixel_format = cobalt::render_tree::kPixelFormatBGRA8;
+    if (!resource_provider->PixelFormatSupported(pixel_format)) {
+      LOG(ERROR) << "Could not find a supported pixel format on this platform, "
+                    "returning early from benchmark.";
+      return;
+    }
+  }
+
   for (int i = 0; i < kIterationCount; ++i) {
     // Repeatedly allocate memory for an image, write to that memory, and then
     // submit the image data back to the ResourceProvider to have it create
     // an image out of it.
     scoped_ptr<ImageData> image_data = resource_provider->AllocateImageData(
-        kImageSize, cobalt::render_tree::kPixelFormatRGBA8, alpha_format);
+        kImageSize, pixel_format, alpha_format);
 
     SynthesizeImageData(image_data.get());
 

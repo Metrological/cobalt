@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,19 +35,12 @@ DOMSettings::DOMSettings(
       fetcher_factory_(fetcher_factory),
       network_module_(network_module),
       window_(window),
-      array_buffer_allocator_(options.array_buffer_allocator),
-      array_buffer_cache_(options.array_buffer_cache),
       media_source_registry_(media_source_registry),
       blob_registry_(blob_registry),
       can_play_type_handler_(can_play_type_handler),
       javascript_engine_(engine),
       global_environment_(global_environment),
       mutation_observer_task_manager_(mutation_observer_task_manager) {
-  if (array_buffer_allocator_) {
-    DCHECK(options.array_buffer_cache);
-  } else {
-    DCHECK(!options.array_buffer_cache);
-  }
 }
 
 DOMSettings::~DOMSettings() {}
@@ -61,8 +54,8 @@ const GURL& DOMSettings::base_url() const {
   return window()->document()->url_as_gurl();
 }
 
-const loader::Origin& DOMSettings::document_origin() const {
-  return window()->document()->location()->OriginObject();
+loader::Origin DOMSettings::document_origin() const {
+  return window()->document()->location()->GetOriginAsObject();
 }
 
 }  // namespace dom

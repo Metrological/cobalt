@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,50 +21,9 @@
     {
       'target_name': 'starboard',
       'type': 'none',
-      'sources': [
-        'atomic.h',
-        'audio_sink.h',
-        'blitter.h',
-        'byte_swap.h',
-        'character.h',
-        'condition_variable.h',
-        'configuration.h',
-        'decode_target.h',
-        'directory.h',
-        'double.h',
-        'drm.h',
-        'event.h',
-        'export.h',
-        'file.h',
-        'input.h',
-        'key.h',
-        'log.h',
-        'media.h',
-        'memory.h',
-        'microphone.h',
-        'mutex.h',
-        'once.h',
-        'player.h',
-        'queue.h',
-        'socket.h',
-        'socket_waiter.h',
-        'spin_lock.h',
-        'storage.h',
-        'string.h',
-        'system.h',
-        'thread.h',
-        'thread_types.h',
-        'time.h',
-        'time_zone.h',
-        'types.h',
-        'user.h',
-        'window.h',
-        '<(DEPTH)/starboard/shared/media_session/playback_state.h',
-        # Include private headers, if present.
-        '<!@(python "<(DEPTH)/starboard/tools/find_private_files.py" "<(DEPTH)" "*.h")',
-      ],
       'dependencies': [
         '<(DEPTH)/<(starboard_path)/starboard_platform.gyp:starboard_platform',
+        '<(DEPTH)/starboard/starboard_headers_only.gyp:starboard_headers_only',
         'common/common.gyp:common',
       ],
       'export_dependent_settings': [

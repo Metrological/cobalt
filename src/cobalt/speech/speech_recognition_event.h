@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,9 +43,10 @@ class SpeechRecognitionEvent : public dom::Event {
   }
 
   DEFINE_WRAPPABLE_TYPE(SpeechRecognitionEvent);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
-  ~SpeechRecognitionEvent() OVERRIDE {}
+  ~SpeechRecognitionEvent() override {}
 
   // The result index MUST be set to the lowest index in the "results" array
   // that has changed.

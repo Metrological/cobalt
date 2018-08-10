@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -51,6 +51,14 @@ const int kStandardOutputSampleRate = 48000;
 
 #if defined(SB_USE_SB_AUDIO_SINK)
 
+namespace {
+// Write |kTailSizeInFrames| frames of silence at the end of playback to ensure
+// the audible frames being played on platforms with strict underflow control.
+// Increasing this value will also increase the silence between two sounds.  So
+// it shouldn't be set to a very too large.
+const int kTailSizeInFrames = kRenderBufferSizeFrames * 8;
+}  // namespace
+
 class AudioDevice::Impl {
  public:
   Impl(int number_of_channels, RenderCallback* callback);
@@ -60,7 +68,11 @@ class AudioDevice::Impl {
   static void UpdateSourceStatusFunc(int* frames_in_buffer,
                                      int* offset_in_frames, bool* is_playing,
                                      bool* is_eos_reached, void* context);
-  static void ConsumeFramesFunc(int frames_consumed, void* context);
+  static void ConsumeFramesFunc(int frames_consumed,
+#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+                                SbTime frames_consumed_at,
+#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+                                void* context);
 
   void UpdateSourceStatus(int* frames_in_buffer, int* offset_in_frames,
                           bool* is_playing, bool* is_eos_reached);
@@ -83,12 +95,14 @@ class AudioDevice::Impl {
   scoped_array<uint8> output_frame_buffer_;
 
   void* frame_buffers_[1];
-  int64 frames_rendered_;  // Frames retrieved from |render_callback_|.
-  int64 frames_consumed_;  // Accumulated frames consumed reported by the sink.
+  int64 frames_rendered_ = 0;  // Frames retrieved from |render_callback_|.
+  int64 frames_consumed_ = 0;  // Accumulated frames consumed by the sink.
+  int64 silence_written_ = 0;  // Silence frames written after all nodes are
+                               // finished.
 
-  bool was_silence_last_update_;
+  bool was_silence_last_update_ = false;
 
-  SbAudioSink audio_sink_;
+  SbAudioSink audio_sink_ = kSbAudioSinkInvalid;
 
   DISALLOW_COPY_AND_ASSIGN(Impl);
 };
@@ -103,11 +117,7 @@ AudioDevice::Impl::Impl(int number_of_channels, RenderCallback* callback)
                        GetPreferredOutputSampleType(), ShellAudioBus::kPlanar),
       output_frame_buffer_(
           new uint8[kFramesPerChannel * number_of_channels_ *
-                    GetStarboardSampleTypeSize(output_sample_type_)]),
-      frames_rendered_(0),
-      frames_consumed_(0),
-      was_silence_last_update_(false),
-      audio_sink_(kSbAudioSinkInvalid) {
+                    GetStarboardSampleTypeSize(output_sample_type_)]) {
   DCHECK(number_of_channels_ == 1 || number_of_channels_ == 2)
       << "Invalid number of channels: " << number_of_channels_;
   DCHECK(render_callback_);
@@ -150,7 +160,15 @@ void AudioDevice::Impl::UpdateSourceStatusFunc(int* frames_in_buffer,
 }
 
 // static
-void AudioDevice::Impl::ConsumeFramesFunc(int frames_consumed, void* context) {
+void AudioDevice::Impl::ConsumeFramesFunc(int frames_consumed,
+#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+                                          SbTime frames_consumed_at,
+#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+                                          void* context) {
+#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+  UNREFERENCED_PARAMETER(frames_consumed_at);
+#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+
   AudioDevice::Impl* impl = reinterpret_cast<AudioDevice::Impl*>(context);
   DCHECK(impl);
 
@@ -170,18 +188,28 @@ void AudioDevice::Impl::UpdateSourceStatus(int* frames_in_buffer,
   *frames_in_buffer = static_cast<int>(frames_rendered_ - frames_consumed_);
 
   if ((kFramesPerChannel - *frames_in_buffer) >= kRenderBufferSizeFrames) {
-    bool silence = false;
-
     // If there was silence last time we were called, then the buffer has
     // already been zeroed out and we don't need to do it again.
     if (!was_silence_last_update_) {
       input_audio_bus_.ZeroAllFrames();
     }
 
-    // Fill our temporary buffer with planar PCM float samples.
-    render_callback_->FillAudioBus(&input_audio_bus_, &silence);
+    bool silence = true;
+    bool all_consumed =
+        silence_written_ != 0 && *frames_in_buffer <= silence_written_;
 
-    if (!silence) {
+    render_callback_->FillAudioBus(all_consumed, &input_audio_bus_, &silence);
+
+    bool fill_output = true;
+    if (silence) {
+      fill_output = kTailSizeInFrames > silence_written_;
+      silence_written_ += kRenderBufferSizeFrames;
+    } else {
+      // Reset |silence_written_| if a new sound is played after some silence
+      // frames were injected.
+      silence_written_ = 0;
+    }
+    if (fill_output) {
       FillOutputAudioBus();
 
       frames_rendered_ += kRenderBufferSizeFrames;
@@ -225,7 +253,7 @@ void AudioDevice::Impl::FillOutputAudioBus() {
   const bool is_input_int16 =
       input_audio_bus_.sample_type() == media::ShellAudioBus::kInt16;
   const bool is_output_int16 =
-      output_sample_type_ == kSbMediaAudioSampleTypeInt16;
+      output_sample_type_ == kSbMediaAudioSampleTypeInt16Deprecated;
 
   if (is_input_int16 && is_output_int16) {
     FillOutputAudioBusForType<int16, int16>();
@@ -251,11 +279,11 @@ class AudioDevice::Impl : public ::media::ShellAudioStream {
   virtual ~Impl();
 
   // ShellAudioStream implementation.
-  bool PauseRequested() const OVERRIDE;
-  bool PullFrames(uint32* offset_in_frame, uint32* total_frames) OVERRIDE;
-  void ConsumeFrames(uint32 frame_played) OVERRIDE;
-  const AudioParameters& GetAudioParameters() const OVERRIDE;
-  AudioBus* GetAudioBus() OVERRIDE;
+  bool PauseRequested() const override;
+  bool PullFrames(uint32* offset_in_frame, uint32* total_frames) override;
+  void ConsumeFrames(uint32 frame_played) override;
+  const AudioParameters& GetAudioParameters() const override;
+  AudioBus* GetAudioBus() override;
 
  private:
   typedef ::media::ShellAudioBus ShellAudioBus;
@@ -345,8 +373,9 @@ bool AudioDevice::Impl::PullFrames(uint32* offset_in_frame,
 
   if ((kFramesPerChannel - *total_frames) >= kRenderBufferSizeFrames) {
     // Fill our temporary buffer with PCM float samples.
-    bool silence = false;
-    render_callback_->FillAudioBus(&audio_bus_, &silence);
+    bool all_consumed = false;  // Keep the sink alive on legacy platforms.
+    bool silence = true;
+    render_callback_->FillAudioBus(all_consumed, &audio_bus_, &silence);
 
     if (!silence) {
       FillOutputAudioBus();

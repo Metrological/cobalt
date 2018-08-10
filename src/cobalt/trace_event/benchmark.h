@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -209,7 +209,7 @@ enum MeasurementType {
     typedef std::vector<                                                       \
         cobalt::trace_event::BenchmarkCreator::CreateBenchmarkFunction>        \
         BenchmarkCreatorList;                                                  \
-    BenchmarkCreatorList GetBenchmarkCreators() OVERRIDE {                     \
+    BenchmarkCreatorList GetBenchmarkCreators() override {                     \
       BenchmarkCreatorList benchmark_list_of_one;                              \
       benchmark_list_of_one.push_back(base::Bind(&CreateAndSetupBenchmark));   \
       return benchmark_list_of_one;                                            \

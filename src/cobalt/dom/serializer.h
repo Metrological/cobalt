@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,12 +38,12 @@ class Serializer : public ConstNodeVisitor {
 
  private:
   // From ConstNodeVisitor.
-  void Visit(const CDATASection* cdata_section) OVERRIDE;
-  void Visit(const Comment* comment) OVERRIDE;
-  void Visit(const Document* document) OVERRIDE;
-  void Visit(const DocumentType* document_type) OVERRIDE;
-  void Visit(const Element* element) OVERRIDE;
-  void Visit(const Text* text) OVERRIDE;
+  void Visit(const CDATASection* cdata_section) override;
+  void Visit(const Comment* comment) override;
+  void Visit(const Document* document) override;
+  void Visit(const DocumentType* document_type) override;
+  void Visit(const Element* element) override;
+  void Visit(const Text* text) override;
 
   // Pointer to the output stream provided by the user.
   std::ostream* out_stream_;

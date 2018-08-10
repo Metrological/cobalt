@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,9 +40,9 @@ class ScreenReader : public dom::DocumentObserver {
  protected:
   ~ScreenReader();
   // dom::DocumentObserver overrides.
-  void OnLoad() OVERRIDE;
-  void OnMutation() OVERRIDE {}
-  void OnFocusChanged() OVERRIDE;
+  void OnLoad() override;
+  void OnMutation() override {}
+  void OnFocusChanged() override;
 
  private:
   typedef script::Sequence<scoped_refptr<dom::MutationRecord> >

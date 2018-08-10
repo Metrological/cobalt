@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -117,6 +117,7 @@ class DebugHub : public script::Wrappable {
   void SendCommand(const std::string& channel, const std::string& message);
 
   DEFINE_WRAPPABLE_TYPE(DebugHub);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   // Called by LogMessageHandler for each log message.

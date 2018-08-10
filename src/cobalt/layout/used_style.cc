@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -72,7 +72,8 @@ struct BackgroundImageTransformData {
 
 render_tree::FontStyle ConvertCSSOMFontValuesToRenderTreeFontStyle(
     cssom::FontStyleValue::Value style, cssom::FontWeightValue::Value weight) {
-  render_tree::FontStyle::Weight font_weight;
+  render_tree::FontStyle::Weight font_weight =
+      render_tree::FontStyle::kNormalWeight;
   switch (weight) {
     case cssom::FontWeightValue::kThinAka100:
       font_weight = render_tree::FontStyle::kThinWeight;
@@ -101,8 +102,6 @@ render_tree::FontStyle ConvertCSSOMFontValuesToRenderTreeFontStyle(
     case cssom::FontWeightValue::kBlackAka900:
       font_weight = render_tree::FontStyle::kBlackWeight;
       break;
-    default:
-      font_weight = render_tree::FontStyle::kNormalWeight;
   }
 
   render_tree::FontStyle::Slant font_slant =
@@ -159,10 +158,11 @@ BackgroundImageTransformData GetImageTransformationData(
   }
 
   BackgroundImageTransformData background_image_transform_data(
-      image_node_size, math::TranslateMatrix(image_node_translate_matrix_x,
-                                             image_node_translate_matrix_y) *
-                           math::ScaleMatrix(image_node_scale_matrix_x,
-                                             image_node_scale_matrix_y),
+      image_node_size,
+      math::TranslateMatrix(image_node_translate_matrix_x,
+                            image_node_translate_matrix_y) *
+          math::ScaleMatrix(image_node_scale_matrix_x,
+                            image_node_scale_matrix_y),
       math::PointF(composition_node_translate_matrix_x + frame.x(),
                    composition_node_translate_matrix_y + frame.y()));
   return background_image_transform_data;
@@ -174,7 +174,7 @@ class UsedBackgroundTranslateProvider
   UsedBackgroundTranslateProvider(float frame_length, float image_length)
       : frame_length_(frame_length), image_length_(image_length) {}
 
-  void VisitCalc(cssom::CalcValue* calc) OVERRIDE;
+  void VisitCalc(cssom::CalcValue* calc) override;
 
   // Returns the value based on the left top.
   float translate() { return translate_; }
@@ -214,9 +214,9 @@ class UsedBackgroundSizeScaleProvider
     DCHECK_GT(image_length, 0);
   }
 
-  void VisitKeyword(cssom::KeywordValue* keyword) OVERRIDE;
-  void VisitLength(cssom::LengthValue* length) OVERRIDE;
-  void VisitPercentage(cssom::PercentageValue* percentage) OVERRIDE;
+  void VisitKeyword(cssom::KeywordValue* keyword) override;
+  void VisitLength(cssom::LengthValue* length) override;
+  void VisitPercentage(cssom::PercentageValue* percentage) override;
 
   float scale() const { return scale_; }
   bool auto_keyword() const { return auto_keyword_; }
@@ -255,6 +255,7 @@ void UsedBackgroundSizeScaleProvider::VisitKeyword(
     case cssom::KeywordValue::kCursive:
     case cssom::KeywordValue::kEllipsis:
     case cssom::KeywordValue::kEnd:
+    case cssom::KeywordValue::kEquirectangular:
     case cssom::KeywordValue::kFantasy:
     case cssom::KeywordValue::kForwards:
     case cssom::KeywordValue::kFixed:
@@ -290,7 +291,6 @@ void UsedBackgroundSizeScaleProvider::VisitKeyword(
     case cssom::KeywordValue::kTop:
     case cssom::KeywordValue::kUppercase:
     case cssom::KeywordValue::kVisible:
-    default:
       NOTREACHED();
   }
 }
@@ -312,9 +312,9 @@ class UsedFontFamilyProvider : public cssom::NotReachedPropertyValueVisitor {
   explicit UsedFontFamilyProvider(std::vector<std::string>* family_names)
       : family_names_(family_names) {}
 
-  void VisitKeyword(cssom::KeywordValue* keyword) OVERRIDE;
-  void VisitPropertyList(cssom::PropertyListValue* property_list) OVERRIDE;
-  void VisitString(cssom::StringValue* percentage) OVERRIDE;
+  void VisitKeyword(cssom::KeywordValue* keyword) override;
+  void VisitPropertyList(cssom::PropertyListValue* property_list) override;
+  void VisitString(cssom::StringValue* percentage) override;
 
  private:
   std::vector<std::string>* family_names_;
@@ -348,6 +348,7 @@ void UsedFontFamilyProvider::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kCover:
     case cssom::KeywordValue::kEllipsis:
     case cssom::KeywordValue::kEnd:
+    case cssom::KeywordValue::kEquirectangular:
     case cssom::KeywordValue::kFixed:
     case cssom::KeywordValue::kForwards:
     case cssom::KeywordValue::kHidden:
@@ -379,7 +380,6 @@ void UsedFontFamilyProvider::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kTop:
     case cssom::KeywordValue::kUppercase:
     case cssom::KeywordValue::kVisible:
-    default:
       NOTREACHED();
   }
 }
@@ -551,19 +551,19 @@ class UsedLengthValueProvider : public cssom::NotReachedPropertyValueVisitor {
                                    bool calc_permitted = false)
       : percentage_base_(percentage_base), calc_permitted_(calc_permitted) {}
 
-  void VisitLength(cssom::LengthValue* length) OVERRIDE {
+  void VisitLength(cssom::LengthValue* length) override {
     depends_on_containing_block_ = false;
 
     DCHECK_EQ(cssom::kPixelsUnit, length->unit());
     used_length_ = LayoutUnit(length->value());
   }
 
-  void VisitPercentage(cssom::PercentageValue* percentage) OVERRIDE {
+  void VisitPercentage(cssom::PercentageValue* percentage) override {
     depends_on_containing_block_ = true;
     used_length_ = percentage->value() * percentage_base_;
   }
 
-  void VisitCalc(cssom::CalcValue* calc) OVERRIDE {
+  void VisitCalc(cssom::CalcValue* calc) override {
     if (!calc_permitted_) {
       NOTREACHED();
     }
@@ -712,10 +712,9 @@ std::pair<math::PointF, math::PointF> LinearGradientPointsFromDirection(
     case cssom::LinearGradientValue::kTopRight:
       return std::make_pair(math::PointF(0, frame_size.height()),
                             math::PointF(frame_size.width(), 0));
-    default:
-      NOTREACHED();
-      return std::make_pair(math::PointF(0, 0), math::PointF(0, 0));
   }
+  NOTREACHED();
+  return std::make_pair(math::PointF(0, 0), math::PointF(0, 0));
 }
 
 std::pair<math::PointF, math::PointF> LinearGradientPointsFromAngle(
@@ -730,8 +729,8 @@ std::pair<math::PointF, math::PointF> LinearGradientPointsFromAngle(
   // we can pass it into the trigonometric functions cos() and sin().
   float ccw_angle_from_right = -angle_in_radians + static_cast<float>(M_PI / 2);
 
-  return render_tree::LinearGradientPointsFromAngle(
-      ccw_angle_from_right, frame_size);
+  return render_tree::LinearGradientPointsFromAngle(ccw_angle_from_right,
+                                                    frame_size);
 }
 
 // The specifications indicate that if positions are not specified for color
@@ -1156,6 +1155,7 @@ void UsedBackgroundSizeProvider::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kClip:
     case cssom::KeywordValue::kEllipsis:
     case cssom::KeywordValue::kEnd:
+    case cssom::KeywordValue::kEquirectangular:
     case cssom::KeywordValue::kFantasy:
     case cssom::KeywordValue::kFixed:
     case cssom::KeywordValue::kForwards:
@@ -1191,7 +1191,6 @@ void UsedBackgroundSizeProvider::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kTop:
     case cssom::KeywordValue::kUppercase:
     case cssom::KeywordValue::kVisible:
-    default:
       NOTREACHED();
   }
 }
@@ -1315,7 +1314,7 @@ class UsedLengthProvider : public UsedLengthValueProvider {
   explicit UsedLengthProvider(LayoutUnit percentage_base)
       : UsedLengthValueProvider(percentage_base) {}
 
-  void VisitKeyword(cssom::KeywordValue* keyword) OVERRIDE {
+  void VisitKeyword(cssom::KeywordValue* keyword) override {
     switch (keyword->value()) {
       case cssom::KeywordValue::kAuto:
         depends_on_containing_block_ = true;
@@ -1341,6 +1340,7 @@ class UsedLengthProvider : public UsedLengthValueProvider {
       case cssom::KeywordValue::kCursive:
       case cssom::KeywordValue::kEllipsis:
       case cssom::KeywordValue::kEnd:
+      case cssom::KeywordValue::kEquirectangular:
       case cssom::KeywordValue::kFantasy:
       case cssom::KeywordValue::kForwards:
       case cssom::KeywordValue::kFixed:
@@ -1376,7 +1376,6 @@ class UsedLengthProvider : public UsedLengthValueProvider {
       case cssom::KeywordValue::kTop:
       case cssom::KeywordValue::kUppercase:
       case cssom::KeywordValue::kVisible:
-      default:
         NOTREACHED();
     }
   }
@@ -1387,7 +1386,7 @@ class UsedMaxLengthProvider : public UsedLengthValueProvider {
   explicit UsedMaxLengthProvider(LayoutUnit percentage_base)
       : UsedLengthValueProvider(percentage_base) {}
 
-  void VisitKeyword(cssom::KeywordValue* keyword) OVERRIDE {
+  void VisitKeyword(cssom::KeywordValue* keyword) override {
     switch (keyword->value()) {
       case cssom::KeywordValue::kNone:
         depends_on_containing_block_ = true;
@@ -1414,6 +1413,7 @@ class UsedMaxLengthProvider : public UsedLengthValueProvider {
       case cssom::KeywordValue::kCursive:
       case cssom::KeywordValue::kEllipsis:
       case cssom::KeywordValue::kEnd:
+      case cssom::KeywordValue::kEquirectangular:
       case cssom::KeywordValue::kFantasy:
       case cssom::KeywordValue::kForwards:
       case cssom::KeywordValue::kFixed:
@@ -1448,7 +1448,6 @@ class UsedMaxLengthProvider : public UsedLengthValueProvider {
       case cssom::KeywordValue::kTop:
       case cssom::KeywordValue::kUppercase:
       case cssom::KeywordValue::kVisible:
-      default:
         NOTREACHED();
     }
   }

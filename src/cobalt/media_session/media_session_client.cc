@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -71,7 +71,8 @@ MediaSessionClient::GetAvailableActions() {
       // play from available actions."
       result[kMediaSessionActionPlay] = false;
       break;
-    default:
+    case kMediaSessionPlaybackStateNone:
+    case kMediaSessionPlaybackStatePaused:
       // "Otherwise, remove pause from available actions."
       result[kMediaSessionActionPause] = false;
       break;
@@ -97,22 +98,23 @@ void MediaSessionClient::UpdatePlatformPlaybackState(
   }
 }
 
-void MediaSessionClient::InvokeAction(MediaSessionAction action) {
+void MediaSessionClient::InvokeActionInternal(
+    scoped_ptr<MediaSessionActionDetails::Data> data) {
   if (base::MessageLoopProxy::current() != media_session_->message_loop_) {
     media_session_->message_loop_->PostTask(
-        FROM_HERE, base::Bind(&MediaSessionClient::InvokeAction,
-                              base::Unretained(this), action));
+        FROM_HERE, base::Bind(&MediaSessionClient::InvokeActionInternal,
+                              base::Unretained(this), base::Passed(&data)));
     return;
   }
 
   MediaSession::ActionMap::iterator it =
-      media_session_->action_map_.find(action);
+      media_session_->action_map_.find(data->action());
 
   if (it == media_session_->action_map_.end()) {
     return;
   }
 
-  it->second->value().Run();
+  it->second->value().Run(new MediaSessionActionDetails(*data));
 }
 
 }  // namespace media_session

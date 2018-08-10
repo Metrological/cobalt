@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc. All Rights Reserved.
+ * Copyright 2017 The Cobalt Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@
 
 #include <vector>
 
+#include "cobalt/renderer/backend/egl/graphics_context.h"
+
 namespace cobalt {
 namespace renderer {
 namespace rasterizer {
@@ -33,13 +35,41 @@ uint32 HardwareMesh::GetEstimatedSizeInBytes() const {
 }
 
 const VertexBufferObject* HardwareMesh::GetVBO() const {
-  DCHECK(thread_checker_.CalledOnValidThread());
-
   if (!vbo_) {
+    rasterizer_message_loop_ = MessageLoop::current();
     vbo_.reset(new VertexBufferObject(vertices_.Pass(), draw_mode_));
   }
 
   return vbo_.get();
+}
+
+namespace {
+
+void DestroyVBO(backend::GraphicsContextEGL* cobalt_context,
+                scoped_ptr<VertexBufferObject> vbo) {
+  backend::GraphicsContextEGL::ScopedMakeCurrent scoped_make_current(
+      cobalt_context);
+  vbo.reset();
+}
+
+}  // namespace
+
+HardwareMesh::~HardwareMesh() {
+  if (rasterizer_message_loop_) {
+    if (rasterizer_message_loop_ != MessageLoop::current()) {
+      // Make sure that VBO cleanup always happens on the thread that created
+      // the VBO in the first place.  We are passing cobalt_context_ by pointer
+      // here, but we can assume it will still be alive when DestroyVBO is
+      // executed because this Mesh object must  be destroyed before the
+      // rasterizer, and the rasterizer must be destroyed before the GL
+      // context.
+      rasterizer_message_loop_->PostTask(
+          FROM_HERE,
+          base::Bind(&DestroyVBO, cobalt_context_, base::Passed(&vbo_)));
+    } else {
+      DestroyVBO(cobalt_context_, vbo_.Pass());
+    }
+  }
 }
 
 }  // namespace skia

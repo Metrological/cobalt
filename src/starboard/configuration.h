@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -42,19 +42,19 @@
 
 // The maximum API version allowed by this version of the Starboard headers,
 // inclusive.
-#define SB_MAXIMUM_API_VERSION 8
+#define SB_MAXIMUM_API_VERSION 11
 
 // The API version that is currently open for changes, and therefore is not
 // stable or frozen. Production-oriented ports should avoid declaring that they
 // implement the experimental Starboard API version.
-#define SB_EXPERIMENTAL_API_VERSION 8
+#define SB_EXPERIMENTAL_API_VERSION 11
 
 // The next API version to be frozen, but is still subject to emergency
 // changes. It is reasonable to base a port on the Release Candidate API
 // version, but be aware that small incompatible changes may still be made to
 // it.
 // The following will be uncommented when an API version is a release candidate.
-// #define SB_RELEASE_CANDIDATE_API_VERSION 8
+#define SB_RELEASE_CANDIDATE_API_VERSION 10
 
 // --- Experimental Feature Defines ------------------------------------------
 
@@ -67,10 +67,6 @@
 //   //   Add a function, `SbMyNewFeature()` to `starboard/feature.h` which
 //   //   exposes functionality for my new feature.
 //   #define SB_MY_EXPERIMENTAL_FEATURE_VERSION SB_EXPERIMENTAL_API_VERSION
-
-#define SB_PLAYER_WITH_URL_API_VERSION SB_EXPERIMENTAL_API_VERSION
-#define SB_WINDOW_SIZE_CHANGED_API_VERSION SB_EXPERIMENTAL_API_VERSION
-#define SB_INPUT_ON_SCREEN_KEYBOARD_API_VERSION SB_EXPERIMENTAL_API_VERSION
 
 // --- Release Candidate Feature Defines -------------------------------------
 
@@ -116,10 +112,12 @@
 // Will cause a compiler error with |msg| if |expr| is false. |msg| must be a
 // valid identifier, and must be a unique type in the scope of the declaration.
 #if defined(__cplusplus)
+extern "C++" {
 namespace starboard {
 template <bool>
 struct CompileAssert {};
 }  // namespace starboard
+}  // extern "C++"
 
 #define SB_COMPILE_ASSERT(expr, msg)                              \
   typedef ::starboard::CompileAssert<(                            \
@@ -468,7 +466,7 @@ SB_COMPILE_ASSERT(sizeof(long) == 8,  // NOLINT(runtime/int)
 #error "New versions of Starboard specify player output mode at runtime."
 #endif
 
-#if SB_HAS(PLAYER_WITH_URL) && SB_API_VERSION < SB_PLAYER_WITH_URL_API_VERSION
+#if SB_HAS(PLAYER_WITH_URL) && SB_API_VERSION < 8
 #error "SB_HAS_PLAYER_WITH_URL is not supported in this API version."
 #endif
 
@@ -550,16 +548,63 @@ SB_COMPILE_ASSERT(sizeof(long) == 8,  // NOLINT(runtime/int)
 #endif  // defined(SB_HAS_DRM_KEY_STATUSES)
 #endif  // SB_API_VERSION >= 6
 
+#if SB_API_VERSION >= 10
+#if defined(SB_HAS_DRM_SESSION_CLOSED)
+#if !SB_HAS(DRM_SESSION_CLOSED)
+#error "SB_HAS_DRM_SESSION_CLOSED is required in this API version."
+#endif  // !SB_HAS(DRM_SESSION_CLOSED)
+#else   // defined(SB_HAS_DRM_SESSION_CLOSED)
+#define SB_HAS_DRM_SESSION_CLOSED 1
+#endif  // defined(SB_HAS_DRM_SESSION_CLOSED)
+#endif  // SB_API_VERSION >= 10
+
 #if SB_API_VERSION >= 5
 #if !defined(SB_HAS_SPEECH_RECOGNIZER)
 #error "Your platform must define SB_HAS_SPEECH_RECOGNIZER."
 #endif  // !defined(SB_HAS_SPEECH_RECOGNIZER)
 #endif  // SB_API_VERSION >= 5
 
-#if SB_HAS(ON_SCREEN_KEYBOARD) && \
-    (SB_API_VERSION < SB_INPUT_ON_SCREEN_KEYBOARD_API_VERSION)
+#if SB_API_VERSION >= 8
+#if !defined(SB_HAS_ON_SCREEN_KEYBOARD)
+#error "Your platform must define SB_HAS_ON_SCREEN_KEYBOARD."
+#endif  // !defined(SB_HAS_ON_SCREEN_KEYBOARD)
+#if !defined(SB_HAS_PLAYER_WITH_URL)
+#error "Your platform must define SB_HAS_PLAYER_WITH_URL."
+#endif  // !defined(SB_HAS_PLAYER_WITH_URL)
+#endif  // SB_API_VERSION >= 8
+
+#if SB_HAS(ON_SCREEN_KEYBOARD) && (SB_API_VERSION < 8)
 #error "SB_HAS_ON_SCREEN_KEYBOARD not supported in this API version."
 #endif
+
+#if SB_HAS(CAPTIONS) && (SB_API_VERSION < 10)
+#error "SB_HAS_CAPTIONS not supported in this API version."
+#endif
+
+#if SB_API_VERSION >= 10
+#define SB_HAS_AUDIOLESS_VIDEO 1
+#endif
+
+#if SB_API_VERSION >= 10
+#define SB_HAS_PLAYER_FILTER_TESTS 1
+#endif
+
+#if SB_API_VERSION >= 10
+#define SB_HAS_PLAYER_ERROR_MESSAGE 1
+#endif
+
+#if SB_API_VERSION < 10
+#if !SB_HAS_QUIRK(SUPPORT_INT16_AUDIO_SAMPLES)
+#define SB_HAS_QUIRK_SUPPORT_INT16_AUDIO_SAMPLES 1
+#endif  // !SB_HAS_QUIRK(SUPPORT_INT16_AUDIO_SAMPLES)
+#endif  // SB_API_VERSION < 10
+
+#if SB_API_VERSION >= 10
+#if !defined(SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING)
+#error Your platform must define SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING in API \
+    version 10 or later.
+#endif  // !defined(SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING)
+#endif  // SB_API_VERSION >= 10
 
 // --- Derived Configuration -------------------------------------------------
 
@@ -588,7 +633,7 @@ SB_COMPILE_ASSERT(sizeof(long) == 8,  // NOLINT(runtime/int)
 
 // Specifies whether this platform has a performant OpenGL ES 2 implementation,
 // which allows client applications to use GL rendering paths.  Derived from
-// the gyp variable 'gl_type' which indicates what kind of GL implementation
+// the gyp variable `gl_type` which indicates what kind of GL implementation
 // is available.
 #if !defined(SB_HAS_GLES2)
 #define SB_HAS_GLES2 !SB_GYP_GL_TYPE_IS_NONE

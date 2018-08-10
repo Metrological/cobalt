@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -70,8 +70,8 @@ class ScriptRunnerImpl : public ScriptRunner {
 
   std::string Execute(const std::string& script_utf8,
                       const base::SourceLocation& script_location,
-                      bool mute_errors, bool* out_succeeded) OVERRIDE;
-  GlobalEnvironment* GetGlobalEnvironment() const OVERRIDE {
+                      bool mute_errors, bool* out_succeeded) override;
+  GlobalEnvironment* GetGlobalEnvironment() const override {
     return global_environment_;
   }
 
@@ -83,7 +83,7 @@ std::string ScriptRunnerImpl::Execute(
     const std::string& script_utf8, const base::SourceLocation& script_location,
     bool mute_errors, bool* out_succeeded) {
   scoped_refptr<SourceCode> source_code =
-      SourceCode::CreateSourceCode(script_utf8, script_location);
+      SourceCode::CreateSourceCode(script_utf8, script_location, mute_errors);
   if (out_succeeded) {
     *out_succeeded = false;
   }
@@ -92,8 +92,8 @@ std::string ScriptRunnerImpl::Execute(
     return "";
   }
   std::string result;
-  if (!global_environment_->EvaluateScript(source_code, mute_errors, &result)) {
-    DLOG(WARNING) << "Failed to execute JavaScript: " << result;
+  if (!global_environment_->EvaluateScript(source_code, &result)) {
+    LOG(WARNING) << "Failed to execute JavaScript: " << result;
 #if defined(HANDLE_CORE_DUMP)
     script_runner_log.Get().IncrementFailCount();
 #endif

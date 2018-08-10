@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 #include "cobalt/browser/storage_upgrade_handler.h"
 #include "cobalt/dom/local_storage_database.h"
 #include "cobalt/dom/storage_area.h"
+#include "cobalt/loader/origin.h"
 #include "cobalt/network/persistent_cookie_store.h"
 #include "cobalt/storage/savegame_fake.h"
 #include "cobalt/storage/storage_manager.h"
@@ -109,7 +110,7 @@ void ReadFileToString(const char* pathname, std::string* string_out) {
   EXPECT_TRUE(pathname);
   EXPECT_TRUE(string_out);
   FilePath file_path;
-  EXPECT_TRUE(PathService::Get(base::DIR_SOURCE_ROOT, &file_path));
+  EXPECT_TRUE(PathService::Get(base::DIR_TEST_DATA, &file_path));
   file_path = file_path.Append(pathname);
   EXPECT_TRUE(file_util::ReadFileToString(file_path, string_out));
   const char* data = string_out->c_str();
@@ -130,12 +131,12 @@ int GetNumCookies(storage::StorageManager* storage) {
 }
 
 int GetNumLocalStorageEntries(storage::StorageManager* storage,
-                              const std::string& identifier) {
+                              const loader::Origin& origin) {
   dom::LocalStorageDatabase local_storage_database(storage);
   LocalStorageEntryWaiter waiter;
   local_storage_database.ReadAll(
-      identifier, base::Bind(&LocalStorageEntryWaiter::OnEntriesLoaded,
-                             base::Unretained(&waiter)));
+      origin, base::Bind(&LocalStorageEntryWaiter::OnEntriesLoaded,
+                         base::Unretained(&waiter)));
   EXPECT_EQ(true, waiter.TimedWait());
   return static_cast<int>(waiter.GetEntries()->size());
 }
@@ -159,7 +160,7 @@ TEST(StorageUpgradeHandlerTest, UpgradeFullData) {
   // Our storage should be empty at this point.
   EXPECT_EQ(GetNumCookies(&storage), 0);
   EXPECT_EQ(GetNumLocalStorageEntries(
-                &storage, upgrade_handler->default_local_storage_id()),
+                &storage, upgrade_handler->default_local_storage_origin()),
             0);
 
   upgrade_handler->OnUpgrade(&storage, file_contents.c_str(),
@@ -173,7 +174,7 @@ TEST(StorageUpgradeHandlerTest, UpgradeFullData) {
   // We should now have 2 cookies and 2 local storage entries.
   EXPECT_EQ(GetNumCookies(&storage), 2);
   EXPECT_EQ(GetNumLocalStorageEntries(
-                &storage, upgrade_handler->default_local_storage_id()),
+                &storage, upgrade_handler->default_local_storage_origin()),
             2);
 
   message_loop_.RunUntilIdle();

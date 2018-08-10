@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -75,10 +75,7 @@ inline void FromJSValue(v8::Isolate* isolate, v8::Local<v8::Value> value,
     return;
   }
 
-  V8cGlobalEnvironment* env =
-      static_cast<V8cGlobalEnvironment*>(isolate->GetData(0));
-  DCHECK(env);
-  *out_callback_function = V8cCallbackHolderClass(env, value);
+  *out_callback_function = V8cCallbackHolderClass(isolate, value);
 }
 
 }  // namespace v8c

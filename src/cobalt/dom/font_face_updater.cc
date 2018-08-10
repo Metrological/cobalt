@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -48,15 +48,15 @@ class FontFaceProvider : public cssom::NotReachedPropertyValueVisitor {
  public:
   explicit FontFaceProvider(const GURL& base_url) : base_url_(base_url) {}
 
-  void VisitFontStyle(cssom::FontStyleValue* font_style) OVERRIDE;
-  void VisitFontWeight(cssom::FontWeightValue* font_weight) OVERRIDE;
-  void VisitKeyword(cssom::KeywordValue* keyword) OVERRIDE;
-  void VisitLocalSrc(cssom::LocalSrcValue* local_src) OVERRIDE;
-  void VisitPropertyList(cssom::PropertyListValue* property_list) OVERRIDE;
-  void VisitString(cssom::StringValue* percentage) OVERRIDE;
-  void VisitUnicodeRange(cssom::UnicodeRangeValue* unicode_range) OVERRIDE;
-  void VisitUrlSrc(cssom::UrlSrcValue* url_src) OVERRIDE;
-  void VisitURL(cssom::URLValue* url) OVERRIDE;
+  void VisitFontStyle(cssom::FontStyleValue* font_style) override;
+  void VisitFontWeight(cssom::FontWeightValue* font_weight) override;
+  void VisitKeyword(cssom::KeywordValue* keyword) override;
+  void VisitLocalSrc(cssom::LocalSrcValue* local_src) override;
+  void VisitPropertyList(cssom::PropertyListValue* property_list) override;
+  void VisitString(cssom::StringValue* percentage) override;
+  void VisitUnicodeRange(cssom::UnicodeRangeValue* unicode_range) override;
+  void VisitUrlSrc(cssom::UrlSrcValue* url_src) override;
+  void VisitURL(cssom::URLValue* url) override;
 
   bool IsFontFaceValid() const;
 
@@ -147,6 +147,7 @@ void FontFaceProvider::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kCurrentColor:
     case cssom::KeywordValue::kEllipsis:
     case cssom::KeywordValue::kEnd:
+    case cssom::KeywordValue::kEquirectangular:
     case cssom::KeywordValue::kFixed:
     case cssom::KeywordValue::kForwards:
     case cssom::KeywordValue::kHidden:
@@ -176,7 +177,6 @@ void FontFaceProvider::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kTop:
     case cssom::KeywordValue::kUppercase:
     case cssom::KeywordValue::kVisible:
-    default:
       NOTREACHED();
   }
 }
@@ -207,7 +207,8 @@ void FontFaceProvider::VisitUnicodeRange(
 //  https://www.w3.org/TR/css3-fonts/#descdef-src
 void FontFaceProvider::VisitUrlSrc(cssom::UrlSrcValue* url_src) {
   if (url_src->format().empty() || url_src->format() == "truetype" ||
-      url_src->format() == "opentype" || url_src->format() == "woff") {
+      url_src->format() == "opentype" || url_src->format() == "woff" ||
+      url_src->format() == "woff2") {
     url_src->url()->Accept(this);
   }
 }

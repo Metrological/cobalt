@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@
 #include "cobalt/render_tree/blur_filter.h"
 #include "cobalt/render_tree/border.h"
 #include "cobalt/render_tree/brush.h"
+#include "cobalt/render_tree/clear_rect_node.h"
 #include "cobalt/render_tree/color_rgba.h"
 #include "cobalt/render_tree/composition_node.h"
 #include "cobalt/render_tree/filter_node.h"
@@ -76,6 +77,7 @@ using cobalt::render_tree::BlurFilter;
 using cobalt::render_tree::Border;
 using cobalt::render_tree::BorderSide;
 using cobalt::render_tree::Brush;
+using cobalt::render_tree::ClearRectNode;
 using cobalt::render_tree::ColorRGBA;
 using cobalt::render_tree::ColorStop;
 using cobalt::render_tree::ColorStopList;
@@ -1386,6 +1388,7 @@ scoped_refptr<Image> MakeAlternatingYUYVYImage(
   return resource_provider->CreateImage(image_data.Pass());
 }
 
+#if !SB_HAS(BLITTER)
 TEST_F(PixelTest, ThreePlaneYUVImageSupport) {
   // Tests that an ImageNode hooked up to a 3-plane YUV image works fine.
   scoped_refptr<Image> image =
@@ -1452,6 +1455,7 @@ TEST_F(PixelTest, YUV422UYVYImageScaledUpSupport) {
 
   TestTree(new ImageNode(image, math::Rect(output_surface_size())));
 }
+#endif  // !SB_HAS(BLITTER)
 
 // The software rasterizer does not support NV12 images.
 #if NV12_TEXTURE_SUPPORTED
@@ -1960,12 +1964,14 @@ TEST_F(PixelTest, ZoomedInImagesDoNotWrapInterpolated) {
 
 #endif  // BILINEAR_FILTERING_SUPPORTED
 
+#if !SB_HAS(BLITTER)
 TEST_F(PixelTest, YUV3PlaneImagesAreLinearlyInterpolated) {
   // Tests that three plane YUV images are bilinearly interpolated.
   scoped_refptr<Image> image = MakeI420Image(GetResourceProvider(), Size(8, 8));
 
   TestTree(new ImageNode(image, RectF(output_surface_size())));
 }
+#endif  // !SB_HAS(BLITTER)
 
 // The software rasterizer does not support NV12 images.
 #if NV12_TEXTURE_SUPPORTED
@@ -2464,6 +2470,41 @@ TEST_F(PixelTest, RoundedCornersEachDifferentThickBorder) {
   TestTree(new RectNode(RectF(30, 30, 100, 100),
                         make_scoped_ptr(new Border(border_side)),
                         make_scoped_ptr(new RoundedCorners(rounded_corners))));
+}
+
+TEST_F(PixelTest, RoundedCornersEachDifferentThickBorderSolidBrush) {
+  RoundedCorners rounded_corners(
+      RoundedCorner(10.0f, 20.0f), RoundedCorner(20.0f, 30.0f),
+      RoundedCorner(30.0f, 40.0f), RoundedCorner(50.0f, 40.0f));
+  BorderSide border_side(
+      20.0f, render_tree::kBorderStyleSolid, ColorRGBA(1.0f, 0.0f, 0.5f, 1.0f));
+  scoped_ptr<Brush> content_brush(new SolidColorBrush(
+      ColorRGBA(0.0f, 1.0f, 0.0f, 1.0f)));
+  TestTree(new RectNode(
+      RectF(30, 30, 100, 100),
+      content_brush.Pass(),
+      make_scoped_ptr(new Border(border_side)),
+      make_scoped_ptr(new RoundedCorners(rounded_corners))));
+}
+
+TEST_F(PixelTest, RoundedCornersDifferentCornersDifferentThicknessSolidBrush) {
+  RoundedCorners rounded_corners(
+      RoundedCorner(10.0f, 20.0f), RoundedCorner(20.0f, 30.0f),
+      RoundedCorner(30.0f, 40.0f), RoundedCorner(50.0f, 40.0f));
+  BorderSide border_side_template(
+      0.0f, render_tree::kBorderStyleSolid, ColorRGBA(1.0f, 0.0f, 0.5f, 1.0f));
+  Border border(border_side_template);
+  border.left.width = 10.0f;
+  border.top.width = 15.0f;
+  border.right.width = 20.0f;
+  border.bottom.width = 25.0f;
+  scoped_ptr<Brush> content_brush(new SolidColorBrush(
+      ColorRGBA(0.0f, 1.0f, 0.0f, 1.0f)));
+  TestTree(new RectNode(
+      RectF(30, 30, 100, 100),
+      content_brush.Pass(),
+      make_scoped_ptr(new Border(border)),
+      make_scoped_ptr(new RoundedCorners(rounded_corners))));
 }
 
 TEST_F(PixelTest, RoundedCornersThickBlueBorder) {
@@ -3792,6 +3833,7 @@ TEST_F(PixelTest, DrawOffscreenImage) {
   TestTree(new ImageNode(offscreen_image));
 }
 
+#if !SB_HAS(BLITTER)
 // Tests that offscreen rendering works fine with YUV images.
 TEST_F(PixelTest, DrawOffscreenYUVImage) {
   scoped_refptr<Image> image =
@@ -3802,6 +3844,7 @@ TEST_F(PixelTest, DrawOffscreenYUVImage) {
 
   TestTree(new ImageNode(offscreen_rendered_image));
 }
+#endif  // !SB_HAS(BLITTER)
 
 #if defined(ENABLE_MAP_TO_MESH)
 
@@ -3926,7 +3969,37 @@ TEST_F(PixelTest, MapToMeshUYVYTest) {
 TEST_F(PixelTest, DrawNullImage) {
   // An ImageNode with no source is legal, though it should result in nothing
   // being drawn.
-  TestTree(new ImageNode(NULL, math::RectF(output_surface_size())));
+  TestTree(new ImageNode(nullptr, math::RectF(output_surface_size())));
+}
+
+TEST_F(PixelTest, ClearRectNodeTest) {
+  CompositionNode::Builder composition_node_builder;
+  composition_node_builder.AddChild(new RectNode(
+      RectF(output_surface_size()), scoped_ptr<Brush>(new SolidColorBrush(
+                                        ColorRGBA(1.0f, 0.0f, 0.0f, 1.0f)))));
+  RectF clear_rect(output_surface_size());
+  clear_rect.Inset(15, 15);
+  composition_node_builder.AddChild(
+      new ClearRectNode(clear_rect, ColorRGBA(0.0f, 0.0f, 0.0f, 0.0f)));
+
+  RectF inner_rect(clear_rect);
+  inner_rect.Inset(15, 15);
+  composition_node_builder.AddChild(new RectNode(
+      inner_rect, scoped_ptr<Brush>(
+                      new SolidColorBrush(ColorRGBA(0.0f, 1.0f, 0.0f, 0.5f)))));
+
+  RectF inner_clear_rect(inner_rect);
+  inner_clear_rect.Inset(15, 15);
+  composition_node_builder.AddChild(
+      new ClearRectNode(inner_clear_rect, ColorRGBA(0.0f, 0.0f, 1.0f, 0.75f)));
+
+  RectF inner_inner_rect(inner_clear_rect);
+  inner_inner_rect.Inset(15, 15);
+  composition_node_builder.AddChild(
+      new RectNode(inner_inner_rect, scoped_ptr<Brush>(new SolidColorBrush(
+                                         ColorRGBA(1.0f, 0.0f, 0.0f, 0.5f)))));
+
+  TestTree(new CompositionNode(composition_node_builder.Pass()));
 }
 
 }  // namespace rasterizer

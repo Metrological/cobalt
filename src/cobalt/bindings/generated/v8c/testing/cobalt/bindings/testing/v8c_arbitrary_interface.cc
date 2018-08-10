@@ -1,6 +1,6 @@
 
 
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2018 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,14 +30,22 @@
 #include "v8c_gen_type_conversion.h"
 
 #include "cobalt/script/callback_interface_traits.h"
+#include "cobalt/script/v8c/v8c_array_buffer.h"
+#include "cobalt/script/v8c/v8c_array_buffer_view.h"
 #include "cobalt/script/v8c/callback_function_conversion.h"
 #include "cobalt/script/v8c/conversion_helpers.h"
+#include "cobalt/script/v8c/entry_scope.h"
+#include "cobalt/script/v8c/helpers.h"
 #include "cobalt/script/v8c/native_promise.h"
 #include "cobalt/script/v8c/type_traits.h"
+#include "cobalt/script/v8c/v8c_typed_arrays.h"
+#include "cobalt/script/v8c/v8c_data_view.h"
 #include "cobalt/script/v8c/v8c_callback_function.h"
 #include "cobalt/script/v8c/v8c_callback_interface_holder.h"
+#include "cobalt/script/v8c/v8c_engine.h"
 #include "cobalt/script/v8c/v8c_exception_state.h"
 #include "cobalt/script/v8c/v8c_global_environment.h"
+#include "cobalt/script/v8c/v8c_property_enumerator.h"
 #include "cobalt/script/v8c/v8c_value_handle.h"
 #include "cobalt/script/v8c/wrapper_private.h"
 #include "v8/include/v8.h"
@@ -54,25 +62,24 @@ using cobalt::script::ValueHandle;
 using cobalt::script::ValueHandleHolder;
 using cobalt::script::Wrappable;
 
+using cobalt::script::v8c::EntryScope;
+using cobalt::script::v8c::EscapableEntryScope;
 using cobalt::script::v8c::FromJSValue;
-using cobalt::script::v8c::InterfaceData;
 using cobalt::script::v8c::kConversionFlagClamped;
 using cobalt::script::v8c::kConversionFlagNullable;
+using cobalt::script::v8c::kConversionFlagObjectOnly;
 using cobalt::script::v8c::kConversionFlagRestricted;
 using cobalt::script::v8c::kConversionFlagTreatNullAsEmptyString;
 using cobalt::script::v8c::kConversionFlagTreatUndefinedAsEmptyString;
 using cobalt::script::v8c::kNoConversionFlags;
+using cobalt::script::v8c::NewInternalString;
+using cobalt::script::v8c::ToJSValue;
 using cobalt::script::v8c::TypeTraits;
 using cobalt::script::v8c::V8cExceptionState;
 using cobalt::script::v8c::V8cGlobalEnvironment;
+using cobalt::script::v8c::V8cPropertyEnumerator;
 using cobalt::script::v8c::WrapperFactory;
 using cobalt::script::v8c::WrapperPrivate;
-
-v8::Local<v8::Object> DummyFunctor(V8cGlobalEnvironment*, const scoped_refptr<Wrappable>&) {
-  NOTIMPLEMENTED();
-  return {};
-}
-
 }  // namespace
 
 namespace cobalt {
@@ -82,131 +89,318 @@ namespace testing {
 
 namespace {
 
-void ArbitraryInterfaceConstructor(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  NOTIMPLEMENTED();
-  if (!args.IsConstructCall()) {
-    // TODO: Probably throw something here...
+const int kInterfaceUniqueId = 3;
+
+
+
+
+
+
+
+
+
+void Constructor(const v8::FunctionCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  V8cExceptionState exception_state(isolate);
+  if (!info.IsConstructCall()) {
+    exception_state.SetSimpleException(script::kTypeError, "Illegal constructor");
     return;
   }
 
-  DCHECK(args.This()->InternalFieldCount() == 1);
-  args.This()->SetInternalField(0, v8::External::New(args.GetIsolate(), nullptr));
-  args.GetReturnValue().Set(args.This());
-}
-
-
-void v8cGet_arbitraryProperty(
-  v8::Local<v8::String> property,
-  const v8::PropertyCallbackInfo<v8::Value>& info)
-{
-  NOTIMPLEMENTED();
-
-  v8::Local<v8::External> external = v8::Local<v8::External>::Cast(info.Holder()->GetInternalField(0));
-  WrapperPrivate* wrapper_private = static_cast<WrapperPrivate*>(external->Value());
-  ArbitraryInterface* impl = static_cast<ArbitraryInterface*>(wrapper_private->wrappable<ArbitraryInterface>());
-
+  scoped_refptr<ArbitraryInterface> new_object =
+      new ArbitraryInterface();
   v8::Local<v8::Value> result_value;
-}
-
-
-void v8cSet_arbitraryProperty(
-  v8::Local<v8::String> property,
-  v8::Local<v8::Value> v8_value,
-  const v8::PropertyCallbackInfo<void>& info)
-{
-  v8::Local<v8::External> external = v8::Local<v8::External>::Cast(info.Holder()->GetInternalField(0));
-  WrapperPrivate* wrapper_private = static_cast<WrapperPrivate*>(external->Value());
-  ArbitraryInterface* impl = static_cast<ArbitraryInterface*>(wrapper_private->wrappable<ArbitraryInterface>());
-
-  TypeTraits<std::string>::ConversionType conversion_value;
-  V8cExceptionState exception_state{};
-  FromJSValue(info.GetIsolate(), v8_value, kNoConversionFlags, &exception_state, &conversion_value);
-  impl->set_arbitrary_property(
-    conversion_value
-  );
+  ToJSValue(isolate, new_object, &result_value);
+  DCHECK(result_value->IsObject());
+  info.GetReturnValue().Set(result_value);
 }
 
 
 
-void DummyFunction(const v8::FunctionCallbackInfo<v8::Value>& info) {
-  LOG(INFO) << __func__;
+void arbitraryPropertyAttributeGetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Object> object = info.Holder();
+
+
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cArbitraryInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
+    return;
+  }
+  V8cExceptionState exception_state{isolate};
+  v8::Local<v8::Value> result_value;
+
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
+    return;
+  }
+  ArbitraryInterface* impl =
+      wrapper_private->wrappable<ArbitraryInterface>().get();
+
+
+  if (!exception_state.is_exception_set()) {
+    ToJSValue(isolate,
+              impl->arbitrary_property(),
+              &result_value);
+  }
+  if (exception_state.is_exception_set()) {
+    return;
+  }
+  info.GetReturnValue().Set(result_value);
 }
 
-void InitializeTemplate(
-  V8cGlobalEnvironment* env,
-  InterfaceData* interface_data) {
-  v8::Isolate* isolate = env->isolate();
-  v8::Local<v8::FunctionTemplate> function_template = v8::FunctionTemplate::New(
-    isolate);
-  function_template->SetClassName(
-    v8::String::NewFromUtf8(isolate, "ArbitraryInterface",
-        v8::NewStringType::kInternalized).ToLocalChecked());
-  v8::Local<v8::ObjectTemplate> instance_template = function_template->InstanceTemplate();
-  instance_template->SetInternalFieldCount(1);
+void arbitraryPropertyAttributeSetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Object> object = info.Holder();
+  v8::Local<v8::Value> v8_value = info[0];
+
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cArbitraryInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
+    return;
+  }
+  V8cExceptionState exception_state{isolate};
+  v8::Local<v8::Value> result_value;
+
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
+    return;
+  }
+  ArbitraryInterface* impl =
+      wrapper_private->wrappable<ArbitraryInterface>().get();
+  TypeTraits<std::string >::ConversionType value;
+  FromJSValue(isolate, v8_value, kNoConversionFlags, &exception_state,
+              &value);
+  if (exception_state.is_exception_set()) {
+    return;
+  }
+
+  impl->set_arbitrary_property(value);
+  result_value = v8::Undefined(isolate);
+  return;
+}
+
+
+
+void arbitraryFunctionMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Object> object = info.Holder();
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cArbitraryInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
+    return;
+  }
+  V8cExceptionState exception_state{isolate};
+  v8::Local<v8::Value> result_value;
+
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
+    return;
+  }
+  ArbitraryInterface* impl =
+      wrapper_private->wrappable<ArbitraryInterface>().get();
+
+  impl->ArbitraryFunction();
+  result_value = v8::Undefined(isolate);
+
+}
+
+
+
+void InitializeTemplate(v8::Isolate* isolate) {
+  // https://heycam.github.io/webidl/#interface-object
+  // 3.6.1. Interface object
+  //
+  // The interface object for a given interface is a built-in function object.
+  // It has properties that correspond to the constants and static operations
+  // defined on that interface, as described in sections 3.6.6 Constants and
+  // 3.6.8 Operations.
+  //
+  // If the interface is declared with a [Constructor] extended attribute,
+  // then the interface object can be called as a constructor to create an
+  // object that implements that interface. Calling that interface as a
+  // function will throw an exception.
+  //
+  // Interface objects whose interfaces are not declared with a [Constructor]
+  // extended attribute will throw when called, both as a function and as a
+  // constructor.
+  //
+  // An interface object for a non-callback interface has an associated object
+  // called the interface prototype object. This object has properties that
+  // correspond to the regular attributes and regular operations defined on
+  // the interface, and is described in more detail in 3.6.3 Interface
+  // prototype object.
+  v8::Local<v8::FunctionTemplate> function_template =
+      v8::FunctionTemplate::New(
+          isolate,
+          Constructor,
+          v8::Local<v8::Value>(),
+          v8::Local<v8::Signature>(),
+          0);
+  function_template->SetLength(0);
+  function_template->SetClassName(NewInternalString(isolate, "ArbitraryInterface"));
+  function_template->ReadOnlyPrototype();
 
   v8::Local<v8::ObjectTemplate> prototype_template = function_template->PrototypeTemplate();
-  prototype_template->SetInternalFieldCount(1);
+  v8::Local<v8::ObjectTemplate> instance_template = function_template->InstanceTemplate();
+  instance_template->SetInternalFieldCount(WrapperPrivate::kInternalFieldCount);
 
-  instance_template->SetAccessor(
-    v8::String::NewFromUtf8(isolate, "arbitraryProperty",
-                              v8::NewStringType::kInternalized)
-          .ToLocalChecked(),
-    v8cGet_arbitraryProperty
-    ,v8cSet_arbitraryProperty
-  );
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  global_environment->AddInterfaceData(kInterfaceUniqueId, function_template);
 
-  instance_template->Set(
-      v8::String::NewFromUtf8(
-          isolate,
-          "arbitraryFunction",
-          v8::NewStringType::kInternalized).ToLocalChecked(),
-      v8::FunctionTemplate::New(isolate, DummyFunction)
-  );
 
-  interface_data->templ.Set(env->isolate(), function_template);
-}
+  // https://heycam.github.io/webidl/#es-constants
+  // 3.6.6. Constants
+  //
+  // For each exposed constant defined on an interface A, there must be a
+  // corresponding property. The property has the following characteristics:
 
-inline InterfaceData* GetInterfaceData(V8cGlobalEnvironment* env) {
-  const int kInterfaceUniqueId = 3;
-  // By convention, the |V8cGlobalEnvironment| that we are associated with
-  // will hold our |InterfaceData| at index |kInterfaceUniqueId|, as we asked
-  // for it to be there in the first place, and could not have conflicted with
-  // any other interface.
-  return env->GetInterfaceData(kInterfaceUniqueId);
+  // https://heycam.github.io/webidl/#es-attributes
+  // 3.6.7. Attributes
+  //
+  // For each exposed attribute of the interface there must exist a
+  // corresponding property. The characteristics of this property are as
+  // follows:
+  {
+    // The name of the property is the identifier of the attribute.
+    v8::Local<v8::String> name = NewInternalString(
+        isolate,
+        "arbitraryProperty");
+
+    // The property has attributes { [[Get]]: G, [[Set]]: S, [[Enumerable]]:
+    // true, [[Configurable]]: configurable }, where: configurable is false if
+    // the attribute was declared with the [Unforgeable] extended attribute and
+    // true otherwise;
+    bool configurable = true;
+    v8::PropertyAttribute attributes = static_cast<v8::PropertyAttribute>(
+        configurable ? v8::None : v8::DontDelete);
+
+    // G is the attribute getter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property;
+    // and
+    //
+    // S is the attribute setter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property.
+    v8::Local<v8::FunctionTemplate> getter =
+        v8::FunctionTemplate::New(isolate, arbitraryPropertyAttributeGetter);
+    v8::Local<v8::FunctionTemplate> setter =
+        v8::FunctionTemplate::New(isolate, arbitraryPropertyAttributeSetter);
+
+    // The location of the property is determined as follows:
+    // Otherwise, the property exists solely on the interface's interface
+    // prototype object.
+    prototype_template->
+        SetAccessorProperty(
+            name,
+            getter,
+            setter,
+            attributes);
+
+  }
+
+  // https://heycam.github.io/webidl/#es-operations
+  // 3.6.8. Operations
+  //
+  // For each unique identifier of an exposed operation defined on the
+  // interface, there must exist a corresponding property, unless the effective
+  // overload set for that identifier and operation and with an argument count
+  // of 0 has no entries.
+  //
+  // The characteristics of this property are as follows:
+  {
+    // The name of the property is the identifier.
+    v8::Local<v8::String> name = NewInternalString(
+        isolate,
+        "arbitraryFunction");
+
+    // The property has attributes { [[Writable]]: B, [[Enumerable]]: true,
+    // [[Configurable]]: B }, where B is false if the operation is unforgeable
+    // on the interface, and true otherwise.
+    bool B = true;
+    v8::PropertyAttribute attributes = static_cast<v8::PropertyAttribute>(
+        B ? v8::None : (v8::ReadOnly | v8::DontDelete));
+
+    v8::Local<v8::FunctionTemplate> method_template =
+        v8::FunctionTemplate::New(isolate, arbitraryFunctionMethod);
+    method_template->RemovePrototype();
+    method_template->SetLength(0);
+
+    // The location of the property is determined as follows:
+    // Otherwise, the property exists solely on the interface's interface
+    // prototype object.
+    prototype_template->
+        Set(name, method_template);
+
+    // The value of the property is the result of creating an operation function
+    // given the operation, the interface, and the relevant Realm of the object
+    // that is the location of the property.
+
+    // Note: that is, even if an includes statement was used to make an
+    // operation available on the interface, we pass in the interface which
+    // includes the interface mixin, and not the interface mixin on which the
+    // operation was originally declared.
+  }
+
+  // https://heycam.github.io/webidl/#es-stringifier
+  // 3.6.8.2. Stringifiers
+  prototype_template->Set(
+      v8::Symbol::GetToStringTag(isolate),
+      NewInternalString(isolate, "ArbitraryInterface"),
+      static_cast<v8::PropertyAttribute>(v8::ReadOnly | v8::DontEnum));
+
+
+
+
+
 }
 
 }  // namespace
 
-v8::Local<v8::Object> V8cArbitraryInterface::CreateWrapper(V8cGlobalEnvironment* env, const scoped_refptr<Wrappable>& wrappable) {
-  v8::Isolate* isolate = env->isolate();
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::EscapableHandleScope handle_scope(isolate);
-  v8::Local<v8::Context> context = env->context();
-  v8::Context::Scope scope(context);
 
-  InterfaceData* interface_data = GetInterfaceData(env);
-  if (interface_data->templ.IsEmpty()) {
-    InitializeTemplate(env, interface_data);
+v8::Local<v8::Object> V8cArbitraryInterface::CreateWrapper(
+    v8::Isolate* isolate, const scoped_refptr<Wrappable>& wrappable) {
+  EscapableEntryScope entry_scope(isolate);
+  v8::Local<v8::Context> context = isolate->GetCurrentContext();
+
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  if (!global_environment->HasInterfaceData(kInterfaceUniqueId)) {
+    InitializeTemplate(isolate);
   }
-  DCHECK(!interface_data->templ.IsEmpty());
+  v8::Local<v8::FunctionTemplate> function_template = global_environment->GetInterfaceData(kInterfaceUniqueId);
 
-  v8::Local<v8::FunctionTemplate> function_template = interface_data->templ.Get(isolate);
-  DCHECK(function_template->InstanceTemplate()->InternalFieldCount() == 1);
+  DCHECK(function_template->InstanceTemplate()->InternalFieldCount() == WrapperPrivate::kInternalFieldCount);
   v8::Local<v8::Object> object = function_template->InstanceTemplate()->NewInstance(context).ToLocalChecked();
-  DCHECK(object->InternalFieldCount() == 1);
+  DCHECK(object->InternalFieldCount() == WrapperPrivate::kInternalFieldCount);
 
-  // |WrapperPrivate|'s lifetime will be managed by V8.
+  // This |WrapperPrivate|'s lifetime will be managed by V8.
   new WrapperPrivate(isolate, wrappable, object);
-  return handle_scope.Escape(object);
+  return entry_scope.Escape(object);
 }
 
-v8::Local<v8::FunctionTemplate> V8cArbitraryInterface::CreateTemplate(V8cGlobalEnvironment* env) {
-  InterfaceData* interface_data = GetInterfaceData(env);
-  if (interface_data->templ.IsEmpty()) {
-    InitializeTemplate(env, interface_data);
-  }
 
-  return interface_data->templ.Get(env->isolate());
+v8::Local<v8::FunctionTemplate> V8cArbitraryInterface::GetTemplate(v8::Isolate* isolate) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  if (!global_environment->HasInterfaceData(kInterfaceUniqueId)) {
+    InitializeTemplate(isolate);
+  }
+  return global_environment->GetInterfaceData(kInterfaceUniqueId);
 }
 
 

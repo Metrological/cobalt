@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Google Inc. All Rights Reserved.
+ * Copyright 2016 The Cobalt Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 #ifndef COBALT_MEDIA_BASE_VIDEO_RESOLUTION_H_
 #define COBALT_MEDIA_BASE_VIDEO_RESOLUTION_H_
 
+#include "starboard/media.h"
 #include "ui/gfx/size.h"
 
 namespace cobalt {
@@ -29,7 +30,7 @@ enum VideoResolution {
   kVideoResolution1080p,  // 1920 x 1080
   kVideoResolution2k,     // 2560 x 1440
   kVideoResolution4k,     // 3840 x 2160
-  kVideoResolutionInvalid
+  kVideoResolutionInvalid,
 };
 
 inline VideoResolution GetVideoResolution(int width, int height) {

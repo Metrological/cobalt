@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -85,12 +85,13 @@ class MouseEvent : public UIEventWithKeyState {
   // Web API: UIEvent
   // This contains a value equal to the value stored in button+1.
   //   https://w3c.github.io/uievents/#dom-uievent-which
-  uint32 which() const OVERRIDE;
+  uint32 which() const override;
 
   DEFINE_WRAPPABLE_TYPE(MouseEvent);
+  void TraceMembers(script::Tracer* tracer) override;
 
  protected:
-  ~MouseEvent() OVERRIDE {}
+  ~MouseEvent() override {}
 
  private:
   float screen_x_;

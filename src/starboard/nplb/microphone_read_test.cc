@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ TEST(SbMicrophoneReadTest, SunnyDay) {
         info_array[0].id, info_array[0].max_sample_rate_hz, kBufferSize);
     ASSERT_TRUE(SbMicrophoneIsValid(microphone));
 
-    ASSERT_TRUE(SbMicrophoneOpen(microphone));
+    EXPECT_TRUE(SbMicrophoneOpen(microphone));
 
     int requested_bytes = info_array[0].min_read_size;
     std::vector<uint8_t> audio_data(requested_bytes, 0);
@@ -62,7 +62,7 @@ TEST(SbMicrophoneReadTest, SunnyDayReadIsLargerThanMinReadSize) {
         info_array[0].id, info_array[0].max_sample_rate_hz, kBufferSize);
     ASSERT_TRUE(SbMicrophoneIsValid(microphone));
 
-    ASSERT_TRUE(SbMicrophoneOpen(microphone));
+    EXPECT_TRUE(SbMicrophoneOpen(microphone));
 
     int requested_bytes = info_array[0].min_read_size;
     std::vector<uint8_t> audio_data(requested_bytes * 2, 0);
@@ -119,7 +119,7 @@ TEST(SbMicrophoneReadTest, RainyDayAudioBufferIsNULL) {
         info_array[0].id, info_array[0].max_sample_rate_hz, kBufferSize);
     ASSERT_TRUE(SbMicrophoneIsValid(microphone));
 
-    ASSERT_TRUE(SbMicrophoneOpen(microphone));
+    EXPECT_TRUE(SbMicrophoneOpen(microphone));
 
     int read_bytes = SbMicrophoneRead(microphone, NULL, 0);
     EXPECT_EQ(read_bytes, 0);
@@ -142,7 +142,7 @@ TEST(SbMicrophoneReadTest, RainyDayAudioBufferSizeIsSmallerThanRequestedSize) {
         info_array[0].id, info_array[0].max_sample_rate_hz, kBufferSize);
     ASSERT_TRUE(SbMicrophoneIsValid(microphone));
 
-    ASSERT_TRUE(SbMicrophoneOpen(microphone));
+    EXPECT_TRUE(SbMicrophoneOpen(microphone));
 
     int read_bytes = SbMicrophoneRead(microphone, NULL, 1024);
     EXPECT_LE(read_bytes, 0);
@@ -165,7 +165,7 @@ TEST(SbMicrophoneReadTest, RainyDayAudioBufferSizeIsSmallerThanMinReadSize) {
         info_array[0].id, info_array[0].max_sample_rate_hz, kBufferSize);
     ASSERT_TRUE(SbMicrophoneIsValid(microphone));
 
-    ASSERT_TRUE(SbMicrophoneOpen(microphone));
+    EXPECT_TRUE(SbMicrophoneOpen(microphone));
 
     int requested_bytes = info_array[0].min_read_size;
     std::vector<uint8_t> audio_data(requested_bytes / 2, 0);

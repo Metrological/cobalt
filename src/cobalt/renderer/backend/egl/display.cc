@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,38 +22,29 @@ namespace backend {
 
 class DisplayRenderTargetEGL : public RenderTargetEGL {
  public:
-  // The DisplayRenderTargetEGL is constructed with a handle to a native
-  // window to use as the render target.
-  DisplayRenderTargetEGL(EGLDisplay display, EGLConfig config,
-                         EGLNativeWindowType window_handle);
+  DisplayRenderTargetEGL(EGLDisplay display, EGLSurface surface);
 
-  const math::Size& GetSize() const OVERRIDE;
+  const math::Size& GetSize() const override;
 
-  EGLSurface GetSurface() const OVERRIDE;
+  EGLSurface GetSurface() const override;
 
-  bool IsWindowRenderTarget() const OVERRIDE { return true; }
+  bool IsWindowRenderTarget() const override { return true; }
 
-  bool CreationError() OVERRIDE { return false; }
+  bool CreationError() override { return false; }
 
  private:
-  ~DisplayRenderTargetEGL() OVERRIDE;
+  ~DisplayRenderTargetEGL() override;
 
   EGLDisplay display_;
-  EGLConfig config_;
-
-  EGLNativeWindowType native_window_;
 
   EGLSurface surface_;
 
   math::Size size_;
 };
 
-DisplayRenderTargetEGL::DisplayRenderTargetEGL(
-    EGLDisplay display, EGLConfig config, EGLNativeWindowType window_handle)
-    : display_(display), config_(config), native_window_(window_handle) {
-  surface_ = eglCreateWindowSurface(display_, config_, native_window_, NULL);
-  CHECK_EQ(EGL_SUCCESS, eglGetError());
-
+DisplayRenderTargetEGL::DisplayRenderTargetEGL(EGLDisplay display,
+                                               EGLSurface surface)
+    : display_(display), surface_(surface) {
 #if defined(COBALT_RENDER_DIRTY_REGION_ONLY)
   // Configure the surface to preserve contents on swap.
   EGLBoolean surface_attrib_set =
@@ -82,10 +73,9 @@ DisplayRenderTargetEGL::~DisplayRenderTargetEGL() {
 
 EGLSurface DisplayRenderTargetEGL::GetSurface() const { return surface_; }
 
-DisplayEGL::DisplayEGL(EGLDisplay display, EGLConfig config,
-                       EGLNativeWindowType window_handle) {
+DisplayEGL::DisplayEGL(EGLDisplay display, EGLSurface surface) {
   // A display effectively just hosts a DisplayRenderTargetEGL.
-  render_target_ = new DisplayRenderTargetEGL(display, config, window_handle);
+  render_target_ = new DisplayRenderTargetEGL(display, surface);
 }
 
 scoped_refptr<RenderTarget> DisplayEGL::GetRenderTarget() {

@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ class ExecutionStateImpl : public ExecutionState {
       const scoped_refptr<GlobalEnvironment>& global_environment)
       : global_environment_(global_environment) {}
 
-  std::string GetStackTrace() const OVERRIDE;
+  std::string GetStackTrace() const override;
 
  private:
   scoped_refptr<GlobalEnvironment> global_environment_;

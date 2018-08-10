@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -46,6 +46,12 @@ const std::string& Attr::node_value() const {
 #endif  // __LB_SHELL__FORCE_LOGGING__
 
   return value_;
+}
+
+void Attr::TraceMembers(script::Tracer* tracer) {
+  // This const cast is safe, as the tracer will only be using it as a
+  // |Wrappable|, which is threadsafe, as JavaScript is single threaded.
+  tracer->Trace(const_cast<NamedNodeMap*>(container_.get()));
 }
 
 Attr::~Attr() { GlobalStats::GetInstance()->Remove(this); }

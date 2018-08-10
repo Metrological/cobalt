@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 #include "base/callback.h"
 #include "base/message_loop.h"
+#include "base/threading/platform_thread.h"
 #include "cobalt/dom/attr.h"
 #include "cobalt/dom/document.h"
 #include "cobalt/dom/dom_stat_tracker.h"
@@ -28,6 +29,7 @@
 #include "cobalt/dom/text.h"
 #include "cobalt/dom_parser/parser.h"
 #include "cobalt/loader/fetcher_factory.h"
+#include "cobalt/loader/loader_factory.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -44,9 +46,10 @@ class MockErrorCallback : public base::Callback<void(const std::string&)> {
 class HTMLDecoderTest : public ::testing::Test {
  protected:
   HTMLDecoderTest();
-  ~HTMLDecoderTest() OVERRIDE {}
+  ~HTMLDecoderTest() override {}
 
   loader::FetcherFactory fetcher_factory_;
+  loader::LoaderFactory loader_factory_;
   scoped_ptr<Parser> dom_parser_;
   dom::testing::StubCSSParser stub_css_parser_;
   dom::testing::StubScriptRunner stub_script_runner_;
@@ -62,14 +65,17 @@ class HTMLDecoderTest : public ::testing::Test {
 
 HTMLDecoderTest::HTMLDecoderTest()
     : fetcher_factory_(NULL /* network_module */),
+      loader_factory_(&fetcher_factory_, NULL /* ResourceProvider */,
+                      base::kThreadPriority_Default),
       dom_parser_(new Parser()),
       dom_stat_tracker_(new dom::DomStatTracker("HTMLDecoderTest")),
       html_element_context_(
-          &fetcher_factory_, &stub_css_parser_, dom_parser_.get(),
-          NULL /* can_play_type_handler */, NULL /* web_media_player_factory */,
-          &stub_script_runner_, NULL /* script_value_factory */, NULL, NULL,
-          NULL, NULL, NULL, NULL, NULL, dom_stat_tracker_.get(), "",
-          base::kApplicationStateStarted),
+          &fetcher_factory_, &loader_factory_, &stub_css_parser_,
+          dom_parser_.get(), NULL /* can_play_type_handler */,
+          NULL /* web_media_player_factory */, &stub_script_runner_,
+          NULL /* script_value_factory */, NULL, NULL, NULL, NULL, NULL, NULL,
+          NULL, dom_stat_tracker_.get(), "", base::kApplicationStateStarted,
+          NULL),
       document_(new dom::Document(&html_element_context_)),
       root_(new dom::Element(document_, base::Token("element"))),
       source_location_(base::SourceLocation("[object HTMLDecoderTest]", 1, 1)) {
@@ -237,14 +243,18 @@ TEST_F(HTMLDecoderTest, CanParseAttributesWithAndWithoutValue) {
   EXPECT_EQ("div", element->local_name());
   EXPECT_TRUE(element->HasAttributes());
   EXPECT_EQ(4, element->attributes()->length());
-  EXPECT_EQ("a", element->attributes()->Item(0)->name());
-  EXPECT_EQ("", element->attributes()->Item(0)->value());
-  EXPECT_EQ("b", element->attributes()->Item(1)->name());
-  EXPECT_EQ("2", element->attributes()->Item(1)->value());
-  EXPECT_EQ("c", element->attributes()->Item(2)->name());
-  EXPECT_EQ("", element->attributes()->Item(2)->value());
-  EXPECT_EQ("d", element->attributes()->Item(3)->name());
-  EXPECT_EQ("", element->attributes()->Item(3)->value());
+  ASSERT_NE(nullptr, element->attributes()->GetNamedItem("a"));
+  EXPECT_EQ("a", element->attributes()->GetNamedItem("a")->name());
+  EXPECT_EQ("", element->attributes()->GetNamedItem("a")->value());
+  ASSERT_NE(nullptr, element->attributes()->GetNamedItem("b"));
+  EXPECT_EQ("b", element->attributes()->GetNamedItem("b")->name());
+  EXPECT_EQ("2", element->attributes()->GetNamedItem("b")->value());
+  ASSERT_NE(nullptr, element->attributes()->GetNamedItem("c"));
+  EXPECT_EQ("c", element->attributes()->GetNamedItem("c")->name());
+  EXPECT_EQ("", element->attributes()->GetNamedItem("c")->value());
+  ASSERT_NE(nullptr, element->attributes()->GetNamedItem("d"));
+  EXPECT_EQ("d", element->attributes()->GetNamedItem("d")->name());
+  EXPECT_EQ("", element->attributes()->GetNamedItem("d")->value());
 }
 
 TEST_F(HTMLDecoderTest, CanParseIncompleteAttributesAssignment) {
@@ -263,10 +273,12 @@ TEST_F(HTMLDecoderTest, CanParseIncompleteAttributesAssignment) {
   EXPECT_EQ("div", element->local_name());
   EXPECT_TRUE(element->HasAttributes());
   EXPECT_EQ(2, element->attributes()->length());
-  EXPECT_EQ("a", element->attributes()->Item(0)->name());
-  EXPECT_EQ("b=2", element->attributes()->Item(0)->value());
-  EXPECT_EQ("c", element->attributes()->Item(1)->name());
-  EXPECT_EQ("", element->attributes()->Item(1)->value());
+  ASSERT_NE(nullptr, element->attributes()->GetNamedItem("a"));
+  EXPECT_EQ("a", element->attributes()->GetNamedItem("a")->name());
+  EXPECT_EQ("b=2", element->attributes()->GetNamedItem("a")->value());
+  ASSERT_NE(nullptr, element->attributes()->GetNamedItem("c"));
+  EXPECT_EQ("c", element->attributes()->GetNamedItem("c")->name());
+  EXPECT_EQ("", element->attributes()->GetNamedItem("c")->value());
 }
 
 TEST_F(HTMLDecoderTest, CanParseSelfClosingTags) {

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@
         'crypto_test.cc',
         'csp_delegate_test.cc',
         'custom_event_test.cc',
-        'data_view_test.cc',
         'document_test.cc',
         'document_type_test.cc',
         'dom_implementation_test.cc',
@@ -42,8 +41,6 @@
         'event_queue_test.cc',
         'event_target_test.cc',
         'event_test.cc',
-        'float32_array_test.cc',
-        'float64_array_test.cc',
         'font_cache_test.cc',
         'html_element_factory_test.cc',
         'html_element_test.cc',
@@ -57,6 +54,7 @@
         'node_list_live_test.cc',
         'node_list_test.cc',
         'node_test.cc',
+        'on_screen_keyboard_test.cc',
         'performance_test.cc',
         'rule_matching_test.cc',
         'screen_test.cc',
@@ -64,7 +62,6 @@
         'storage_area_test.cc',
         'text_test.cc',
         'time_ranges_test.cc',
-        'typed_array_test.cc',
         'url_utils_test.cc',
         'window_test.cc',
         'xml_document_test.cc',
@@ -74,8 +71,9 @@
         '<(DEPTH)/cobalt/browser/browser.gyp:browser',
         '<(DEPTH)/cobalt/css_parser/css_parser.gyp:css_parser',
         '<(DEPTH)/cobalt/dom/dom.gyp:dom',
-        '<(DEPTH)/cobalt/dom/dom.gyp:dom_testing',
+        '<(DEPTH)/cobalt/dom/testing/dom_testing.gyp:dom_testing',
         '<(DEPTH)/cobalt/dom_parser/dom_parser.gyp:dom_parser',
+        '<(DEPTH)/cobalt/loader/loader.gyp:loader',
         '<(DEPTH)/cobalt/renderer/rasterizer/skia/skia/skia.gyp:skia',
         '<(DEPTH)/cobalt/speech/speech.gyp:speech',
         '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
@@ -93,7 +91,7 @@
       'variables': {
         'executable_name': 'dom_test',
       },
-      'includes': [ '../../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ],
 }

@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -181,6 +181,12 @@ float MouseEvent::offset_y() const {
 }
 
 uint32 MouseEvent::which() const { return button_ + 1; }
+
+void MouseEvent::TraceMembers(script::Tracer* tracer) {
+  UIEventWithKeyState::TraceMembers(tracer);
+
+  tracer->Trace(related_target_);
+}
 
 }  // namespace dom
 }  // namespace cobalt

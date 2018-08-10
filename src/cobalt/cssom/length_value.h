@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -44,13 +44,13 @@ class LengthValue : public PropertyValue {
  public:
   LengthValue(float value, LengthUnit unit) : value_(value), unit_(unit) {}
 
-  void Accept(PropertyValueVisitor* visitor) OVERRIDE;
+  void Accept(PropertyValueVisitor* visitor) override;
 
   float value() const { return value_; }
   LengthUnit unit() const { return unit_; }
   bool IsUnitRelative() const { return unit_ > kAbsoluteUnitMax; }
 
-  std::string ToString() const OVERRIDE;
+  std::string ToString() const override;
 
   bool operator==(const LengthValue& other) const {
     return value_ == other.value_ && unit_ == other.unit_;
@@ -72,7 +72,7 @@ class LengthValue : public PropertyValue {
   DEFINE_POLYMORPHIC_EQUATABLE_TYPE(LengthValue);
 
  private:
-  ~LengthValue() OVERRIDE {}
+  ~LengthValue() override {}
 
   const float value_;
   const LengthUnit unit_;

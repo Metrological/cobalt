@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,9 +26,14 @@
 #include "cobalt/dom/event_queue.h"
 #include "cobalt/dom/event_target.h"
 #include "cobalt/media/base/drm_system.h"
+#include "cobalt/script/environment_settings.h"
 #include "cobalt/script/promise.h"
 #include "cobalt/script/script_value_factory.h"
 #include "starboard/drm.h"
+
+// TODO: Remove this workaround.
+#include "net/url_request/url_fetcher.h"
+#include "net/url_request/url_fetcher_delegate.h"
 
 namespace cobalt {
 namespace dom {
@@ -57,29 +62,52 @@ class MediaKeySession : public EventTarget {
   void set_onkeystatuseschange(const EventListenerScriptValue& event_listener);
   const EventListenerScriptValue* onmessage() const;
   void set_onmessage(const EventListenerScriptValue& event_listener);
-  scoped_ptr<VoidPromiseValue> GenerateRequest(
-      const std::string& init_data_type, const BufferSource& init_data);
-  scoped_ptr<VoidPromiseValue> Update(const BufferSource& response);
-  scoped_ptr<VoidPromiseValue> Close();
-
-  void TraceMembers(script::Tracer* tracer) OVERRIDE;
+  script::Handle<script::Promise<void>> GenerateRequest(
+      script::EnvironmentSettings* settings, const std::string& init_data_type,
+      const BufferSource& init_data);
+  script::Handle<script::Promise<void>> Update(const BufferSource& response);
+  script::Handle<script::Promise<void>> Close();
 
   DEFINE_WRAPPABLE_TYPE(MediaKeySession);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
-  ~MediaKeySession() OVERRIDE;
+  // TODO: Remove this workaround.
+  class IndividualizationFetcherDelegate : public net::URLFetcherDelegate {
+   public:
+    explicit IndividualizationFetcherDelegate(
+        MediaKeySession* media_key_session);
+    void OnURLFetchDownloadData(const net::URLFetcher* source,
+                                scoped_ptr<std::string> download_data) override;
+    void OnURLFetchComplete(const net::URLFetcher* source) override;
+    bool ShouldSendDownloadData() override { return true; }
+
+   private:
+    MediaKeySession* media_key_session_;
+    std::string response_;
+  };
+  IndividualizationFetcherDelegate invidualization_fetcher_delegate_;
+  scoped_ptr<net::URLFetcher> invidualization_fetcher_;
+  void OnIndividualizationResponse(const std::string& response);
+
+  ~MediaKeySession() override;
 
   void OnSessionUpdateRequestGenerated(
+      script::EnvironmentSettings* settings,
       VoidPromiseValue::Reference* promise_reference,
-      scoped_array<uint8> message, int message_size);
+      SbDrmSessionRequestType type, scoped_array<uint8> message,
+      int message_size);
   void OnSessionUpdateRequestDidNotGenerate(
-      VoidPromiseValue::Reference* promise_reference);
+      VoidPromiseValue::Reference* promise_reference, SbDrmStatus status,
+      const std::string& error_message);
   void OnSessionUpdated(VoidPromiseValue::Reference* promise_reference);
-  void OnSessionDidNotUpdate(VoidPromiseValue::Reference* promise_reference);
+  void OnSessionDidNotUpdate(VoidPromiseValue::Reference* promise_reference,
+                             SbDrmStatus status,
+                             const std::string& error_message);
   void OnSessionUpdateKeyStatuses(
       const std::vector<std::string>& key_ids,
       const std::vector<SbDrmKeyStatus>& key_statuses);
-  void OnClosed();
+  void OnSessionClosed();
 
   EventQueue event_queue_;
 

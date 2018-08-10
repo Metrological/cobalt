@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,10 +26,9 @@ base::Token TypeEnumToToken(SpeechRecognitionEvent::Type type) {
       return base::Tokens::result();
     case SpeechRecognitionEvent::kNoMatch:
       return base::Tokens::nomatch();
-    default:
-      NOTREACHED() << "Invalid SpeechRecognitionEvent::Type";
-      return base::Tokens::nomatch();
   }
+  NOTREACHED() << "Invalid SpeechRecognitionEvent::Type";
+  return base::Tokens::nomatch();
 }
 }  // namespace
 
@@ -40,6 +39,12 @@ SpeechRecognitionEvent::SpeechRecognitionEvent(
     : dom::Event(TypeEnumToToken(type)),
       result_index_(result_index),
       speech_recognition_result_list_(speech_recognition_result_list) {}
+
+void SpeechRecognitionEvent::TraceMembers(script::Tracer* tracer) {
+  dom::Event::TraceMembers(tracer);
+
+  tracer->Trace(speech_recognition_result_list_);
+}
 
 }  // namespace speech
 }  // namespace cobalt

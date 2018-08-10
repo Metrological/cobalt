@@ -1,4 +1,4 @@
-# Copyright 2014 Google Inc. All Rights Reserved.
+# Copyright 2014 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,11 +28,12 @@
       ],
     },
     {
-      # Empty target to ensure all targets for enabled engines are built when
-      # building 'all'.
-      'target_name': 'all_engines',
+      'target_name': 'engine_shell',
       'type': 'none',
-      'dependencies': [],
+      'conditions': [
+        [ 'javascript_engine == "mozjs-45"', { 'dependencies': ['mozjs-45/mozjs-45.gyp:mozjs-45', ], }, ],
+        [ 'javascript_engine == "v8"', { 'dependencies': ['v8c/v8c.gyp:v8c', ], }, ],
+      ],
     },
   ],
 }

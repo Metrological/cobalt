@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -207,18 +207,6 @@ LayoutUnit ReplacedBox::GetBaselineOffsetFromTopMarginEdge() const {
 }
 
 namespace {
-void AddLetterboxFillRects(const LetterboxDimensions& dimensions,
-                           CompositionNode::Builder* composition_node_builder) {
-  const render_tree::ColorRGBA kSolidBlack(0, 0, 0, 1);
-
-  for (uint32 i = 0; i < dimensions.fill_rects.size(); ++i) {
-    const math::RectF& fill_rect = dimensions.fill_rects[i];
-    composition_node_builder->AddChild(new RectNode(
-        fill_rect,
-        scoped_ptr<render_tree::Brush>(new SolidColorBrush(kSolidBlack))));
-  }
-}
-
 void AddLetterboxedImageToRenderTree(
     const LetterboxDimensions& dimensions,
     const scoped_refptr<render_tree::Image>& image,
@@ -227,8 +215,6 @@ void AddLetterboxedImageToRenderTree(
     ImageNode::Builder image_builder(image, *dimensions.image_rect);
     composition_node_builder->AddChild(new ImageNode(image_builder));
   }
-
-  AddLetterboxFillRects(dimensions, composition_node_builder);
 }
 
 void AddLetterboxedPunchThroughVideoNodeToRenderTree(
@@ -240,7 +226,6 @@ void AddLetterboxedPunchThroughVideoNodeToRenderTree(
                                            set_bounds_cb);
     border_node_builder->AddChild(new PunchThroughVideoNode(builder));
   }
-  AddLetterboxFillRects(dimensions, border_node_builder);
 }
 
 void AnimateVideoImage(const ReplacedBox::ReplaceImageCB& replace_image_cb,
@@ -255,9 +240,9 @@ void AnimateVideoImage(const ReplacedBox::ReplaceImageCB& replace_image_cb,
   }
 }
 
-// Animates an image, and additionally adds letterbox rectangles as well
-// according to the aspect ratio of the resulting animated image versus the
-// aspect ratio of the destination box size.
+// Animates an image, and letterboxes the image as well according to the aspect
+// ratio of the resulting animated image versus the aspect ratio of the
+// destination box size.
 void AnimateVideoWithLetterboxing(
     const ReplacedBox::ReplaceImageCB& replace_image_cb,
     math::SizeF destination_size,
@@ -324,7 +309,8 @@ void ReplacedBox::RenderAndAnimateContent(
       cssom::MapToMeshFunction::ExtractFromFilterList(
           computed_style()->filter());
 
-  if (mtm_filter_function) {
+  if (mtm_filter_function && mtm_filter_function->mesh_spec().mesh_type() !=
+                                 cssom::MapToMeshFunction::kRectangular) {
     DCHECK(!*is_video_punched_out_)
         << "We currently do not support punched out video with map-to-mesh "
            "filters.";
@@ -334,15 +320,22 @@ void ReplacedBox::RenderAndAnimateContent(
 #if defined(FORCE_VIDEO_EXTERNAL_MESH)
     if (!*is_video_punched_out_) {
       AnimateNode::Builder animate_node_builder;
-      scoped_refptr<ImageNode> image_node = new ImageNode(NULL);
+      scoped_refptr<ImageNode> image_node = new ImageNode(nullptr);
       animate_node_builder.Add(
           image_node, base::Bind(&AnimateVideoImage, replace_image_cb_));
 
+      render_tree::StereoMode stereo_mode = render_tree::kMono;
+
+      if (mtm_filter_function) {
+        // For rectangular stereo.
+        stereo_mode = ReadStereoMode(mtm_filter_function->stereo_mode());
+      }
+
       // Attach an empty map to mesh filter node to signal the need for an
       // external mesh.
-      border_node_builder->AddChild(
-          new FilterNode(MapToMeshFilter(render_tree::kMono),
-                         new AnimateNode(animate_node_builder, image_node)));
+      border_node_builder->AddChild(new FilterNode(
+          MapToMeshFilter(stereo_mode, render_tree::kRectangular),
+          new AnimateNode(animate_node_builder, image_node)));
       return;
     }
 #endif
@@ -366,6 +359,27 @@ void ReplacedBox::UpdateContentSizeAndMargins(
     // https://www.w3.org/TR/CSS21/visudet.html#abs-replaced-width.
     set_left(maybe_left.value_or(LayoutUnit()));
     set_top(maybe_top.value_or(LayoutUnit()));
+  }
+  // Note that computed height may be "auto", even if it is specified as a
+  // percentage (depending on conditions of the containing block). See details
+  // in the spec. https://www.w3.org/TR/CSS22/visudet.html#the-height-property
+  if (!maybe_height) {
+    LOG(ERROR) << "ReplacedBox element has computed height \"auto\"!";
+  }
+  if (!maybe_width) {
+    LOG(ERROR) << "ReplacedBox element has computed width \"auto\"!";
+  }
+  // In order for Cobalt to handle "auto" dimensions correctly for both punchout
+  // and decode-to-texture we need to use the content's intrinsic dimensions &
+  // ratio rather than using the content_box_size directly. Until this
+  // functionality is found to be useful, we avoid the extra complexity
+  // introduced by its implementation.
+  if (!maybe_height || !maybe_width) {
+    LOG(ERROR)
+        << "Cobalt ReplacedBox does not handle \"auto\" dimensions correctly! "
+           "\"auto\" dimensions are updated using the intrinsic dimensions of "
+           "the content (e.g. video width/height), which is often not what is "
+           "intended.";
   }
   if (!maybe_width) {
     if (!maybe_height) {
@@ -598,7 +612,7 @@ void ReplacedBox::RenderAndAnimateContentWithMapToMesh(
     const cssom::MapToMeshFunction* mtm_function) const {
   // First setup the animated image node.
   AnimateNode::Builder animate_node_builder;
-  scoped_refptr<ImageNode> image_node = new ImageNode(NULL);
+  scoped_refptr<ImageNode> image_node = new ImageNode(nullptr);
   animate_node_builder.Add(image_node,
                            base::Bind(&AnimateVideoImage, replace_image_cb_));
   scoped_refptr<AnimateNode> animate_node =
@@ -611,6 +625,7 @@ void ReplacedBox::RenderAndAnimateContentWithMapToMesh(
   render_tree::StereoMode stereo_mode =
       ReadStereoMode(stereo_mode_keyword_value);
 
+  scoped_refptr<render_tree::Node> filter_node;
   // Fetch either the embedded equirectangular mesh or a custom one depending
   // on the spec.
   MapToMeshFilter::Builder builder;
@@ -687,7 +702,7 @@ void ReplacedBox::RenderAndAnimateContentWithMapToMesh(
             loader::mesh::MeshProjection::kRightEyeCollection));
   }
 
-  scoped_refptr<render_tree::Node> filter_node =
+  filter_node =
       new FilterNode(MapToMeshFilter(stereo_mode, builder), animate_node);
 
 #if !SB_HAS(VIRTUAL_REALITY)

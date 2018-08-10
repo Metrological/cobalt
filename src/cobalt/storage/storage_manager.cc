@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,10 +22,6 @@
 #include "base/stringprintf.h"
 #include "cobalt/storage/savegame_thread.h"
 #include "cobalt/storage/upgrade/upgrade_reader.h"
-#include "cobalt/storage/virtual_file.h"
-#include "cobalt/storage/virtual_file_system.h"
-#include "sql/statement.h"
-#include "third_party/sqlite/sqlite3.h"
 
 namespace cobalt {
 namespace storage {
@@ -36,111 +32,14 @@ namespace {
 // get several FlushOnChange() calls in a row.
 const int kDatabaseFlushOnLastChangeDelayMs = 500;
 const int kDatabaseFlushOnChangeMaxDelayMs = 2000;
-
-const char kDefaultSaveFile[] = "cobalt_save.bin";
-
-void SqlDisableJournal(sql::Connection* connection) {
-  // Disable journaling for our in-memory database.
-  sql::Statement disable_journal(
-      connection->GetUniqueStatement("PRAGMA journal_mode=OFF"));
-  bool ok = disable_journal.Step();
-  DCHECK(ok);
-}
-
-int SqlQueryUserVersion(sql::Connection* connection) {
-  sql::Statement get_db_version(
-      connection->GetUniqueStatement("PRAGMA user_version"));
-  bool ok = get_db_version.Step();
-  DCHECK(ok);
-  return get_db_version.ColumnInt(0);
-}
-
-bool SqlQueryTableExists(sql::Connection* connection, const char* table_name) {
-  sql::Statement get_exists(connection->GetUniqueStatement(
-      "SELECT name FROM sqlite_master WHERE name = ? AND type = 'table'"));
-  get_exists.BindString(0, table_name);
-  return get_exists.Step();
-}
-
-int SqlQuerySchemaVersion(sql::Connection* connection, const char* table_name) {
-  sql::Statement get_version(connection->GetUniqueStatement(
-      "SELECT version FROM SchemaTable WHERE name = ?"));
-  get_version.BindString(0, table_name);
-  bool row_found = get_version.Step();
-  if (row_found) {
-    return get_version.ColumnInt(0);
-  } else {
-    return -1;
-  }
-}
-
-void SqlUpdateSchemaVersion(sql::Connection* connection, const char* table_name,
-                            int version) {
-  sql::Statement update_version(connection->GetUniqueStatement(
-      "INSERT INTO SchemaTable (name, version)"
-      "VALUES (?, ?)"));
-  update_version.BindString(0, table_name);
-  update_version.BindInt(1, version);
-  bool ok = update_version.Run();
-  DCHECK(ok);
-}
-
-void SqlCreateSchemaTable(sql::Connection* connection) {
-  // Create the schema table.
-  sql::Statement create_table(connection->GetUniqueStatement(
-      "CREATE TABLE IF NOT EXISTS SchemaTable ("
-      "name TEXT, "
-      "version INTEGER, "
-      "UNIQUE(name, version) ON CONFLICT REPLACE)"));
-  bool ok = create_table.Run();
-  DCHECK(ok);
-}
-
-void SqlUpdateDatabaseUserVersion(sql::Connection* connection) {
-  // Update the DB version which will be read in next time.
-  // NOTE: Pragma statements cannot be bound, so we must construct the string
-  // in full.
-  std::string set_db_version_str = base::StringPrintf(
-      "PRAGMA user_version = %d", StorageManager::kDatabaseUserVersion);
-  sql::Statement set_db_version(
-      connection->GetUniqueStatement(set_db_version_str.c_str()));
-  bool ok = set_db_version.Run();
-  DCHECK(ok);
-}
-
-const std::string& GetFirstValidDatabaseFile(
-    const std::vector<std::string>& filenames) {
-  // Caller must ensure at least one file exists.
-  DCHECK_GT(filenames.size(), size_t(0));
-
-  for (size_t i = 0; i < filenames.size(); ++i) {
-    sql::Connection connection;
-    bool is_opened = connection.Open(FilePath(filenames[i]));
-    if (!is_opened) {
-      continue;
-    }
-    int err = connection.ExecuteAndReturnErrorCode("pragma schema_version;");
-    if (err != SQLITE_OK) {
-      continue;
-    }
-    // File can be opened as a database.
-    return filenames[i];
-  }
-
-  // Caller must handle case where a valid database file cannot be found.
-  DLOG(WARNING) << "Cannot find valid database file in save data";
-  return filenames[0];
-}
-
 }  // namespace
 
 StorageManager::StorageManager(scoped_ptr<UpgradeHandler> upgrade_handler,
                                const Options& options)
     : upgrade_handler_(upgrade_handler.Pass()),
       options_(options),
-      sql_thread_(new base::Thread("StorageManager SQL")),
-      ALLOW_THIS_IN_INITIALIZER_LIST(sql_context_(new SqlContext(this))),
-      connection_(new sql::Connection()),
+      storage_thread_(new base::Thread("StorageManager")),
+      memory_store_(new MemoryStore()),
       loaded_database_version_(0),
       initialized_(false),
       flush_processing_(false),
@@ -149,10 +48,12 @@ StorageManager::StorageManager(scoped_ptr<UpgradeHandler> upgrade_handler,
                           true /* initially signalled */) {
   DCHECK(upgrade_handler_);
   TRACE_EVENT0("cobalt::storage", __FUNCTION__);
+
   savegame_thread_.reset(new SavegameThread(options_.savegame_options));
+
   // Start the savegame load immediately.
-  sql_thread_->Start();
-  sql_message_loop_ = sql_thread_->message_loop_proxy();
+  storage_thread_->Start();
+  storage_message_loop_ = storage_thread_->message_loop_proxy();
 
   flush_on_last_change_timer_.reset(new base::OneShotTimer<StorageManager>());
   flush_on_change_max_delay_timer_.reset(
@@ -161,31 +62,52 @@ StorageManager::StorageManager(scoped_ptr<UpgradeHandler> upgrade_handler,
 
 StorageManager::~StorageManager() {
   TRACE_EVENT0("cobalt::storage", __FUNCTION__);
-  DCHECK(!sql_message_loop_->BelongsToCurrentThread());
+  DCHECK(!storage_message_loop_->BelongsToCurrentThread());
 
   // Wait for all I/O operations to complete.
   FinishIO();
 
   // Destroy various objects on the proper thread.
-  sql_message_loop_->PostTask(FROM_HERE, base::Bind(&StorageManager::OnDestroy,
-                                                    base::Unretained(this)));
+  storage_message_loop_->PostTask(
+      FROM_HERE,
+      base::Bind(&StorageManager::OnDestroy, base::Unretained(this)));
 
   // Force all tasks to finish. Then we can safely let the rest of our
   // member variables be destroyed.
-  sql_thread_.reset();
+  storage_thread_.reset();
 }
 
-void StorageManager::GetSqlContext(const SqlCallback& callback) {
+void StorageManager::WithReadOnlyMemoryStore(
+    const ReadOnlyMemoryStoreCallback& callback) {
   TRACE_EVENT0("cobalt::storage", __FUNCTION__);
-  sql_message_loop_->PostTask(FROM_HERE,
-                              base::Bind(callback, sql_context_.get()));
+  if (MessageLoop::current()->message_loop_proxy() != storage_message_loop_) {
+    storage_message_loop_->PostTask(
+        FROM_HERE, base::Bind(&StorageManager::WithReadOnlyMemoryStore,
+                              base::Unretained(this), callback));
+    return;
+  }
+
+  callback.Run(*memory_store_.get());
+}
+
+void StorageManager::WithMemoryStore(const MemoryStoreCallback& callback) {
+  TRACE_EVENT0("cobalt::storage", __FUNCTION__);
+  if (MessageLoop::current()->message_loop_proxy() != storage_message_loop_) {
+    storage_message_loop_->PostTask(
+        FROM_HERE, base::Bind(&StorageManager::WithMemoryStore,
+                              base::Unretained(this), callback));
+    return;
+  }
+
+  callback.Run(memory_store_.get());
+  FlushOnChange();
 }
 
 void StorageManager::FlushOnChange() {
   TRACE_EVENT0("cobalt::storage", __FUNCTION__);
   // Make sure this runs on the correct thread.
-  if (MessageLoop::current()->message_loop_proxy() != sql_message_loop_) {
-    sql_message_loop_->PostTask(
+  if (MessageLoop::current()->message_loop_proxy() != storage_message_loop_) {
+    storage_message_loop_->PostTask(
         FROM_HERE,
         base::Bind(&StorageManager::FlushOnChange, base::Unretained(this)));
     return;
@@ -211,8 +133,8 @@ void StorageManager::FlushOnChange() {
 void StorageManager::FlushNow(const base::Closure& callback) {
   TRACE_EVENT0("cobalt::storage", __FUNCTION__);
   // Make sure this runs on the correct thread.
-  if (MessageLoop::current()->message_loop_proxy() != sql_message_loop_) {
-    sql_message_loop_->PostTask(
+  if (MessageLoop::current()->message_loop_proxy() != storage_message_loop_) {
+    storage_message_loop_->PostTask(
         FROM_HERE, base::Bind(&StorageManager::FlushNow, base::Unretained(this),
                               callback));
     return;
@@ -222,52 +144,15 @@ void StorageManager::FlushNow(const base::Closure& callback) {
   QueueFlush(callback);
 }
 
-bool StorageManager::GetSchemaVersion(const char* table_name,
-                                      int* schema_version) {
-  TRACE_EVENT0("cobalt::storage", __FUNCTION__);
-  DCHECK(sql_message_loop_->BelongsToCurrentThread());
-  DCHECK(schema_version);
-
-  if (!SqlQueryTableExists(sql_connection(), table_name)) {
-    return false;
-  }
-
-  int found_version = SqlQuerySchemaVersion(sql_connection(), table_name);
-  if (found_version != -1) {
-    *schema_version = found_version;
-  } else if (loaded_database_version_ != StorageManager::kDatabaseUserVersion) {
-    // The schema table did not exist before this session, which is different
-    // from the schema table being lost.
-    *schema_version = StorageManager::kSchemaTableIsNew;
-  } else {
-    *schema_version = StorageManager::kSchemaVersionLost;
-  }
-  return true;
-}
-
-void StorageManager::UpdateSchemaVersion(const char* table_name, int version) {
-  TRACE_EVENT0("cobalt::storage", __FUNCTION__);
-  DCHECK(sql_message_loop_->BelongsToCurrentThread());
-  DCHECK_GT(version, 0) << "Schema version numbers must be positive.";
-
-  SqlUpdateSchemaVersion(sql_connection(), table_name, version);
-}
-
-sql::Connection* StorageManager::sql_connection() {
-  TRACE_EVENT0("cobalt::storage", __FUNCTION__);
-  FinishInit();
-  return connection_.get();
-}
-
 void StorageManager::FinishInit() {
   TRACE_EVENT0("cobalt::storage", __FUNCTION__);
-  DCHECK(sql_message_loop_->BelongsToCurrentThread());
+  DCHECK(storage_message_loop_->BelongsToCurrentThread());
   if (initialized_) {
     return;
   }
 
-  vfs_.reset(new VirtualFileSystem());
-  sql_vfs_.reset(new SqlVfs("cobalt_vfs", vfs_.get()));
+  initialized_ = true;
+
   // Savegame has finished loading. Now initialize the database connection.
   // Check if this is upgrade data, if so, handle it, otherwise:
   // Check if the savegame data contains a VFS header.
@@ -277,61 +162,28 @@ void StorageManager::FinishInit() {
       savegame_thread_->GetLoadedRawBytes();
   DCHECK(loaded_raw_bytes);
   Savegame::ByteVector& raw_bytes = *loaded_raw_bytes;
-  VirtualFileSystem::SerializedHeader header = {};
+  bool has_upgrade_data = false;
 
   if (raw_bytes.size() > 0) {
     const char* buffer = reinterpret_cast<char*>(&raw_bytes[0]);
     int buffer_size = static_cast<int>(raw_bytes.size());
     // Is this upgrade data?
     if (upgrade::UpgradeReader::IsUpgradeData(buffer, buffer_size)) {
-      upgrade_handler_->OnUpgrade(this, buffer, buffer_size);
+      has_upgrade_data = true;
     } else {
-      if (raw_bytes.size() >= sizeof(VirtualFileSystem::SerializedHeader)) {
-        memcpy(&header, &raw_bytes[0],
-               sizeof(VirtualFileSystem::SerializedHeader));
-      }
-
-      if (!vfs_->Deserialize(&raw_bytes[0], buffer_size)) {
-        VirtualFile* vf = vfs_->Open(kDefaultSaveFile);
-        vf->Write(&raw_bytes[0], buffer_size, 0 /* offset */);
-      }
+      bool result = memory_store_->Initialize(raw_bytes);
+      LOG(INFO) << "Deserialize result=" << result;
     }
-  }
-
-  std::vector<std::string> filenames = vfs_->ListFiles();
-  if (filenames.size() == 0) {
-    filenames.push_back(kDefaultSaveFile);
   }
 
   // Legacy Steel save data may contain multiple files (e.g. db-journal as well
   // as db), so use the first one that looks like a valid database file.
-  const std::string& save_name = GetFirstValidDatabaseFile(filenames);
-  bool ok = connection_->Open(FilePath(save_name));
-  DCHECK(ok);
 
-  // Open() is lazy. Run a quick check to see if the database is valid.
-  int err = connection_->ExecuteAndReturnErrorCode("pragma schema_version;");
-  if (err != SQLITE_OK) {
-    // Database seems to be invalid.
-    DLOG(WARNING) << "Database " << save_name << " appears to be corrupt.";
-    // Try to start again. Delete the file in the VFS and make a
-    // new connection.
-    vfs_->Delete(save_name);
-    vfs_->Open(save_name);
-    connection_.reset(new sql::Connection());
-    ok = connection_->Open(FilePath(save_name));
-    DCHECK(ok);
-    err = connection_->ExecuteAndReturnErrorCode("pragma schema_version;");
-    DCHECK_EQ(SQLITE_OK, err);
+  if (has_upgrade_data) {
+    const char* buffer = reinterpret_cast<char*>(&raw_bytes[0]);
+    int buffer_size = static_cast<int>(raw_bytes.size());
+    upgrade_handler_->OnUpgrade(this, buffer, buffer_size);
   }
-
-  // Configure our SQLite database now that it's open.
-  SqlDisableJournal(connection_.get());
-  loaded_database_version_ = SqlQueryUserVersion(connection_.get());
-  SqlCreateSchemaTable(connection_.get());
-  SqlUpdateDatabaseUserVersion(connection_.get());
-
-  initialized_ = true;
 }
 
 void StorageManager::StopFlushOnChangeTimers() {
@@ -345,18 +197,18 @@ void StorageManager::StopFlushOnChangeTimers() {
 
 void StorageManager::OnFlushOnChangeTimerFired() {
   TRACE_EVENT0("cobalt::storage", __FUNCTION__);
-  DCHECK(sql_message_loop_->BelongsToCurrentThread());
+  DCHECK(storage_message_loop_->BelongsToCurrentThread());
 
   StopFlushOnChangeTimers();
   QueueFlush(base::Closure());
 }
 
-void StorageManager::OnFlushIOCompletedSQLCallback() {
+void StorageManager::OnFlushIOCompletedCallback() {
   TRACE_EVENT0("cobalt::storage", __FUNCTION__);
   // Make sure this runs on the SQL message loop.
-  if (MessageLoop::current()->message_loop_proxy() != sql_message_loop_) {
-    sql_message_loop_->PostTask(
-        FROM_HERE, base::Bind(&StorageManager::OnFlushIOCompletedSQLCallback,
+  if (MessageLoop::current()->message_loop_proxy() != storage_message_loop_) {
+    storage_message_loop_->PostTask(
+        FROM_HERE, base::Bind(&StorageManager::OnFlushIOCompletedCallback,
                               base::Unretained(this)));
     return;
   }
@@ -384,7 +236,7 @@ void StorageManager::OnFlushIOCompletedSQLCallback() {
 
 void StorageManager::QueueFlush(const base::Closure& callback) {
   TRACE_EVENT0("cobalt::storage", __FUNCTION__);
-  DCHECK(sql_message_loop_->BelongsToCurrentThread());
+  DCHECK(storage_message_loop_->BelongsToCurrentThread());
 
   if (!flush_processing_) {
     // If no flush is currently in progress, flush immediately.
@@ -405,7 +257,7 @@ void StorageManager::QueueFlush(const base::Closure& callback) {
 
 void StorageManager::FlushInternal() {
   TRACE_EVENT0("cobalt::storage", __FUNCTION__);
-  DCHECK(sql_message_loop_->BelongsToCurrentThread());
+  DCHECK(storage_message_loop_->BelongsToCurrentThread());
   FinishInit();
 
   flush_processing_ = true;
@@ -413,25 +265,25 @@ void StorageManager::FlushInternal() {
 
   // Serialize the database into a buffer. Then send the bytes
   // to OnFlushIO for a blocking write to the savegame.
-  scoped_ptr<Savegame::ByteVector> raw_bytes_ptr;
-  int size = vfs_->Serialize(NULL, true /*dry_run*/);
-  raw_bytes_ptr.reset(new Savegame::ByteVector(static_cast<size_t>(size)));
-  if (size > 0) {
-    Savegame::ByteVector& raw_bytes = *raw_bytes_ptr;
-    vfs_->Serialize(&raw_bytes[0], false /*dry_run*/);
-  }
+  scoped_ptr<Savegame::ByteVector> raw_bytes_ptr(new Savegame::ByteVector());
+  memory_store_->Serialize(raw_bytes_ptr.get());
 
   // Send the savegame bytes off to the SavegameThread object to be
   // asynchronously written to the savegame file.
   savegame_thread_->Flush(
       raw_bytes_ptr.Pass(),
-      base::Bind(&StorageManager::OnFlushIOCompletedSQLCallback,
+      base::Bind(&StorageManager::OnFlushIOCompletedCallback,
                  base::Unretained(this)));
 }
 
 void StorageManager::FinishIO() {
   TRACE_EVENT0("cobalt::storage", __FUNCTION__);
-  DCHECK(!sql_message_loop_->BelongsToCurrentThread());
+  DCHECK(!storage_message_loop_->BelongsToCurrentThread());
+
+  // Make sure that the on change timers fire if they're running.
+  storage_message_loop_->PostTask(
+      FROM_HERE, base::Bind(&StorageManager::FireRunningOnChangeTimers,
+                            base::Unretained(this)));
 
   // The SQL thread may be communicating with the savegame I/O thread still,
   // flushing all pending updates.  This process can require back and forth
@@ -442,18 +294,28 @@ void StorageManager::FinishIO() {
   // This method is called by the destructor, so the only new tasks posted
   // after this one will be generated internally.  We need to do this because
   // it is possible that there are no flushes pending at this instant, but there
-  // are tasks queued on |sql_message_loop_| that will begin a flush, and so
+  // are tasks queued on |storage_message_loop_| that will begin a flush, and so
   // we make sure that these are executed first.
-  sql_message_loop_->WaitForFence();
+  storage_message_loop_->WaitForFence();
 
   // Now wait for all pending flushes to wrap themselves up.  This may involve
   // the savegame I/O thread and the SQL thread posting tasks to each other.
   no_flushes_pending_.Wait();
 }
 
+void StorageManager::FireRunningOnChangeTimers() {
+  TRACE_EVENT0("cobalt::storage", __FUNCTION__);
+  DCHECK(storage_message_loop_->BelongsToCurrentThread());
+
+  if (flush_on_last_change_timer_->IsRunning() ||
+      flush_on_change_max_delay_timer_->IsRunning()) {
+    OnFlushOnChangeTimerFired();
+  }
+}
+
 void StorageManager::OnDestroy() {
   TRACE_EVENT0("cobalt::storage", __FUNCTION__);
-  DCHECK(sql_message_loop_->BelongsToCurrentThread());
+  DCHECK(storage_message_loop_->BelongsToCurrentThread());
 
   // Stop the savegame thread and have it wrap up any pending I/O operations.
   savegame_thread_.reset();
@@ -461,8 +323,6 @@ void StorageManager::OnDestroy() {
   // Ensure these objects are destroyed on the proper thread.
   flush_on_last_change_timer_.reset(NULL);
   flush_on_change_max_delay_timer_.reset(NULL);
-  sql_vfs_.reset(NULL);
-  vfs_.reset(NULL);
 }
 
 }  // namespace storage

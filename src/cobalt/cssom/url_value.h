@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,11 +35,11 @@ class URLValue : public PropertyValue {
  public:
   explicit URLValue(const std::string& url);
 
-  void Accept(PropertyValueVisitor* visitor) OVERRIDE;
+  void Accept(PropertyValueVisitor* visitor) override;
 
   const std::string& value() const { return url_; }
 
-  std::string ToString() const OVERRIDE { return "url(" + url_ + ")"; }
+  std::string ToString() const override { return "url(" + url_ + ")"; }
 
   GURL Resolve(const GURL& base_url) const;
 
@@ -50,7 +50,7 @@ class URLValue : public PropertyValue {
   DEFINE_POLYMORPHIC_EQUATABLE_TYPE(URLValue);
 
  private:
-  ~URLValue() OVERRIDE {}
+  ~URLValue() override {}
 
   const std::string url_;
   const bool is_absolute_;

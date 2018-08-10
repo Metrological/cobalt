@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,13 +30,13 @@ namespace backend {
 class GraphicsContextBlitter : public GraphicsContext {
  public:
   explicit GraphicsContextBlitter(GraphicsSystem* system);
-  ~GraphicsContextBlitter() OVERRIDE;
+  ~GraphicsContextBlitter() override;
 
   scoped_refptr<RenderTarget> CreateOffscreenRenderTarget(
-      const math::Size& dimensions) OVERRIDE;
+      const math::Size& dimensions) override;
   scoped_array<uint8_t> DownloadPixelDataAsRGBA(
-      const scoped_refptr<RenderTarget>& render_target) OVERRIDE;
-  void Finish() OVERRIDE;
+      const scoped_refptr<RenderTarget>& render_target) override;
+  void Finish() override;
 
   SbBlitterContext GetSbBlitterContext() const { return context_; }
   SbBlitterDevice GetSbBlitterDevice() const { return device_; }

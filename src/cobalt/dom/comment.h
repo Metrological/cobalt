@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,22 +36,22 @@ class Comment : public CharacterData {
 
   // Web API: Node
   //
-  base::Token node_name() const OVERRIDE;
-  NodeType node_type() const OVERRIDE { return Node::kCommentNode; }
+  base::Token node_name() const override;
+  NodeType node_type() const override { return Node::kCommentNode; }
 
   // Custom, not in any spec: Node.
   //
-  Comment* AsComment() OVERRIDE { return this; }
+  Comment* AsComment() override { return this; }
 
-  void Accept(NodeVisitor* visitor) OVERRIDE;
-  void Accept(ConstNodeVisitor* visitor) const OVERRIDE;
+  void Accept(NodeVisitor* visitor) override;
+  void Accept(ConstNodeVisitor* visitor) const override;
 
-  scoped_refptr<Node> Duplicate() const OVERRIDE;
+  scoped_refptr<Node> Duplicate() const override;
 
   DEFINE_WRAPPABLE_TYPE(Comment);
 
  private:
-  ~Comment() OVERRIDE {}
+  ~Comment() override {}
 };
 
 }  // namespace dom

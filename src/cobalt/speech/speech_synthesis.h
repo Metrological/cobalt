@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -66,9 +66,10 @@ class SpeechSynthesis : public dom::EventTarget {
   SpeechSynthesisVoiceSequence GetVoices() const { return voices_; }
 
   DEFINE_WRAPPABLE_TYPE(SpeechSynthesis);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
-  ~SpeechSynthesis() OVERRIDE;
+  ~SpeechSynthesis() override;
 
   void DispatchErrorEvent(
       const scoped_refptr<SpeechSynthesisUtterance>& utterance,

@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -92,6 +92,7 @@ class MutationObserver : public script::Wrappable {
   class CallbackInternal;
 
   DEFINE_WRAPPABLE_TYPE(MutationObserver);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   void TrackObservedNode(const scoped_refptr<dom::Node>& node);

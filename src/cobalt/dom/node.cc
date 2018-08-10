@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -109,6 +109,10 @@ bool Node::DispatchEvent(const scoped_refptr<Event>& event) {
     window = node_document()->default_view();
   }
 
+  if (window) {
+    window->OnStartDispatchEvent(event);
+  }
+
   typedef std::vector<scoped_refptr<Node> > Ancestors;
   Ancestors ancestors;
   for (Node* current = this->parent_node(); current != NULL;
@@ -158,6 +162,10 @@ bool Node::DispatchEvent(const scoped_refptr<Event>& event) {
   }
 
   event->set_event_phase(Event::kNone);
+
+  if (window) {
+    window->OnStopDispatchEvent(event);
+  }
 
   // The event has completed being dispatched. Stop tracking it in the global
   // stats.
@@ -469,11 +477,7 @@ void Node::TraceMembers(script::Tracer* tracer) {
   tracer->Trace(last_child_);
   tracer->Trace(first_child_);
   tracer->Trace(next_sibling_);
-  for (RegisteredObserverList::RegisteredObserverVector::const_iterator it =
-           registered_observers_.registered_observers().begin();
-       it != registered_observers_.registered_observers().end(); ++it) {
-    tracer->Trace(it->observer());
-  }
+  tracer->Trace(registered_observers_);
   tracer->Trace(children_collection_);
 }
 

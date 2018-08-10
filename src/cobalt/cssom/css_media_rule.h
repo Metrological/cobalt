@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -42,14 +42,14 @@ class CSSMediaRule : public CSSConditionRule {
                const scoped_refptr<CSSRuleList>& css_rule_list);
 
   // Web API: CSSRule
-  Type type() const OVERRIDE { return kMediaRule; }
-  std::string css_text(script::ExceptionState* exception_state) const OVERRIDE;
+  Type type() const override { return kMediaRule; }
+  std::string css_text(script::ExceptionState* exception_state) const override;
   void set_css_text(const std::string& css_text,
-                    script::ExceptionState* exception_state) OVERRIDE;
+                    script::ExceptionState* exception_state) override;
 
   // Web API: CSSConditionRule
-  std::string condition_text() OVERRIDE;
-  void set_condition_text(const std::string& condition) OVERRIDE;
+  std::string condition_text() override;
+  void set_condition_text(const std::string& condition) override;
 
   // Web API: CSSMediaRule
   //
@@ -59,7 +59,7 @@ class CSSMediaRule : public CSSConditionRule {
   // Custom, not in any spec.
   //
   // From CSSRule.
-  void Accept(CSSRuleVisitor* visitor) OVERRIDE;
+  void Accept(CSSRuleVisitor* visitor) override;
 
   // Evaluates the condition expression and caches the resulting condition
   // value. Returns true if the cached condition value has changed.
@@ -67,14 +67,14 @@ class CSSMediaRule : public CSSConditionRule {
       const math::Size& viewport_size);
 
   // This method can be used to setup the parent style sheet.
-  void AttachToCSSStyleSheet(CSSStyleSheet* style_sheet) OVERRIDE;
+  void AttachToCSSStyleSheet(CSSStyleSheet* style_sheet) override;
 
-  CSSMediaRule* AsCSSMediaRule() OVERRIDE { return this; }
+  CSSMediaRule* AsCSSMediaRule() override { return this; }
 
   DEFINE_WRAPPABLE_TYPE(CSSMediaRule);
 
  private:
-  ~CSSMediaRule() OVERRIDE;
+  ~CSSMediaRule() override;
 
   scoped_refptr<MediaList> media_list_;
 

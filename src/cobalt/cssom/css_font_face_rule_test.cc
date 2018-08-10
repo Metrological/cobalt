@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ class CSSFontFaceRuleTest : public ::testing::Test {
     style_sheets.push_back(css_style_sheet_);
     style_sheet_list_ = new StyleSheetList(style_sheets, &mutation_observer_);
   }
-  ~CSSFontFaceRuleTest() OVERRIDE {}
+  ~CSSFontFaceRuleTest() override {}
 
   const scoped_refptr<CSSStyleSheet> css_style_sheet_;
   scoped_refptr<StyleSheetList> style_sheet_list_;

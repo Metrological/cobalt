@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -45,9 +45,7 @@ class DebugConsole : public LifecycleObserver {
       const math::Size& window_dimensions,
       render_tree::ResourceProvider* resource_provider,
       float layout_refresh_rate,
-      const debug::Debugger::GetDebugServerCallback& get_debug_server_callback,
-      const script::JavaScriptEngine::Options& javascript_engine_options,
-      const dom::Window::GetSbWindowCallback& get_sb_window_callback);
+      const debug::Debugger::GetDebugServerCallback& get_debug_server_callback);
   ~DebugConsole();
 
   // Filters a key event.
@@ -78,14 +76,14 @@ class DebugConsole : public LifecycleObserver {
   }
 
   // LifecycleObserver implementation.
-  void Prestart() OVERRIDE { web_module_->Prestart(); }
-  void Start(render_tree::ResourceProvider* resource_provider) OVERRIDE {
+  void Prestart() override { web_module_->Prestart(); }
+  void Start(render_tree::ResourceProvider* resource_provider) override {
     web_module_->Start(resource_provider);
   }
-  void Pause() OVERRIDE { web_module_->Pause(); }
-  void Unpause() OVERRIDE { web_module_->Unpause(); }
-  void Suspend() OVERRIDE { web_module_->Suspend(); }
-  void Resume(render_tree::ResourceProvider* resource_provider) OVERRIDE {
+  void Pause() override { web_module_->Pause(); }
+  void Unpause() override { web_module_->Unpause(); }
+  void Suspend() override { web_module_->Suspend(); }
+  void Resume(render_tree::ResourceProvider* resource_provider) override {
     web_module_->Resume(resource_provider);
   }
 

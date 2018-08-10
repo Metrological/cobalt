@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc. All Rights Reserved.
+ * Copyright 2017 The Cobalt Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ class CORSPreflightCache : public base::RefCounted<CORSPreflightCache> {
   // Case-insensitive comparator.
   struct CaseInsensitiveCompare {
     bool operator()(const std::string& lhs, const std::string& rhs) const {
-      return SbStringCompareNoCase(lhs.c_str(), rhs.c_str()) != 0;
+      return SbStringCompareNoCase(lhs.c_str(), rhs.c_str()) < 0;
     }
   };
 

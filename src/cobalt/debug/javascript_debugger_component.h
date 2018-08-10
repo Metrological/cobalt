@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,12 +38,12 @@ class JavaScriptDebuggerComponent : public script::ScriptDebugger::Delegate {
   virtual ~JavaScriptDebuggerComponent();
 
   // ScriptDebugger::Delegate implementation.
-  void OnScriptDebuggerDetach(const std::string& reason) OVERRIDE;
-  void OnScriptDebuggerPause(scoped_ptr<script::CallFrame> call_frame) OVERRIDE;
+  void OnScriptDebuggerDetach(const std::string& reason) override;
+  void OnScriptDebuggerPause(scoped_ptr<script::CallFrame> call_frame) override;
   void OnScriptFailedToParse(
-      scoped_ptr<script::SourceProvider> source_provider) OVERRIDE;
+      scoped_ptr<script::SourceProvider> source_provider) override;
   void OnScriptParsed(
-      scoped_ptr<script::SourceProvider> source_provider) OVERRIDE;
+      scoped_ptr<script::SourceProvider> source_provider) override;
 
  private:
   // Map of SourceProvider pointers, keyed by string ID.
@@ -65,7 +65,7 @@ class JavaScriptDebuggerComponent : public script::ScriptDebugger::Delegate {
 
   // Script location, corresponding to physical breakpoint, etc.
   struct ScriptLocation {
-    ScriptLocation(const std::string script_id, int line_number,
+    ScriptLocation(const std::string& script_id, int line_number,
                    int column_number)
         : script_id(script_id),
           line_number(line_number),

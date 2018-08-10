@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,15 +26,12 @@ namespace renderer {
 namespace rasterizer {
 namespace blitter {
 
-int RoundToInt(float value);
-math::Rect RectFToRect(const math::RectF& rectf);
-
 inline SbBlitterRect RectToBlitterRect(const math::Rect& rect) {
   return SbBlitterMakeRect(rect.x(), rect.y(), rect.width(), rect.height());
 }
 
 inline SbBlitterRect RectFToBlitterRect(const math::RectF& rectf) {
-  return RectToBlitterRect(RectFToRect(rectf));
+  return RectToBlitterRect(cobalt::math::Rect::RoundFromRectF(rectf));
 }
 
 }  // namespace blitter

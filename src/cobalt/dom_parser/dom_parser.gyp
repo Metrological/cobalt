@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,39 +38,8 @@
         '<(DEPTH)/cobalt/base/base.gyp:base',
         '<(DEPTH)/cobalt/dom/dom.gyp:dom',
         '<(DEPTH)/cobalt/loader/loader.gyp:loader',
-        '<(DEPTH)/cobalt/speech/speech.gyp:speech',
         '<(DEPTH)/third_party/libxml/libxml.gyp:libxml',
       ],
-    },
-
-    {
-      'target_name': 'dom_parser_test',
-      'type': '<(gtest_target_type)',
-      'sources': [
-        'html_decoder_test.cc',
-        'xml_decoder_test.cc',
-      ],
-      'dependencies': [
-        '<(DEPTH)/cobalt/dom/dom.gyp:dom',
-        '<(DEPTH)/cobalt/dom/dom.gyp:dom_testing',
-        '<(DEPTH)/cobalt/speech/speech.gyp:speech',
-        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
-        '<(DEPTH)/testing/gmock.gyp:gmock',
-        '<(DEPTH)/testing/gtest.gyp:gtest',
-        'dom_parser',
-      ],
-    },
-
-    {
-      'target_name': 'dom_parser_test_deploy',
-      'type': 'none',
-      'dependencies': [
-        'dom_parser_test',
-      ],
-      'variables': {
-        'executable_name': 'dom_parser_test',
-      },
-      'includes': [ '../../starboard/build/deploy.gypi' ],
     },
   ],
 }

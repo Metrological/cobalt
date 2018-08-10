@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ class H5vccRuntime : public script::Wrappable {
   const scoped_refptr<H5vccRuntimeEventTarget>& on_resume() const;
 
   DEFINE_WRAPPABLE_TYPE(H5vccRuntime);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   // Called by the event dispatcher to handle various event types.

@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -41,10 +41,10 @@ LoaderFactory::LoaderFactory(FetcherFactory* fetcher_factory,
 }
 
 scoped_ptr<Loader> LoaderFactory::CreateImageLoader(
-    const GURL& url, const csp::SecurityCallback& url_security_callback,
+    const GURL& url, const Origin& origin,
+    const csp::SecurityCallback& url_security_callback,
     const image::ImageDecoder::SuccessCallback& success_callback,
-    const image::ImageDecoder::ErrorCallback& error_callback,
-    const Origin& origin) {
+    const image::ImageDecoder::ErrorCallback& error_callback) {
   DCHECK(thread_checker_.CalledOnValidThread());
 
   scoped_ptr<Loader> loader(new Loader(
@@ -60,10 +60,10 @@ scoped_ptr<Loader> LoaderFactory::CreateImageLoader(
 }
 
 scoped_ptr<Loader> LoaderFactory::CreateTypefaceLoader(
-    const GURL& url, const csp::SecurityCallback& url_security_callback,
+    const GURL& url, const Origin& origin,
+    const csp::SecurityCallback& url_security_callback,
     const font::TypefaceDecoder::SuccessCallback& success_callback,
-    const font::TypefaceDecoder::ErrorCallback& error_callback,
-    const Origin& origin) {
+    const font::TypefaceDecoder::ErrorCallback& error_callback) {
   DCHECK(thread_checker_.CalledOnValidThread());
 
   scoped_ptr<Loader> loader(new Loader(
@@ -80,10 +80,10 @@ scoped_ptr<Loader> LoaderFactory::CreateTypefaceLoader(
 
 // Creates a loader that fetches and decodes a Mesh.
 scoped_ptr<Loader> LoaderFactory::CreateMeshLoader(
-    const GURL& url, const csp::SecurityCallback& url_security_callback,
+    const GURL& url, const Origin& origin,
+    const csp::SecurityCallback& url_security_callback,
     const mesh::MeshDecoder::SuccessCallback& success_callback,
-    const mesh::MeshDecoder::ErrorCallback& error_callback,
-    const Origin& origin) {
+    const mesh::MeshDecoder::ErrorCallback& error_callback) {
   DCHECK(thread_checker_.CalledOnValidThread());
 
   scoped_ptr<Loader> loader(new Loader(
@@ -93,6 +93,51 @@ scoped_ptr<Loader> LoaderFactory::CreateMeshLoader(
       error_callback,
       base::Bind(&LoaderFactory::OnLoaderDestroyed, base::Unretained(this)),
       is_suspended_));
+  OnLoaderCreated(loader.get());
+  return loader.Pass();
+}
+
+scoped_ptr<Loader> LoaderFactory::CreateLinkLoader(
+    const GURL& url, const Origin& origin,
+    const csp::SecurityCallback& url_security_callback,
+    const loader::RequestMode cors_mode,
+    const TextDecoder::SuccessCallback& success_callback,
+    const Loader::OnErrorFunction& loader_error_callback) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+
+  scoped_ptr<loader::Decoder> decoder(
+      new loader::TextDecoder(success_callback));
+
+  Loader::FetcherCreator fetcher_creator =
+      MakeFetcherCreator(url, url_security_callback, cors_mode, origin);
+  scoped_ptr<Loader> loader(new Loader(
+      fetcher_creator, decoder.Pass(), loader_error_callback,
+
+      base::Bind(&LoaderFactory::OnLoaderDestroyed, base::Unretained(this)),
+      is_suspended_));
+
+  OnLoaderCreated(loader.get());
+  return loader.Pass();
+}
+
+scoped_ptr<Loader> LoaderFactory::CreateScriptLoader(
+    const GURL& url, const Origin& origin,
+    const csp::SecurityCallback& url_security_callback,
+    const TextDecoder::SuccessCallback& success_callback,
+    const Loader::OnErrorFunction& loader_error_callback) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+
+  scoped_ptr<loader::Decoder> decoder(
+      new loader::TextDecoder(success_callback));
+
+  Loader::FetcherCreator fetcher_creator =
+      MakeFetcherCreator(url, url_security_callback, kNoCORSMode, origin);
+  scoped_ptr<Loader> loader(new Loader(
+      fetcher_creator, decoder.Pass(), loader_error_callback,
+
+      base::Bind(&LoaderFactory::OnLoaderDestroyed, base::Unretained(this)),
+      is_suspended_));
+
   OnLoaderCreated(loader.get());
   return loader.Pass();
 }

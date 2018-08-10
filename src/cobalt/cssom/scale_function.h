@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,12 +34,12 @@ class ScaleFunction : public TransformFunction {
   ScaleFunction(float x_factor, float y_factor)
       : x_factor_(x_factor), y_factor_(y_factor) {}
 
-  void Accept(TransformFunctionVisitor* visitor) const OVERRIDE;
+  void Accept(TransformFunctionVisitor* visitor) const override;
 
   float x_factor() const { return x_factor_; }
   float y_factor() const { return y_factor_; }
 
-  std::string ToString() const OVERRIDE {
+  std::string ToString() const override {
     if (y_factor_ == 1.0f) {
       return base::StringPrintf("scaleX(%.7g)", x_factor_);
     }

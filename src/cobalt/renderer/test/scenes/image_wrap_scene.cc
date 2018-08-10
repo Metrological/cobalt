@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -77,7 +77,7 @@ void AnimateImage(base::TimeDelta start_time,
 scoped_refptr<Image> GetTestImage(ResourceProvider* resource_provider) {
   // Load a test image from disk.
   FilePath data_directory;
-  CHECK(PathService::Get(base::DIR_SOURCE_ROOT, &data_directory));
+  CHECK(PathService::Get(base::DIR_TEST_DATA, &data_directory));
   return DecodePNGToRenderTreeImage(
       data_directory.Append(FILE_PATH_LITERAL("test"))
           .Append(FILE_PATH_LITERAL("scenes"))

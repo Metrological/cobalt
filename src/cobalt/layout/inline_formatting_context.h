@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ class InlineFormattingContext : public FormattingContext {
       const scoped_refptr<cssom::PropertyValue>& text_align,
       const scoped_refptr<cssom::PropertyValue>& font_size,
       LayoutUnit text_indent_offset, LayoutUnit ellipsis_width);
-  ~InlineFormattingContext() OVERRIDE;
+  ~InlineFormattingContext() override;
 
   // Attempt to add the child box to the line, which may cause a line wrap to
   // occur if the box overflows the line and a usable wrap location is available

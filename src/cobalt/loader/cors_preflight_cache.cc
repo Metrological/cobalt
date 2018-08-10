@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc. All Rights Reserved.
+ * Copyright 2017 The Cobalt Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ void CORSPreflightCache::AppendEntry(
   if (methods_vec.size() == 1 && methods_vec.at(0) == "*") {
     new_entry->allow_all_methods = true;
   } else {
-    for (auto method : methods_vec) {
+    for (const auto& method : methods_vec) {
       net::URLFetcher::RequestType request_type;
       if (MethodNameToRequestType(method, &request_type)) {
         new_entry->methods.insert(request_type);
@@ -74,7 +74,7 @@ void CORSPreflightCache::AppendEntry(
   }
   // TODO: Consider change this function to use std::copy with std::inserter.
   // Currently compilers on some machines do not support it.
-  for (auto headername : headernames_vec) {
+  for (const auto& headername : headernames_vec) {
     new_entry->headernames.insert(headername);
   }
 
@@ -124,7 +124,7 @@ bool CORSPreflightCache::HaveEntry(
   // name("Authentication") and last preflight allowed * headers.
   if (entry_ptr->allow_all_headers_except_non_wildcard) {
     bool has_auth_header = false;
-    for (auto header : unsafe_headernames) {
+    for (const auto& header : unsafe_headernames) {
       if (SbStringCompareNoCase(header.c_str(), kAuthorization)) {
         has_auth_header = true;
         break;
@@ -137,7 +137,7 @@ bool CORSPreflightCache::HaveEntry(
   }
   // If last preflight does not allow arbitrary header, then match each header
   // with allowed headers.
-  for (auto unsafe_headername : unsafe_headernames) {
+  for (const auto& unsafe_headername : unsafe_headernames) {
     if (entry_ptr->headernames.find(unsafe_headername) ==
         entry_ptr->headernames.end()) {
       return false;
@@ -149,17 +149,20 @@ bool CORSPreflightCache::HaveEntry(
 void CORSPreflightCache::ClearObsoleteEntries() {
   while (expiration_time_heap_.size() > 0 &&
          expiration_time_heap_.top().expiration_time < base::Time::Now()) {
-    DCHECK(content_.find(expiration_time_heap_.top().url_str) !=
-           content_.end());
-    auto url_iter = content_.find(expiration_time_heap_.top().url_str);
-    DCHECK(url_iter->second.find(expiration_time_heap_.top().origin) !=
-           url_iter->second.end());
-    auto entry_iter = url_iter->second.find(expiration_time_heap_.top().origin);
+    auto heap_top = expiration_time_heap_.top();
+    expiration_time_heap_.pop();
+    auto url_iter = content_.find(heap_top.url_str);
+    if (url_iter == content_.end()) {
+      continue;
+    }
+    auto entry_iter = url_iter->second.find(heap_top.origin);
+    if (entry_iter == url_iter->second.end()) {
+      continue;
+    }
     // The entry could have been updated and should only delete obselete ones.
     if (entry_iter->second->expiration_time < base::Time::Now()) {
       url_iter->second.erase(entry_iter);
     }
-    expiration_time_heap_.pop();
   }
 }
 

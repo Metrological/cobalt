@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,14 +22,15 @@
 #include "base/gtest_prod_util.h"
 #include "base/optional.h"
 #include "base/timer.h"
-#include "cobalt/dom/array_buffer.h"
-#include "cobalt/dom/array_buffer_view.h"
 #include "cobalt/dom/csp_delegate.h"
 #include "cobalt/dom/document.h"
 #include "cobalt/dom/dom_exception.h"
-#include "cobalt/dom/uint8_array.h"
 #include "cobalt/loader/cors_preflight.h"
 #include "cobalt/loader/net_fetcher.h"
+#include "cobalt/script/array_buffer.h"
+#include "cobalt/script/array_buffer_view.h"
+#include "cobalt/script/environment_settings.h"
+#include "cobalt/script/typed_arrays.h"
 #include "cobalt/script/union_type.h"
 #include "cobalt/xhr/xhr_response_data.h"
 #include "cobalt/xhr/xml_http_request_event_target.h"
@@ -56,13 +57,15 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
  public:
   // Note: This is expected to be a DOMSettings object, but we declare it as
   // EnvironmentSettings so that JSC doesn't need to know about dom.
-  explicit XMLHttpRequest(script::EnvironmentSettings*);
+  explicit XMLHttpRequest(script::EnvironmentSettings* settings);
 
-  typedef script::UnionType2<std::string, scoped_refptr<dom::ArrayBuffer> >
+  typedef script::UnionType2<std::string, script::Handle<script::ArrayBuffer> >
       ResponseType;
 
-  typedef script::UnionType3<std::string, scoped_refptr<dom::ArrayBufferView>,
-                             scoped_refptr<dom::ArrayBuffer> > RequestBodyType;
+  typedef script::UnionType3<std::string,
+                             script::Handle<script::ArrayBufferView>,
+                             script::Handle<script::ArrayBuffer> >
+      RequestBodyType;
 
   enum State {
     kUnsent = 0,
@@ -130,8 +133,9 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
             script::ExceptionState* exception_state);
 
   // FetchAPI: replacement for Send() when fetch functionality is required.
-  typedef script::CallbackFunction<
-      void(const scoped_refptr<dom::Uint8Array>& data)> FetchUpdateCallback;
+  typedef script::CallbackFunction<void(
+      const script::Handle<script::Uint8Array>& data)>
+      FetchUpdateCallback;
   typedef script::CallbackFunction<void(bool)> FetchModeCallback;
   typedef script::ScriptValue<FetchUpdateCallback> FetchUpdateCallbackArg;
   typedef script::ScriptValue<FetchModeCallback> FetchModeCallbackArg;
@@ -167,29 +171,25 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
   static void set_verbose(bool verbose) { verbose_ = verbose; }
   static bool verbose() { return verbose_; }
   // net::URLFetcherDelegate interface
-  void OnURLFetchResponseStarted(const net::URLFetcher* source) OVERRIDE;
+  void OnURLFetchResponseStarted(const net::URLFetcher* source) override;
   void OnURLFetchDownloadData(const net::URLFetcher* source,
-                              scoped_ptr<std::string> download_data) OVERRIDE;
-  void OnURLFetchComplete(const net::URLFetcher* source) OVERRIDE;
-  bool ShouldSendDownloadData() OVERRIDE { return true; }
+                              scoped_ptr<std::string> download_data) override;
+  void OnURLFetchComplete(const net::URLFetcher* source) override;
+  bool ShouldSendDownloadData() override { return true; }
 
   void OnURLFetchUploadProgress(const net::URLFetcher* source, int64 current,
-                                int64 total) OVERRIDE;
+                                int64 total) override;
   void OnRedirect(const net::HttpResponseHeaders& headers);
 
   // Called from bindings layer to tie objects' lifetimes to this XHR instance.
   XMLHttpRequestUpload* upload_or_null() { return upload_.get(); }
-  dom::ArrayBuffer* response_array_buffer_or_null() {
-    return response_array_buffer_.get();
-  }
-
-  void TraceMembers(script::Tracer* tracer) OVERRIDE;
 
   friend std::ostream& operator<<(std::ostream& os, const XMLHttpRequest& xhr);
   DEFINE_WRAPPABLE_TYPE(XMLHttpRequest);
+  void TraceMembers(script::Tracer* tracer) override;
 
  protected:
-  ~XMLHttpRequest() OVERRIDE;
+  ~XMLHttpRequest() override;
 
   // Return the CSP delegate from the Settings object.
   // virtual for use by tests.
@@ -212,7 +212,7 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
   // Update the internal ready state and fire events.
   void ChangeState(State new_state);
   // Return array buffer response body as an ArrayBuffer.
-  scoped_refptr<dom::ArrayBuffer> response_array_buffer();
+  script::Handle<script::ArrayBuffer> response_array_buffer();
 
   void UpdateProgress();
 
@@ -255,7 +255,8 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
   scoped_ptr<net::URLFetcher> url_fetcher_;
   scoped_refptr<net::HttpResponseHeaders> http_response_headers_;
   XhrResponseData response_body_;
-  scoped_refptr<dom::ArrayBuffer> response_array_buffer_;
+  scoped_ptr<script::ScriptValue<script::ArrayBuffer>::Reference>
+      response_array_buffer_reference_;
   scoped_refptr<XMLHttpRequestUpload> upload_;
 
   std::string mime_type_override_;

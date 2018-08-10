@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 namespace cobalt {
 namespace render_tree {
 
+class ClearRectNode;
 class CompositionNode;
 class FilterNode;
 class ImageNode;
@@ -38,6 +39,7 @@ class AnimateNode;
 class NodeVisitor {
  public:
   virtual void Visit(animations::AnimateNode* animate) = 0;
+  virtual void Visit(ClearRectNode* clear_rect) = 0;
   virtual void Visit(CompositionNode* composition) = 0;
   virtual void Visit(FilterNode* text) = 0;
   virtual void Visit(ImageNode* image) = 0;

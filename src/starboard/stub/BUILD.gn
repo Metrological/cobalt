@@ -1,4 +1,4 @@
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2017 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -212,7 +212,9 @@ static_library("starboard_platform") {
     "//starboard/shared/stub/drm_create_system.cc",
     "//starboard/shared/stub/drm_destroy_system.cc",
     "//starboard/shared/stub/drm_generate_session_update_request.cc",
+    "//starboard/shared/stub/drm_is_server_certificate_updatable.cc",
     "//starboard/shared/stub/drm_system_internal.h",
+    "//starboard/shared/stub/drm_update_server_certificate.cc",
     "//starboard/shared/stub/drm_update_session.cc",
     "//starboard/shared/stub/file_can_open.cc",
     "//starboard/shared/stub/file_close.cc",
@@ -374,6 +376,7 @@ static_library("starboard_platform") {
     "//starboard/shared/stub/system_request_suspend.cc",
     "//starboard/shared/stub/system_request_unpause.cc",
     "//starboard/shared/stub/system_sort.cc",
+    '//starboard/shared/stub/system_supports_resume.cc',
     "//starboard/shared/stub/system_symbolize.cc",
     "//starboard/shared/stub/thread_create.cc",
     "//starboard/shared/stub/thread_create_local_key.cc",

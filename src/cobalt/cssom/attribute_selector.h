@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -55,20 +55,20 @@ class AttributeSelector : public SimpleSelector {
                        base::Token(attribute_name)),
         value_match_type_(value_match_type),
         value_(attribute_value) {}
-  ~AttributeSelector() OVERRIDE {}
+  ~AttributeSelector() override {}
 
   // From Selector.
-  void Accept(SelectorVisitor* visitor) OVERRIDE;
-  Specificity GetSpecificity() const OVERRIDE { return Specificity(0, 1, 0); }
+  void Accept(SelectorVisitor* visitor) override;
+  Specificity GetSpecificity() const override { return Specificity(0, 1, 0); }
 
   // From SimpleSelector.
-  bool AlwaysRequiresRuleMatchingVerificationVisit() const OVERRIDE {
+  bool AlwaysRequiresRuleMatchingVerificationVisit() const override {
     return true;
   }
 
   void IndexSelectorTreeNode(SelectorTree::Node* parent_node,
                              SelectorTree::Node* child_node,
-                             CombinatorType combinator) OVERRIDE;
+                             CombinatorType combinator) override;
 
   // Rest of public methods.
   base::Token attribute_name() const { return text(); }

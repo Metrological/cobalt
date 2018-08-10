@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -82,10 +82,10 @@ class PostMultiplyMatrixVisitor : public TransformFunctionVisitor {
         width_percentage_translation_(width_percentage_translation),
         height_percentage_translation_(height_percentage_translation) {}
 
-  void VisitMatrix(const MatrixFunction* matrix_function) OVERRIDE;
-  void VisitRotate(const RotateFunction* rotate_function) OVERRIDE;
-  void VisitScale(const ScaleFunction* scale_function) OVERRIDE;
-  void VisitTranslate(const TranslateFunction* translate_function) OVERRIDE;
+  void VisitMatrix(const MatrixFunction* matrix_function) override;
+  void VisitRotate(const RotateFunction* rotate_function) override;
+  void VisitScale(const ScaleFunction* scale_function) override;
+  void VisitTranslate(const TranslateFunction* translate_function) override;
 
  private:
   math::Matrix3F* matrix_;

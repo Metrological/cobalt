@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -50,10 +50,10 @@ class DialServer::ServiceHandler : public net::DialServiceHandler {
                  const std::string& sevice_name);
 
   // net::DialServiceHandler implementation.
-  const std::string& service_name() const OVERRIDE { return service_name_; }
+  const std::string& service_name() const override { return service_name_; }
   void HandleRequest(const std::string& path,
                      const net::HttpServerRequestInfo& request,
-                     const CompletionCB& completion_cb) OVERRIDE;
+                     const CompletionCB& completion_cb) override;
 
  private:
   ~ServiceHandler();

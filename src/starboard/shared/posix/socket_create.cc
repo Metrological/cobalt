@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -73,6 +73,13 @@ SbSocket SbSocketCreate(SbSocketAddressType address_type,
     errno = save_errno;
     return kSbSocketInvalid;
   }
+
+#if !defined(MSG_NOSIGNAL) && defined(SO_NOSIGPIPE)
+  // Use SO_NOSIGPIPE to mute SIGPIPE on darwin systems.
+  int optval_set=1;
+  setsockopt(socket_fd, SOL_SOCKET, SO_NOSIGPIPE, (void*)&optval_set,
+    sizeof(int));
+#endif
 
   return new SbSocketPrivate(address_type, protocol, socket_fd);
 }

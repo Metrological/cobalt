@@ -1,4 +1,4 @@
-# Copyright 2014 Google Inc. All Rights Reserved.
+# Copyright 2014 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@
         'constants_interface.idl',
         'constructor_interface.idl',
         'constructor_with_arguments_interface.idl',
+        'convert_simple_object_interface.idl',
         'derived_getter_setter_interface.idl',
         'derived_interface.idl',
         'dictionary_interface.idl',
@@ -51,6 +52,7 @@
         'indexed_getter_interface.idl',
         'interface_with_any.idl',
         'interface_with_any_dictionary.idl',
+        'interface_with_date.idl',
         'interface_with_unsupported_properties.idl',
         'named_constructor_interface.idl',
         'named_getter_interface.idl',
@@ -143,6 +145,7 @@
       'target_name': 'bindings_test',
       'type': '<(gtest_target_type)',
       'sources': [
+        'array_buffers_test.cc',
         'any_bindings_test.cc',
         'any_dictionary_bindings_test.cc',
         'boolean_type_bindings_test.cc',
@@ -151,6 +154,8 @@
         'conditional_attribute_test.cc',
         'constants_bindings_test.cc',
         'constructor_bindings_test.cc',
+        'convert_simple_object_test.cc',
+        'date_bindings_test.cc',
         'dependent_interface_test.cc',
         'dictionary_test.cc',
         'dom_string_bindings_test.cc',
@@ -199,7 +204,7 @@
       'variables': {
         'executable_name': 'bindings_test',
       },
-      'includes': [ '../../../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
 
     {
@@ -226,7 +231,7 @@
       'variables': {
         'executable_name': 'bindings_sandbox',
       },
-      'includes': [ '../../../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ],
 }

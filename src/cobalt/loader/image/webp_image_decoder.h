@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 
 #include "cobalt/loader/image/animated_webp_image.h"
 #include "cobalt/loader/image/image_data_decoder.h"
-#include "third_party/libwebp/webp/decode.h"
+#include "third_party/libwebp/src/webp/decode.h"
 
 namespace cobalt {
 namespace loader {
@@ -29,20 +29,20 @@ namespace image {
 class WEBPImageDecoder : public ImageDataDecoder {
  public:
   explicit WEBPImageDecoder(render_tree::ResourceProvider* resource_provider);
-  ~WEBPImageDecoder() OVERRIDE;
+  ~WEBPImageDecoder() override;
 
   // From ImageDataDecoder
-  std::string GetTypeString() const OVERRIDE { return "WEBPImageDecoder"; }
+  std::string GetTypeString() const override { return "WEBPImageDecoder"; }
 
   // Returns a pointer to the original decoded image memory.
   uint8_t* GetOriginalMemory();
 
  private:
   // From ImageDataDecoder
-  size_t DecodeChunkInternal(const uint8* data, size_t input_byte) OVERRIDE;
-  void FinishInternal() OVERRIDE;
-  bool has_animation() const OVERRIDE { return has_animation_; }
-  scoped_refptr<AnimatedImage> animated_image() OVERRIDE {
+  size_t DecodeChunkInternal(const uint8* data, size_t input_byte) override;
+  void FinishInternal() override;
+  bool has_animation() const override { return has_animation_; }
+  scoped_refptr<AnimatedImage> animated_image() override {
     return animated_webp_image_;
   }
 

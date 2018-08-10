@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,8 +25,8 @@
 #include "base/memory/ref_counted.h"
 #include "cobalt/dom/event_target.h"
 #include "cobalt/dom/time_ranges.h"
-#include "cobalt/dom/uint8_array.h"
 #include "cobalt/script/exception_state.h"
+#include "cobalt/script/typed_arrays.h"
 #include "cobalt/script/wrappable.h"
 
 namespace cobalt {
@@ -54,7 +54,7 @@ class SourceBuffer : public dom::EventTarget {
   double timestamp_offset(script::ExceptionState* exception_state) const;
   void set_timestamp_offset(double offset,
                             script::ExceptionState* exception_state);
-  void Append(const scoped_refptr<const Uint8Array>& data,
+  void Append(const script::Handle<script::Uint8Array>& data,
               script::ExceptionState* exception_state);
   void Abort(script::ExceptionState* exception_state);
 
@@ -64,9 +64,8 @@ class SourceBuffer : public dom::EventTarget {
   // Detach it from the MediaSource object.
   void Close();
 
-  void TraceMembers(script::Tracer* tracer) OVERRIDE;
-
   DEFINE_WRAPPABLE_TYPE(SourceBuffer);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   scoped_refptr<MediaSource> media_source_;

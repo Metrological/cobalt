@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@ TEST_P(PairSbSocketWrapperTest, SunnyDay) {
   scoped_ptr<ConnectedTrioWrapped> trio =
       CreateAndConnectWrapped(GetServerAddressType(), GetClientAddressType(),
                               GetPortNumberForTests(), kSocketTimeout);
+  ASSERT_TRUE(trio);
   ASSERT_TRUE(trio->server_socket);
   ASSERT_TRUE(trio->server_socket->IsValid());
 

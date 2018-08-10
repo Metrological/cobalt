@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -46,13 +46,13 @@ struct MockMeshDecoderCallback {
 class MockMeshDecoder : public Decoder {
  public:
   MockMeshDecoder();
-  ~MockMeshDecoder() OVERRIDE {}
+  ~MockMeshDecoder() override {}
 
-  void DecodeChunk(const char* data, size_t size) OVERRIDE;
+  void DecodeChunk(const char* data, size_t size) override;
 
-  void Finish() OVERRIDE;
-  bool Suspend() OVERRIDE;
-  void Resume(render_tree::ResourceProvider* resource_provider) OVERRIDE;
+  void Finish() override;
+  bool Suspend() override;
+  void Resume(render_tree::ResourceProvider* resource_provider) override;
 
   scoped_refptr<MeshProjection> GetMeshProjection();
 
@@ -95,7 +95,7 @@ void MockMeshDecoder::ExpectCallWithError(const std::string& message) {
 
 FilePath GetTestMeshPath(const char* file_name) {
   FilePath data_directory;
-  CHECK(PathService::Get(base::DIR_SOURCE_ROOT, &data_directory));
+  CHECK(PathService::Get(base::DIR_TEST_DATA, &data_directory));
   return data_directory.Append(FILE_PATH_LITERAL("cobalt"))
       .Append(FILE_PATH_LITERAL("loader"))
       .Append(FILE_PATH_LITERAL("testdata"))

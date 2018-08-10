@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -79,6 +79,7 @@
             'window_driver.cc',
             'window_driver.h',
           ],
+          'dependencies': [ 'copy_webdriver_data', ],
           'defines': [ 'ENABLE_WEBDRIVER', ],
           'all_dependent_settings': {
             'defines': [ 'ENABLE_WEBDRIVER', ],
@@ -93,10 +94,8 @@
       'dependencies': [
         '<(DEPTH)/base/base.gyp:base',
         '<(DEPTH)/cobalt/dom/dom.gyp:dom',
-        '<(DEPTH)/cobalt/dom/dom.gyp:dom_testing',
-        '<(DEPTH)/cobalt/speech/speech.gyp:speech',
         '<(DEPTH)/net/net.gyp:http_server',
-        'copy_webdriver_data',
+        '<(DEPTH)/third_party/icu/icu.gyp:icuuc',
       ],
     },
     {
@@ -105,15 +104,14 @@
       'copies': [
         {
           'destination': '<(sb_static_contents_output_data_dir)/webdriver',
-          'conditions': [
-            ['enable_webdriver==1', {
-              'files': ['content/webdriver-init.js'],
-            }, {
-              'files': [],
-            }],
-          ],
+          'files': ['content/webdriver-init.js'],
         },
       ],
+      'all_dependent_settings': {
+        'variables': {
+          'content_deploy_subdirs': [ 'webdriver' ]
+        }
+      },
     },
   ],
 }

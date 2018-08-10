@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,12 +39,12 @@ class ComplexSelector : public Selector {
       : last_selector_(NULL),
         combinator_count_(0),
         combinator_limit_exceeded_(false) {}
-  ~ComplexSelector() OVERRIDE {}
+  ~ComplexSelector() override {}
 
   // From Selector.
-  void Accept(SelectorVisitor* visitor) OVERRIDE;
-  Specificity GetSpecificity() const OVERRIDE { return specificity_; }
-  ComplexSelector* AsComplexSelector() OVERRIDE { return this; }
+  void Accept(SelectorVisitor* visitor) override;
+  Specificity GetSpecificity() const override { return specificity_; }
+  ComplexSelector* AsComplexSelector() override { return this; }
 
   // Rest of public methods.
 

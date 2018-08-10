@@ -27,11 +27,11 @@ class MockSyncHostResolver : public net::SyncHostResolver {
  public:
   virtual int Resolve(const net::HostResolver::RequestInfo& info,
                       net::AddressList* addresses,
-                      const net::BoundNetLog& net_log) OVERRIDE {
+                      const net::BoundNetLog& net_log) override {
     return net::ERR_NAME_NOT_RESOLVED;
   }
 
-  virtual void Shutdown() OVERRIDE {}
+  virtual void Shutdown() override {}
 };
 
 // This class holds the URL to use for resolving, and the expected result.
@@ -167,7 +167,7 @@ class PacPerfSuiteRunner {
   // Read the PAC script from disk and initialize the proxy resolver with it.
   void LoadPacScriptIntoResolver(const std::string& script_name) {
     FilePath path;
-    PathService::Get(base::DIR_SOURCE_ROOT, &path);
+    PathService::Get(base::DIR_TEST_DATA, &path);
     path = path.AppendASCII("net");
     path = path.AppendASCII("data");
     path = path.AppendASCII("proxy_resolver_perftest");

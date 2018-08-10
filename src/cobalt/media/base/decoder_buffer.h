@@ -20,6 +20,7 @@
 #include "cobalt/media/base/media_export.h"
 #include "cobalt/media/base/timestamp_constants.h"
 #include "nb/multipart_allocator.h"
+#include "starboard/media.h"
 #include "starboard/memory.h"
 #include "starboard/types.h"
 
@@ -39,7 +40,12 @@ class MEDIA_EXPORT DecoderBuffer
     : public base::RefCountedThreadSafe<DecoderBuffer> {
  public:
   typedef DemuxerStream::Type Type;
-  typedef nb::MultipartAllocator Allocator;
+  class Allocator : public nb::MultipartAllocator {
+   public:
+    // Update the video config so that constraints are appropriate for the
+    // current resolution.
+    virtual void UpdateVideoConfig(const VideoDecoderConfig& config) = 0;
+  };
 
   // Create a DecoderBuffer whose |data_| points to a memory with at least
   // |size| bytes.  Buffer will be padded and aligned as necessary.

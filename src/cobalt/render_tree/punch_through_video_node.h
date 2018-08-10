@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ class PunchThroughVideoNode : public Node {
   typedef base::Callback<bool(const math::Rect&)> SetBoundsCB;
 
   struct Builder {
+    Builder(const Builder&) = default;
     Builder(const math::RectF& rect, const SetBoundsCB& set_bounds_cb)
         : rect(rect), set_bounds_cb(set_bounds_cb) {}
 
@@ -54,12 +55,14 @@ class PunchThroughVideoNode : public Node {
     const SetBoundsCB set_bounds_cb;
   };
 
-  explicit PunchThroughVideoNode(const Builder& builder) : data_(builder) {}
+  // Forwarding constructor to the set of Builder constructors.
+  template <typename... Args>
+  PunchThroughVideoNode(Args&&... args) : data_(std::forward<Args>(args)...) {}
 
-  void Accept(NodeVisitor* visitor) OVERRIDE;
-  math::RectF GetBounds() const OVERRIDE;
+  void Accept(NodeVisitor* visitor) override;
+  math::RectF GetBounds() const override;
 
-  base::TypeId GetTypeId() const OVERRIDE {
+  base::TypeId GetTypeId() const override {
     return base::GetTypeId<PunchThroughVideoNode>();
   }
 

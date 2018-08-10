@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc. All Rights Reserved.
+ * Copyright 2017 The Cobalt Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@
 
 #include <vector>
 
-#include "base/threading/thread_checker.h"
 #include "cobalt/render_tree/resource_provider.h"
+#include "cobalt/renderer/backend/egl/graphics_context.h"
 #include "cobalt/renderer/rasterizer/skia/vertex_buffer_object.h"
 #include "third_party/glm/glm/vec2.hpp"
 #include "third_party/glm/glm/vec3.hpp"
@@ -33,13 +33,14 @@ namespace skia {
 class HardwareMesh : public render_tree::Mesh {
  public:
   HardwareMesh(scoped_ptr<std::vector<render_tree::Mesh::Vertex> > vertices,
-               DrawMode draw_mode)
-      : vertices_(vertices.Pass()), draw_mode_(CheckDrawMode(draw_mode)) {
+               DrawMode draw_mode, backend::GraphicsContextEGL* cobalt_context)
+      : vertices_(vertices.Pass()),
+        draw_mode_(CheckDrawMode(draw_mode)),
+        cobalt_context_(cobalt_context) {
     DCHECK(vertices_);
-    thread_checker_.DetachFromThread();
   }
 
-  uint32 GetEstimatedSizeInBytes() const OVERRIDE;
+  uint32 GetEstimatedSizeInBytes() const override;
 
   // Float array of vertices, contiguously interleaved X, Y, Z, U, V coords.
   const float* GetVertices() const {
@@ -64,6 +65,8 @@ class HardwareMesh : public render_tree::Mesh {
   // rendering it so that the graphics context has already been made current.
   const VertexBufferObject* GetVBO() const;
 
+  ~HardwareMesh() override;
+
  private:
   static GLenum CheckDrawMode(DrawMode mode) {
     switch (mode) {
@@ -85,8 +88,13 @@ class HardwareMesh : public render_tree::Mesh {
   mutable scoped_ptr<std::vector<render_tree::Mesh::Vertex> > vertices_;
   mutable scoped_ptr<VertexBufferObject> vbo_;
   const GLenum draw_mode_;
+  backend::GraphicsContextEGL* cobalt_context_;
 
-  base::ThreadChecker thread_checker_;
+  // Used to keep track of the thread from which we create the vertex buffer
+  // object, so that we can ensure that regardless of which thread destroys
+  // this HardwareMesh instance, we will always ensure that the owned VBO is
+  // destroyed on the thread it was created from.
+  mutable MessageLoop* rasterizer_message_loop_ = nullptr;
 };
 
 }  // namespace skia

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,11 +27,11 @@ namespace script {
 class LoggingExceptionState : public ExceptionState {
  public:
   LoggingExceptionState() : is_exception_set_(false) {}
-  void SetException(const scoped_refptr<ScriptException>& exception) OVERRIDE {
+  void SetException(const scoped_refptr<ScriptException>& exception) override {
     LogException(exception->name(), exception->message());
   }
   void SetSimpleExceptionVA(SimpleExceptionType type, const char* format,
-                            va_list arguments) OVERRIDE {
+                            va_list arguments) override {
     LogException(SimpleExceptionToString(type),
                  base::StringPrintV(format, arguments));
   }

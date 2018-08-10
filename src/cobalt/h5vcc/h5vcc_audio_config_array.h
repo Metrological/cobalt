@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ class H5vccAudioConfigArray : public script::Wrappable {
   }
 
   DEFINE_WRAPPABLE_TYPE(H5vccAudioConfigArray);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   void MaybeRefreshAudioConfigs();

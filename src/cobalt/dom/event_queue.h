@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,7 +36,8 @@ namespace dom {
 // media element work in this way.
 // Note: After putting an event to the queue, the caller should no longer modify
 // the content of the event until it is fired or cancelled.
-class EventQueue : public base::SupportsWeakPtr<EventQueue> {
+class EventQueue : public base::SupportsWeakPtr<EventQueue>,
+                   public script::Traceable {
  public:
   // The EventTarget is guaranteed to be valid during the life time and should
   // usually be the owner.
@@ -44,7 +45,7 @@ class EventQueue : public base::SupportsWeakPtr<EventQueue> {
   void Enqueue(const scoped_refptr<Event>& event);
   void CancelAllEvents();
 
-  void TraceMembers(script::Tracer* tracer);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   typedef std::vector<scoped_refptr<Event> > Events;
@@ -53,6 +54,9 @@ class EventQueue : public base::SupportsWeakPtr<EventQueue> {
   EventTarget* event_target_;
   scoped_refptr<base::MessageLoopProxy> message_loop_;
   Events events_;
+  // Events that are currently being fired. We need this as local variable for
+  // JavaScript tracing purpose.
+  Events firing_events_;
 };
 
 }  // namespace dom

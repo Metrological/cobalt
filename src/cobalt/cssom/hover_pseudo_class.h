@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,18 +37,18 @@ class HoverPseudoClass : public PseudoClass {
  public:
   HoverPseudoClass()
       : PseudoClass(base::Tokens::hover_pseudo_class_selector()) {}
-  ~HoverPseudoClass() OVERRIDE {}
+  ~HoverPseudoClass() override {}
 
   // From Selector.
-  void Accept(SelectorVisitor* visitor) OVERRIDE;
+  void Accept(SelectorVisitor* visitor) override;
 
   // From SimpleSelector.
   void IndexSelectorTreeNode(SelectorTree::Node* parent_node,
                              SelectorTree::Node* child_node,
-                             CombinatorType combinator) OVERRIDE;
+                             CombinatorType combinator) override;
 
   // From PseudoClass.
-  HoverPseudoClass* AsHoverPseudoClass() OVERRIDE { return this; }
+  HoverPseudoClass* AsHoverPseudoClass() override { return this; }
 
  private:
   DISALLOW_COPY_AND_ASSIGN(HoverPseudoClass);

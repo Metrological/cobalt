@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,10 +17,11 @@
 namespace cobalt {
 namespace script {
 
+// static
 scoped_refptr<SourceCode> SourceCode::CreateSourceCode(
-    const std::string& script_utf8,
-    const base::SourceLocation& script_location) {
-  return new mozjs::MozjsSourceCode(script_utf8, script_location);
+    const std::string& script_utf8, const base::SourceLocation& script_location,
+    bool mute_errors) {
+  return new mozjs::MozjsSourceCode(script_utf8, script_location, mute_errors);
 }
 
 }  // namespace script

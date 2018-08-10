@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@
 #include "base/file_path.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/threading/thread_checker.h"
+#include "cobalt/audio/audio_helpers.h"
 #include "cobalt/speech/microphone.h"
 
 namespace cobalt {
@@ -36,20 +37,21 @@ namespace speech {
 class MicrophoneFake : public Microphone {
  public:
   explicit MicrophoneFake(const Options& options);
-  ~MicrophoneFake() SB_OVERRIDE {}
+  ~MicrophoneFake() override {}
 
-  bool Open() SB_OVERRIDE;
-  int Read(char* out_data, int data_size) SB_OVERRIDE;
-  bool Close() SB_OVERRIDE;
-  int MinMicrophoneReadInBytes() SB_OVERRIDE;
-  bool IsValid() SB_OVERRIDE { return is_valid_; }
+  bool Open() override;
+  int Read(char* out_data, int data_size) override;
+  bool Close() override;
+  int MinMicrophoneReadInBytes() override;
+  bool IsValid() override { return is_valid_; }
+  const char* Label() override;
 
  private:
   base::ThreadChecker thread_checker_;
 
   bool read_data_from_file_;
   std::vector<FilePath> file_paths_;
-  scoped_array<uint8> file_buffer_;
+  scoped_ptr<audio::ShellAudioBus> audio_bus_;
   int file_length_;
   int read_index_;
   bool is_valid_;

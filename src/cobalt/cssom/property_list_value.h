@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,11 +33,11 @@ class PropertyListValue : public ScopedRefListValue<PropertyValue> {
       scoped_ptr<ScopedRefListValue<PropertyValue>::Builder> value)
       : ScopedRefListValue<PropertyValue>(value.Pass()) {}
 
-  void Accept(PropertyValueVisitor* visitor) OVERRIDE {
+  void Accept(PropertyValueVisitor* visitor) override {
     visitor->VisitPropertyList(this);
   }
 
-  std::string ToString() const OVERRIDE {
+  std::string ToString() const override {
     std::string result;
     for (size_t i = 0; i < value().size(); ++i) {
       if (!result.empty()) result.append(", ");
@@ -49,7 +49,7 @@ class PropertyListValue : public ScopedRefListValue<PropertyValue> {
   DEFINE_POLYMORPHIC_EQUATABLE_TYPE(PropertyListValue);
 
  private:
-  virtual ~PropertyListValue() OVERRIDE {}
+  ~PropertyListValue() override {}
 };
 
 }  // namespace cssom

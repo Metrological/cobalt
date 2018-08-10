@@ -1,5 +1,5 @@
 #
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -132,6 +132,11 @@ def GetAll():
 def Get(platform_name):
   """Gets the PlatformInfo for the given platform name, or None."""
   return _GetInfoMap().get(platform_name)
+
+
+def GetAllInfos():
+  """Gets a sorted sequence of PlatformInfo objects for all valid platforms."""
+  return (Get(p) for p in GetAll())
 
 
 def IsValid(platform_name):

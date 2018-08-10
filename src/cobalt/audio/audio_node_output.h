@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,7 +52,8 @@ class AudioNodeOutput : public base::RefCountedThreadSafe<AudioNodeOutput> {
   void DisconnectAll();
 
   scoped_ptr<ShellAudioBus> PassAudioBusFromSource(int32 number_of_frames,
-                                                   SampleType sample_type);
+                                                   SampleType sample_type,
+                                                   bool* finished);
 
  private:
   AudioNode* const owner_node_;

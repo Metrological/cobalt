@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,8 +34,6 @@ std::string RadialGradientValue::ToString() const {
     case kEllipse:
       result.append(kEllipseKeywordName);
       break;
-    default:
-      NOTREACHED();
   }
 
   if (size_keyword_) {
@@ -53,8 +51,6 @@ std::string RadialGradientValue::ToString() const {
       case kFarthestCorner:
         result.append(kFarthestCornerKeywordName);
         break;
-      default:
-        NOTREACHED();
     }
   } else if (size_value_) {
     result.push_back(' ');

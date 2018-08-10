@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,17 +26,16 @@ namespace dom {
 //   https://docs.webplatform.org/wiki/apis/timing/properties/memory
 class MemoryInfo : public script::Wrappable {
  public:
-  MemoryInfo() {}
+  MemoryInfo() = default;
 
-  uint32 total_js_heap_size() const;
-
-  uint32 used_js_heap_size() const;
+  uint32 total_js_heap_size(
+      script::EnvironmentSettings* environment_settings) const;
+  uint32 used_js_heap_size(
+      script::EnvironmentSettings* environment_settings) const;
 
   DEFINE_WRAPPABLE_TYPE(MemoryInfo);
 
  private:
-  ~MemoryInfo() OVERRIDE {}
-
   DISALLOW_COPY_AND_ASSIGN(MemoryInfo);
 };
 

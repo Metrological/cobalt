@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,10 +17,11 @@
 
 #include <bitset>
 #include <functional>
+#include <map>
 #include <string>
 
 #include "base/compiler_specific.h"
-#include "base/hash_tables.h"
+#include "base/containers/small_map.h"
 #include "base/memory/ref_counted.h"
 #include "cobalt/base/unused.h"
 #include "cobalt/cssom/css_declaration_data.h"
@@ -36,7 +37,10 @@ class CSSDeclaredStyleData : public CSSDeclarationData {
  public:
   CSSDeclaredStyleData();
 
-  typedef base::hash_map<PropertyKey, scoped_refptr<PropertyValue> >
+  // NOTE: The array size of base::SmallMap is based on extensive testing. Do
+  // not change it unless additional profiling data justifies it.
+  typedef base::SmallMap<std::map<PropertyKey, scoped_refptr<PropertyValue> >,
+                         8, std::equal_to<PropertyKey> >
       PropertyValues;
 
   // The length attribute must return the number of CSS declarations in the
@@ -51,17 +55,17 @@ class CSSDeclaredStyleData : public CSSDeclarationData {
 
   // From CSSDeclarationData
   //
-  bool IsSupportedPropertyKey(PropertyKey key) const OVERRIDE;
+  bool IsSupportedPropertyKey(PropertyKey key) const override;
 
-  scoped_refptr<PropertyValue> GetPropertyValue(PropertyKey key) const OVERRIDE;
+  scoped_refptr<PropertyValue> GetPropertyValue(PropertyKey key) const override;
 
   void SetPropertyValueAndImportance(
       PropertyKey key, const scoped_refptr<PropertyValue>& property_value,
-      bool important) OVERRIDE;
+      bool important) override;
 
   // Sets the specified property value to NULL and importance to false.  This
   // may be called on longhand properties as well as shorthand properties.
-  void ClearPropertyValueAndImportance(PropertyKey key) OVERRIDE;
+  void ClearPropertyValueAndImportance(PropertyKey key) override;
 
   // Rest of public methods.
 

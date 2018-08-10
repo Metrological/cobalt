@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,12 +43,11 @@ class XMLHttpRequestEventTarget : public dom::EventTarget {
   void set_onprogress(const EventListenerScriptValue& listener);
   void set_ontimeout(const EventListenerScriptValue& listener);
 
-  void TraceMembers(script::Tracer* tracer) OVERRIDE;
-
   DEFINE_WRAPPABLE_TYPE(XMLHttpRequestEventTarget);
+  void TraceMembers(script::Tracer* tracer) override;
 
  protected:
-  ~XMLHttpRequestEventTarget() OVERRIDE;
+  ~XMLHttpRequestEventTarget() override;
 
   base::optional<EventListenerScriptValue::Reference> onabort_listener_;
   base::optional<EventListenerScriptValue::Reference> onerror_listener_;
@@ -60,7 +59,7 @@ class XMLHttpRequestEventTarget : public dom::EventTarget {
 
  private:
   // From EventTarget.
-  std::string GetDebugName() OVERRIDE { return "XMLHttpRequestEventTarget"; }
+  std::string GetDebugName() override { return "XMLHttpRequestEventTarget"; }
 
   DISALLOW_COPY_AND_ASSIGN(XMLHttpRequestEventTarget);
 };

@@ -1,4 +1,4 @@
-# Copyright 2014 Google Inc. All Rights Reserved.
+# Copyright 2014 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,12 +14,30 @@
 
 {
   'variables': {
+    # This platform uses a compositor to present the rendering output, so
+    # set the swap interval to update the buffer immediately. That buffer
+    # will then be presented by the compositor on its own time.
+    'cobalt_egl_swap_interval': 0,
+
+    # Hook into the swap buffers call to facilitate synchronization of the
+    # OpenGL output with the punch-through video layer.
+    'linker_flags': [
+      '-Wl,--wrap=eglSwapBuffers',
+    ],
+
+    'cobalt_platform_dependencies': [
+      # GL Linux makes some GL calls within decode_target_internal.cc.
+      '<(DEPTH)/starboard/egl_and_gles/egl_and_gles.gyp:egl_and_gles',
+    ],
+
     'platform_libraries': [
-      '-lEGL',
-      '-lGLESv2',
       '-lX11',
       '-lXcomposite',
       '-lXrender',
     ],
   },
+
+  'includes': [
+    'enable_glx_via_angle.gypi',
+  ],
 }

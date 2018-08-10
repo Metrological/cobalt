@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,18 +16,11 @@
 
 #include "base/compiler_specific.h"
 #include "cobalt/math/size.h"
-#include "cobalt/media/shell_media_platform_starboard.h"
-#include "cobalt/system_window/system_window.h"
-#if defined(COBALT_MEDIA_SOURCE_2016)
 #include "cobalt/media/base/media_log.h"
 #include "cobalt/media/decoder_buffer_allocator.h"
 #include "cobalt/media/player/web_media_player_impl.h"
-#else  // defined(COBALT_MEDIA_SOURCE_2016)
-#include "media/base/filter_collection.h"
-#include "media/base/media_log.h"
-#include "media/base/message_loop_factory.h"
-#include "media/player/web_media_player_impl.h"
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
+#include "cobalt/media/shell_media_platform_starboard.h"
+#include "cobalt/system_window/system_window.h"
 #include "nb/memory_scope.h"
 #include "starboard/media.h"
 #include "starboard/window.h"
@@ -37,17 +30,10 @@ namespace media {
 
 namespace {
 
-#if !defined(COBALT_MEDIA_SOURCE_2016)
-typedef ::media::FilterCollection FilterCollection;
-typedef ::media::MessageLoopFactory MessageLoopFactory;
-typedef ::media::WebMediaPlayerClient WebMediaPlayerClient;
-typedef ::media::ShellMediaPlatformStarboard ShellMediaPlatformStarboard;
-#endif  // !defined(COBALT_MEDIA_SOURCE_2016)
-
 class CanPlayTypeHandlerStarboard : public CanPlayTypeHandler {
  public:
   std::string CanPlayType(const std::string& mime_type,
-                          const std::string& key_system) OVERRIDE {
+                          const std::string& key_system) override {
     SbMediaSupportType type =
         SbMediaCanPlayMimeAndKeySystem(mime_type.c_str(), key_system.c_str());
     switch (type) {
@@ -73,48 +59,31 @@ class MediaModuleStarboard : public MediaModule {
         media_platform_(resource_provider) {}
 
   scoped_ptr<WebMediaPlayer> CreateWebMediaPlayer(
-      WebMediaPlayerClient* client) OVERRIDE {
+      WebMediaPlayerClient* client) override {
     TRACK_MEMORY_SCOPE("Media");
-#if defined(COBALT_MEDIA_SOURCE_2016)
     SbWindow window = kSbWindowInvalid;
     if (system_window_) {
       window = system_window_->GetSbWindow();
     }
     return make_scoped_ptr<WebMediaPlayer>(new media::WebMediaPlayerImpl(
         window, client, this, &decoder_buffer_allocator_,
-        media_platform_.GetVideoFrameProvider(), new media::MediaLog));
-#else   // defined(COBALT_MEDIA_SOURCE_2016)
-    scoped_ptr<MessageLoopFactory> message_loop_factory(new MessageLoopFactory);
-    scoped_refptr<base::MessageLoopProxy> pipeline_message_loop =
-        message_loop_factory->GetMessageLoop(MessageLoopFactory::kPipeline);
-
-    SbWindow window = kSbWindowInvalid;
-    if (system_window_) {
-      window = system_window_->GetSbWindow();
-    }
-    return make_scoped_ptr<WebMediaPlayer>(new ::media::WebMediaPlayerImpl(
-        window, client, this, media_platform_.GetVideoFrameProvider(),
-        scoped_ptr<FilterCollection>(new FilterCollection), NULL,
-        message_loop_factory.Pass(), new ::media::MediaLog));
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
+        options_.allow_resume_after_suspend, new media::MediaLog));
   }
 
-  system_window::SystemWindow* system_window() const OVERRIDE {
+  system_window::SystemWindow* system_window() const override {
     return system_window_;
   }
 
-  void OnSuspend() OVERRIDE { media_platform_.Suspend(); }
+  void OnSuspend() override { media_platform_.Suspend(); }
 
-  void OnResume(render_tree::ResourceProvider* resource_provider) OVERRIDE {
+  void OnResume(render_tree::ResourceProvider* resource_provider) override {
     media_platform_.Resume(resource_provider);
   }
 
  private:
   const Options options_;
   system_window::SystemWindow* system_window_;
-#if defined(COBALT_MEDIA_SOURCE_2016)
   DecoderBufferAllocator decoder_buffer_allocator_;
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
   ShellMediaPlatformStarboard media_platform_;
 };
 

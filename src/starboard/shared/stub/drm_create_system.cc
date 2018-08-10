@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,45 @@
 
 #include "starboard/drm.h"
 
-#if SB_API_VERSION >= 6
+#if SB_API_VERSION >= 10
+
+SbDrmSystem SbDrmCreateSystem(
+    const char* key_system,
+    void* context,
+    SbDrmSessionUpdateRequestFunc update_request_callback,
+    SbDrmSessionUpdatedFunc session_updated_callback,
+    SbDrmSessionKeyStatusesChangedFunc key_statuses_changed_callback,
+    SbDrmServerCertificateUpdatedFunc server_certificate_updated_callback,
+    SbDrmSessionClosedFunc session_closed_callback) {
+  SB_UNREFERENCED_PARAMETER(context);
+  SB_UNREFERENCED_PARAMETER(key_system);
+  SB_UNREFERENCED_PARAMETER(update_request_callback);
+  SB_UNREFERENCED_PARAMETER(session_updated_callback);
+  SB_UNREFERENCED_PARAMETER(key_statuses_changed_callback);
+  SB_UNREFERENCED_PARAMETER(server_certificate_updated_callback);
+  SB_UNREFERENCED_PARAMETER(session_closed_callback);
+  return kSbDrmSystemInvalid;
+}
+
+#elif SB_HAS(DRM_SESSION_CLOSED)
+
+SbDrmSystem SbDrmCreateSystem(
+    const char* key_system,
+    void* context,
+    SbDrmSessionUpdateRequestFunc update_request_callback,
+    SbDrmSessionUpdatedFunc session_updated_callback,
+    SbDrmSessionKeyStatusesChangedFunc key_statuses_changed_callback,
+    SbDrmSessionClosedFunc session_closed_callback) {
+  SB_UNREFERENCED_PARAMETER(context);
+  SB_UNREFERENCED_PARAMETER(key_system);
+  SB_UNREFERENCED_PARAMETER(update_request_callback);
+  SB_UNREFERENCED_PARAMETER(session_updated_callback);
+  SB_UNREFERENCED_PARAMETER(key_statuses_changed_callback);
+  SB_UNREFERENCED_PARAMETER(session_closed_callback);
+  return kSbDrmSystemInvalid;
+}
+
+#elif SB_HAS(DRM_KEY_STATUSES)
 
 SbDrmSystem SbDrmCreateSystem(
     const char* key_system,

@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ namespace starboard {
 class ApplicationDirectFB : public shared::starboard::QueueApplication {
  public:
   ApplicationDirectFB();
-  ~ApplicationDirectFB() SB_OVERRIDE;
+  ~ApplicationDirectFB() override;
 
   static ApplicationDirectFB* Get() {
     return static_cast<ApplicationDirectFB*>(
@@ -45,20 +45,20 @@ class ApplicationDirectFB : public shared::starboard::QueueApplication {
   SbWindow GetWindow();
 
 #if SB_API_VERSION >= 6
-  bool IsStartImmediate() SB_OVERRIDE { return !HasPreloadSwitch(); }
-  bool IsPreloadImmediate() SB_OVERRIDE { return HasPreloadSwitch(); }
+  bool IsStartImmediate() override { return !HasPreloadSwitch(); }
+  bool IsPreloadImmediate() override { return HasPreloadSwitch(); }
 #endif  // SB_API_VERSION >= 6
 
  protected:
   // --- Application overrides ---
-  void Initialize() SB_OVERRIDE;
-  void Teardown() SB_OVERRIDE;
+  void Initialize() override;
+  void Teardown() override;
 
   // --- QueueApplication overrides ---
-  bool MayHaveSystemEvents() SB_OVERRIDE;
-  Event* PollNextSystemEvent() SB_OVERRIDE;
-  Event* WaitForSystemEventWithTimeout(SbTime time) SB_OVERRIDE;
-  void WakeSystemEventWait() SB_OVERRIDE;
+  bool MayHaveSystemEvents() override;
+  Event* PollNextSystemEvent() override;
+  Event* WaitForSystemEventWithTimeout(SbTime time) override;
+  void WakeSystemEventWait() override;
 
  private:
   Event* DFBEventToEvent(const DFBInputEvent& event);

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,6 +36,10 @@
 #if SB_HAS(INTTYPES_H)
 #include <inttypes.h>
 #endif  // SB_HAS(STDINT_H)
+
+#if SB_HAS(SYS_TYPES_H)
+#include <sys/types.h>
+#endif  // SB_HAS(SYS_TYPES_H)
 
 #if SB_HAS(STDDEF_H)
 #include <stddef.h>

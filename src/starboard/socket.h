@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,8 +34,10 @@
 #define STARBOARD_SOCKET_H_
 
 #ifdef __cplusplus
+extern "C++" {
 #include <iomanip>
 #include <iostream>
+}  // extern "C++"
 #endif
 
 #include "starboard/export.h"
@@ -64,10 +66,16 @@ typedef enum SbSocketError {
   // clever and wait on it with a SbSocketWaiter.
   kSbSocketPending,
 
-  // The operation failed for some reason.
-  //
-  // TODO: It's unclear if we actually care about why, so leaving the rest
-  // of this enumeration blank until it becomes clear that we do.
+#if SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) || \
+    SB_API_VERSION >= 9
+  // This socket error is generated when the connection is reset unexpectedly
+  // and the connection is now invalid.
+  // This might happen for example if an read packet has the "TCP RST" bit set.
+  kSbSocketErrorConnectionReset,
+#endif  // SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) ||
+        // SB_API_VERSION >= 9
+
+  // The operation failed for some other reason not specified above.
   kSbSocketErrorFailed,
 } SbSocketError;
 
@@ -417,6 +425,9 @@ SB_EXPORT void SbSocketFreeResolution(SbSocketResolution* resolution);
 #endif
 
 #ifdef __cplusplus
+
+extern "C++" {
+
 // An inline C++ wrapper to SbSocket.
 class Socket {
  public:
@@ -506,9 +517,7 @@ class Socket {
 
   SbSocket socket_;
 };
-#endif
 
-#ifdef __cplusplus
 // Let SbSocketAddresses be output to log streams.
 inline std::ostream& operator<<(std::ostream& os,
                                 const SbSocketAddress& address) {
@@ -550,6 +559,9 @@ inline std::ostream& operator<<(std::ostream& os,
   os << ":" << address.port;
   return os;
 }
+
+}  // extern "C++"
+
 #endif
 
 #endif  // STARBOARD_SOCKET_H_

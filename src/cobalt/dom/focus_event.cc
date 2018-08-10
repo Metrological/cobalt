@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,6 +24,12 @@ FocusEvent::FocusEvent(base::Token type, Bubbles bubbles, Cancelable cancelable,
                        const scoped_refptr<EventTarget>& related_target)
     : UIEvent(type, bubbles, cancelable, view),
       related_target_(related_target) {}
+
+void FocusEvent::TraceMembers(script::Tracer* tracer) {
+  UIEvent::TraceMembers(tracer);
+
+  tracer->Trace(related_target_);
+}
 
 }  // namespace dom
 }  // namespace cobalt

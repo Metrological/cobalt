@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,11 +23,12 @@ namespace mozjs {
 MozjsScriptValueFactory::MozjsScriptValueFactory(
     MozjsGlobalEnvironment* global_environment)
     : global_environment_(global_environment) {}
+
 }  // namespace mozjs
 
 // Implementation of template function declared in the base class.
 template <typename T>
-scoped_ptr<ScriptValue<Promise<T> > > ScriptValueFactory::CreatePromise() {
+Handle<Promise<T>> ScriptValueFactory::CreatePromise() {
   mozjs::MozjsScriptValueFactory* mozjs_this =
       base::polymorphic_downcast<mozjs::MozjsScriptValueFactory*>(this);
   return mozjs_this->CreatePromise<T>();

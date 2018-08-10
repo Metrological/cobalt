@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -47,17 +47,17 @@ class LibxmlHTMLParserWrapper : LibxmlParserWrapper {
         should_run_scripts_(should_run_scripts) {
     DCHECK(!document->IsXMLDocument());
   }
-  ~LibxmlHTMLParserWrapper() OVERRIDE;
+  ~LibxmlHTMLParserWrapper() override;
 
   // From LibxmlParserWrapper.
   void OnStartElement(const std::string& name,
-                      const ParserAttributeVector& attributes) OVERRIDE;
-  void OnEndElement(const std::string& name) OVERRIDE;
-  void DecodeChunk(const char* data, size_t size) OVERRIDE;
-  void Finish() OVERRIDE;
+                      const ParserAttributeVector& attributes) override;
+  void OnEndElement(const std::string& name) override;
+  void DecodeChunk(const char* data, size_t size) override;
+  void Finish() override;
 
  private:
-  base::SourceLocation GetSourceLocation() OVERRIDE;
+  base::SourceLocation GetSourceLocation() override;
 
   htmlParserCtxtPtr html_parser_context_;
 

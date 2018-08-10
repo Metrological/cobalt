@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Google Inc. All rights reserved.
+ * Copyright (C) 2013 Google Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -28,7 +28,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Modifications Copyright 2017 Google Inc. All Rights Reserved.
+// Modifications Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -54,8 +54,6 @@
 #include "base/optional.h"
 #include "base/timer.h"
 #include "cobalt/base/token.h"
-#include "cobalt/dom/array_buffer.h"
-#include "cobalt/dom/array_buffer_view.h"
 #include "cobalt/dom/audio_track_list.h"
 #include "cobalt/dom/event_queue.h"
 #include "cobalt/dom/event_target.h"
@@ -65,6 +63,8 @@
 #include "cobalt/dom/video_track_list.h"
 #include "cobalt/media/base/media_tracks.h"
 #include "cobalt/media/filters/chunk_demuxer.h"
+#include "cobalt/script/array_buffer.h"
+#include "cobalt/script/array_buffer_view.h"
 #include "cobalt/script/exception_state.h"
 
 namespace cobalt {
@@ -113,9 +113,9 @@ class SourceBuffer : public dom::EventTarget {
   }
   void set_append_window_end(double start,
                              script::ExceptionState* exception_state);
-  void AppendBuffer(const scoped_refptr<ArrayBuffer>& data,
+  void AppendBuffer(const script::Handle<script::ArrayBuffer>& data,
                     script::ExceptionState* exception_state);
-  void AppendBuffer(const scoped_refptr<ArrayBufferView>& data,
+  void AppendBuffer(const script::Handle<script::ArrayBufferView>& data,
                     script::ExceptionState* exception_state);
   void Abort(script::ExceptionState* exception_state);
   void Remove(double start, double end,
@@ -133,9 +133,8 @@ class SourceBuffer : public dom::EventTarget {
   void OnRemovedFromMediaSource();
   double GetHighestPresentationTimestamp() const;
 
-  void TraceMembers(script::Tracer* tracer) OVERRIDE;
-
   DEFINE_WRAPPABLE_TYPE(SourceBuffer);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   typedef media::MediaTracks MediaTracks;
@@ -145,7 +144,7 @@ class SourceBuffer : public dom::EventTarget {
   bool PrepareAppend(size_t new_data_size,
                      script::ExceptionState* exception_state);
   bool EvictCodedFrames(size_t new_data_size);
-  void AppendBufferInternal(const unsigned char* data, uint32 size,
+  void AppendBufferInternal(const unsigned char* data, size_t size,
                             script::ExceptionState* exception_state);
   void OnAppendTimer();
   void AppendError();
@@ -158,11 +157,13 @@ class SourceBuffer : public dom::EventTarget {
   void RemoveMediaTracks();
 
   const TrackDefault* GetTrackDefault(
-      const std::string& trackType, const std::string& byteStreamTrackID) const;
-  std::string DefaultTrackLabel(const std::string& trackType,
-                                const std::string& byteStreamTrackID) const;
-  std::string DefaultTrackLanguage(const std::string& trackType,
-                                   const std::string& byteStreamTrackID) const;
+      const std::string& track_type,
+      const std::string& byte_stream_track_id) const;
+  std::string DefaultTrackLabel(const std::string& track_type,
+                                const std::string& byte_stream_track_id) const;
+  std::string DefaultTrackLanguage(
+      const std::string& track_type,
+      const std::string& byte_stream_track_id) const;
 
   const std::string id_;
   media::ChunkDemuxer* chunk_demuxer_;

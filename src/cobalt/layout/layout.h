@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -46,7 +46,8 @@ void UpdateComputedStylesAndLayoutBoxTree(
     LayoutStatTracker* layout_stat_tracker,
     icu::BreakIterator* line_break_iterator,
     icu::BreakIterator* character_break_iterator,
-    scoped_refptr<BlockLevelBlockContainerBox>* initial_containing_block);
+    scoped_refptr<BlockLevelBlockContainerBox>* initial_containing_block,
+    bool clear_window_with_background_color);
 
 // Generates the render tree (along with corresponding animations) of the box
 // tree contained within the provided containing block.

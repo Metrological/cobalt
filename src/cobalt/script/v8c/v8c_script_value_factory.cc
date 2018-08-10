@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,9 +21,10 @@ namespace script {
 
 // Implementation of template function declared in the base class.
 template <typename T>
-scoped_ptr<ScriptValue<Promise<T>>> ScriptValueFactory::CreatePromise() {
-  NOTIMPLEMENTED();
-  return make_scoped_ptr<ScriptValue<Promise<T>>>(nullptr);
+Handle<Promise<T>> ScriptValueFactory::CreatePromise() {
+  v8c::V8cScriptValueFactory* v8c_this =
+      base::polymorphic_downcast<v8c::V8cScriptValueFactory*>(this);
+  return v8c_this->CreatePromise<T>();
 }
 
 }  // namespace script

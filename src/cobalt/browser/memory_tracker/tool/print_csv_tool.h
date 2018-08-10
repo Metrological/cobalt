@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -41,10 +41,8 @@ class PrintCSVTool : public AbstractTool {
   PrintCSVTool(int sampling_interval_ms, int sampling_time_ms);
 
   // Overridden so that the thread can exit gracefully.
-  virtual void Run(Params* params) OVERRIDE;
-  virtual std::string tool_name() const OVERRIDE {
-    return "MemoryTrackerPrintCSV";
-  }
+  void Run(Params* params) override;
+  std::string tool_name() const override { return "MemoryTrackerPrintCSV"; }
 
  private:
   typedef std::map<std::string, AllocationSamples> MapAllocationSamples;

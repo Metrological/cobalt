@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc. All Rights Reserved.
+ * Copyright 2017 The Cobalt Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "base/debug/trace_event.h"
 #include "base/optional.h"
 #include "base/stl_util.h"
 #include "base/string_number_conversions.h"
@@ -35,7 +36,6 @@
 #include "cobalt/browser/memory_settings/scaling_function.h"
 #include "cobalt/browser/switches.h"
 #include "cobalt/math/clamp.h"
-#include "nb/lexical_cast.h"
 
 namespace cobalt {
 namespace browser {
@@ -271,6 +271,7 @@ int64_t GenerateTargetMemoryBytes(
 AutoMem::AutoMem(const math::Size& ui_resolution,
                  const AutoMemSettings& command_line_settings,
                  const AutoMemSettings& build_settings) {
+  TRACE_EVENT0("cobalt::browser", "AutoMem::AutoMem()");
   ConstructSettings(ui_resolution, command_line_settings, build_settings);
 
   const int64_t target_cpu_memory =

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -67,9 +67,6 @@ void BlockContainerBox::UpdateContentWidthAndMargins(
         UpdateWidthAssumingInlineLevelInFlowBox(
             containing_block_width, maybe_nulled_width, maybe_margin_left,
             maybe_margin_right, maybe_height);
-        break;
-      default:
-        NOTREACHED();
         break;
     }
   }

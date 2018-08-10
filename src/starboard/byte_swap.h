@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -84,6 +84,8 @@ SB_EXPORT uint64_t SbByteSwapU64(uint64_t value);
 
 #ifdef __cplusplus
 
+extern "C++" {
+
 #include <algorithm>
 
 template <typename T>
@@ -122,6 +124,8 @@ template <>
 inline uint64_t SbByteSwap(uint64_t value) {
   return SbByteSwapU64(value);
 }
+
+}  // extern "C++"
 
 #endif
 

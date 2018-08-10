@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@
 #include "cobalt/render_tree/image.h"
 #include "cobalt/web_animations/keyframe_effect_read_only.h"
 #if defined(COBALT_MEDIA_SOURCE_2016)
-#include "cobalt/media/base/shell_video_frame_provider.h"
+#include "cobalt/media/base/video_frame_provider.h"
 #else  // defined(COBALT_MEDIA_SOURCE_2016)
 #include "media/base/shell_video_frame_provider.h"
 #endif  // defined(COBALT_MEDIA_SOURCE_2016)
@@ -53,17 +53,16 @@ namespace cobalt {
 namespace layout {
 
 #if defined(COBALT_MEDIA_SOURCE_2016)
-using media::ShellVideoFrameProvider;
-using media::VideoFrame;
+using media::VideoFrameProvider;
 #else   // defined(COBALT_MEDIA_SOURCE_2016)
-using ::media::ShellVideoFrameProvider;
+using VideoFrameProvider = ::media::ShellVideoFrameProvider;
 using ::media::VideoFrame;
 #endif  // defined(COBALT_MEDIA_SOURCE_2016)
 
 namespace {
 
 scoped_refptr<render_tree::Image> GetVideoFrame(
-    const scoped_refptr<ShellVideoFrameProvider>& frame_provider,
+    const scoped_refptr<VideoFrameProvider>& frame_provider,
     render_tree::ResourceProvider* resource_provider) {
   TRACE_EVENT0("cobalt::layout", "GetVideoFrame()");
   SbDecodeTarget decode_target = frame_provider->GetCurrentSbDecodeTarget();
@@ -76,13 +75,14 @@ scoped_refptr<render_tree::Image> GetVideoFrame(
 #endif  // SB_HAS(GRAPHICS)
   } else {
     DCHECK(frame_provider);
+#if !defined(COBALT_MEDIA_SOURCE_2016)
     scoped_refptr<VideoFrame> video_frame = frame_provider->GetCurrentFrame();
     if (video_frame && video_frame->texture_id()) {
       scoped_refptr<render_tree::Image> image =
           reinterpret_cast<render_tree::Image*>(video_frame->texture_id());
       return image;
     }
-
+#endif  // !defined(COBALT_MEDIA_SOURCE_2016)
     return NULL;
   }
 }
@@ -103,14 +103,14 @@ BoxGenerator::BoxGenerator(
       context_(context) {}
 
 BoxGenerator::~BoxGenerator() {
-  if (generating_html_element_) {
-    scoped_ptr<LayoutBoxes> layout_boxes;
-    if (!boxes_.empty()) {
-      layout_boxes = make_scoped_ptr(new LayoutBoxes());
-      layout_boxes->SwapBoxes(boxes_);
-    }
+  // Later code assumes that if layout_boxes() is non-null, then it contains
+  // more than one box.  This allows us to avoid some allocations of LayoutBoxes
+  // objects.  We don't need to worry about setting layout_boxes() back to
+  // null because this should end up being done in html_element.cc when the
+  // boxes become invalidated.
+  if (generating_html_element_ && !boxes_.empty()) {
     generating_html_element_->set_layout_boxes(
-        layout_boxes.PassAs<dom::LayoutBoxes>());
+        scoped_ptr<dom::LayoutBoxes>(new LayoutBoxes(std::move(boxes_))));
   }
 }
 
@@ -133,9 +133,7 @@ void BoxGenerator::Visit(dom::Element* element) {
 #endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
 
   // If the html element already has layout boxes, we can reuse them.
-  if (partial_layout_is_enabled && html_element->layout_boxes() &&
-      html_element->layout_boxes()->type() ==
-          dom::LayoutBoxes::kLayoutLayoutBoxes) {
+  if (partial_layout_is_enabled && html_element->layout_boxes()) {
     LayoutBoxes* layout_boxes =
         base::polymorphic_downcast<LayoutBoxes*>(html_element->layout_boxes());
     DCHECK(boxes_.empty());
@@ -199,7 +197,7 @@ class ReplacedBoxGenerator : public cssom::NotReachedPropertyValueVisitor {
         is_video_punched_out_(is_video_punched_out),
         content_size_(content_size) {}
 
-  void VisitKeyword(cssom::KeywordValue* keyword) OVERRIDE;
+  void VisitKeyword(cssom::KeywordValue* keyword) override;
 
   const scoped_refptr<ReplacedBox>& replaced_box() { return replaced_box_; }
 
@@ -266,6 +264,7 @@ void ReplacedBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kCursive:
     case cssom::KeywordValue::kEllipsis:
     case cssom::KeywordValue::kEnd:
+    case cssom::KeywordValue::kEquirectangular:
     case cssom::KeywordValue::kFantasy:
     case cssom::KeywordValue::kForwards:
     case cssom::KeywordValue::kFixed:
@@ -298,7 +297,6 @@ void ReplacedBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kTop:
     case cssom::KeywordValue::kUppercase:
     case cssom::KeywordValue::kVisible:
-    default:
       NOTREACHED();
       break;
   }
@@ -316,8 +314,8 @@ void BoxGenerator::VisitVideoElement(dom::HTMLVideoElement* video_element) {
   //   https://www.w3.org/TR/CSS21/visuren.html#propdef-unicode-bidi
   //   https://www.w3.org/TR/css3-text/#line-break-details
   int32 text_position =
-      (*paragraph_)->AppendCodePoint(
-          Paragraph::kObjectReplacementCharacterCodePoint);
+      (*paragraph_)
+          ->AppendCodePoint(Paragraph::kObjectReplacementCharacterCodePoint);
 
   render_tree::ResourceProvider* resource_provider =
       *video_element->node_document()
@@ -328,11 +326,10 @@ void BoxGenerator::VisitVideoElement(dom::HTMLVideoElement* video_element) {
   // or not.
   base::optional<bool> is_punch_out;
   if (video_element->GetVideoFrameProvider()) {
-    ShellVideoFrameProvider::OutputMode output_mode =
+    VideoFrameProvider::OutputMode output_mode =
         video_element->GetVideoFrameProvider()->GetOutputMode();
-    if (output_mode != ShellVideoFrameProvider::kOutputModeInvalid) {
-      is_punch_out =
-          output_mode == ShellVideoFrameProvider::kOutputModePunchOut;
+    if (output_mode != VideoFrameProvider::kOutputModeInvalid) {
+      is_punch_out = output_mode == VideoFrameProvider::kOutputModePunchOut;
     }
   }
 
@@ -427,7 +424,7 @@ class ContainerBoxGenerator : public cssom::NotReachedPropertyValueVisitor {
         paragraph_scoped_(false) {}
   ~ContainerBoxGenerator();
 
-  void VisitKeyword(cssom::KeywordValue* keyword) OVERRIDE;
+  void VisitKeyword(cssom::KeywordValue* keyword) override;
 
   const scoped_refptr<ContainerBox>& container_box() { return container_box_; }
 
@@ -543,8 +540,9 @@ void ContainerBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
       //   https://www.w3.org/TR/CSS21/visuren.html#propdef-unicode-bidi
       //   https://www.w3.org/TR/css3-text/#line-break-details
       int32 text_position =
-          (*paragraph_)->AppendCodePoint(
-              Paragraph::kObjectReplacementCharacterCodePoint);
+          (*paragraph_)
+              ->AppendCodePoint(
+                  Paragraph::kObjectReplacementCharacterCodePoint);
       scoped_refptr<Paragraph> prior_paragraph = *paragraph_;
 
       // The inline block creates a new paragraph, which the old paragraph
@@ -579,6 +577,7 @@ void ContainerBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kClip:
     case cssom::KeywordValue::kEllipsis:
     case cssom::KeywordValue::kEnd:
+    case cssom::KeywordValue::kEquirectangular:
     case cssom::KeywordValue::kFantasy:
     case cssom::KeywordValue::kFixed:
     case cssom::KeywordValue::kForwards:
@@ -611,7 +610,6 @@ void ContainerBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kTop:
     case cssom::KeywordValue::kUppercase:
     case cssom::KeywordValue::kVisible:
-    default:
       NOTREACHED();
       break;
   }
@@ -690,18 +688,18 @@ class ContentProvider : public cssom::NotReachedPropertyValueVisitor {
   const std::string& content_string() const { return content_string_; }
   bool is_element_generated() const { return is_element_generated_; }
 
-  void VisitString(cssom::StringValue* string_value) OVERRIDE {
+  void VisitString(cssom::StringValue* string_value) override {
     content_string_ = string_value->value();
     is_element_generated_ = true;
   }
 
-  void VisitURL(cssom::URLValue* url_value) OVERRIDE {
+  void VisitURL(cssom::URLValue* url_value) override {
     // TODO: Implement support for 'content: url(foo)'.
     DLOG(ERROR) << "Unsupported content property value: "
                 << url_value->ToString();
   }
 
-  void VisitKeyword(cssom::KeywordValue* keyword) OVERRIDE {
+  void VisitKeyword(cssom::KeywordValue* keyword) override {
     switch (keyword->value()) {
       case cssom::KeywordValue::kNone:
       case cssom::KeywordValue::kNormal:
@@ -727,6 +725,7 @@ class ContentProvider : public cssom::NotReachedPropertyValueVisitor {
       case cssom::KeywordValue::kCursive:
       case cssom::KeywordValue::kEllipsis:
       case cssom::KeywordValue::kEnd:
+      case cssom::KeywordValue::kEquirectangular:
       case cssom::KeywordValue::kFantasy:
       case cssom::KeywordValue::kFixed:
       case cssom::KeywordValue::kForwards:
@@ -760,7 +759,6 @@ class ContentProvider : public cssom::NotReachedPropertyValueVisitor {
       case cssom::KeywordValue::kTop:
       case cssom::KeywordValue::kUppercase:
       case cssom::KeywordValue::kVisible:
-      default:
         NOTREACHED();
     }
   }
@@ -805,66 +803,81 @@ void BoxGenerator::AppendPseudoElementToLine(
   //   https://www.w3.org/TR/CSS21/generate.html#before-after-content
   dom::PseudoElement* pseudo_element =
       html_element->pseudo_element(pseudo_element_type);
-  if (pseudo_element) {
-    ContainerBoxGenerator pseudo_element_box_generator(
-        dom::kNoExplicitDirectionality,
-        pseudo_element->css_computed_style_declaration(), paragraph_, context_);
-    pseudo_element->computed_style()->display()->Accept(
-        &pseudo_element_box_generator);
-    scoped_refptr<ContainerBox> pseudo_element_box =
-        pseudo_element_box_generator.container_box();
-    // A pseudo element with "display: none" generates no boxes and has no
-    // effect on layout.
-    if (pseudo_element_box != NULL) {
-      // Generate the box(es) to be added to the associated html element, using
-      // the computed style of the pseudo element.
+  if (!pseudo_element) {
+    return;
+  }
 
-      // The generated content is a text node with the string value of the
-      // 'content' property.
-      ContentProvider content_provider;
-      pseudo_element->computed_style()->content()->Accept(&content_provider);
-      if (content_provider.is_element_generated()) {
-        scoped_refptr<dom::Text> child_node(new dom::Text(
-            html_element->node_document(), content_provider.content_string()));
+  // We assume that if our parent element's boxes are being regenerated, then we
+  // should regenerate the pseudo element boxes.  There are some cases where
+  // the parent element may be regenerating its boxes even if it already had
+  // some, such as if its boxes were inline level.  In that case, pseudo
+  // elements may also have boxes, so we make it clear that we will not be
+  // reusing pseudo element boxes even if they exist by explicitly resetting
+  // them now.
+  pseudo_element->reset_layout_boxes();
 
-        // In the case where the pseudo element has no color property of its
-        // own, but is directly inheriting a color property from its parent html
-        // element, we use the parent's animations if the pseudo element has
-        // none and the parent has only color property animations. This allows
-        // the child text boxes to animate properly and fixes bugs, while
-        // keeping the impact of the fix as small as possible to minimize the
-        // risk of introducing new bugs.
-        // TODO: Remove this logic when support for inheriting
-        // animations on inherited properties is added.
-        bool use_html_element_animations =
-            !pseudo_element->computed_style()->IsDeclared(
-                cssom::kColorProperty) &&
-            html_element->computed_style()->IsDeclared(cssom::kColorProperty) &&
-            pseudo_element->css_computed_style_declaration()
-                ->animations()
-                ->IsEmpty() &&
-            HasOnlyColorPropertyAnimations(
-                html_element->css_computed_style_declaration()->animations());
+  ContainerBoxGenerator pseudo_element_box_generator(
+      dom::kNoExplicitDirectionality,
+      pseudo_element->css_computed_style_declaration(), paragraph_, context_);
+  pseudo_element->computed_style()->display()->Accept(
+      &pseudo_element_box_generator);
+  scoped_refptr<ContainerBox> pseudo_element_box =
+      pseudo_element_box_generator.container_box();
+  // A pseudo element with "display: none" generates no boxes and has no
+  // effect on layout.
+  if (pseudo_element_box == NULL) {
+    return;
+  }
 
-        BoxGenerator child_box_generator(
-            pseudo_element->css_computed_style_declaration(),
-            use_html_element_animations ? html_element->animations()
-                                        : pseudo_element->animations(),
-            paragraph_, dom_element_depth_ + 1, context_);
-        child_node->Accept(&child_box_generator);
-        const Boxes& child_boxes = child_box_generator.boxes();
-        for (Boxes::const_iterator child_box_iterator = child_boxes.begin();
-             child_box_iterator != child_boxes.end(); ++child_box_iterator) {
-          if (!pseudo_element_box->TryAddChild(*child_box_iterator)) {
-            return;
-          }
-        }
+  // Generate the box(es) to be added to the associated html element, using
+  // the computed style of the pseudo element.
 
-        // Add the box(es) from the pseudo element to the associated element.
-        AppendChildBoxToLine(pseudo_element_box);
-      }
+  // The generated content is a text node with the string value of the
+  // 'content' property.
+  ContentProvider content_provider;
+  pseudo_element->computed_style()->content()->Accept(&content_provider);
+  if (!content_provider.is_element_generated()) {
+    return;
+  }
+
+  scoped_refptr<dom::Text> child_node(new dom::Text(
+      html_element->node_document(), content_provider.content_string()));
+
+  // In the case where the pseudo element has no color property of its
+  // own, but is directly inheriting a color property from its parent html
+  // element, we use the parent's animations if the pseudo element has
+  // none and the parent has only color property animations. This allows
+  // the child text boxes to animate properly and fixes bugs, while
+  // keeping the impact of the fix as small as possible to minimize the
+  // risk of introducing new bugs.
+  // TODO: Remove this logic when support for inheriting
+  // animations on inherited properties is added.
+  bool use_html_element_animations =
+      !pseudo_element->computed_style()->IsDeclared(cssom::kColorProperty) &&
+      html_element->computed_style()->IsDeclared(cssom::kColorProperty) &&
+      pseudo_element->css_computed_style_declaration()
+          ->animations()
+          ->IsEmpty() &&
+      HasOnlyColorPropertyAnimations(
+          html_element->css_computed_style_declaration()->animations());
+
+  BoxGenerator child_box_generator(
+      pseudo_element->css_computed_style_declaration(),
+      use_html_element_animations ? html_element->animations()
+                                  : pseudo_element->animations(),
+      paragraph_, dom_element_depth_ + 1, context_);
+  child_node->Accept(&child_box_generator);
+  for (const auto& child_box : child_box_generator.boxes()) {
+    if (!pseudo_element_box->TryAddChild(child_box)) {
+      return;
     }
   }
+
+  pseudo_element->set_layout_boxes(
+      scoped_ptr<dom::LayoutBoxes>(new LayoutBoxes({pseudo_element_box})));
+
+  // Add the box(es) from the pseudo element to the associated element.
+  AppendChildBoxToLine(pseudo_element_box);
 }
 
 namespace {

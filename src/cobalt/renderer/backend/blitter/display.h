@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ class DisplayBlitter : public Display {
   DisplayBlitter(SbBlitterDevice device,
                  system_window::SystemWindow* system_window);
 
-  scoped_refptr<RenderTarget> GetRenderTarget() OVERRIDE;
+  scoped_refptr<RenderTarget> GetRenderTarget() override;
 
  private:
   scoped_refptr<RenderTarget> render_target_;

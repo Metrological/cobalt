@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -122,7 +122,7 @@ DebugWebServer::DebugWebServer(
       get_debug_server_callback_(get_debug_server_callback),
       websocket_id_(-1),
       // Local address will be set when the web server is successfully started.
-      local_address_("DevTools.Server", "<NOT RUNNING>",
+      local_address_("Cobalt.Server.DevTools", "<NOT RUNNING>",
                      "Address to connect to for remote debugging.") {
   // Construct the content root directory to serve files from.
   PathService::Get(paths::DIR_COBALT_WEB_ROOT, &content_root_dir_);
@@ -169,6 +169,11 @@ void DebugWebServer::OnHttpRequest(int connection_id,
 
   // Construct the local disk path corresponding to the request path.
   FilePath file_path(content_root_dir_);
+  if (!IsStringASCII(url_path)) {
+    LOG(WARNING) << "Got HTTP request with non-ASCII URL path.";
+    server_->Send404(connection_id);
+    return;
+  }
   file_path = file_path.AppendASCII(url_path);
 
   // If the disk path is a directory, look for an index file.

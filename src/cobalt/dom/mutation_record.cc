@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -56,6 +56,14 @@ scoped_refptr<MutationRecord> MutationRecord::CreateChildListMutationRecord(
   record->previous_sibling_ = previous_sibling;
   record->next_sibling_ = next_sibling;
   return record;
+}
+
+void MutationRecord::TraceMembers(script::Tracer* tracer) {
+  tracer->Trace(target_);
+  tracer->Trace(added_nodes_);
+  tracer->Trace(removed_nodes_);
+  tracer->Trace(previous_sibling_);
+  tracer->Trace(next_sibling_);
 }
 
 MutationRecord::MutationRecord(const base::Token& type,

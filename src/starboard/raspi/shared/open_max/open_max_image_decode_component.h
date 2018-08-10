@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ class OpenMaxImageDecodeComponent : private OpenMaxComponent {
   int ProcessOutput();
 
   // OpenMaxComponent callbacks
-  bool OnEnableOutputPort(OMXParamPortDefinition* port_definition) SB_OVERRIDE;
+  bool OnEnableOutputPort(OMXParamPortDefinition* port_definition) override;
 
   enum State {
     kStateIdle,

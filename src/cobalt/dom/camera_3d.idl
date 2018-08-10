@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc. All Rights Reserved.
+ * Copyright 2017 The Cobalt Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ interface Camera3D {
   const unsigned long DOM_CAMERA_YAW = 0x02;
 
   void createKeyMapping(long keyCode, unsigned long cameraAxis,
-                        float degrees_per_second);
+                        float degreesPerSecond);
   void clearKeyMapping(long keyCode);
   void clearAllKeyMappings();
 

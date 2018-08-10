@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,10 +23,17 @@ namespace script {
 
 struct StackFrame {
   StackFrame() : line_number(0), column_number(0) {}
-  std::string function_name;
-  std::string source_url;
+  StackFrame(int line_number, int column_number,
+             const std::string& function_name, const std::string& source_url)
+      : line_number(line_number),
+        column_number(column_number),
+        function_name(function_name),
+        source_url(source_url) {}
+
   int line_number;
   int column_number;
+  std::string function_name;
+  std::string source_url;
 };
 
 // Convert a vector of stack frames to a string for output.

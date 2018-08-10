@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -48,11 +48,11 @@ class XMLDecoder : public loader::Decoder {
   ~XMLDecoder();
 
   // From Decoder.
-  void DecodeChunk(const char* data, size_t size) OVERRIDE;
-  void Finish() OVERRIDE;
-  bool Suspend() OVERRIDE { return false; }
+  void DecodeChunk(const char* data, size_t size) override;
+  void Finish() override;
+  bool Suspend() override { return false; }
 
-  void Resume(render_tree::ResourceProvider* /*resource_provider*/) OVERRIDE {
+  void Resume(render_tree::ResourceProvider* /*resource_provider*/) override {
     NOTIMPLEMENTED();
   };
 

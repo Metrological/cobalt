@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -57,6 +57,16 @@ void StarboardPlayer::CallbackHelper::OnPlayerStatus(SbPlayer player,
   }
 }
 
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+void StarboardPlayer::CallbackHelper::OnPlayerError(
+    SbPlayer player, SbPlayerError error, const std::string& message) {
+  base::AutoLock auto_lock(lock_);
+  if (player_) {
+    player_->OnPlayerError(player, error, message);
+  }
+}
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
+
 void StarboardPlayer::CallbackHelper::OnDeallocateSample(
     const void* sample_buffer) {
   base::AutoLock auto_lock(lock_);
@@ -71,29 +81,26 @@ void StarboardPlayer::CallbackHelper::ResetPlayer() {
 }
 
 #if SB_HAS(PLAYER_WITH_URL)
+
 StarboardPlayer::StarboardPlayer(
     const scoped_refptr<base::MessageLoopProxy>& message_loop,
     const std::string& url, SbWindow window, Host* host,
-    SbPlayerSetBoundsHelper* set_bounds_helper, bool prefer_decode_to_texture,
+    SbPlayerSetBoundsHelper* set_bounds_helper, bool allow_resume_after_suspend,
+    bool prefer_decode_to_texture,
     const OnEncryptedMediaInitDataEncounteredCB&
-        on_encrypted_media_init_data_encountered_cb)
+        on_encrypted_media_init_data_encountered_cb,
+    VideoFrameProvider* const video_frame_provider)
     : url_(url),
       message_loop_(message_loop),
       callback_helper_(
           new CallbackHelper(ALLOW_THIS_IN_INITIALIZER_LIST(this))),
       window_(window),
-      drm_system_(kSbDrmSystemInvalid),
       host_(host),
       set_bounds_helper_(set_bounds_helper),
-      frame_width_(1),
-      frame_height_(1),
-      ticket_(SB_PLAYER_INITIAL_TICKET),
-      volume_(1.0),
-      playback_rate_(0.0),
-      seek_pending_(false),
-      state_(kPlaying),
+      allow_resume_after_suspend_(allow_resume_after_suspend),
       on_encrypted_media_init_data_encountered_cb_(
-          on_encrypted_media_init_data_encountered_cb) {
+          on_encrypted_media_init_data_encountered_cb),
+      video_frame_provider_(video_frame_provider) {
   DCHECK(host_);
   DCHECK(set_bounds_helper_);
 
@@ -106,14 +113,17 @@ StarboardPlayer::StarboardPlayer(
       base::Bind(&StarboardPlayer::CallbackHelper::ClearDecoderBufferCache,
                  callback_helper_));
 }
-#else
+
+#else   // SB_HAS(PLAYER_WITH_URL)
 
 StarboardPlayer::StarboardPlayer(
     const scoped_refptr<base::MessageLoopProxy>& message_loop,
     const AudioDecoderConfig& audio_config,
     const VideoDecoderConfig& video_config, SbWindow window,
     SbDrmSystem drm_system, Host* host,
-    SbPlayerSetBoundsHelper* set_bounds_helper, bool prefer_decode_to_texture)
+    SbPlayerSetBoundsHelper* set_bounds_helper, bool allow_resume_after_suspend,
+    bool prefer_decode_to_texture,
+    VideoFrameProvider* const video_frame_provider)
     : message_loop_(message_loop),
       callback_helper_(
           new CallbackHelper(ALLOW_THIS_IN_INITIALIZER_LIST(this))),
@@ -123,17 +133,12 @@ StarboardPlayer::StarboardPlayer(
       drm_system_(drm_system),
       host_(host),
       set_bounds_helper_(set_bounds_helper),
-      frame_width_(1),
-      frame_height_(1),
-      ticket_(SB_PLAYER_INITIAL_TICKET),
-      volume_(1.0),
-      playback_rate_(0.0),
-      seek_pending_(false),
-      state_(kPlaying) {
-  DCHECK(audio_config.IsValidConfig());
-  DCHECK(video_config.IsValidConfig());
+      allow_resume_after_suspend_(allow_resume_after_suspend),
+      video_frame_provider_(video_frame_provider) {
+  DCHECK(audio_config.IsValidConfig() || video_config.IsValidConfig());
   DCHECK(host_);
   DCHECK(set_bounds_helper_);
+  DCHECK(video_frame_provider_);
 
   output_mode_ = ComputeSbPlayerOutputMode(
       MediaVideoCodecToSbMediaVideoCodec(video_config.codec()), drm_system,
@@ -154,11 +159,8 @@ StarboardPlayer::~StarboardPlayer() {
   callback_helper_->ResetPlayer();
   set_bounds_helper_->SetPlayer(NULL);
 
-  ShellMediaPlatform::Instance()->GetVideoFrameProvider()->SetOutputMode(
-      ShellVideoFrameProvider::kOutputModeInvalid);
-  ShellMediaPlatform::Instance()
-      ->GetVideoFrameProvider()
-      ->ResetGetCurrentSbDecodeTargetFunction();
+  video_frame_provider_->SetOutputMode(VideoFrameProvider::kOutputModeInvalid);
+  video_frame_provider_->ResetGetCurrentSbDecodeTargetFunction();
 
   if (SbPlayerIsValid(player_)) {
     SbPlayerDestroy(player_);
@@ -179,8 +181,13 @@ void StarboardPlayer::GetVideoResolution(int* frame_width, int* frame_height) {
   DCHECK(frame_height);
   DCHECK(SbPlayerIsValid(player_));
 
+#if SB_API_VERSION < 10
   SbPlayerInfo out_player_info;
   SbPlayerGetInfo(player_, &out_player_info);
+#else   // SB_API_VERSION < 10
+  SbPlayerInfo2 out_player_info;
+  SbPlayerGetInfo2(player_, &out_player_info);
+#endif  // SB_API_VERSION < 10
   frame_width_ = out_player_info.frame_width;
   frame_height_ = out_player_info.frame_height;
 
@@ -193,81 +200,33 @@ void StarboardPlayer::GetVideoResolution(int* frame_width, int* frame_height) {
 void StarboardPlayer::WriteBuffer(DemuxerStream::Type type,
                                   const scoped_refptr<DecoderBuffer>& buffer) {
   DCHECK(message_loop_->BelongsToCurrentThread());
+  DCHECK(buffer);
 
-  // When |state_| is kPlaying, cache all buffer appended.  When |state_| is
-  // kSuspended, there may still be left-over buffers appended from the pipeline
-  // so they also should be cached.
-  // When |state_| is resuming, all buffers come from the cache and shouldn't be
-  // cached.
-  if (state_ != kResuming) {
+  if (allow_resume_after_suspend_) {
     decoder_buffer_cache_.AddBuffer(type, buffer);
-  }
 
-  if (state_ == kSuspended) {
+    if (state_ != kSuspended) {
+      WriteNextBufferFromCache(type);
+    }
+
     return;
   }
-
-  DCHECK(SbPlayerIsValid(player_));
-
-  if (buffer->end_of_stream()) {
-    SbPlayerWriteEndOfStream(player_, DemuxerStreamTypeToSbMediaType(type));
-    return;
-  }
-
-  const auto& allocations = buffer->allocations();
-  DCHECK_GT(allocations.number_of_buffers(), 0);
-
-  DecodingBuffers::iterator iter =
-      decoding_buffers_.find(allocations.buffers()[0]);
-  if (iter == decoding_buffers_.end()) {
-    decoding_buffers_[allocations.buffers()[0]] = std::make_pair(buffer, 1);
-  } else {
-    ++iter->second.second;
-  }
-
-  SbDrmSampleInfo drm_info;
-  SbDrmSubSampleMapping subsample_mapping;
-  bool is_encrypted = buffer->decrypt_config();
-  SbMediaVideoSampleInfo video_info;
-
-  drm_info.subsample_count = 0;
-  video_info.is_key_frame = buffer->is_key_frame();
-  video_info.frame_width = frame_width_;
-  video_info.frame_height = frame_height_;
-
-  SbMediaColorMetadata sb_media_color_metadata =
-      MediaToSbMediaColorMetadata(video_config_.webm_color_metadata());
-  video_info.color_metadata = &sb_media_color_metadata;
-
-  if (is_encrypted) {
-    FillDrmSampleInfo(buffer, &drm_info, &subsample_mapping);
-  }
-
-  SbPlayerWriteSample(player_, DemuxerStreamTypeToSbMediaType(type),
-#if SB_API_VERSION >= 6
-                      allocations.buffers(), allocations.buffer_sizes(),
-#else   // SB_API_VERSION >= 6
-                      const_cast<const void**>(allocations.buffers()),
-                      const_cast<int*>(allocations.buffer_sizes()),
-#endif  // SB_API_VERSION >= 6
-                      allocations.number_of_buffers(),
-                      TimeDeltaToSbMediaTime(buffer->timestamp()),
-                      type == DemuxerStream::VIDEO ? &video_info : NULL,
-                      drm_info.subsample_count > 0 ? &drm_info : NULL);
+  WriteBufferInternal(type, buffer);
 }
 
 #endif  // !SB_HAS(PLAYER_WITH_URL)
 
 void StarboardPlayer::SetBounds(int z_index, const gfx::Rect& rect) {
+  base::AutoLock auto_lock(lock_);
+
+  set_bounds_z_index_ = z_index;
+  set_bounds_rect_ = rect;
+
   if (state_ == kSuspended) {
-    pending_set_bounds_z_index_ = z_index;
-    pending_set_bounds_rect_ = rect;
     return;
   }
 
-  DCHECK(SbPlayerIsValid(player_));
-  SbPlayerSetBounds(player_, z_index, rect.x(), rect.y(), rect.width(),
-                    rect.height());
+  UpdateBounds_Locked();
 }
 
 void StarboardPlayer::PrepareForSeek() {
@@ -302,7 +261,13 @@ void StarboardPlayer::Seek(base::TimeDelta time) {
   DCHECK(SbPlayerIsValid(player_));
 
   ++ticket_;
-  SbPlayerSeek(player_, TimeDeltaToSbMediaTime(time), ticket_);
+#if SB_API_VERSION < 10
+  SbPlayerSeek(player_, SB_TIME_TO_SB_MEDIA_TIME(time.InMicroseconds()),
+               ticket_);
+#else  // SB_API_VERSION < 10
+  SbPlayerSeek2(player_, time.InMicroseconds(), ticket_);
+#endif  // SB_API_VERSION < 10
+
   seek_pending_ = false;
   SbPlayerSetPlaybackRate(player_, playback_rate_);
 }
@@ -336,6 +301,78 @@ void StarboardPlayer::SetPlaybackRate(double playback_rate) {
   SbPlayerSetPlaybackRate(player_, playback_rate);
 }
 
+#if SB_HAS(PLAYER_WITH_URL)
+void StarboardPlayer::GetInfo(uint32* video_frames_decoded,
+                              uint32* video_frames_dropped,
+                              base::TimeDelta* media_time,
+                              base::TimeDelta* buffer_start_time,
+                              base::TimeDelta* buffer_length_time,
+                              int* frame_width, int* frame_height) {
+  DCHECK(video_frames_decoded || video_frames_dropped || media_time);
+
+  base::AutoLock auto_lock(lock_);
+  if (state_ == kSuspended) {
+    if (video_frames_decoded) {
+      *video_frames_decoded = cached_video_frames_decoded_;
+    }
+    if (video_frames_dropped) {
+      *video_frames_dropped = cached_video_frames_dropped_;
+    }
+    if (media_time) {
+      *media_time = preroll_timestamp_;
+    }
+    return;
+  }
+
+  DCHECK(SbPlayerIsValid(player_));
+
+#if SB_API_VERSION < 10
+  SbPlayerInfo info;
+  SbPlayerGetInfo(player_, &info);
+  if (media_time) {
+    *media_time = base::TimeDelta::FromMicroseconds(
+        SB_MEDIA_TIME_TO_SB_TIME(info.current_media_pts));
+  }
+  if (buffer_start_time) {
+    *buffer_start_time = base::TimeDelta::FromMicroseconds(
+        SB_MEDIA_TIME_TO_SB_TIME(info.buffer_start_pts));
+  }
+  if (buffer_length_time) {
+    *buffer_length_time = base::TimeDelta::FromMicroseconds(
+        SB_MEDIA_TIME_TO_SB_TIME(info.buffer_duration_pts));
+  }
+#else   // SB_API_VERSION < 10
+  SbPlayerInfo2 info;
+  SbPlayerGetInfo2(player_, &info);
+  if (media_time) {
+    *media_time =
+        base::TimeDelta::FromMicroseconds(info.current_media_timestamp);
+  }
+  if (buffer_start_time) {
+    *buffer_start_time =
+        base::TimeDelta::FromMicroseconds(info.buffer_start_timestamp);
+  }
+  if (buffer_length_time) {
+    *buffer_length_time =
+        base::TimeDelta::FromMicroseconds(info.buffer_duration);
+  }
+#endif  // SB_API_VERSION < 10
+
+  if (video_frames_decoded) {
+    *video_frames_decoded = info.total_video_frames;
+  }
+  if (video_frames_dropped) {
+    *video_frames_dropped = info.dropped_video_frames;
+  }
+  if (frame_width) {
+    *frame_width = info.frame_width;
+  }
+  if (frame_height) {
+    *frame_height = info.frame_height;
+  }
+}
+#endif  // SB_HAS(PLAYER_WITH_URL)
+
 void StarboardPlayer::GetInfo(uint32* video_frames_decoded,
                               uint32* video_frames_dropped,
                               base::TimeDelta* media_time) {
@@ -357,16 +394,26 @@ void StarboardPlayer::GetInfo(uint32* video_frames_decoded,
 
   DCHECK(SbPlayerIsValid(player_));
 
+#if SB_API_VERSION < 10
   SbPlayerInfo info;
   SbPlayerGetInfo(player_, &info);
+  if (media_time) {
+    *media_time = base::TimeDelta::FromMicroseconds(
+        SB_MEDIA_TIME_TO_SB_TIME(info.current_media_pts));
+  }
+#else   // SB_API_VERSION < 10
+  SbPlayerInfo2 info;
+  SbPlayerGetInfo2(player_, &info);
+  if (media_time) {
+    *media_time =
+        base::TimeDelta::FromMicroseconds(info.current_media_timestamp);
+  }
+#endif  // SB_API_VERSION < 10
   if (video_frames_decoded) {
     *video_frames_decoded = info.total_video_frames;
   }
   if (video_frames_dropped) {
     *video_frames_dropped = info.dropped_video_frames;
-  }
-  if (media_time) {
-    *media_time = SbMediaTimeToTimeDelta(info.current_media_pts);
   }
 }
 
@@ -379,13 +426,46 @@ base::TimeDelta StarboardPlayer::GetDuration() {
 
   DCHECK(SbPlayerIsValid(player_));
 
+#if SB_API_VERSION < 10
   SbPlayerInfo info;
   SbPlayerGetInfo(player_, &info);
-  DCHECK_NE(info.duration_pts, SB_PLAYER_NO_DURATION);
-  return SbMediaTimeToTimeDelta(info.duration_pts);
+  if (info.duration_pts == SB_PLAYER_NO_DURATION) {
+    // URL-based player may not have loaded asset yet, so map no duration to 0.
+    return base::TimeDelta();
+  }
+  return base::TimeDelta::FromMicroseconds(
+      SB_MEDIA_TIME_TO_SB_TIME(info.duration_pts));
+#else   // SB_API_VERSION < 10
+  SbPlayerInfo2 info;
+  SbPlayerGetInfo2(player_, &info);
+  if (info.duration == SB_PLAYER_NO_DURATION) {
+    // URL-based player may not have loaded asset yet, so map no duration to 0.
+    return base::TimeDelta();
+  }
+  return base::TimeDelta::FromMicroseconds(info.duration);
+#endif  // SB_API_VERSION < 10
+}
+
+base::TimeDelta StarboardPlayer::GetStartDate() {
+  base::AutoLock auto_lock(lock_);
+  if (state_ == kSuspended) {
+    return base::TimeDelta();
+  }
+
+  DCHECK(SbPlayerIsValid(player_));
+
+#if SB_API_VERSION < 10
+  SbPlayerInfo info = {};
+  SbPlayerGetInfo(player_, &info);
+#else   // SB_API_VERSION < 10
+  SbPlayerInfo2 info = {};
+  SbPlayerGetInfo2(player_, &info);
+#endif  // SB_API_VERSION < 10
+  return base::TimeDelta::FromMicroseconds(info.start_date);
 }
 
 void StarboardPlayer::SetDrmSystem(SbDrmSystem drm_system) {
+  drm_system_ = drm_system;
   SbPlayerSetDrmSystem(player_, drm_system);
 }
 #endif  // SB_HAS(PLAYER_WITH_URL)
@@ -406,17 +486,23 @@ void StarboardPlayer::Suspend() {
 
   state_ = kSuspended;
 
+#if SB_API_VERSION < 10
   SbPlayerInfo info;
   SbPlayerGetInfo(player_, &info);
+  preroll_timestamp_ = base::TimeDelta::FromMicroseconds(
+      SB_MEDIA_TIME_TO_SB_TIME(info.current_media_pts));
+#else   // SB_API_VERSION < 10
+  SbPlayerInfo2 info;
+  SbPlayerGetInfo2(player_, &info);
+  preroll_timestamp_ =
+      base::TimeDelta::FromMicroseconds(info.current_media_timestamp);
+#endif  // SB_API_VERSION < 10
   cached_video_frames_decoded_ = info.total_video_frames;
   cached_video_frames_dropped_ = info.dropped_video_frames;
-  preroll_timestamp_ = SbMediaTimeToTimeDelta(info.current_media_pts);
 
   set_bounds_helper_->SetPlayer(NULL);
-  ShellMediaPlatform::Instance()->GetVideoFrameProvider()->SetOutputMode(
-      ShellVideoFrameProvider::kOutputModeInvalid);
-  ShellMediaPlatform::Instance()->GetVideoFrameProvider()
-      ->ResetGetCurrentSbDecodeTargetFunction();
+  video_frame_provider_->SetOutputMode(VideoFrameProvider::kOutputModeInvalid);
+  video_frame_provider_->ResetGetCurrentSbDecodeTargetFunction();
 
   SbPlayerDestroy(player_);
 
@@ -436,28 +522,32 @@ void StarboardPlayer::Resume() {
 
 #if SB_HAS(PLAYER_WITH_URL)
   CreatePlayerWithUrl(url_);
+  if (SbDrmSystemIsValid(drm_system_)) {
+    SbPlayerSetDrmSystem(player_, drm_system_);
+  }
 #else   // SB_HAS(PLAYER_WITH_URL)
   CreatePlayer();
 #endif  // SB_HAS(PLAYER_WITH_URL)
 
   base::AutoLock auto_lock(lock_);
   state_ = kResuming;
+  UpdateBounds_Locked();
 }
 
 namespace {
-ShellVideoFrameProvider::OutputMode ToVideoFrameProviderOutputMode(
+VideoFrameProvider::OutputMode ToVideoFrameProviderOutputMode(
     SbPlayerOutputMode output_mode) {
   switch (output_mode) {
     case kSbPlayerOutputModeDecodeToTexture:
-      return ShellVideoFrameProvider::kOutputModeDecodeToTexture;
+      return VideoFrameProvider::kOutputModeDecodeToTexture;
     case kSbPlayerOutputModePunchOut:
-      return ShellVideoFrameProvider::kOutputModePunchOut;
+      return VideoFrameProvider::kOutputModePunchOut;
     case kSbPlayerOutputModeInvalid:
-      return ShellVideoFrameProvider::kOutputModeInvalid;
+      return VideoFrameProvider::kOutputModeInvalid;
   }
 
   NOTREACHED();
-  return ShellVideoFrameProvider::kOutputModeInvalid;
+  return VideoFrameProvider::kOutputModeInvalid;
 }
 
 }  // namespace
@@ -481,30 +571,31 @@ void StarboardPlayer::CreatePlayerWithUrl(const std::string& url) {
   DCHECK(!on_encrypted_media_init_data_encountered_cb_.is_null());
   DLOG(INFO) << "SbPlayerCreateWithUrl passed url " << url;
   player_ = SbPlayerCreateWithUrl(
-      url.c_str(), window_, SB_PLAYER_NO_DURATION,
+      url.c_str(), window_,
+#if SB_API_VERSION < 10
+      SB_PLAYER_NO_DURATION,
+#endif  // SB_API_VERSION < 10
       &StarboardPlayer::PlayerStatusCB,
-      &StarboardPlayer::EncryptedMediaInitDataEncounteredCB, this);
+      &StarboardPlayer::EncryptedMediaInitDataEncounteredCB,
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+      &StarboardPlayer::PlayerErrorCB,
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
+      this);
   DCHECK(SbPlayerIsValid(player_));
 
   if (output_mode_ == kSbPlayerOutputModeDecodeToTexture) {
     // If the player is setup to decode to texture, then provide Cobalt with
     // a method of querying that texture.
-    ShellMediaPlatform::Instance()
-        ->GetVideoFrameProvider()
-        ->SetGetCurrentSbDecodeTargetFunction(
-            base::Bind(&StarboardPlayer::GetCurrentSbDecodeTarget,
-                       base::Unretained(this)));
+    video_frame_provider_->SetGetCurrentSbDecodeTargetFunction(base::Bind(
+        &StarboardPlayer::GetCurrentSbDecodeTarget, base::Unretained(this)));
   }
-  ShellMediaPlatform::Instance()->GetVideoFrameProvider()->SetOutputMode(
+  video_frame_provider_->SetOutputMode(
       ToVideoFrameProviderOutputMode(output_mode_));
 
   set_bounds_helper_->SetPlayer(this);
 
-  if (pending_set_bounds_z_index_ && pending_set_bounds_rect_) {
-    SetBounds(*pending_set_bounds_z_index_, *pending_set_bounds_rect_);
-    pending_set_bounds_z_index_ = base::nullopt_t();
-    pending_set_bounds_rect_ = base::nullopt_t();
-  }
+  base::AutoLock auto_lock(lock_);
+  UpdateBounds_Locked();
 }
 
 #else
@@ -513,21 +604,33 @@ void StarboardPlayer::CreatePlayer() {
   TRACE_EVENT0("cobalt::media", "StarboardPlayer::CreatePlayer");
   DCHECK(message_loop_->BelongsToCurrentThread());
 
-  SbMediaAudioHeader audio_header =
-      MediaAudioConfigToSbMediaAudioHeader(audio_config_);
+  SbMediaAudioCodec audio_codec = kSbMediaAudioCodecNone;
+  SbMediaAudioHeader audio_header;
+  bool has_audio = audio_config_.IsValidConfig();
+  if (has_audio) {
+    audio_header = MediaAudioConfigToSbMediaAudioHeader(audio_config_);
+    audio_codec = MediaAudioCodecToSbMediaAudioCodec(audio_config_.codec());
+  }
 
-  SbMediaAudioCodec audio_codec =
-      MediaAudioCodecToSbMediaAudioCodec(audio_config_.codec());
-  SbMediaVideoCodec video_codec =
-      MediaVideoCodecToSbMediaVideoCodec(video_config_.codec());
+  SbMediaVideoCodec video_codec = kSbMediaVideoCodecNone;
+  if (video_config_.IsValidConfig()) {
+    video_codec = MediaVideoCodecToSbMediaVideoCodec(video_config_.codec());
+  }
 
   DCHECK(SbPlayerOutputModeSupported(output_mode_, video_codec, drm_system_));
 
   player_ = SbPlayerCreate(window_, video_codec, audio_codec,
-                           SB_PLAYER_NO_DURATION, drm_system_, &audio_header,
+#if SB_API_VERSION < 10
+                           SB_PLAYER_NO_DURATION,
+#endif  // SB_API_VERSION < 10
+                           drm_system_, has_audio ? &audio_header : NULL,
                            &StarboardPlayer::DeallocateSampleCB,
                            &StarboardPlayer::DecoderStatusCB,
-                           &StarboardPlayer::PlayerStatusCB, this, output_mode_,
+                           &StarboardPlayer::PlayerStatusCB,
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+                           &StarboardPlayer::PlayerErrorCB,
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
+                           this, output_mode_,
                            ShellMediaPlatform::Instance()
                                ->GetSbDecodeTargetGraphicsContextProvider());
   DCHECK(SbPlayerIsValid(player_));
@@ -535,22 +638,90 @@ void StarboardPlayer::CreatePlayer() {
   if (output_mode_ == kSbPlayerOutputModeDecodeToTexture) {
     // If the player is setup to decode to texture, then provide Cobalt with
     // a method of querying that texture.
-    ShellMediaPlatform::Instance()
-        ->GetVideoFrameProvider()
-        ->SetGetCurrentSbDecodeTargetFunction(
-            base::Bind(&StarboardPlayer::GetCurrentSbDecodeTarget,
-                       base::Unretained(this)));
+    video_frame_provider_->SetGetCurrentSbDecodeTargetFunction(base::Bind(
+        &StarboardPlayer::GetCurrentSbDecodeTarget, base::Unretained(this)));
   }
-  ShellMediaPlatform::Instance()->GetVideoFrameProvider()->SetOutputMode(
+  video_frame_provider_->SetOutputMode(
       ToVideoFrameProviderOutputMode(output_mode_));
-
   set_bounds_helper_->SetPlayer(this);
 
-  if (pending_set_bounds_z_index_ && pending_set_bounds_rect_) {
-    SetBounds(*pending_set_bounds_z_index_, *pending_set_bounds_rect_);
-    pending_set_bounds_z_index_ = base::nullopt_t();
-    pending_set_bounds_rect_ = base::nullopt_t();
+  base::AutoLock auto_lock(lock_);
+  UpdateBounds_Locked();
+}
+
+void StarboardPlayer::WriteNextBufferFromCache(DemuxerStream::Type type) {
+  DCHECK(state_ != kSuspended);
+
+  const scoped_refptr<DecoderBuffer>& buffer =
+      decoder_buffer_cache_.GetBuffer(type);
+  DCHECK(buffer);
+  decoder_buffer_cache_.AdvanceToNextBuffer(type);
+
+  DCHECK(SbPlayerIsValid(player_));
+
+  WriteBufferInternal(type, buffer);
+}
+
+void StarboardPlayer::WriteBufferInternal(
+    DemuxerStream::Type type, const scoped_refptr<DecoderBuffer>& buffer) {
+  if (buffer->end_of_stream()) {
+    SbPlayerWriteEndOfStream(player_, DemuxerStreamTypeToSbMediaType(type));
+    return;
   }
+
+  const auto& allocations = buffer->allocations();
+  DCHECK_GT(allocations.number_of_buffers(), 0);
+
+  DecodingBuffers::iterator iter =
+      decoding_buffers_.find(allocations.buffers()[0]);
+  if (iter == decoding_buffers_.end()) {
+    decoding_buffers_[allocations.buffers()[0]] = std::make_pair(buffer, 1);
+  } else {
+    ++iter->second.second;
+  }
+
+  SbDrmSampleInfo drm_info;
+  SbDrmSubSampleMapping subsample_mapping;
+  bool is_encrypted = buffer->decrypt_config();
+  SbMediaVideoSampleInfo video_info;
+
+  drm_info.subsample_count = 0;
+  video_info.is_key_frame = buffer->is_key_frame();
+  video_info.frame_width = frame_width_;
+  video_info.frame_height = frame_height_;
+
+  SbMediaColorMetadata sb_media_color_metadata =
+      MediaToSbMediaColorMetadata(video_config_.webm_color_metadata());
+  video_info.color_metadata = &sb_media_color_metadata;
+
+  if (is_encrypted) {
+    FillDrmSampleInfo(buffer, &drm_info, &subsample_mapping);
+  }
+
+  auto sample_type = DemuxerStreamTypeToSbMediaType(type);
+#if SB_API_VERSION < 10
+  SbPlayerWriteSample(
+      player_, sample_type,
+#if SB_API_VERSION >= 6
+      allocations.buffers(), allocations.buffer_sizes(),
+#else   // SB_API_VERSION >= 6
+      const_cast<const void**>(allocations.buffers()),
+      const_cast<int*>(allocations.buffer_sizes()),
+#endif  // SB_API_VERSION >= 6
+      allocations.number_of_buffers(),
+      SB_TIME_TO_SB_MEDIA_TIME(buffer->timestamp().InMicroseconds()),
+      type == DemuxerStream::VIDEO ? &video_info : NULL,
+      drm_info.subsample_count > 0 ? &drm_info : NULL);
+#else   // SB_API_VERSION < 10
+  DCHECK_GT(SbPlayerGetMaximumNumberOfSamplesPerWrite(player_, sample_type), 0);
+  DCHECK_EQ(allocations.number_of_buffers(), 1);
+  SbPlayerSampleInfo sample_info = {
+      allocations.buffers()[0], allocations.buffer_sizes()[0],
+      buffer->timestamp().InMicroseconds(),
+      type == DemuxerStream::VIDEO ? &video_info : NULL,
+      drm_info.subsample_count > 0 ? &drm_info : NULL};
+  SbPlayerWriteSample2(player_, sample_type, &sample_info, 1);
+#endif  // SB_API_VERSION < 10
 }
 
 #endif  // SB_HAS(PLAYER_WITH_URL)
@@ -561,6 +732,19 @@ SbDecodeTarget StarboardPlayer::GetCurrentSbDecodeTarget() {
 
 SbPlayerOutputMode StarboardPlayer::GetSbPlayerOutputMode() {
   return output_mode_;
+}
+
+void StarboardPlayer::UpdateBounds_Locked() {
+  lock_.AssertAcquired();
+  DCHECK(SbPlayerIsValid(player_));
+
+  if (!set_bounds_z_index_ || !set_bounds_rect_) {
+    return;
+  }
+
+  auto& rect = *set_bounds_rect_;
+  SbPlayerSetBounds(player_, *set_bounds_z_index_, rect.x(), rect.y(),
+                    rect.width(), rect.height());
 }
 
 void StarboardPlayer::ClearDecoderBufferCache() {
@@ -606,8 +790,7 @@ void StarboardPlayer::OnDecoderStatus(SbPlayer player, SbMediaType type,
   if (state_ == kResuming) {
     DemuxerStream::Type stream_type = SbMediaTypeToDemuxerStreamType(type);
     if (decoder_buffer_cache_.GetBuffer(stream_type)) {
-      WriteBuffer(stream_type, decoder_buffer_cache_.GetBuffer(stream_type));
-      decoder_buffer_cache_.AdvanceToNextBuffer(stream_type);
+      WriteNextBufferFromCache(stream_type);
       return;
     }
     if (!decoder_buffer_cache_.GetBuffer(DemuxerStream::AUDIO) &&
@@ -638,7 +821,13 @@ void StarboardPlayer::OnPlayerStatus(SbPlayer player, SbPlayerState state,
     if (ticket_ == SB_PLAYER_INITIAL_TICKET) {
       ++ticket_;
     }
-    SbPlayerSeek(player_, TimeDeltaToSbMediaTime(preroll_timestamp_), ticket_);
+#if SB_API_VERSION < 10
+    SbPlayerSeek(player_,
+                 SB_TIME_TO_SB_MEDIA_TIME(preroll_timestamp_.InMicroseconds()),
+                 ticket_);
+#else   // SB_API_VERSION < 10
+    SbPlayerSeek2(player_, preroll_timestamp_.InMicroseconds(), ticket_);
+#endif  // SB_API_VERSION < 10
     SetVolume(volume_);
     SbPlayerSetPlaybackRate(player_, playback_rate_);
     return;
@@ -646,6 +835,17 @@ void StarboardPlayer::OnPlayerStatus(SbPlayer player, SbPlayerState state,
   host_->OnPlayerStatus(state);
 }
 
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+void StarboardPlayer::OnPlayerError(SbPlayer player, SbPlayerError error,
+                                    const std::string& message) {
+  DCHECK(message_loop_->BelongsToCurrentThread());
+
+  if (player_ != player) {
+    return;
+  }
+  host_->OnPlayerError(error, message);
+}
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
 void StarboardPlayer::OnDeallocateSample(const void* sample_buffer) {
   DCHECK(message_loop_->BelongsToCurrentThread());
 
@@ -666,7 +866,7 @@ void StarboardPlayer::OnDeallocateSample(const void* sample_buffer) {
 void StarboardPlayer::DecoderStatusCB(SbPlayer player, void* context,
                                       SbMediaType type,
                                       SbPlayerDecoderState state, int ticket) {
-  StarboardPlayer* helper = reinterpret_cast<StarboardPlayer*>(context);
+  StarboardPlayer* helper = static_cast<StarboardPlayer*>(context);
   helper->message_loop_->PostTask(
       FROM_HERE,
       base::Bind(&StarboardPlayer::CallbackHelper::OnDecoderStatus,
@@ -676,16 +876,28 @@ void StarboardPlayer::DecoderStatusCB(SbPlayer player, void* context,
 // static
 void StarboardPlayer::PlayerStatusCB(SbPlayer player, void* context,
                                      SbPlayerState state, int ticket) {
-  StarboardPlayer* helper = reinterpret_cast<StarboardPlayer*>(context);
+  StarboardPlayer* helper = static_cast<StarboardPlayer*>(context);
   helper->message_loop_->PostTask(
       FROM_HERE, base::Bind(&StarboardPlayer::CallbackHelper::OnPlayerStatus,
                             helper->callback_helper_, player, state, ticket));
 }
 
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+// static
+void StarboardPlayer::PlayerErrorCB(SbPlayer player, void* context,
+                                    SbPlayerError error, const char* message) {
+  StarboardPlayer* helper = static_cast<StarboardPlayer*>(context);
+  helper->message_loop_->PostTask(
+      FROM_HERE, base::Bind(&StarboardPlayer::CallbackHelper::OnPlayerError,
+                            helper->callback_helper_, player, error,
+                            message ? std::string(message) : ""));
+}
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
+
 // static
 void StarboardPlayer::DeallocateSampleCB(SbPlayer player, void* context,
                                          const void* sample_buffer) {
-  StarboardPlayer* helper = reinterpret_cast<StarboardPlayer*>(context);
+  StarboardPlayer* helper = static_cast<StarboardPlayer*>(context);
   helper->message_loop_->PostTask(
       FROM_HERE,
       base::Bind(&StarboardPlayer::CallbackHelper::OnDeallocateSample,

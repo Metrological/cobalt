@@ -19,7 +19,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/time.h"
 #include "cobalt/media/base/ranges.h"
-#include "cobalt/media/base/shell_video_frame_provider.h"
+#include "cobalt/media/base/video_frame_provider.h"
 #include "cobalt/media/filters/chunk_demuxer.h"
 #include "cobalt/media/player/buffered_data_source.h"
 #include "googleurl/src/gurl.h"
@@ -121,6 +121,9 @@ class WebMediaPlayer {
   virtual bool IsPaused() const = 0;
   virtual bool IsSeeking() const = 0;
   virtual float GetDuration() const = 0;
+#if SB_HAS(PLAYER_WITH_URL)
+  virtual base::Time GetStartDate() const = 0;
+#endif  // SB_HAS(PLAYER_WITH_URL)
   virtual float GetCurrentTime() const = 0;
 
   // Get rate of loading the resource.
@@ -142,7 +145,7 @@ class WebMediaPlayer {
   virtual unsigned GetAudioDecodedByteCount() const = 0;
   virtual unsigned GetVideoDecodedByteCount() const = 0;
 
-  virtual scoped_refptr<ShellVideoFrameProvider> GetVideoFrameProvider() {
+  virtual scoped_refptr<VideoFrameProvider> GetVideoFrameProvider() {
     return NULL;
   }
 
@@ -197,6 +200,7 @@ class WebMediaPlayer {
 class WebMediaPlayerClient {
  public:
   virtual void NetworkStateChanged() = 0;
+  virtual void NetworkError(const std::string&) = 0;
   virtual void ReadyStateChanged() = 0;
   virtual void TimeChanged(bool eos_played) = 0;
   virtual void DurationChanged() = 0;

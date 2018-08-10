@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -60,6 +60,11 @@ class PseudoElement {
   cssom::RulesWithCascadePrecedence* matching_rules() {
     return &matching_rules_;
   }
+  void ClearMatchingRules() { matching_rules_.clear(); }
+
+  bool computed_style_invalid() const { return computed_style_invalid_; }
+  void set_computed_style_invalid() { computed_style_invalid_ = true; }
+  void clear_computed_style_invalid() { computed_style_invalid_ = false; }
 
   cssom::TransitionSet* css_transitions() { return &css_transitions_.value(); }
   cssom::AnimationSet* css_animations() { return &css_animations_.value(); }
@@ -69,7 +74,12 @@ class PseudoElement {
   }
 
   HTMLElement* parent_element() { return parent_element_; }
-  void ClearMatchingRules() { matching_rules_.clear(); }
+
+  void set_layout_boxes(scoped_ptr<LayoutBoxes> layout_boxes) {
+    layout_boxes_ = layout_boxes.Pass();
+  }
+  LayoutBoxes* layout_boxes() const { return layout_boxes_.get(); }
+  void reset_layout_boxes() { layout_boxes_.reset(); }
 
  private:
   HTMLElement* parent_element_;
@@ -85,6 +95,10 @@ class PseudoElement {
   base::optional<cssom::AnimationSet> css_animations_;
 
   cssom::RulesWithCascadePrecedence matching_rules_;
+  bool computed_style_invalid_;
+
+  // This contains information about the boxes generated from the element.
+  scoped_ptr<LayoutBoxes> layout_boxes_;
 
   // PseudoElement is a friend of Animatable so that animatable can insert and
   // remove animations into PseudoElement's set of animations.

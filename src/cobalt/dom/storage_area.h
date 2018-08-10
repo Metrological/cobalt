@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include "base/memory/scoped_ptr.h"
 #include "base/optional.h"
 #include "base/synchronization/waitable_event.h"
+#include "cobalt/loader/origin.h"
 #include "googleurl/src/gurl.h"
 
 namespace cobalt {
@@ -51,9 +52,7 @@ class StorageArea {
   bool key_exists(const std::string& key_name);
   int size_bytes() const { return size_bytes_; }
   Storage* storage_node() const { return storage_node_; }
-  const std::string& identifier() const { return identifier_; }
-
-  static std::string GetLocalStorageIdForUrl(const GURL& url);
+  const loader::Origin& origin() const { return origin_; }
 
  private:
   void Init();
@@ -61,7 +60,7 @@ class StorageArea {
 
   scoped_ptr<StorageMap> storage_map_;
 
-  std::string identifier_;
+  loader::Origin origin_;
   base::WaitableEvent read_event_;
   Storage* storage_node_;
   int size_bytes_;

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -62,14 +62,14 @@ void SourceBuffer::set_timestamp_offset(
   }
 }
 
-void SourceBuffer::Append(const scoped_refptr<const Uint8Array>& data,
+void SourceBuffer::Append(const script::Handle<script::Uint8Array>& data,
                           script::ExceptionState* exception_state) {
   if (!media_source_) {
     DOMException::Raise(DOMException::kInvalidStateErr, exception_state);
   }
 
-  if (data->length()) {
-    media_source_->Append(this, data->data(), static_cast<int>(data->length()),
+  if (!data.IsEmpty() && data->Length()) {
+    media_source_->Append(this, data->Data(), static_cast<int>(data->Length()),
                           exception_state);
   }
 }

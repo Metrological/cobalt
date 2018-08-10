@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "base/basictypes.h"
+#include "cobalt/media/base/media_export.h"
 #include "cobalt/media/base/media_log.h"
 #include "cobalt/media/formats/webm/webm_colour_parser.h"
 #include "cobalt/media/formats/webm/webm_parser.h"
@@ -20,10 +21,10 @@ class EncryptionScheme;
 class VideoDecoderConfig;
 
 // Helper class used to parse a Video element inside a TrackEntry element.
-class WebMVideoClient : public WebMParserClient {
+class MEDIA_EXPORT WebMVideoClient : public WebMParserClient {
  public:
   explicit WebMVideoClient(const scoped_refptr<MediaLog>& media_log);
-  ~WebMVideoClient() OVERRIDE;
+  ~WebMVideoClient() override;
 
   // Reset this object's state so it can process a new video track element.
   void Reset();
@@ -41,12 +42,14 @@ class WebMVideoClient : public WebMParserClient {
                         VideoDecoderConfig* config);
 
  private:
+  friend class WebMVideoClientTest;
+
   // WebMParserClient implementation.
-  WebMParserClient* OnListStart(int id) OVERRIDE;
-  bool OnListEnd(int id) OVERRIDE;
-  bool OnUInt(int id, int64_t val) OVERRIDE;
-  bool OnBinary(int id, const uint8_t* data, int size) OVERRIDE;
-  bool OnFloat(int id, double val) OVERRIDE;
+  WebMParserClient* OnListStart(int id) override;
+  bool OnListEnd(int id) override;
+  bool OnUInt(int id, int64_t val) override;
+  bool OnBinary(int id, const uint8_t* data, int size) override;
+  bool OnFloat(int id, double val) override;
 
   scoped_refptr<MediaLog> media_log_;
   int64_t pixel_width_;

@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,11 +34,12 @@ class DrawRRectColor : public DrawObject {
                  const render_tree::RoundedCorners& corners,
                  const render_tree::ColorRGBA& color);
 
-  void ExecuteUpdateVertexBuffer(GraphicsState* graphics_state,
-      ShaderProgramManager* program_manager) OVERRIDE;
+  void ExecuteUpdateVertexBuffer(
+      GraphicsState* graphics_state,
+      ShaderProgramManager* program_manager) override;
   void ExecuteRasterize(GraphicsState* graphics_state,
-      ShaderProgramManager* program_manager) OVERRIDE;
-  base::TypeId GetTypeId() const OVERRIDE;
+                        ShaderProgramManager* program_manager) override;
+  base::TypeId GetTypeId() const override;
 
  private:
   struct VertexAttributes {

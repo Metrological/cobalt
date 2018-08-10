@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,51 +39,54 @@ class LayoutStatTracker : public base::StopWatchOwner {
   explicit LayoutStatTracker(const std::string& name);
   ~LayoutStatTracker();
 
-  // Event-related
-  void OnStartEvent();
-  void OnEndEvent();
-
-  // Periodic count-related
   void OnBoxCreated();
   void OnBoxDestroyed();
   void OnUpdateSize();
   void OnRenderAndAnimate();
   void OnUpdateCrossReferences();
 
-  int total_boxes() const { return total_boxes_; }
+  // This function updates the CVals from the periodic values and then clears
+  // those values.
+  void FlushPeriodicTracking();
 
-  int boxes_created_count() const { return boxes_created_count_; }
-  int boxes_destroyed_count() const { return boxes_destroyed_count_; }
-  int update_size_count() const { return update_size_count_; }
-  int render_and_animate_count() const { return render_and_animate_count_; }
-  int update_cross_references_count() const {
-    return update_cross_references_count_;
+  // Event-related
+  void StartTrackingEvent();
+  void StopTrackingEvent();
+
+  int EventCountBox() const;
+  int event_count_box_created() const { return event_count_box_created_; }
+  int event_count_box_destroyed() const { return event_count_box_destroyed_; }
+  int event_count_update_size() const { return event_count_update_size_; }
+  int event_count_render_and_animate() const {
+    return event_count_render_and_animate_;
+  }
+  int event_count_update_cross_references() const {
+    return event_count_update_cross_references_;
   }
 
   base::TimeDelta GetStopWatchTypeDuration(StopWatchType type) const;
 
  private:
   // From base::StopWatchOwner
-  bool IsStopWatchEnabled(int id) const OVERRIDE;
-  void OnStopWatchStopped(int id, base::TimeDelta time_elapsed) OVERRIDE;
-
-  // This function updates the CVals from the periodic values and then clears
-  // those values.
-  void FlushPeriodicTracking();
+  bool IsStopWatchEnabled(int id) const override;
+  void OnStopWatchStopped(int id, base::TimeDelta time_elapsed) override;
 
   // Count cvals that are updated when the periodic tracking is flushed.
-  base::CVal<int, base::CValPublic> total_boxes_;
-
-  // Event-related
-  bool is_event_active_;
+  base::CVal<int, base::CValPublic> count_box_;
 
   // Periodic counts. The counts are cleared after the count cvals are updated
   // in |FlushPeriodicTracking|.
-  int boxes_created_count_;
-  int boxes_destroyed_count_;
-  int update_size_count_;
-  int render_and_animate_count_;
-  int update_cross_references_count_;
+  int count_box_created_;
+  int count_box_destroyed_;
+
+  // Event-related
+  bool is_tracking_event_;
+  int event_initial_count_box_;
+  int event_count_box_created_;
+  int event_count_box_destroyed_;
+  int event_count_update_size_;
+  int event_count_render_and_animate_;
+  int event_count_update_cross_references_;
 
   // Stop watch-related.
   std::vector<base::TimeDelta> stop_watch_durations_;

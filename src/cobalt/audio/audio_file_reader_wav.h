@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 #ifndef COBALT_AUDIO_AUDIO_FILE_READER_WAV_H_
 #define COBALT_AUDIO_AUDIO_FILE_READER_WAV_H_
 
+#include "base/memory/scoped_ptr.h"
 #include "cobalt/audio/audio_file_reader.h"
 #include "cobalt/audio/audio_helpers.h"
 
@@ -28,11 +29,14 @@ class AudioFileReaderWAV : public AudioFileReader {
   static scoped_ptr<AudioFileReader> TryCreate(const uint8* data, size_t size,
                                                SampleType sample_type);
 
-  scoped_array<uint8> sample_data() OVERRIDE { return sample_data_.Pass(); }
-  float sample_rate() const OVERRIDE { return sample_rate_; }
-  int32 number_of_frames() const OVERRIDE { return number_of_frames_; }
-  int32 number_of_channels() const OVERRIDE { return number_of_channels_; }
-  SampleType sample_type() const OVERRIDE { return sample_type_; }
+  float sample_rate() const override { return sample_rate_; }
+  int32 number_of_frames() const override { return number_of_frames_; }
+  int32 number_of_channels() const override { return number_of_channels_; }
+  SampleType sample_type() const override { return sample_type_; }
+
+  scoped_ptr<ShellAudioBus> ResetAndReturnAudioBus() override {
+    return audio_bus_.Pass();
+  }
 
  private:
   AudioFileReaderWAV(const uint8* data, size_t size, SampleType sample_type);
@@ -40,13 +44,13 @@ class AudioFileReaderWAV : public AudioFileReader {
   bool ParseRIFFHeader(const uint8* data, size_t size);
   void ParseChunks(const uint8* data, size_t size);
   bool ParseWAV_fmt(const uint8* data, size_t offset, size_t size,
-                    bool* is_sample_in_float);
+                    bool* is_src_sample_in_float);
   bool ParseWAV_data(const uint8* data, size_t offset, size_t size,
-                     bool is_sample_in_float);
+                     bool is_src_sample_in_float);
 
-  bool is_valid() { return sample_data_ != NULL; }
+  bool is_valid() { return audio_bus_ != NULL; }
 
-  scoped_array<uint8> sample_data_;
+  scoped_ptr<ShellAudioBus> audio_bus_;
   float sample_rate_;
   int32 number_of_frames_;
   int32 number_of_channels_;

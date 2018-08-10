@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -39,6 +39,10 @@ class ExpressionGeneratorMozjs(ExpressionGenerator):
 
   def is_number(self, arg):
     return '%s.isNumber()' % arg
+
+  def is_type(self, interface_name, arg):
+    return ('{}.isObject() ? '
+            'JS_Is{}Object(object): false').format(arg, interface_name)
 
 
 class CodeGeneratorMozjs45(CodeGeneratorCobalt):

@@ -1,6 +1,6 @@
 
 
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2018 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,14 +30,22 @@
 #include "v8c_gen_type_conversion.h"
 
 #include "cobalt/script/callback_interface_traits.h"
+#include "cobalt/script/v8c/v8c_array_buffer.h"
+#include "cobalt/script/v8c/v8c_array_buffer_view.h"
 #include "cobalt/script/v8c/callback_function_conversion.h"
 #include "cobalt/script/v8c/conversion_helpers.h"
+#include "cobalt/script/v8c/entry_scope.h"
+#include "cobalt/script/v8c/helpers.h"
 #include "cobalt/script/v8c/native_promise.h"
 #include "cobalt/script/v8c/type_traits.h"
+#include "cobalt/script/v8c/v8c_typed_arrays.h"
+#include "cobalt/script/v8c/v8c_data_view.h"
 #include "cobalt/script/v8c/v8c_callback_function.h"
 #include "cobalt/script/v8c/v8c_callback_interface_holder.h"
+#include "cobalt/script/v8c/v8c_engine.h"
 #include "cobalt/script/v8c/v8c_exception_state.h"
 #include "cobalt/script/v8c/v8c_global_environment.h"
+#include "cobalt/script/v8c/v8c_property_enumerator.h"
 #include "cobalt/script/v8c/v8c_value_handle.h"
 #include "cobalt/script/v8c/wrapper_private.h"
 #include "v8/include/v8.h"
@@ -54,25 +62,24 @@ using cobalt::script::ValueHandle;
 using cobalt::script::ValueHandleHolder;
 using cobalt::script::Wrappable;
 
+using cobalt::script::v8c::EntryScope;
+using cobalt::script::v8c::EscapableEntryScope;
 using cobalt::script::v8c::FromJSValue;
-using cobalt::script::v8c::InterfaceData;
 using cobalt::script::v8c::kConversionFlagClamped;
 using cobalt::script::v8c::kConversionFlagNullable;
+using cobalt::script::v8c::kConversionFlagObjectOnly;
 using cobalt::script::v8c::kConversionFlagRestricted;
 using cobalt::script::v8c::kConversionFlagTreatNullAsEmptyString;
 using cobalt::script::v8c::kConversionFlagTreatUndefinedAsEmptyString;
 using cobalt::script::v8c::kNoConversionFlags;
+using cobalt::script::v8c::NewInternalString;
+using cobalt::script::v8c::ToJSValue;
 using cobalt::script::v8c::TypeTraits;
 using cobalt::script::v8c::V8cExceptionState;
 using cobalt::script::v8c::V8cGlobalEnvironment;
+using cobalt::script::v8c::V8cPropertyEnumerator;
 using cobalt::script::v8c::WrapperFactory;
 using cobalt::script::v8c::WrapperPrivate;
-
-v8::Local<v8::Object> DummyFunctor(V8cGlobalEnvironment*, const scoped_refptr<Wrappable>&) {
-  NOTIMPLEMENTED();
-  return {};
-}
-
 }  // namespace
 
 namespace cobalt {
@@ -82,286 +89,729 @@ namespace testing {
 
 namespace {
 
-void DOMStringTestInterfaceConstructor(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  NOTIMPLEMENTED();
-  if (!args.IsConstructCall()) {
-    // TODO: Probably throw something here...
+const int kInterfaceUniqueId = 13;
+
+
+
+
+
+
+
+
+void DummyConstructor(const v8::FunctionCallbackInfo<v8::Value>& info) {
+  V8cExceptionState exception(info.GetIsolate());
+  exception.SetSimpleException(
+      script::kTypeError, "DOMStringTestInterface is not constructible.");
+}
+
+
+
+void propertyAttributeGetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Object> object = info.Holder();
+
+
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cDOMStringTestInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
+    return;
+  }
+  V8cExceptionState exception_state{isolate};
+  v8::Local<v8::Value> result_value;
+
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
+    return;
+  }
+  DOMStringTestInterface* impl =
+      wrapper_private->wrappable<DOMStringTestInterface>().get();
+
+
+  if (!exception_state.is_exception_set()) {
+    ToJSValue(isolate,
+              impl->property(),
+              &result_value);
+  }
+  if (exception_state.is_exception_set()) {
+    return;
+  }
+  info.GetReturnValue().Set(result_value);
+}
+
+void propertyAttributeSetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Object> object = info.Holder();
+  v8::Local<v8::Value> v8_value = info[0];
+
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cDOMStringTestInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
+    return;
+  }
+  V8cExceptionState exception_state{isolate};
+  v8::Local<v8::Value> result_value;
+
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
+    return;
+  }
+  DOMStringTestInterface* impl =
+      wrapper_private->wrappable<DOMStringTestInterface>().get();
+  TypeTraits<std::string >::ConversionType value;
+  FromJSValue(isolate, v8_value, kNoConversionFlags, &exception_state,
+              &value);
+  if (exception_state.is_exception_set()) {
     return;
   }
 
-  DCHECK(args.This()->InternalFieldCount() == 1);
-  args.This()->SetInternalField(0, v8::External::New(args.GetIsolate(), nullptr));
-  args.GetReturnValue().Set(args.This());
+  impl->set_property(value);
+  result_value = v8::Undefined(isolate);
+  return;
 }
 
 
-void v8cGet_property(
-  v8::Local<v8::String> property,
-  const v8::PropertyCallbackInfo<v8::Value>& info)
-{
-  NOTIMPLEMENTED();
+void readOnlyPropertyAttributeGetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Object> object = info.Holder();
 
-  v8::Local<v8::External> external = v8::Local<v8::External>::Cast(info.Holder()->GetInternalField(0));
-  WrapperPrivate* wrapper_private = static_cast<WrapperPrivate*>(external->Value());
-  DOMStringTestInterface* impl = static_cast<DOMStringTestInterface*>(wrapper_private->wrappable<DOMStringTestInterface>());
 
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cDOMStringTestInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
+    return;
+  }
+  V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
+
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
+    return;
+  }
+  DOMStringTestInterface* impl =
+      wrapper_private->wrappable<DOMStringTestInterface>().get();
+
+
+  if (!exception_state.is_exception_set()) {
+    ToJSValue(isolate,
+              impl->read_only_property(),
+              &result_value);
+  }
+  if (exception_state.is_exception_set()) {
+    return;
+  }
+  info.GetReturnValue().Set(result_value);
 }
 
 
-void v8cSet_property(
-  v8::Local<v8::String> property,
-  v8::Local<v8::Value> v8_value,
-  const v8::PropertyCallbackInfo<void>& info)
-{
-  v8::Local<v8::External> external = v8::Local<v8::External>::Cast(info.Holder()->GetInternalField(0));
-  WrapperPrivate* wrapper_private = static_cast<WrapperPrivate*>(external->Value());
-  DOMStringTestInterface* impl = static_cast<DOMStringTestInterface*>(wrapper_private->wrappable<DOMStringTestInterface>());
 
-  TypeTraits<std::string>::ConversionType conversion_value;
-  V8cExceptionState exception_state{};
-  FromJSValue(info.GetIsolate(), v8_value, kNoConversionFlags, &exception_state, &conversion_value);
-  impl->set_property(
-    conversion_value
-  );
-}
+void readOnlyTokenPropertyAttributeGetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Object> object = info.Holder();
 
 
-
-void v8cGet_readOnlyProperty(
-  v8::Local<v8::String> property,
-  const v8::PropertyCallbackInfo<v8::Value>& info)
-{
-  NOTIMPLEMENTED();
-
-  v8::Local<v8::External> external = v8::Local<v8::External>::Cast(info.Holder()->GetInternalField(0));
-  WrapperPrivate* wrapper_private = static_cast<WrapperPrivate*>(external->Value());
-  DOMStringTestInterface* impl = static_cast<DOMStringTestInterface*>(wrapper_private->wrappable<DOMStringTestInterface>());
-
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cDOMStringTestInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
+    return;
+  }
+  V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
+
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
+    return;
+  }
+  DOMStringTestInterface* impl =
+      wrapper_private->wrappable<DOMStringTestInterface>().get();
+
+
+  if (!exception_state.is_exception_set()) {
+    ToJSValue(isolate,
+              impl->read_only_token_property(),
+              &result_value);
+  }
+  if (exception_state.is_exception_set()) {
+    return;
+  }
+  info.GetReturnValue().Set(result_value);
 }
 
 
 
-void v8cGet_readOnlyTokenProperty(
-  v8::Local<v8::String> property,
-  const v8::PropertyCallbackInfo<v8::Value>& info)
-{
-  NOTIMPLEMENTED();
+void nullIsEmptyPropertyAttributeGetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Object> object = info.Holder();
 
-  v8::Local<v8::External> external = v8::Local<v8::External>::Cast(info.Holder()->GetInternalField(0));
-  WrapperPrivate* wrapper_private = static_cast<WrapperPrivate*>(external->Value());
-  DOMStringTestInterface* impl = static_cast<DOMStringTestInterface*>(wrapper_private->wrappable<DOMStringTestInterface>());
 
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cDOMStringTestInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
+    return;
+  }
+  V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
+
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
+    return;
+  }
+  DOMStringTestInterface* impl =
+      wrapper_private->wrappable<DOMStringTestInterface>().get();
+
+
+  if (!exception_state.is_exception_set()) {
+    ToJSValue(isolate,
+              impl->null_is_empty_property(),
+              &result_value);
+  }
+  if (exception_state.is_exception_set()) {
+    return;
+  }
+  info.GetReturnValue().Set(result_value);
 }
 
+void nullIsEmptyPropertyAttributeSetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Object> object = info.Holder();
+  v8::Local<v8::Value> v8_value = info[0];
 
-
-void v8cGet_nullIsEmptyProperty(
-  v8::Local<v8::String> property,
-  const v8::PropertyCallbackInfo<v8::Value>& info)
-{
-  NOTIMPLEMENTED();
-
-  v8::Local<v8::External> external = v8::Local<v8::External>::Cast(info.Holder()->GetInternalField(0));
-  WrapperPrivate* wrapper_private = static_cast<WrapperPrivate*>(external->Value());
-  DOMStringTestInterface* impl = static_cast<DOMStringTestInterface*>(wrapper_private->wrappable<DOMStringTestInterface>());
-
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cDOMStringTestInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
+    return;
+  }
+  V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
+
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
+    return;
+  }
+  DOMStringTestInterface* impl =
+      wrapper_private->wrappable<DOMStringTestInterface>().get();
+  TypeTraits<std::string >::ConversionType value;
+  FromJSValue(isolate, v8_value, (kConversionFlagTreatNullAsEmptyString), &exception_state,
+              &value);
+  if (exception_state.is_exception_set()) {
+    return;
+  }
+
+  impl->set_null_is_empty_property(value);
+  result_value = v8::Undefined(isolate);
+  return;
 }
 
 
-void v8cSet_nullIsEmptyProperty(
-  v8::Local<v8::String> property,
-  v8::Local<v8::Value> v8_value,
-  const v8::PropertyCallbackInfo<void>& info)
-{
-  v8::Local<v8::External> external = v8::Local<v8::External>::Cast(info.Holder()->GetInternalField(0));
-  WrapperPrivate* wrapper_private = static_cast<WrapperPrivate*>(external->Value());
-  DOMStringTestInterface* impl = static_cast<DOMStringTestInterface*>(wrapper_private->wrappable<DOMStringTestInterface>());
-
-  TypeTraits<std::string>::ConversionType conversion_value;
-  V8cExceptionState exception_state{};
-  FromJSValue(info.GetIsolate(), v8_value, (kConversionFlagTreatNullAsEmptyString), &exception_state, &conversion_value);
-  impl->set_null_is_empty_property(
-    conversion_value
-  );
-}
+void undefinedIsEmptyPropertyAttributeGetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Object> object = info.Holder();
 
 
-
-void v8cGet_undefinedIsEmptyProperty(
-  v8::Local<v8::String> property,
-  const v8::PropertyCallbackInfo<v8::Value>& info)
-{
-  NOTIMPLEMENTED();
-
-  v8::Local<v8::External> external = v8::Local<v8::External>::Cast(info.Holder()->GetInternalField(0));
-  WrapperPrivate* wrapper_private = static_cast<WrapperPrivate*>(external->Value());
-  DOMStringTestInterface* impl = static_cast<DOMStringTestInterface*>(wrapper_private->wrappable<DOMStringTestInterface>());
-
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cDOMStringTestInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
+    return;
+  }
+  V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
+
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
+    return;
+  }
+  DOMStringTestInterface* impl =
+      wrapper_private->wrappable<DOMStringTestInterface>().get();
+
+
+  if (!exception_state.is_exception_set()) {
+    ToJSValue(isolate,
+              impl->undefined_is_empty_property(),
+              &result_value);
+  }
+  if (exception_state.is_exception_set()) {
+    return;
+  }
+  info.GetReturnValue().Set(result_value);
 }
 
+void undefinedIsEmptyPropertyAttributeSetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Object> object = info.Holder();
+  v8::Local<v8::Value> v8_value = info[0];
 
-void v8cSet_undefinedIsEmptyProperty(
-  v8::Local<v8::String> property,
-  v8::Local<v8::Value> v8_value,
-  const v8::PropertyCallbackInfo<void>& info)
-{
-  v8::Local<v8::External> external = v8::Local<v8::External>::Cast(info.Holder()->GetInternalField(0));
-  WrapperPrivate* wrapper_private = static_cast<WrapperPrivate*>(external->Value());
-  DOMStringTestInterface* impl = static_cast<DOMStringTestInterface*>(wrapper_private->wrappable<DOMStringTestInterface>());
-
-  TypeTraits<std::string>::ConversionType conversion_value;
-  V8cExceptionState exception_state{};
-  FromJSValue(info.GetIsolate(), v8_value, (kConversionFlagTreatUndefinedAsEmptyString), &exception_state, &conversion_value);
-  impl->set_undefined_is_empty_property(
-    conversion_value
-  );
-}
-
-
-
-void v8cGet_nullableUndefinedIsEmptyProperty(
-  v8::Local<v8::String> property,
-  const v8::PropertyCallbackInfo<v8::Value>& info)
-{
-  NOTIMPLEMENTED();
-
-  v8::Local<v8::External> external = v8::Local<v8::External>::Cast(info.Holder()->GetInternalField(0));
-  WrapperPrivate* wrapper_private = static_cast<WrapperPrivate*>(external->Value());
-  DOMStringTestInterface* impl = static_cast<DOMStringTestInterface*>(wrapper_private->wrappable<DOMStringTestInterface>());
-
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cDOMStringTestInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
+    return;
+  }
+  V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
+
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
+    return;
+  }
+  DOMStringTestInterface* impl =
+      wrapper_private->wrappable<DOMStringTestInterface>().get();
+  TypeTraits<std::string >::ConversionType value;
+  FromJSValue(isolate, v8_value, (kConversionFlagTreatUndefinedAsEmptyString), &exception_state,
+              &value);
+  if (exception_state.is_exception_set()) {
+    return;
+  }
+
+  impl->set_undefined_is_empty_property(value);
+  result_value = v8::Undefined(isolate);
+  return;
 }
 
 
-void v8cSet_nullableUndefinedIsEmptyProperty(
-  v8::Local<v8::String> property,
-  v8::Local<v8::Value> v8_value,
-  const v8::PropertyCallbackInfo<void>& info)
-{
-  v8::Local<v8::External> external = v8::Local<v8::External>::Cast(info.Holder()->GetInternalField(0));
-  WrapperPrivate* wrapper_private = static_cast<WrapperPrivate*>(external->Value());
-  DOMStringTestInterface* impl = static_cast<DOMStringTestInterface*>(wrapper_private->wrappable<DOMStringTestInterface>());
+void nullableUndefinedIsEmptyPropertyAttributeGetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Object> object = info.Holder();
 
-  TypeTraits<base::optional<std::string >>::ConversionType conversion_value;
-  V8cExceptionState exception_state{};
-  FromJSValue(info.GetIsolate(), v8_value, (kConversionFlagNullable | kConversionFlagTreatUndefinedAsEmptyString), &exception_state, &conversion_value);
-  impl->set_nullable_undefined_is_empty_property(
-    conversion_value
-  );
+
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cDOMStringTestInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
+    return;
+  }
+  V8cExceptionState exception_state{isolate};
+  v8::Local<v8::Value> result_value;
+
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
+    return;
+  }
+  DOMStringTestInterface* impl =
+      wrapper_private->wrappable<DOMStringTestInterface>().get();
+
+
+  if (!exception_state.is_exception_set()) {
+    ToJSValue(isolate,
+              impl->nullable_undefined_is_empty_property(),
+              &result_value);
+  }
+  if (exception_state.is_exception_set()) {
+    return;
+  }
+  info.GetReturnValue().Set(result_value);
+}
+
+void nullableUndefinedIsEmptyPropertyAttributeSetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Object> object = info.Holder();
+  v8::Local<v8::Value> v8_value = info[0];
+
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cDOMStringTestInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
+    return;
+  }
+  V8cExceptionState exception_state{isolate};
+  v8::Local<v8::Value> result_value;
+
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
+    return;
+  }
+  DOMStringTestInterface* impl =
+      wrapper_private->wrappable<DOMStringTestInterface>().get();
+  TypeTraits<base::optional<std::string > >::ConversionType value;
+  FromJSValue(isolate, v8_value, (kConversionFlagNullable | kConversionFlagTreatUndefinedAsEmptyString), &exception_state,
+              &value);
+  if (exception_state.is_exception_set()) {
+    return;
+  }
+
+  impl->set_nullable_undefined_is_empty_property(value);
+  result_value = v8::Undefined(isolate);
+  return;
 }
 
 
 
-void DummyFunction(const v8::FunctionCallbackInfo<v8::Value>& info) {
-  LOG(INFO) << __func__;
-}
-
-void InitializeTemplate(
-  V8cGlobalEnvironment* env,
-  InterfaceData* interface_data) {
-  v8::Isolate* isolate = env->isolate();
-  v8::Local<v8::FunctionTemplate> function_template = v8::FunctionTemplate::New(
-    isolate);
-  function_template->SetClassName(
-    v8::String::NewFromUtf8(isolate, "DOMStringTestInterface",
-        v8::NewStringType::kInternalized).ToLocalChecked());
-  v8::Local<v8::ObjectTemplate> instance_template = function_template->InstanceTemplate();
-  instance_template->SetInternalFieldCount(1);
+void InitializeTemplate(v8::Isolate* isolate) {
+  // https://heycam.github.io/webidl/#interface-object
+  // 3.6.1. Interface object
+  //
+  // The interface object for a given interface is a built-in function object.
+  // It has properties that correspond to the constants and static operations
+  // defined on that interface, as described in sections 3.6.6 Constants and
+  // 3.6.8 Operations.
+  //
+  // If the interface is declared with a [Constructor] extended attribute,
+  // then the interface object can be called as a constructor to create an
+  // object that implements that interface. Calling that interface as a
+  // function will throw an exception.
+  //
+  // Interface objects whose interfaces are not declared with a [Constructor]
+  // extended attribute will throw when called, both as a function and as a
+  // constructor.
+  //
+  // An interface object for a non-callback interface has an associated object
+  // called the interface prototype object. This object has properties that
+  // correspond to the regular attributes and regular operations defined on
+  // the interface, and is described in more detail in 3.6.3 Interface
+  // prototype object.
+  v8::Local<v8::FunctionTemplate> function_template =
+      v8::FunctionTemplate::New(
+          isolate,
+          DummyConstructor,
+          v8::Local<v8::Value>(),
+          v8::Local<v8::Signature>(),
+          0);
+  function_template->SetClassName(NewInternalString(isolate, "DOMStringTestInterface"));
+  function_template->ReadOnlyPrototype();
 
   v8::Local<v8::ObjectTemplate> prototype_template = function_template->PrototypeTemplate();
-  prototype_template->SetInternalFieldCount(1);
+  v8::Local<v8::ObjectTemplate> instance_template = function_template->InstanceTemplate();
+  instance_template->SetInternalFieldCount(WrapperPrivate::kInternalFieldCount);
 
-  instance_template->SetAccessor(
-    v8::String::NewFromUtf8(isolate, "property",
-                              v8::NewStringType::kInternalized)
-          .ToLocalChecked(),
-    v8cGet_property
-    ,v8cSet_property
-  );
-  instance_template->SetAccessor(
-    v8::String::NewFromUtf8(isolate, "readOnlyProperty",
-                              v8::NewStringType::kInternalized)
-          .ToLocalChecked(),
-    v8cGet_readOnlyProperty
-  );
-  instance_template->SetAccessor(
-    v8::String::NewFromUtf8(isolate, "readOnlyTokenProperty",
-                              v8::NewStringType::kInternalized)
-          .ToLocalChecked(),
-    v8cGet_readOnlyTokenProperty
-  );
-  instance_template->SetAccessor(
-    v8::String::NewFromUtf8(isolate, "nullIsEmptyProperty",
-                              v8::NewStringType::kInternalized)
-          .ToLocalChecked(),
-    v8cGet_nullIsEmptyProperty
-    ,v8cSet_nullIsEmptyProperty
-  );
-  instance_template->SetAccessor(
-    v8::String::NewFromUtf8(isolate, "undefinedIsEmptyProperty",
-                              v8::NewStringType::kInternalized)
-          .ToLocalChecked(),
-    v8cGet_undefinedIsEmptyProperty
-    ,v8cSet_undefinedIsEmptyProperty
-  );
-  instance_template->SetAccessor(
-    v8::String::NewFromUtf8(isolate, "nullableUndefinedIsEmptyProperty",
-                              v8::NewStringType::kInternalized)
-          .ToLocalChecked(),
-    v8cGet_nullableUndefinedIsEmptyProperty
-    ,v8cSet_nullableUndefinedIsEmptyProperty
-  );
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  global_environment->AddInterfaceData(kInterfaceUniqueId, function_template);
 
 
-  interface_data->templ.Set(env->isolate(), function_template);
-}
+  // https://heycam.github.io/webidl/#es-constants
+  // 3.6.6. Constants
+  //
+  // For each exposed constant defined on an interface A, there must be a
+  // corresponding property. The property has the following characteristics:
 
-inline InterfaceData* GetInterfaceData(V8cGlobalEnvironment* env) {
-  const int kInterfaceUniqueId = 12;
-  // By convention, the |V8cGlobalEnvironment| that we are associated with
-  // will hold our |InterfaceData| at index |kInterfaceUniqueId|, as we asked
-  // for it to be there in the first place, and could not have conflicted with
-  // any other interface.
-  return env->GetInterfaceData(kInterfaceUniqueId);
+  // https://heycam.github.io/webidl/#es-attributes
+  // 3.6.7. Attributes
+  //
+  // For each exposed attribute of the interface there must exist a
+  // corresponding property. The characteristics of this property are as
+  // follows:
+  {
+    // The name of the property is the identifier of the attribute.
+    v8::Local<v8::String> name = NewInternalString(
+        isolate,
+        "property");
+
+    // The property has attributes { [[Get]]: G, [[Set]]: S, [[Enumerable]]:
+    // true, [[Configurable]]: configurable }, where: configurable is false if
+    // the attribute was declared with the [Unforgeable] extended attribute and
+    // true otherwise;
+    bool configurable = true;
+    v8::PropertyAttribute attributes = static_cast<v8::PropertyAttribute>(
+        configurable ? v8::None : v8::DontDelete);
+
+    // G is the attribute getter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property;
+    // and
+    //
+    // S is the attribute setter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property.
+    v8::Local<v8::FunctionTemplate> getter =
+        v8::FunctionTemplate::New(isolate, propertyAttributeGetter);
+    v8::Local<v8::FunctionTemplate> setter =
+        v8::FunctionTemplate::New(isolate, propertyAttributeSetter);
+
+    // The location of the property is determined as follows:
+    // Otherwise, the property exists solely on the interface's interface
+    // prototype object.
+    prototype_template->
+        SetAccessorProperty(
+            name,
+            getter,
+            setter,
+            attributes);
+
+  }
+  {
+    // The name of the property is the identifier of the attribute.
+    v8::Local<v8::String> name = NewInternalString(
+        isolate,
+        "readOnlyProperty");
+
+    // The property has attributes { [[Get]]: G, [[Set]]: S, [[Enumerable]]:
+    // true, [[Configurable]]: configurable }, where: configurable is false if
+    // the attribute was declared with the [Unforgeable] extended attribute and
+    // true otherwise;
+    bool configurable = true;
+    v8::PropertyAttribute attributes = static_cast<v8::PropertyAttribute>(
+        configurable ? v8::None : v8::DontDelete);
+
+    // G is the attribute getter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property;
+    // and
+    //
+    // S is the attribute setter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property.
+    v8::Local<v8::FunctionTemplate> getter =
+        v8::FunctionTemplate::New(isolate, readOnlyPropertyAttributeGetter);
+    v8::Local<v8::FunctionTemplate> setter;
+
+    // The location of the property is determined as follows:
+    // Otherwise, the property exists solely on the interface's interface
+    // prototype object.
+    prototype_template->
+        SetAccessorProperty(
+            name,
+            getter,
+            setter,
+            attributes);
+
+  }
+  {
+    // The name of the property is the identifier of the attribute.
+    v8::Local<v8::String> name = NewInternalString(
+        isolate,
+        "readOnlyTokenProperty");
+
+    // The property has attributes { [[Get]]: G, [[Set]]: S, [[Enumerable]]:
+    // true, [[Configurable]]: configurable }, where: configurable is false if
+    // the attribute was declared with the [Unforgeable] extended attribute and
+    // true otherwise;
+    bool configurable = true;
+    v8::PropertyAttribute attributes = static_cast<v8::PropertyAttribute>(
+        configurable ? v8::None : v8::DontDelete);
+
+    // G is the attribute getter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property;
+    // and
+    //
+    // S is the attribute setter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property.
+    v8::Local<v8::FunctionTemplate> getter =
+        v8::FunctionTemplate::New(isolate, readOnlyTokenPropertyAttributeGetter);
+    v8::Local<v8::FunctionTemplate> setter;
+
+    // The location of the property is determined as follows:
+    // Otherwise, the property exists solely on the interface's interface
+    // prototype object.
+    prototype_template->
+        SetAccessorProperty(
+            name,
+            getter,
+            setter,
+            attributes);
+
+  }
+  {
+    // The name of the property is the identifier of the attribute.
+    v8::Local<v8::String> name = NewInternalString(
+        isolate,
+        "nullIsEmptyProperty");
+
+    // The property has attributes { [[Get]]: G, [[Set]]: S, [[Enumerable]]:
+    // true, [[Configurable]]: configurable }, where: configurable is false if
+    // the attribute was declared with the [Unforgeable] extended attribute and
+    // true otherwise;
+    bool configurable = true;
+    v8::PropertyAttribute attributes = static_cast<v8::PropertyAttribute>(
+        configurable ? v8::None : v8::DontDelete);
+
+    // G is the attribute getter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property;
+    // and
+    //
+    // S is the attribute setter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property.
+    v8::Local<v8::FunctionTemplate> getter =
+        v8::FunctionTemplate::New(isolate, nullIsEmptyPropertyAttributeGetter);
+    v8::Local<v8::FunctionTemplate> setter =
+        v8::FunctionTemplate::New(isolate, nullIsEmptyPropertyAttributeSetter);
+
+    // The location of the property is determined as follows:
+    // Otherwise, the property exists solely on the interface's interface
+    // prototype object.
+    prototype_template->
+        SetAccessorProperty(
+            name,
+            getter,
+            setter,
+            attributes);
+
+  }
+  {
+    // The name of the property is the identifier of the attribute.
+    v8::Local<v8::String> name = NewInternalString(
+        isolate,
+        "undefinedIsEmptyProperty");
+
+    // The property has attributes { [[Get]]: G, [[Set]]: S, [[Enumerable]]:
+    // true, [[Configurable]]: configurable }, where: configurable is false if
+    // the attribute was declared with the [Unforgeable] extended attribute and
+    // true otherwise;
+    bool configurable = true;
+    v8::PropertyAttribute attributes = static_cast<v8::PropertyAttribute>(
+        configurable ? v8::None : v8::DontDelete);
+
+    // G is the attribute getter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property;
+    // and
+    //
+    // S is the attribute setter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property.
+    v8::Local<v8::FunctionTemplate> getter =
+        v8::FunctionTemplate::New(isolate, undefinedIsEmptyPropertyAttributeGetter);
+    v8::Local<v8::FunctionTemplate> setter =
+        v8::FunctionTemplate::New(isolate, undefinedIsEmptyPropertyAttributeSetter);
+
+    // The location of the property is determined as follows:
+    // Otherwise, the property exists solely on the interface's interface
+    // prototype object.
+    prototype_template->
+        SetAccessorProperty(
+            name,
+            getter,
+            setter,
+            attributes);
+
+  }
+  {
+    // The name of the property is the identifier of the attribute.
+    v8::Local<v8::String> name = NewInternalString(
+        isolate,
+        "nullableUndefinedIsEmptyProperty");
+
+    // The property has attributes { [[Get]]: G, [[Set]]: S, [[Enumerable]]:
+    // true, [[Configurable]]: configurable }, where: configurable is false if
+    // the attribute was declared with the [Unforgeable] extended attribute and
+    // true otherwise;
+    bool configurable = true;
+    v8::PropertyAttribute attributes = static_cast<v8::PropertyAttribute>(
+        configurable ? v8::None : v8::DontDelete);
+
+    // G is the attribute getter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property;
+    // and
+    //
+    // S is the attribute setter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property.
+    v8::Local<v8::FunctionTemplate> getter =
+        v8::FunctionTemplate::New(isolate, nullableUndefinedIsEmptyPropertyAttributeGetter);
+    v8::Local<v8::FunctionTemplate> setter =
+        v8::FunctionTemplate::New(isolate, nullableUndefinedIsEmptyPropertyAttributeSetter);
+
+    // The location of the property is determined as follows:
+    // Otherwise, the property exists solely on the interface's interface
+    // prototype object.
+    prototype_template->
+        SetAccessorProperty(
+            name,
+            getter,
+            setter,
+            attributes);
+
+  }
+
+  // https://heycam.github.io/webidl/#es-operations
+  // 3.6.8. Operations
+  //
+  // For each unique identifier of an exposed operation defined on the
+  // interface, there must exist a corresponding property, unless the effective
+  // overload set for that identifier and operation and with an argument count
+  // of 0 has no entries.
+  //
+  // The characteristics of this property are as follows:
+
+  // https://heycam.github.io/webidl/#es-stringifier
+  // 3.6.8.2. Stringifiers
+  prototype_template->Set(
+      v8::Symbol::GetToStringTag(isolate),
+      NewInternalString(isolate, "DOMStringTestInterface"),
+      static_cast<v8::PropertyAttribute>(v8::ReadOnly | v8::DontEnum));
+
+
+
+
+
 }
 
 }  // namespace
 
-v8::Local<v8::Object> V8cDOMStringTestInterface::CreateWrapper(V8cGlobalEnvironment* env, const scoped_refptr<Wrappable>& wrappable) {
-  v8::Isolate* isolate = env->isolate();
-  v8::Isolate::Scope isolate_scope(isolate);
-  v8::EscapableHandleScope handle_scope(isolate);
-  v8::Local<v8::Context> context = env->context();
-  v8::Context::Scope scope(context);
 
-  InterfaceData* interface_data = GetInterfaceData(env);
-  if (interface_data->templ.IsEmpty()) {
-    InitializeTemplate(env, interface_data);
+v8::Local<v8::Object> V8cDOMStringTestInterface::CreateWrapper(
+    v8::Isolate* isolate, const scoped_refptr<Wrappable>& wrappable) {
+  EscapableEntryScope entry_scope(isolate);
+  v8::Local<v8::Context> context = isolate->GetCurrentContext();
+
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  if (!global_environment->HasInterfaceData(kInterfaceUniqueId)) {
+    InitializeTemplate(isolate);
   }
-  DCHECK(!interface_data->templ.IsEmpty());
+  v8::Local<v8::FunctionTemplate> function_template = global_environment->GetInterfaceData(kInterfaceUniqueId);
 
-  v8::Local<v8::FunctionTemplate> function_template = interface_data->templ.Get(isolate);
-  DCHECK(function_template->InstanceTemplate()->InternalFieldCount() == 1);
+  DCHECK(function_template->InstanceTemplate()->InternalFieldCount() == WrapperPrivate::kInternalFieldCount);
   v8::Local<v8::Object> object = function_template->InstanceTemplate()->NewInstance(context).ToLocalChecked();
-  DCHECK(object->InternalFieldCount() == 1);
+  DCHECK(object->InternalFieldCount() == WrapperPrivate::kInternalFieldCount);
 
-  // |WrapperPrivate|'s lifetime will be managed by V8.
+  // This |WrapperPrivate|'s lifetime will be managed by V8.
   new WrapperPrivate(isolate, wrappable, object);
-  return handle_scope.Escape(object);
+  return entry_scope.Escape(object);
 }
 
-v8::Local<v8::FunctionTemplate> V8cDOMStringTestInterface::CreateTemplate(V8cGlobalEnvironment* env) {
-  InterfaceData* interface_data = GetInterfaceData(env);
-  if (interface_data->templ.IsEmpty()) {
-    InitializeTemplate(env, interface_data);
-  }
 
-  return interface_data->templ.Get(env->isolate());
+v8::Local<v8::FunctionTemplate> V8cDOMStringTestInterface::GetTemplate(v8::Isolate* isolate) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  if (!global_environment->HasInterfaceData(kInterfaceUniqueId)) {
+    InitializeTemplate(isolate);
+  }
+  return global_environment->GetInterfaceData(kInterfaceUniqueId);
 }
 
 

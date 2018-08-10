@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 
 {
   'variables': {
-    'has_platform_tests%' : '<!(python -c "import os.path; print os.path.isfile(\'<(DEPTH)/<(starboard_path)/starboard_platform_tests.gyp\') & 1 | 0")',
+    'has_platform_tests%' : '<!(python ../build/file_exists.py <(DEPTH)/<(starboard_path)/starboard_platform_tests.gyp)',
   },
   'targets': [
     {
@@ -27,6 +27,7 @@
       'type': 'none',
       'dependencies': [
         '<(DEPTH)/starboard/client_porting/eztime/eztime.gyp:*',
+        '<(DEPTH)/starboard/client_porting/eztime/eztime_test.gyp:*',
         '<(DEPTH)/starboard/client_porting/icu_init/icu_init.gyp:*',
         '<(DEPTH)/starboard/client_porting/poem/poem.gyp:*',
         '<(DEPTH)/starboard/examples/examples.gyp:*',
@@ -35,9 +36,14 @@
         '<(DEPTH)/starboard/starboard.gyp:*',
       ],
       'conditions': [
-        ['has_platform_tests==1', {
+        ['has_platform_tests=="True"', {
           'dependencies': [
-            '<(DEPTH)/<(starboard_path)/starboard_platform_tests.gyp:starboard_platform_tests',
+            '<(DEPTH)/<(starboard_path)/starboard_platform_tests.gyp:*',
+          ],
+        }],
+        ['sb_filter_based_player==1', {
+          'dependencies': [
+            '<(DEPTH)/starboard/shared/starboard/player/filter/testing/player_filter_tests.gyp:*',
           ],
         }],
       ],

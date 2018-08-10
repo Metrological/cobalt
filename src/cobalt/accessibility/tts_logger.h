@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,12 +25,8 @@ namespace accessibility {
 // TTSEngine implementation that just logs the text.
 class TTSLogger : public TTSEngine {
  public:
-  void SpeakNow(const std::string& text) OVERRIDE {
-    LogText(text);
-  }
-  void Speak(const std::string& text) OVERRIDE {
-    LogText(text);
-  }
+  void SpeakNow(const std::string& text) override { LogText(text); }
+  void Speak(const std::string& text) override { LogText(text); }
 
  private:
   void LogText(const std::string& text) {

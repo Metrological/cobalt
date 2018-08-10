@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -57,11 +57,11 @@ class ImageDecoder : public Decoder {
   // From Decoder.
   LoadResponseType OnResponseStarted(
       Fetcher* fetcher,
-      const scoped_refptr<net::HttpResponseHeaders>& headers) OVERRIDE;
-  void DecodeChunk(const char* data, size_t size) OVERRIDE;
-  void Finish() OVERRIDE;
-  bool Suspend() OVERRIDE;
-  void Resume(render_tree::ResourceProvider* resource_provider) OVERRIDE;
+      const scoped_refptr<net::HttpResponseHeaders>& headers) override;
+  void DecodeChunk(const char* data, size_t size) override;
+  void Finish() override;
+  bool Suspend() override;
+  void Resume(render_tree::ResourceProvider* resource_provider) override;
 
   // Called when this ImageDecoder's deletion has been posted to a message loop.
   // This prevents any additional decoding from occuring prior to the decoder

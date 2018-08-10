@@ -1,4 +1,4 @@
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2017 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,20 +26,22 @@ class ExpressionGeneratorV8c(ExpressionGenerator):
   """Implementation of ExpressionGenerator for V8."""
 
   def is_undefined(self, arg):
-    # TODO: Implement.
-    return ''
+    return '{}->IsUndefined()'.format(arg)
 
   def is_undefined_or_null(self, arg):
-    # TODO: Implement.
-    return ''
+    return '{}->IsNullOrUndefined()'.format(arg)
 
   def inherits_interface(self, interface_name, arg):
-    # TODO: Implement.
-    return ''
+    return ('{}->IsObject() ? '
+            'wrapper_factory->DoesObjectImplementInterface(object, '
+            'base::GetTypeId<{}>()) : false').format(arg, interface_name)
 
   def is_number(self, arg):
-    # TODO: Implement.
-    return ''
+    return '{}->IsNumber()'.format(arg)
+
+  def is_type(self, interface_name, arg):
+    return ('{}->IsObject() ? '
+            'object->Is{}(): false').format(arg, interface_name)
 
 
 class CodeGeneratorV8c(CodeGeneratorCobalt):
@@ -51,6 +53,19 @@ class CodeGeneratorV8c(CodeGeneratorCobalt):
     module_path, _ = os.path.split(os.path.realpath(__file__))
     templates_dir = os.path.normpath(os.path.join(module_path, 'templates'))
     super(CodeGeneratorV8c, self).__init__(templates_dir, *args, **kwargs)
+
+  def build_interface_context(self, interface, interface_info, definitions):
+    # Due to a V8 internals quirks, named constructor attributes MUST come
+    # first, as V8 will use the key that we use to set them on something else
+    # as the "name" property on the function template value, overriding the
+    # originally selected name from |FunctionTemplate::SetClassName|.  Efforts
+    # to document/modify this behavior in V8 are underway.
+    context = super(CodeGeneratorV8c, self).build_interface_context(
+        interface, interface_info, definitions)
+    context['all_attributes_v8_order_quirk'] = sorted(
+        [a for a in context['attributes'] + context['static_attributes']],
+        key=lambda a: not a.get('is_named_constructor_attribute', False))
+    return context
 
   @property
   def generated_file_prefix(self):

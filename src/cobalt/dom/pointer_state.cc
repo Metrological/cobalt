@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +14,9 @@
 
 #include "cobalt/dom/pointer_state.h"
 
+#include <algorithm>
+
+#include "base/debug/trace_event.h"
 #include "cobalt/dom/mouse_event.h"
 #include "cobalt/dom/pointer_event.h"
 #include "cobalt/dom/wheel_event.h"
@@ -23,10 +26,11 @@ namespace cobalt {
 namespace dom {
 
 void PointerState::QueuePointerEvent(const scoped_refptr<Event>& event) {
+  TRACE_EVENT1("cobalt::dom", "PointerState::QueuePointerEvent()", "event",
+               event->type().c_str());
+
   // Only accept this for event types that are MouseEvents or known derivatives.
-  SB_DCHECK(event->GetWrappableType() == base::GetTypeId<PointerEvent>() ||
-            event->GetWrappableType() == base::GetTypeId<MouseEvent>() ||
-            event->GetWrappableType() == base::GetTypeId<WheelEvent>());
+  SB_DCHECK(CanQueueEvent(event));
 
   // Queue the event to be handled on the next layout.
   pointer_events_.push(event);
@@ -244,6 +248,24 @@ void PointerState::SetActive(int32_t pointer_id) {
 
 void PointerState::ClearActive(int32_t pointer_id) {
   active_pointers_.erase(pointer_id);
+}
+
+void PointerState::ClearForShutdown() {
+  {
+    decltype(pointer_events_) empty_queue;
+    std::swap(pointer_events_, empty_queue);
+  }
+  target_override_.clear();
+  pending_target_override_.clear();
+  active_pointers_.clear();
+  pointers_with_active_buttons_.clear();
+}
+
+// static
+bool PointerState::CanQueueEvent(const scoped_refptr<Event>& event) {
+  return event->GetWrappableType() == base::GetTypeId<PointerEvent>() ||
+         event->GetWrappableType() == base::GetTypeId<MouseEvent>() ||
+         event->GetWrappableType() == base::GetTypeId<WheelEvent>();
 }
 
 }  // namespace dom

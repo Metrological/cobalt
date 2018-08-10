@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,14 +32,14 @@ using ::testing::Return;
 class FakeCSSGroupingRule : public CSSGroupingRule {
  public:
   // From CSSRule.
-  Type type() const OVERRIDE { return kMediaRule; }
+  Type type() const override { return kMediaRule; }
   std::string css_text(
-      script::ExceptionState* /*exception_state*/) const OVERRIDE {
+      script::ExceptionState* /*exception_state*/) const override {
     return "";
   }
   void set_css_text(const std::string& /* css_text */,
-                    script::ExceptionState* /*exception_state*/) OVERRIDE {}
-  void AttachToCSSStyleSheet(CSSStyleSheet* style_sheet) OVERRIDE {
+                    script::ExceptionState* /*exception_state*/) override {}
+  void AttachToCSSStyleSheet(CSSStyleSheet* style_sheet) override {
     set_parent_style_sheet(style_sheet);
     css_rules()->AttachToCSSStyleSheet(style_sheet);
   }
@@ -54,7 +54,7 @@ class CSSGroupingRuleTest : public ::testing::Test {
     css_style_sheet_->AttachToStyleSheetList(style_sheet_list_);
     css_grouping_rule_->AttachToCSSStyleSheet(css_style_sheet_);
   }
-  ~CSSGroupingRuleTest() OVERRIDE {}
+  ~CSSGroupingRuleTest() override {}
 
   const scoped_refptr<StyleSheetList> style_sheet_list_;
   const scoped_refptr<CSSStyleSheet> css_style_sheet_;

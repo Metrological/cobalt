@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@
 #include "base/observer_list.h"
 #include "base/optional.h"
 #include "base/string_piece.h"
+#include "base/synchronization/waitable_event.h"
 #include "cobalt/base/clock.h"
 #include "cobalt/cssom/css_computed_style_declaration.h"
 #include "cobalt/cssom/css_keyframes_rule.h"
@@ -150,8 +151,8 @@ class Document : public Node,
 
   // Web API: Node
   //
-  NodeType node_type() const OVERRIDE { return Node::kDocumentNode; }
-  base::Token node_name() const OVERRIDE;
+  NodeType node_type() const override { return Node::kDocumentNode; }
+  base::Token node_name() const override;
 
   // Web API: Document
   //
@@ -194,6 +195,9 @@ class Document : public Node,
 
   scoped_refptr<HTMLHeadElement> head() const;
 
+  // https://www.w3.org/TR/html5/editing.html#dom-document-hasfocus
+  bool HasFocus() const;
+
   scoped_refptr<Element> active_element() const;
   scoped_refptr<HTMLElement> indicated_element() const;
 
@@ -230,11 +234,11 @@ class Document : public Node,
 
   // Custom, not in any spec: Node.
   //
-  Document* AsDocument() OVERRIDE { return this; }
+  Document* AsDocument() override { return this; }
 
-  void Accept(NodeVisitor* visitor) OVERRIDE;
-  void Accept(ConstNodeVisitor* visitor) const OVERRIDE;
-  scoped_refptr<Node> Duplicate() const OVERRIDE;
+  void Accept(NodeVisitor* visitor) override;
+  void Accept(ConstNodeVisitor* visitor) const override;
+  scoped_refptr<Node> Duplicate() const override;
 
   // Custom, not in any spec.
   //
@@ -257,6 +261,14 @@ class Document : public Node,
   }
 
   cssom::SelectorTree* selector_tree() { return selector_tree_.get(); }
+
+  cssom::RulesWithCascadePrecedence* scratchpad_html_element_matching_rules() {
+    return &scratchpad_html_element_matching_rules_;
+  }
+  cssom::RulesWithCascadePrecedence* scratchpad_pseudo_element_matching_rules(
+      PseudoElementType element_type) {
+    return &(scratchpad_pseudo_element_matching_rules_[element_type]);
+  }
 
   // Returns a mapping from keyframes name to CSSKeyframesRule.  This can be
   // used to quickly lookup the @keyframes rule given a string identifier.
@@ -302,7 +314,7 @@ class Document : public Node,
   void OnStyleSheetsModified();
 
   // From cssom::MutationObserver.
-  void OnCSSMutation() OVERRIDE;
+  void OnCSSMutation() override;
 
   // Called when the DOM is mutated in some way.
   void OnDOMMutation();
@@ -340,10 +352,18 @@ class Document : public Node,
 #endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
 
   // Triggers a synchronous layout.
+  scoped_refptr<render_tree::Node> DoSynchronousLayoutAndGetRenderTree();
   void DoSynchronousLayout();
+
   void set_synchronous_layout_callback(
       const base::Closure& synchronous_layout_callback) {
     synchronous_layout_callback_ = synchronous_layout_callback;
+  }
+  void set_synchronous_layout_and_produce_render_tree_callback(
+      const base::Callback<scoped_refptr<render_tree::Node>()>&
+          synchronous_layout_and_produce_render_tree_callback) {
+    synchronous_layout_and_produce_render_tree_callback_ =
+        synchronous_layout_and_produce_render_tree_callback;
   }
 
   math::Size viewport_size() { return viewport_size_.value_or(math::Size()); }
@@ -387,11 +407,9 @@ class Document : public Node,
   }
 
   // page_visibility::PageVisibilityState::Observer implementation.
-  void OnWindowFocusChanged(bool has_focus) OVERRIDE;
+  void OnWindowFocusChanged(bool has_focus) override;
   void OnVisibilityStateChanged(
-      page_visibility::VisibilityState visibility_state) OVERRIDE;
-
-  void TraceMembers(script::Tracer* tracer) OVERRIDE;
+      page_visibility::VisibilityState visibility_state) override;
 
   PointerState* pointer_state() { return &pointer_state_; }
 
@@ -405,9 +423,10 @@ class Document : public Node,
   void OnRootElementUnableToProvideOffsetDimensions();
 
   DEFINE_WRAPPABLE_TYPE(Document);
+  void TraceMembers(script::Tracer* tracer) override;
 
  protected:
-  ~Document() OVERRIDE;
+  ~Document() override;
 
   page_visibility::PageVisibilityState* page_visibility_state() {
     return html_element_context_->page_visibility_state();
@@ -437,6 +456,13 @@ class Document : public Node,
 
   // Reference to HTML element context.
   HTMLElementContext* const html_element_context_;
+
+  // Explicitly store a weak pointer to the page visibility state object.
+  // It is possible that we destroy the page visibility state object before
+  // Document, during shutdown, so this allows us to handle that situation
+  // more gracefully than crashing.
+  base::WeakPtr<page_visibility::PageVisibilityState> page_visibility_state_;
+
   // Reference to the associated window object.
   Window* window_;
   // Associated DOM implementation object.
@@ -487,10 +513,18 @@ class Document : public Node,
   // recreate the selector tree than to attempt to manage updating all of its
   // internal state.
   bool should_recreate_selector_tree_;
+  // Matching rules that are available for temporary operations, so that the
+  // vectors don't have to be repeatedly re-allocated during rule matching.
+  cssom::RulesWithCascadePrecedence scratchpad_html_element_matching_rules_;
+  cssom::RulesWithCascadePrecedence
+      scratchpad_pseudo_element_matching_rules_[kMaxPseudoElementType];
   // The document's latest sample from the global clock, used for updating
   // animations.
   const scoped_refptr<base::Clock> navigation_start_clock_;
   scoped_refptr<DocumentTimeline> default_timeline_;
+
+  base::Callback<scoped_refptr<render_tree::Node>()>
+      synchronous_layout_and_produce_render_tree_callback_;
 
   base::Closure synchronous_layout_callback_;
 

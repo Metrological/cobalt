@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -90,8 +90,9 @@ class Pipeline {
   // |render_tree_submission| will be rasterized into a new offscreen surface.
   // The RGBA pixel data will be extracted from this surface, and |complete|
   // will be called with the pixel data and the dimensions of the image.
-  void RasterizeToRGBAPixels(const Submission& render_tree_submission,
-                             const RasterizationCompleteCallback& complete);
+  void RasterizeToRGBAPixels(
+      const scoped_refptr<render_tree::Node>& render_tree_root,
+      const RasterizationCompleteCallback& complete);
 
   // Inserts a fence that ensures the rasterizer rasterizes up until the
   // submission time proceeding queuing additional submissions.  This is useful
@@ -244,13 +245,9 @@ class Pipeline {
   bool last_did_rasterize_;
 
   // Timer tracking the amount of time spent in
-  // |RasterizeSubmissionToRenderTarget| when the render tree has changed.
-  // The tracking is flushed when the max count is hit.
-  base::CValCollectionTimerStats<base::CValPublic> rasterize_periodic_timer_;
-  // Timer tracking the amount of time spent in
   // |RasterizeSubmissionToRenderTarget| while animations are active. The
   // tracking is flushed when the animations expire.
-  base::CValCollectionTimerStats<base::CValDebug> rasterize_animations_timer_;
+  base::CValCollectionTimerStats<base::CValPublic> rasterize_animations_timer_;
 
   // Accumulates render tree rasterization interval times but does not flush
   // them until the maximum number of samples is gathered.
@@ -264,16 +261,16 @@ class Pipeline {
       rasterize_animations_interval_timer_;
 
   // The total number of new render trees that have been rasterized.
-  base::CVal<int> new_render_tree_rasterize_count_;
+  base::CVal<int, base::CValPublic> new_render_tree_rasterize_count_;
   // The last time that a newly encountered render tree was first rasterized.
-  base::CVal<int64> new_render_tree_rasterize_time_;
+  base::CVal<int64, base::CValPublic> new_render_tree_rasterize_time_;
 
   // Whether or not animations are currently playing.
-  base::CVal<bool> has_active_animations_c_val_;
+  base::CVal<bool, base::CValPublic> has_active_animations_c_val_;
   // The most recent time animations started playing.
-  base::CVal<int64> animations_start_time_;
+  base::CVal<int64, base::CValPublic> animations_start_time_;
   // The most recent time animations ended playing.
-  base::CVal<int64> animations_end_time_;
+  base::CVal<int64, base::CValPublic> animations_end_time_;
 
 #if defined(ENABLE_DEBUG_CONSOLE)
   // Dumps the current render tree to the console.

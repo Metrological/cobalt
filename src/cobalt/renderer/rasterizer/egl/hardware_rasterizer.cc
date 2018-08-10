@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -50,7 +50,8 @@ class HardwareRasterizer::Impl {
                 int skia_cache_size_in_bytes,
                 int scratch_surface_cache_size_in_bytes,
                 int offscreen_target_cache_size_in_bytes,
-                bool purge_skia_font_caches_on_destruction);
+                bool purge_skia_font_caches_on_destruction,
+                bool force_deterministic_rendering);
   ~Impl();
 
   void Submit(const scoped_refptr<render_tree::Node>& render_tree,
@@ -78,9 +79,10 @@ class HardwareRasterizer::Impl {
 
   void RasterizeTree(const scoped_refptr<render_tree::Node>& render_tree,
                      backend::RenderTargetEGL* render_target,
-                     const math::Rect& content_rect);
+                     const math::Rect& content_rect, bool clear_first);
 
-  SkSurface* CreateFallbackSurface(
+  sk_sp<SkSurface> CreateFallbackSurface(
+      bool force_deterministic_rendering,
       const backend::RenderTarget* render_target);
 
   scoped_ptr<skia::HardwareRasterizer> fallback_rasterizer_;
@@ -97,12 +99,13 @@ HardwareRasterizer::Impl::Impl(backend::GraphicsContext* graphics_context,
                                int skia_cache_size_in_bytes,
                                int scratch_surface_cache_size_in_bytes,
                                int offscreen_target_cache_size_in_bytes,
-                               bool purge_skia_font_caches_on_destruction)
+                               bool purge_skia_font_caches_on_destruction,
+                               bool force_deterministic_rendering)
     : fallback_rasterizer_(new skia::HardwareRasterizer(
           graphics_context, skia_atlas_width, skia_atlas_height,
           skia_cache_size_in_bytes, scratch_surface_cache_size_in_bytes,
-          0 /* fallback rasterizer should not use a surface cache */,
-          purge_skia_font_caches_on_destruction)),
+          purge_skia_font_caches_on_destruction,
+          force_deterministic_rendering)),
       graphics_context_(
           base::polymorphic_downcast<backend::GraphicsContextEGL*>(
               graphics_context)) {
@@ -116,8 +119,11 @@ HardwareRasterizer::Impl::Impl(backend::GraphicsContext* graphics_context,
   offscreen_target_manager_.reset(new OffscreenTargetManager(
       graphics_context_,
       base::Bind(&HardwareRasterizer::Impl::CreateFallbackSurface,
-                 base::Unretained(this)),
+                 base::Unretained(this), force_deterministic_rendering),
       offscreen_target_cache_size_in_bytes));
+  if (force_deterministic_rendering) {
+    offscreen_target_manager_->SetCacheErrorThreshold(0.0f);
+  }
 }
 
 HardwareRasterizer::Impl::~Impl() {
@@ -149,18 +155,18 @@ void HardwareRasterizer::Impl::Submit(
   backend::GraphicsContextEGL::ScopedMakeCurrent scoped_make_current(
       graphics_context_, render_target_egl);
 
-  fallback_rasterizer_->AdvanceFrame();
-
   // Update only the dirty pixels if the render target contents are preserved
   // between frames.
+  bool clear_first = options.flags & Rasterizer::kSubmitFlags_Clear;
   math::Rect content_rect(render_target->GetSize());
-  if (options.dirty && render_target_egl->ContentWasPreservedAfterSwap()) {
+  if (!clear_first && options.dirty &&
+      render_target_egl->ContentWasPreservedAfterSwap()) {
     content_rect = *options.dirty;
   }
 
   offscreen_target_manager_->Update(render_target->GetSize());
 
-  RasterizeTree(render_tree, render_target_egl, content_rect);
+  RasterizeTree(render_tree, render_target_egl, content_rect, clear_first);
 
   graphics_context_->SwapBuffers(render_target_egl);
 
@@ -176,9 +182,14 @@ void HardwareRasterizer::Impl::SubmitToFallbackRasterizer(
   DCHECK(thread_checker_.CalledOnValidThread());
   TRACE_EVENT0("cobalt::renderer", "SubmitToFallbackRasterizer");
 
+  if (!scissor.IsExpressibleAsRect()) {
+    DLOG(WARNING) << "Invalid scissor of " << scissor.ToString()
+                  << " passed into SubmitToFallbackRasterizer.";
+    return;
+  }
+
   // Use skia to rasterize to the allocated offscreen target.
   fallback_render_target->save();
-
   fallback_render_target->clipRect(SkRect::MakeXYWH(
       scissor.x(), scissor.y(), scissor.width(), scissor.height()));
   fallback_render_target->concat(skia::CobaltMatrixToSkia(transform));
@@ -221,8 +232,8 @@ void HardwareRasterizer::Impl::ResetFallbackContextDuringFrame() {
 
 void HardwareRasterizer::Impl::RasterizeTree(
     const scoped_refptr<render_tree::Node>& render_tree,
-    backend::RenderTargetEGL* render_target,
-    const math::Rect& content_rect) {
+    backend::RenderTargetEGL* render_target, const math::Rect& content_rect,
+    bool clear_first) {
   DrawObjectManager draw_object_manager(
       base::Bind(&HardwareRasterizer::Impl::ResetFallbackContextDuringFrame,
                  base::Unretained(this)),
@@ -261,7 +272,9 @@ void HardwareRasterizer::Impl::RasterizeTree(
                             render_target->GetSize().height());
   graphics_state_->Scissor(content_rect.x(), content_rect.y(),
                            content_rect.width(), content_rect.height());
-  graphics_state_->Clear();
+  if (clear_first) {
+    graphics_state_->Clear();
+  }
 
   {
     TRACE_EVENT0("cobalt::renderer", "OnscreenRasterize");
@@ -273,7 +286,8 @@ void HardwareRasterizer::Impl::RasterizeTree(
   graphics_state_->EndFrame();
 }
 
-SkSurface* HardwareRasterizer::Impl::CreateFallbackSurface(
+sk_sp<SkSurface> HardwareRasterizer::Impl::CreateFallbackSurface(
+    bool force_deterministic_rendering,
     const backend::RenderTarget* render_target) {
   // Wrap the given render target in a new skia surface.
   GrBackendRenderTargetDesc skia_desc;
@@ -285,13 +299,18 @@ SkSurface* HardwareRasterizer::Impl::CreateFallbackSurface(
   skia_desc.fStencilBits = 0;
   skia_desc.fRenderTargetHandle = render_target->GetPlatformHandle();
 
-  SkAutoTUnref<GrRenderTarget> skia_render_target(
-      GetFallbackContext()->wrapBackendRenderTarget(skia_desc));
-  SkSurfaceProps skia_surface_props(
-      SkSurfaceProps::kUseDistanceFieldFonts_Flag,
-      SkSurfaceProps::kLegacyFontHost_InitType);
-  return SkSurface::NewRenderTargetDirect(
-      skia_render_target, &skia_surface_props);
+  uint32_t flags = 0;
+  if (!force_deterministic_rendering) {
+    // Distance field fonts are known to result in non-deterministic graphical,
+    // since the output depends on the size of the glyph that enters the atlas
+    // first (which would get re-used for similarly but unequal sized
+    // subsequent glyphs).
+    flags = SkSurfaceProps::kUseDistanceFieldFonts_Flag;
+  }
+  SkSurfaceProps skia_surface_props(flags,
+                                    SkSurfaceProps::kLegacyFontHost_InitType);
+  return SkSurface::MakeFromBackendRenderTarget(GetFallbackContext(), skia_desc,
+                                                &skia_surface_props);
 }
 
 HardwareRasterizer::HardwareRasterizer(
@@ -299,13 +318,14 @@ HardwareRasterizer::HardwareRasterizer(
     int skia_atlas_height, int skia_cache_size_in_bytes,
     int scratch_surface_cache_size_in_bytes,
     int offscreen_target_cache_size_in_bytes,
-    bool purge_skia_font_caches_on_destruction)
-    : impl_(new Impl(
-          graphics_context, skia_atlas_width, skia_atlas_height,
-          skia_cache_size_in_bytes, scratch_surface_cache_size_in_bytes,
-          offscreen_target_cache_size_in_bytes,
-          purge_skia_font_caches_on_destruction)) {
-}
+    bool purge_skia_font_caches_on_destruction,
+    bool force_deterministic_rendering)
+    : impl_(new Impl(graphics_context, skia_atlas_width, skia_atlas_height,
+                     skia_cache_size_in_bytes,
+                     scratch_surface_cache_size_in_bytes,
+                     offscreen_target_cache_size_in_bytes,
+                     purge_skia_font_caches_on_destruction,
+                     force_deterministic_rendering)) {}
 
 HardwareRasterizer::~HardwareRasterizer() {}
 

@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,12 +27,11 @@ namespace script {
 // evaluated by a JavaScriptEngine
 class SourceCode : public base::RefCounted<SourceCode> {
  public:
-  // Convert the utf8 encoded string to an object that represents script that
-  // can be evaluated.
-  // Defined in the engine's implementation.
+  // Convert the UTF-8 encoded string to an object that represents script that
+  // can be evaluated. Defined in the engine's implementation.
   static scoped_refptr<SourceCode> CreateSourceCode(
       const std::string& script_utf8,
-      const base::SourceLocation& script_location);
+      const base::SourceLocation& script_location, bool is_muted = false);
 
  protected:
   SourceCode() {}
