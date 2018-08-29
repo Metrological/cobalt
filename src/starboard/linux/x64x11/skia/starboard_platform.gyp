@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,21 +13,6 @@
 # limitations under the License.
 {
   'includes': [
-    '../starboard_platform.gypi'
-  ],
-  'targets': [
-    {
-      'target_name': 'starboard_platform',
-      'type': 'static_library',
-      'sources': ['<@(starboard_platform_sources)'],
-      'defines': [
-        # This must be defined when building Starboard, and must not when
-        # building Starboard client code.
-        'STARBOARD_IMPLEMENTATION',
-      ],
-      'dependencies': [
-        '<@(starboard_platform_dependencies)',
-      ],
-    },
+    '../shared/starboard_platform_target.gypi',
   ],
 }

@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -48,11 +48,13 @@ VertexBufferObject::VertexBufferObject(
 }
 
 VertexBufferObject::~VertexBufferObject() {
+  DCHECK(thread_checker_.CalledOnValidThread());
   DLOG(INFO) << "Deleted VBO with buffer id " << mesh_vertex_buffer_;
   GL_CALL(glDeleteBuffers(1, &mesh_vertex_buffer_));
 }
 
 void VertexBufferObject::Bind() const {
+  DCHECK(thread_checker_.CalledOnValidThread());
   GL_CALL(glBindBuffer(GL_ARRAY_BUFFER, mesh_vertex_buffer_));
 }
 

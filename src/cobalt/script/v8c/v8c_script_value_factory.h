@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,8 +16,9 @@
 #define COBALT_SCRIPT_V8C_V8C_SCRIPT_VALUE_FACTORY_H_
 
 #include "cobalt/script/script_value_factory.h"
+#include "cobalt/script/v8c/entry_scope.h"
 #include "cobalt/script/v8c/native_promise.h"
-#include "cobalt/script/v8c/v8c_global_environment.h"
+#include "v8/include/v8.h"
 
 namespace cobalt {
 namespace script {
@@ -25,13 +26,28 @@ namespace v8c {
 
 class V8cScriptValueFactory : public ScriptValueFactory {
  public:
+  explicit V8cScriptValueFactory(v8::Isolate* isolate) : isolate_(isolate) {}
+
   template <typename T>
-  scoped_ptr<ScriptValue<Promise<T>>> CreatePromise() {
-    typedef ScriptValue<Promise<T>> ScriptPromiseType;
-    typedef V8cUserObjectHolder<NativePromise<T>> V8cPromiseHolderType;
-    NOTIMPLEMENTED();
-    return make_scoped_ptr<ScriptValue<Promise<T>>>(nullptr);
+  Handle<Promise<T>> CreatePromise() {
+    using V8cPromiseHolderType = V8cUserObjectHolder<NativePromise<T>>;
+
+    EntryScope entry_scope(isolate_);
+    v8::Local<v8::Context> context = isolate_->GetCurrentContext();
+
+    v8::MaybeLocal<v8::Promise::Resolver> maybe_resolver =
+        v8::Promise::Resolver::New(context);
+    v8::Local<v8::Promise::Resolver> resolver;
+    if (!maybe_resolver.ToLocal(&resolver)) {
+      return Handle<Promise<T>>(
+          new V8cPromiseHolderType(isolate_, v8::Null(isolate_)));
+    }
+
+    return Handle<Promise<T>>(new V8cPromiseHolderType(isolate_, resolver));
   }
+
+ private:
+  v8::Isolate* isolate_;
 };
 
 }  // namespace v8c

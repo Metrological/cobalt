@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,22 +17,11 @@
     'target_arch': 'arm',
     'target_os': 'linux',
 
-    'in_app_dial%': 0,
     'sysroot%': '/',
     'gl_type': 'system_gles2',
 
-    # VideoCore's tiled renderer will do a render for every tile of a render
-    # target even if only part of that target was rendered to.  Since the
-    # scratch surface cache is designed to choose large offscreen surfaces so
-    # that they can be maximally reused, it is not a very good fit for a tiled
-    # renderer.
-    'scratch_surface_cache_size_in_bytes' : 0,
-
-    'cobalt_media_source_2016': 1,
-
-    # This atlas size works better than the auto-mem setting.
-    'skia_glyph_atlas_width%': '2048',
-    'skia_glyph_atlas_height%': '2048',
+    # This is to create cobalt shared library
+    'final_executable_type': '<!(echo $COBALT_EXECUTABLE_TYPE)',
 
     # Define platform specific compiler and linker flags.
     # Refer to base.gypi for a list of all available variables.
@@ -45,6 +34,8 @@
 
       # Force char to be signed.
       '-fsigned-char',
+      # Disable strict aliasing.
+      '-fno-strict-aliasing',
 
       # To support large files
       '-D_FILE_OFFSET_BITS=64',
@@ -67,6 +58,11 @@
       '-I<(sysroot)/opt/vc/include',
       '-I<(sysroot)/opt/vc/include/interface/vcos/pthreads',
       '-I<(sysroot)/opt/vc/include/interface/vmcs_host/linux',
+
+      # GStreamer includes
+      '-I<(sysroot)/usr/include/gstreamer-1.0',
+      '-I<(sysroot)/usr/include/glib-2.0',
+      '-I<(sysroot)/usr/lib/glib-2.0/include/',
     ],
     'linker_flags': [
       '--sysroot=<(sysroot)',
@@ -102,22 +98,25 @@
     ],
     'compiler_flags_qa': [
       '-O2',
+      '-Wno-unused-but-set-variable',
     ],
     'compiler_flags_cc_qa': [
       '-fno-rtti',
     ],
     'compiler_flags_gold': [
       '-O2',
+      '-Wno-unused-but-set-variable',
     ],
     'compiler_flags_cc_gold': [
       '-fno-rtti',
     ],
     'platform_libraries': [
       '-lasound',
-      '-lavcodec',
-      '-lavformat',
-      '-lavresample',
-      '-lavutil',
+      '-lgstreamer-1.0',
+      '-lgstvideo-1.0',
+      '-lgstapp-1.0',
+      '-lgobject-2.0',
+      '-lglib-2.0',
       '-lEGL',
       '-lGLESv2',
       '-lpthread',
@@ -126,6 +125,7 @@
       '-lbcm_host',
       '-lvcos',
       '-lvchiq_arm',
+      '-lvchostif',
     ],
     'conditions': [
       ['cobalt_fastbuild==0', {
@@ -164,11 +164,15 @@
           '-Wall',
           '-Wextra',
           '-Wunreachable-code',
+          # Raspi toolchain is based off an old version of gcc, which
+          # falsely flags some code.  That same code does not warn with gcc 6.3.
+          # This decision should be revisited after raspi toolchain is upgraded.
+          '-Wno-maybe-uninitialized',
+          # Turn warnings into errors.
+          # '-Werror',
         ],
       },{
         'cflags': [
-          # Do not warn about unused function params.
-          '-Wno-unused-parameter',
           # Do not warn for implicit type conversions that may change a value.
           '-Wno-conversion',
         ],

@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,8 +31,8 @@ struct RoundedCorner {
   RoundedCorner(float horizontal, float vertical)
       : horizontal(horizontal), vertical(vertical) {}
 
-  //  If either length is zero, the corner is square, not rounded.
-  bool IsSquare() const { return horizontal == 0.0f || vertical == 0.0f; }
+  //  If either length is zero-ish, the corner is square, not rounded.
+  bool IsSquare() const;
 
   RoundedCorner Inset(float x, float y) const {
     return RoundedCorner(std::max(0.0f, horizontal - x),

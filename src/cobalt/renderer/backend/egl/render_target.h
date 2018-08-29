@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ class RenderTargetEGL : public RenderTarget {
   // Since all RenderTargets defined at this level are EGL objects, they
   // will always be set via eglMakeCurrent() and so they can always be
   // referenced by OpenGL by binding framebuffer 0.
-  intptr_t GetPlatformHandle() const OVERRIDE { return 0; }
+  intptr_t GetPlatformHandle() const override { return 0; }
 
   virtual bool IsWindowRenderTarget() const { return false; }
 

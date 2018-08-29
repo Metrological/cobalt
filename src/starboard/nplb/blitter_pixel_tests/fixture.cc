@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -83,13 +83,13 @@ std::string GetTestOutputDirectory() {
 // The input directory in which all the expected results PNG test files can
 // be found.
 std::string GetTestInputDirectory() {
-  char test_output_path[kPathSize];
-  EXPECT_TRUE(SbSystemGetPath(kSbSystemPathSourceDirectory, test_output_path,
+  char content_path[kPathSize];
+  EXPECT_TRUE(SbSystemGetPath(kSbSystemPathContentDirectory, content_path,
                               kPathSize));
   std::string directory_path =
-      std::string(test_output_path) + SB_FILE_SEP_CHAR + "starboard" +
-      SB_FILE_SEP_CHAR + "nplb" + SB_FILE_SEP_CHAR + "blitter_pixel_tests" +
-      SB_FILE_SEP_CHAR + "data";
+      std::string(content_path) + SB_FILE_SEP_CHAR + "test" +
+      SB_FILE_SEP_CHAR + "starboard" + SB_FILE_SEP_CHAR + "nplb" +
+      SB_FILE_SEP_CHAR + "blitter_pixel_tests" + SB_FILE_SEP_CHAR + "data";
 
   SB_CHECK(SbDirectoryCanOpen(directory_path.c_str()));
   return directory_path;

@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,8 +14,6 @@
 
 #include "cobalt/speech/microphone_manager.h"
 
-#include "cobalt/speech/speech_recognition_error.h"
-
 namespace cobalt {
 namespace speech {
 
@@ -28,11 +26,13 @@ const float kMicReadRateInHertz = 60.0f;
 
 MicrophoneManager::MicrophoneManager(
     const DataReceivedCallback& data_received,
+    const SuccessfulOpenCallback& successful_open,
     const CompletionCallback& completion, const ErrorCallback& error,
     const MicrophoneCreator& microphone_creator)
     : data_received_callback_(data_received),
       completion_callback_(completion),
       error_callback_(error),
+      successful_open_callback_(successful_open),
       microphone_creator_(microphone_creator),
       state_(kStopped),
       thread_("microphone_thread") {
@@ -40,7 +40,7 @@ MicrophoneManager::MicrophoneManager(
 }
 
 MicrophoneManager::~MicrophoneManager() {
-  thread_.message_loop()->PostTask(
+  thread_.message_loop()->PostBlockingTask(
       FROM_HERE,
       base::Bind(&MicrophoneManager::DestroyInternal, base::Unretained(this)));
 }
@@ -52,7 +52,7 @@ void MicrophoneManager::Open() {
 }
 
 void MicrophoneManager::Close() {
-  thread_.message_loop()->PostTask(
+  thread_.message_loop()->PostBlockingTask(
       FROM_HERE,
       base::Bind(&MicrophoneManager::CloseInternal, base::Unretained(this)));
 }
@@ -72,8 +72,8 @@ bool MicrophoneManager::CreateIfNecessary() {
     DLOG(WARNING) << "Microphone creation failed.";
     microphone_.reset();
     state_ = kError;
-    error_callback_.Run(new SpeechRecognitionError(
-        kSpeechRecognitionErrorCodeAudioCapture, "No microphone available."));
+    error_callback_.Run(MicrophoneError::kAudioCapture,
+                        "No microphone available.");
     return false;
   }
 }
@@ -89,11 +89,14 @@ void MicrophoneManager::OpenInternal() {
   DCHECK(microphone_);
   if (!microphone_->Open()) {
     state_ = kError;
-    error_callback_.Run(new SpeechRecognitionError(
-        kSpeechRecognitionErrorCodeAborted, "Microphone open failed."));
+    error_callback_.Run(MicrophoneError::kAborted,
+                        "Microphone open failed.");
     return;
   }
 
+  if (!successful_open_callback_.is_null()) {
+    successful_open_callback_.Run();
+  }
   poll_mic_events_timer_.emplace();
   // Setup a timer to poll for input events.
   poll_mic_events_timer_->Start(
@@ -117,8 +120,8 @@ void MicrophoneManager::CloseInternal() {
   if (microphone_) {
     if (!microphone_->Close()) {
       state_ = kError;
-      error_callback_.Run(new SpeechRecognitionError(
-          kSpeechRecognitionErrorCodeAborted, "Microphone close failed."));
+      error_callback_.Run(MicrophoneError::kAborted,
+                          "Microphone close failed.");
       return;
     }
     completion_callback_.Run();
@@ -146,8 +149,8 @@ void MicrophoneManager::Read() {
     data_received_callback_.Run(output_audio_bus.Pass());
   } else if (read_bytes != 0) {
     state_ = kError;
-    error_callback_.Run(new SpeechRecognitionError(
-        kSpeechRecognitionErrorCodeAborted, "Microphone read failed."));
+    error_callback_.Run(MicrophoneError::kAborted,
+                        "Microphone read failed.");
     poll_mic_events_timer_->Stop();
   }
 }

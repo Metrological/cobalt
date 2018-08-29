@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,19 +16,21 @@
 #define COBALT_SCRIPT_SCRIPT_VALUE_FACTORY_H_
 
 #include "base/memory/scoped_ptr.h"
+#include "cobalt/script/array_buffer.h"
 #include "cobalt/script/promise.h"
 #include "cobalt/script/script_value.h"
-
 namespace cobalt {
 namespace script {
+
 class ScriptValueFactory {
  public:
-  typedef ScriptValue<Promise<scoped_refptr<Wrappable> > >
-      WrappablePromiseValue;
+  using WrappablePromise = scoped_refptr<Wrappable>;
+
+  virtual ~ScriptValueFactory() {}
 
   // Create a Promise<T> where T is void or a primitive type.
   template <typename T>
-  scoped_ptr<ScriptValue<Promise<T> > > CreateBasicPromise() {
+  Handle<Promise<T>> CreateBasicPromise() {
     return CreatePromise<T>();
   }
 
@@ -40,17 +42,15 @@ class ScriptValueFactory {
   // defined in Cobalt.
   // TODO: Figure out how to make it so only a scoped_refptr<T> can be accepted.
   template <typename T>
-  scoped_ptr<WrappablePromiseValue> CreateInterfacePromise() {
-    return CreatePromise<scoped_refptr<Wrappable> >();
+  Handle<Promise<WrappablePromise>> CreateInterfacePromise() {
+    return CreatePromise<WrappablePromise>();
   }
-
-  virtual ~ScriptValueFactory() {}
 
  private:
   // Non-virtual template function that will be implemented in the
   // engine-specific implementation for ScriptValueFactory.
   template <typename T>
-  scoped_ptr<ScriptValue<Promise<T> > > CreatePromise();
+  Handle<Promise<T>> CreatePromise();
 };
 
 }  // namespace script

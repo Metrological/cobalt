@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@
 #include "cobalt/math/matrix3_f.h"
 #include "cobalt/math/rect_f.h"
 #include "cobalt/render_tree/animations/animate_node.h"
+#include "cobalt/render_tree/clear_rect_node.h"
 #include "cobalt/render_tree/composition_node.h"
 #include "cobalt/render_tree/filter_node.h"
 #include "cobalt/render_tree/image_node.h"
@@ -67,18 +68,19 @@ class RenderTreeNodeVisitor : public render_tree::NodeVisitor {
                         backend::RenderTarget* render_target,
                         const math::Rect& content_rect);
 
-  void Visit(render_tree::animations::AnimateNode* /* animate */) OVERRIDE {
+  void Visit(render_tree::animations::AnimateNode* /* animate */) override {
     NOTREACHED();
   }
-  void Visit(render_tree::CompositionNode* composition_node) OVERRIDE;
-  void Visit(render_tree::MatrixTransform3DNode* transform_3d_node) OVERRIDE;
-  void Visit(render_tree::MatrixTransformNode* transform_node) OVERRIDE;
-  void Visit(render_tree::FilterNode* filter_node) OVERRIDE;
-  void Visit(render_tree::ImageNode* image_node) OVERRIDE;
-  void Visit(render_tree::PunchThroughVideoNode* video_node) OVERRIDE;
-  void Visit(render_tree::RectNode* rect_node) OVERRIDE;
-  void Visit(render_tree::RectShadowNode* shadow_node) OVERRIDE;
-  void Visit(render_tree::TextNode* text_node) OVERRIDE;
+  void Visit(render_tree::ClearRectNode* clear_rect_node) override;
+  void Visit(render_tree::CompositionNode* composition_node) override;
+  void Visit(render_tree::MatrixTransform3DNode* transform_3d_node) override;
+  void Visit(render_tree::MatrixTransformNode* transform_node) override;
+  void Visit(render_tree::FilterNode* filter_node) override;
+  void Visit(render_tree::ImageNode* image_node) override;
+  void Visit(render_tree::PunchThroughVideoNode* video_node) override;
+  void Visit(render_tree::RectNode* rect_node) override;
+  void Visit(render_tree::RectShadowNode* shadow_node) override;
+  void Visit(render_tree::TextNode* text_node) override;
 
  private:
   void GetScratchTexture(scoped_refptr<render_tree::Node> node, float size,
@@ -103,6 +105,10 @@ class RenderTreeNodeVisitor : public render_tree::NodeVisitor {
                DrawObjectManager::BlendType blend_type);
   void AddExternalDraw(scoped_ptr<DrawObject> object,
                        const math::RectF& world_bounds, base::TypeId draw_type);
+
+  // Helper function to clear the specified |rect| with the specified |color|,
+  // with blending disabled.
+  void AddClear(const math::RectF& rect, const render_tree::ColorRGBA& color);
 
   GraphicsState* graphics_state_;
   DrawObjectManager* draw_object_manager_;

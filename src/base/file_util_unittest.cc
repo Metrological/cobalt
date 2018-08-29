@@ -173,7 +173,7 @@ const int FILES_AND_DIRECTORIES =
 // to be a PlatformTest
 class FileUtilTest : public PlatformTest {
  protected:
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     PlatformTest::SetUp();
     ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
   }
@@ -1578,7 +1578,7 @@ typedef PlatformTest ReadOnlyFileUtilTest;
 #if !defined(__LB_WIIU__) && !defined(OS_STARBOARD)
 TEST_F(ReadOnlyFileUtilTest, ContentsEqual) {
   FilePath data_dir;
-  ASSERT_TRUE(PathService::Get(base::DIR_SOURCE_ROOT, &data_dir));
+  ASSERT_TRUE(PathService::Get(base::DIR_TEST_DATA, &data_dir));
   data_dir = data_dir.Append(FILE_PATH_LITERAL("base"))
                      .Append(FILE_PATH_LITERAL("data"))
                      .Append(FILE_PATH_LITERAL("file_util_unittest"));
@@ -1629,7 +1629,7 @@ TEST_F(ReadOnlyFileUtilTest, ContentsEqual) {
 #if !defined(__LB_SHELL__) && !defined(OS_STARBOARD)
 TEST_F(ReadOnlyFileUtilTest, TextContentsEqual) {
   FilePath data_dir;
-  ASSERT_TRUE(PathService::Get(base::DIR_SOURCE_ROOT, &data_dir));
+  ASSERT_TRUE(PathService::Get(base::DIR_TEST_DATA, &data_dir));
   data_dir = data_dir.Append(FILE_PATH_LITERAL("base"))
                      .Append(FILE_PATH_LITERAL("data"))
                      .Append(FILE_PATH_LITERAL("file_util_unittest"));
@@ -2157,7 +2157,7 @@ TEST_F(FileUtilTest, IsDirectoryEmpty) {
 // with a common SetUp() method.
 class VerifyPathControlledByUserTest : public FileUtilTest {
  protected:
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     FileUtilTest::SetUp();
 
     // Create a basic structure used by each test.

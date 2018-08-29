@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -56,6 +56,8 @@
         'image/image_decoder_starboard.h',
         'image/image_decoder.cc',
         'image/image_decoder.h',
+        'image/image_encoder.cc',
+        'image/image_encoder.h',
         'image/image.h',
         'image/jpeg_image_decoder.cc',
         'image/jpeg_image_decoder.h',
@@ -82,8 +84,6 @@
         'mesh/projection_codec/projection_decoder.h',
         'net_fetcher.cc',
         'net_fetcher.h',
-        'origin.cc',
-        'origin.h',
         'resource_cache.h',
         'sync_loader.cc',
         'sync_loader.h',
@@ -92,8 +92,10 @@
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
         '<(DEPTH)/cobalt/csp/csp.gyp:csp',
+        '<(DEPTH)/cobalt/loader/origin.gyp:origin',
         '<(DEPTH)/cobalt/network/network.gyp:network',
         '<(DEPTH)/cobalt/render_tree/render_tree.gyp:render_tree',
+	'<(DEPTH)/cobalt/renderer/test/png_utils/png_utils.gyp:png_utils',
         '<(DEPTH)/googleurl/googleurl.gyp:googleurl',
         '<(DEPTH)/third_party/libjpeg/libjpeg.gyp:libjpeg',
         '<(DEPTH)/third_party/libpng/libpng.gyp:libpng',
@@ -107,6 +109,19 @@
             'about_fetcher.cc',
             'about_fetcher.h',
           ]
+        }],
+        ['enable_xhr_header_filtering == 1', {
+          'dependencies': [
+            '<@(cobalt_platform_dependencies)',
+          ],
+          'defines': [
+            'COBALT_ENABLE_XHR_HEADER_FILTERING',
+          ],
+          'direct_dependent_settings': {
+            'defines': [
+              'COBALT_ENABLE_XHR_HEADER_FILTERING',
+            ],
+          },
         }],
       ],
     },
@@ -131,6 +146,7 @@
         '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
+        '<(DEPTH)/third_party/ots/ots.gyp:ots',
         'loader',
         'loader_copy_test_data',
         '<@(cobalt_platform_dependencies)',
@@ -146,24 +162,19 @@
       'variables': {
         'executable_name': 'loader_test',
       },
-      'includes': [ '../../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
 
     {
       'target_name': 'loader_copy_test_data',
       'type': 'none',
-      'actions': [
-        {
-          'action_name': 'loader_copy_test_data',
-          'variables': {
-            'input_files': [
-              '<(DEPTH)/cobalt/loader/testdata/',
-            ],
-            'output_dir': 'cobalt/loader/testdata/',
-          },
-          'includes': [ '../build/copy_test_data.gypi' ],
-        },
-      ],
+      'variables': {
+        'content_test_input_files': [
+          '<(DEPTH)/cobalt/loader/testdata/',
+        ],
+        'content_test_output_subdir': 'cobalt/loader/testdata/',
+      },
+      'includes': [ '<(DEPTH)/starboard/build/copy_test_data.gypi' ],
     },
 
     {

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -327,6 +327,12 @@ KeyframeEffectReadOnly::Data::ComputeAnimatedPropertyValue(
   return InterpolatePropertyValue(scaled_interval_distance,
                                   interval_endpoints.first->value,
                                   interval_endpoints.second->value);
+}
+
+void KeyframeEffectReadOnly::TraceMembers(script::Tracer* tracer) {
+  AnimationEffectReadOnly::TraceMembers(tracer);
+
+  tracer->Trace(target_);
 }
 
 }  // namespace web_animations

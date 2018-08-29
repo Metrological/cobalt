@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,9 +40,16 @@ WeakHeapObject& WeakHeapObject::operator=(const WeakHeapObject& rhs) {
   return *this;
 }
 
-void WeakHeapObject::Trace(JSTracer* trace) {
+WeakHeapObject::~WeakHeapObject() {
+  // It's safe to call StopTracking even if StartTracking wasn't called. the
+  // WeakObjectManager handles the case where it's not currently tracking the
+  // WeakHeapObject.
+  weak_object_manager_->StopTracking(this);
+}
+
+void WeakHeapObject::Trace(JSTracer* js_tracer) {
   if (!value_.isNullOrUndefined()) {
-    JS_CallValueTracer(trace, &value_, "WeakHeapObject::Trace");
+    JS_CallValueTracer(js_tracer, &value_, "WeakHeapObject::Trace");
   }
 }
 
@@ -54,13 +61,6 @@ bool WeakHeapObject::IsGcThing() const { return value_.isGCThing(); }
 
 bool WeakHeapObject::WasCollected() const {
   return (was_collected_ && value_.isNullOrUndefined());
-}
-
-WeakHeapObject::~WeakHeapObject() {
-  // It's safe to call StopTracking even if StartTracking wasn't called. the
-  // WeakObjectManager handles the case where it's not currently tracking the
-  // WeakHeapObject.
-  weak_object_manager_->StopTracking(this);
 }
 
 void WeakHeapObject::Initialize(WeakHeapObjectManager* weak_heap_object_manager,

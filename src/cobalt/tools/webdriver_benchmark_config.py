@@ -1,5 +1,5 @@
 #
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2017 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,18 +14,13 @@
 # limitations under the License.
 """Class for configuring Webdriver Benchmarks."""
 
-PERFORMANCE_TEST = 'performance'
-PRELOAD_TEST = 'preload'
-SANITY_TEST = 'sanity'
-
 # WEBDRIVER SCRIPT CONFIGURATION PARAMETERS
 MINIMAL_SIZE = 'minimal'
 REDUCED_SIZE = 'reduced'
 STANDARD_SIZE = 'standard'
+SAMPLE_SIZES = [MINIMAL_SIZE, REDUCED_SIZE, STANDARD_SIZE]
 
 DISABLE_VIDEOS = '--disable_videos'
-
-SAMPLE_SIZES = [MINIMAL_SIZE, REDUCED_SIZE, STANDARD_SIZE]
 
 # COBALT COMMAND LINE PARAMETERS
 DISABLE_SPLASH_SCREEN_ON_RELOADS = '--disable_splash_screen_on_reloads'

@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -98,16 +98,16 @@ class HistogramTableCSVBase {
   }
 
   std::string ToString() const {
-    const char kSeperator[] = "//////////////////////////////////////////////";
+    const char kSeparator[] = "//////////////////////////////////////////////";
     std::stringstream ss;
-    ss << kSeperator << kNewLine;
+    ss << kSeparator << kNewLine;
     if (title_.size()) {
       ss << "// CSV of " << title_ << kNewLine;
     }
     for (size_t i = 0; i < NumberOfRows(); ++i) {
       ss << StringifyRow(i);
     }
-    ss << kSeperator;
+    ss << kSeparator;
     return ss.str();
   }
 
@@ -169,6 +169,22 @@ class HistogramTableCSVBase {
   ValueType default_value_;
   std::vector<base::TimeDelta> time_values_;
   TableData table_data_;
+};
+
+// Useful for tracking values in megabytes.
+class MemoryBytesHistogramCSV : public HistogramTableCSVBase<int64_t> {
+ public:
+  MemoryBytesHistogramCSV() : HistogramTableCSVBase<int64_t>(0) {}
+  std::string ValueToString(const int64_t& bytes) const override {
+    return ToMegabyteString(bytes);
+  }
+
+  static std::string ToMegabyteString(int64_t bytes) {
+    double megabytes = static_cast<double>(bytes) / (1024.0 * 1024.0);
+    char buff[128];
+    SbStringFormatF(buff, sizeof(buff), "%.1f", megabytes);
+    return std::string(buff);
+  }
 };
 
 }  // namespace memory_tracker

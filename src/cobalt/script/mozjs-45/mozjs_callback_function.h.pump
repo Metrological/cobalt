@@ -7,7 +7,7 @@ $$
 
 $$ This should be no larger than MAX_ARITY in base/bind.h.pump.
 $var MAX_ARITY = 7
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -77,7 +77,7 @@ class MozjsCallbackFunction<R($for ARG , [[A$(ARG)]])>
   CallbackResult<R> Run($for ARG , [[
 
       typename base::internal::CallbackParamTraits<A$(ARG)>::ForwardType a$(ARG)]])
-      const OVERRIDE {
+      const override {
     ENABLE_JS_STACK_TRACE_IN_SCOPE(context_);
     TRACK_MEMORY_SCOPE("Javascript");
     TRACE_EVENT0("cobalt::script::mozjs", "MozjsCallbackFunction::Run");
@@ -123,6 +123,7 @@ $if ARITY > 0 [[
   JSObject* handle() const { return weak_function_.GetObject(); }
   const JS::Value& value() const { return weak_function_.GetValue(); }
   bool WasCollected() const { return weak_function_.WasCollected(); }
+  void Trace(JSTracer* js_tracer) { weak_function_.Trace(js_tracer); }
 
  private:
   JSContext* context_;

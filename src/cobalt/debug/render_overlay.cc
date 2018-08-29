@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -58,11 +58,12 @@ void RenderOverlay::Process() {
       scoped_refptr<render_tree::Node> combined_tree =
           new render_tree::CompositionNode(builder);
 
-      render_tree_produced_callback_.Run(
-          LayoutResults(combined_tree, layout_time));
+      render_tree_produced_callback_.Run(LayoutResults(
+          combined_tree, layout_time, input_layout_.on_rasterized_callback));
     } else {
       render_tree_produced_callback_.Run(
-          LayoutResults(input_layout_.render_tree, layout_time));
+          LayoutResults(input_layout_.render_tree, layout_time,
+                        input_layout_.on_rasterized_callback));
     }
   }
 }

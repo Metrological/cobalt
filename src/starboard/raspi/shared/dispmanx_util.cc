@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -152,14 +152,14 @@ void DispmanxVideoRenderer::Update(
     return;
   }
 
-  if (video_frame->IsEndOfStream()) {
+  if (video_frame->is_end_of_stream()) {
     element_->ChangeSource(black_frame_);
     frame_ = video_frame;
     return;
   }
 
   DispmanxYUV420Resource* resource =
-      reinterpret_cast<DispmanxYUV420Resource*>(video_frame->native_texture());
+      static_cast<DispmanxVideoFrame*>(video_frame.get())->resource();
   element_->ChangeSource(*resource);
   frame_ = video_frame;
 }

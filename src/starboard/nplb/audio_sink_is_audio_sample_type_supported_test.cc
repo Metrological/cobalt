@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ namespace starboard {
 namespace nplb {
 
 TEST(SbAudioSinkIsAudioSampleTypeSupportedTest, SunnyDay) {
-  bool int16_supported =
-      SbAudioSinkIsAudioSampleTypeSupported(kSbMediaAudioSampleTypeInt16);
+  bool int16_supported = SbAudioSinkIsAudioSampleTypeSupported(
+      kSbMediaAudioSampleTypeInt16Deprecated);
   bool float32_supported =
       SbAudioSinkIsAudioSampleTypeSupported(kSbMediaAudioSampleTypeFloat32);
   // A platform must support at least one of the sample types.

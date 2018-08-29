@@ -1,4 +1,4 @@
-# Copyright 2014 Google Inc. All Rights Reserved.
+# Copyright 2014 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -566,6 +566,7 @@ class CodeGeneratorCobalt(CodeGeneratorBase):
     if interface.parent:
       context['parent_interface'] = self.path_builder.BindingsClass(
           interface.parent)
+      context['parent_interface_name'] = interface.parent
     context['is_exception_interface'] = interface.is_exception
     context['forward_declarations'] = sorted(
         referenced_class_contexts, key=lambda x: x['fully_qualified_name'])

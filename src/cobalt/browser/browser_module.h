@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,8 +25,13 @@
 #include "base/threading/thread.h"
 #include "base/timer.h"
 #include "cobalt/account/account_manager.h"
+#include "cobalt/base/accessibility_caption_settings_changed_event.h"
 #include "cobalt/base/application_state.h"
 #include "cobalt/base/message_queue.h"
+#include "cobalt/base/on_screen_keyboard_blurred_event.h"
+#include "cobalt/base/on_screen_keyboard_focused_event.h"
+#include "cobalt/base/on_screen_keyboard_hidden_event.h"
+#include "cobalt/base/on_screen_keyboard_shown_event.h"
 #include "cobalt/browser/h5vcc_url_handler.h"
 #include "cobalt/browser/lifecycle_observer.h"
 #include "cobalt/browser/memory_settings/auto_mem.h"
@@ -38,9 +43,9 @@
 #include "cobalt/browser/system_platform_error_handler.h"
 #include "cobalt/browser/url_handler.h"
 #include "cobalt/browser/web_module.h"
-#include "cobalt/dom/array_buffer.h"
 #include "cobalt/dom/input_event_init.h"
 #include "cobalt/dom/keyboard_event_init.h"
+#include "cobalt/dom/on_screen_keyboard_bridge.h"
 #include "cobalt/dom/pointer_event_init.h"
 #include "cobalt/dom/wheel_event_init.h"
 #include "cobalt/input/input_device_manager.h"
@@ -48,9 +53,12 @@
 #include "cobalt/media/can_play_type_handler.h"
 #include "cobalt/media/media_module.h"
 #include "cobalt/network/network_module.h"
+#include "cobalt/overlay_info/qr_code_overlay.h"
+#include "cobalt/render_tree/node.h"
 #include "cobalt/render_tree/resource_provider.h"
 #include "cobalt/render_tree/resource_provider_stub.h"
 #include "cobalt/renderer/renderer_module.h"
+#include "cobalt/script/array_buffer.h"
 #include "cobalt/storage/storage_manager.h"
 #include "cobalt/system_window/system_window.h"
 #include "cobalt/webdriver/session_driver.h"
@@ -124,16 +132,17 @@ class BrowserModule {
   void AddURLHandler(const URLHandler::URLHandlerCallback& callback);
   void RemoveURLHandler(const URLHandler::URLHandlerCallback& callback);
 
-#if defined(ENABLE_SCREENSHOT)
   // Request a screenshot to be written to the specified path. Callback will
   // be fired after the screenshot has been written to disk.
-  void RequestScreenshotToFile(const FilePath& path,
-                               const base::Closure& done_cb);
+  void RequestScreenshotToFile(
+      const FilePath& path,
+      loader::image::EncodedStaticImage::ImageFormat image_format,
+      const base::Closure& done_cb);
 
   // Request a screenshot to an in-memory buffer.
   void RequestScreenshotToBuffer(
-      const ScreenShotWriter::PNGEncodeCompleteCallback& screenshot_ready);
-#endif
+      loader::image::EncodedStaticImage::ImageFormat image_format,
+      const ScreenShotWriter::ImageEncodeCompleteCallback& screenshot_ready);
 
 #if defined(ENABLE_WEBDRIVER)
   scoped_ptr<webdriver::SessionDriver> CreateSessionDriver(
@@ -162,15 +171,28 @@ class BrowserModule {
   void CheckMemory(const int64_t& used_cpu_memory,
                    const base::optional<int64_t>& used_gpu_memory);
 
-#if SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+  // Post a task to the main web module to update
+  // |javascript_reserved_memory_|.
+  void UpdateJavaScriptHeapStatistics();
+
+#if SB_API_VERSION >= 8
   // Called when a kSbEventTypeWindowSizeChange event is fired.
   void OnWindowSizeChanged(const SbWindowSize& size);
-#endif  // SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+#endif  // SB_API_VERSION >= 8
 
 #if SB_HAS(ON_SCREEN_KEYBOARD)
-  void OnOnScreenKeyboardShown();
-  void OnOnScreenKeyboardHidden();
+  void OnOnScreenKeyboardShown(const base::OnScreenKeyboardShownEvent* event);
+  void OnOnScreenKeyboardHidden(const base::OnScreenKeyboardHiddenEvent* event);
+  void OnOnScreenKeyboardFocused(
+      const base::OnScreenKeyboardFocusedEvent* event);
+  void OnOnScreenKeyboardBlurred(
+      const base::OnScreenKeyboardBlurredEvent* event);
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+
+#if SB_HAS(CAPTIONS)
+  void OnCaptionSettingsChanged(
+      const base::AccessibilityCaptionSettingsChangedEvent* event);
+#endif  // SB_HAS(CAPTIONS)
 
  private:
 #if SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
@@ -205,6 +227,13 @@ class BrowserModule {
       const browser::WebModule::LayoutResults& layout_results);
   void OnSplashScreenRenderTreeProduced(
       const browser::WebModule::LayoutResults& layout_results);
+
+  // Glue function to deal with the production of the qr code overlay render
+  // tree, and will manage handing it off to the renderer.
+  void QueueOnQrCodeOverlayRenderTreeProduced(
+      const scoped_refptr<render_tree::Node>& render_tree);
+  void OnQrCodeOverlayRenderTreeProduced(
+      const scoped_refptr<render_tree::Node>& render_tree);
 
   // Saves/loads the debug console mode to/from local storage so we can
   // persist the user's preference.
@@ -328,9 +357,8 @@ class BrowserModule {
   // Destroys the renderer module and dependent objects.
   void DestroyRendererModule();
 
-  // Updates all components that have already been created with information
-  // resulting from the creation of the system window.
-  void UpdateFromSystemWindow();
+  // Update web modules with the current viewport size.
+  void UpdateScreenSize();
 
   // Does all the steps for either a Suspend or the first half of a Start.
   void SuspendInternal(bool is_start);
@@ -352,6 +380,10 @@ class BrowserModule {
   // Applies the current AutoMem settings to all applicable submodules.
   void ApplyAutoMemSettings();
 
+  // The callback posted to the main web module in for
+  // |UpdateJavaScriptHeapStatistics|.
+  void GetHeapStatisticsCallback(const script::HeapStatistics& heap_statistics);
+
   // If it exists, takes the current combined render tree from
   // |render_tree_combiner_| and submits it to the pipeline in the renderer
   // module.
@@ -359,6 +391,10 @@ class BrowserModule {
 
   // Get the SbWindow via |system_window_| or potentially NULL.
   SbWindow GetSbWindow();
+
+  // This returns the render tree of the most recent submission, with animations
+  // applied according to the current time.
+  scoped_refptr<render_tree::Node> GetLastSubmissionAnimated();
 
   // TODO:
   //     WeakPtr usage here can be avoided if BrowserModule has a thread to
@@ -418,12 +454,6 @@ class BrowserModule {
   // ResourceProvider is created. Only valid in the Preloading state.
   base::optional<render_tree::ResourceProviderStub> resource_provider_stub_;
 
-  // Optional memory allocator used by ArrayBuffer.
-  scoped_ptr<dom::ArrayBuffer::Allocator> array_buffer_allocator_;
-
-  // Optional cache used by ArrayBuffer.
-  scoped_ptr<dom::ArrayBuffer::Cache> array_buffer_cache_;
-
   // Controls all media playback related objects/resources.
   scoped_ptr<media::MediaModule> media_module_;
 
@@ -440,11 +470,10 @@ class BrowserModule {
 #if defined(ENABLE_DEBUG_CONSOLE)
   scoped_ptr<RenderTreeCombiner::Layer> debug_console_layer_;
 #endif  // defined(ENABLE_DEBUG_CONSOLE)
+  scoped_ptr<RenderTreeCombiner::Layer> qr_overlay_info_layer_;
 
-#if defined(ENABLE_SCREENSHOT)
   // Helper object to create screen shots of the last layout tree.
   scoped_ptr<ScreenShotWriter> screen_shot_writer_;
-#endif  // defined(ENABLE_SCREENSHOT)
 
   // Keeps track of all messages containing render tree submissions that will
   // ultimately reference the |render_tree_combiner_| and the
@@ -452,6 +481,12 @@ class BrowserModule {
   // above mentioned references are.  It must however outlive all WebModules
   // that may be producing render trees.
   base::MessageQueue render_tree_submission_queue_;
+
+  // The splash screen cache.
+  scoped_ptr<SplashScreenCache> splash_screen_cache_;
+
+  scoped_ptr<dom::OnScreenKeyboardBridge> on_screen_keyboard_bridge_;
+  bool on_screen_keyboard_show_called_ = false;
 
   // Sets up everything to do with web page management, from loading and
   // parsing the web page and all referenced files to laying it out.  The
@@ -471,10 +506,16 @@ class BrowserModule {
 
   // The time when a URL navigation starts. This is recorded after the previous
   // WebModule is destroyed.
-  base::CVal<int64> navigate_time_;
+  base::CVal<int64, base::CValPublic> navigate_time_;
 
   // The time when the WebModule's Window.onload event is fired.
-  base::CVal<int64> on_load_event_time_;
+  base::CVal<int64, base::CValPublic> on_load_event_time_;
+
+  // The total memory that is reserved by the JavaScript engine, which
+  // includes both parts that have live JavaScript values, as well as
+  // preallocated space for future values.
+  base::CVal<base::cval::SizeInBytes, base::CValPublic>
+      javascript_reserved_memory_;
 
 #if defined(ENABLE_DEBUG_CONSOLE)
   // Possibly null, but if not, will contain a reference to an instance of
@@ -492,10 +533,8 @@ class BrowserModule {
   // Command handler object for setting media module config.
   base::ConsoleCommandManager::CommandHandler set_media_config_command_handler_;
 
-#if defined(ENABLE_SCREENSHOT)
   // Command handler object for screenshot command from the debug console.
   base::ConsoleCommandManager::CommandHandler screenshot_command_handler_;
-#endif  // defined(ENABLE_SCREENSHOT)
 
   base::optional<SuspendFuzzer> suspend_fuzzer_;
 #endif  // defined(ENABLE_DEBUG_CONSOLE)
@@ -506,6 +545,9 @@ class BrowserModule {
   // The splash screen. The pointer wrapped here should be non-NULL iff
   // the splash screen is currently displayed.
   scoped_ptr<SplashScreen> splash_screen_;
+
+  // The qr code overlay to display qr codes on top of all layers.
+  scoped_ptr<overlay_info::QrCodeOverlay> qr_code_overlay_;
 
   // Reset when the browser is paused, signalled to resume.
   base::WaitableEvent has_resumed_;
@@ -564,9 +606,6 @@ class BrowserModule {
   // screen will be displayed.
   base::optional<GURL> fallback_splash_screen_url_;
 
-  // The splash screen cache.
-  scoped_ptr<SplashScreenCache> splash_screen_cache_;
-
   // Number of main web modules that have take place so far, helpful for
   // ditinguishing lingering events produced by older web modules as we switch
   // from one to another.  This is incremented with each navigation.
@@ -581,6 +620,11 @@ class BrowserModule {
   // to another (in which case it may need to clear its submission queue).
   int current_splash_screen_timeline_id_;
   int current_main_web_module_timeline_id_;
+
+  // Remember the first set value for JavaScript's GC threshold setting computed
+  // by automem.  We want this so that we can check that it never changes, since
+  // we do not have the ability to modify it after startup.
+  base::optional<int64_t> javascript_gc_threshold_in_bytes_;
 };
 
 }  // namespace browser

@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -120,7 +120,7 @@ void* SbPageMapUntracked(size_t size_bytes, int flags, const char* name);
 // Unmap |size_bytes| of physical pages starting from |virtual_address|,
 // returning true on success. After this, [virtual_address, virtual_address +
 // size_bytes) will not be read/writable. SbUnmap() can unmap multiple
-// contiguous regions that were mapped with seperate calls to
+// contiguous regions that were mapped with separate calls to
 // SbPageMap(). E.g. if one call to SbPageMap(0x1000) returns (void*)0xA000 and
 // another call to SbPageMap(0x1000) returns (void*)0xB000, SbPageUnmap(0xA000,
 // 0x2000) should free both.
@@ -129,7 +129,13 @@ bool SbPageUnmap(void* virtual_address, size_t size_bytes);
 // Same as SbUnmap(), but should be used only by dlmalloc to unmap pages
 // allocated via MapUntracked().
 bool SbPageUnmapUntracked(void* virtual_address, size_t size_bytes);
+
+#if SB_API_VERSION >= 10
+// Change the protection of |size_bytes| of physical pages, starting from
+// |virtual_address|, to |flags|, returning |true| on success.
+bool SbPageProtect(void* virtual_address, int64_t size_bytes, int flags);
 #endif
+#endif  // SB_HAS(MMAP)
 
 // Returns the total amount, in bytes, of physical memory available. Should
 // always be a multiple of SB_MEMORY_PAGE_SIZE.

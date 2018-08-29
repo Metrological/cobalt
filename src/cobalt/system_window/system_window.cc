@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -99,6 +99,21 @@ void* SystemWindow::GetWindowHandle() {
 
 void SystemWindow::DispatchInputEvent(const SbInputData& data,
                                       InputEvent::Type type, bool is_repeat) {
+  // Use the current time unless it was overridden.
+  SbTimeMonotonic timestamp = 0;
+
+#if SB_API_VERSION >= 10
+  bool use_input_timestamp =
+      SbSystemHasCapability(kSbSystemCapabilitySetsInputTimestamp);
+  if (use_input_timestamp) {
+    timestamp = data.timestamp;
+  }
+#endif
+
+  if (timestamp == 0) {
+    timestamp = SbTimeGetMonotonicNow();
+  }
+
   // Starboard handily uses the Microsoft key mapping, which is also what Cobalt
   // uses.
   int key_code = static_cast<int>(data.key);
@@ -121,14 +136,21 @@ void SystemWindow::DispatchInputEvent(const SbInputData& data,
           pressure = std::max(pressure, 0.5f);
         }
         break;
-      default:
+      case InputEvent::kKeyDown:
+      case InputEvent::kKeyUp:
+      case InputEvent::kKeyMove:
+      case InputEvent::kInput:
+      case InputEvent::kPointerUp:
+      case InputEvent::kTouchpadUp:
+      case InputEvent::kWheel:
         break;
     }
   }
 
 #if SB_HAS(ON_SCREEN_KEYBOARD)
   scoped_ptr<InputEvent> input_event(
-      new InputEvent(type, data.device_id, key_code, modifiers, is_repeat,
+      new InputEvent(timestamp, type, data.device_id,
+                     key_code, modifiers, is_repeat,
                      math::PointF(data.position.x, data.position.y),
                      math::PointF(data.delta.x, data.delta.y), pressure,
                      math::PointF(data.size.x, data.size.y),
@@ -136,7 +158,8 @@ void SystemWindow::DispatchInputEvent(const SbInputData& data,
                      data.input_text ? data.input_text : ""));
 #else   // SB_HAS(ON_SCREEN_KEYBOARD)
   scoped_ptr<InputEvent> input_event(
-      new InputEvent(type, data.device_id, key_code, modifiers, is_repeat,
+      new InputEvent(timestamp, type, data.device_id,
+                     key_code, modifiers, is_repeat,
                      math::PointF(data.position.x, data.position.y),
                      math::PointF(data.delta.x, data.delta.y), pressure,
                      math::PointF(data.size.x, data.size.y),
@@ -144,8 +167,9 @@ void SystemWindow::DispatchInputEvent(const SbInputData& data,
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 #else
   scoped_ptr<InputEvent> input_event(
-      new InputEvent(type, data.device_id, key_code, data.key_modifiers,
-                     is_repeat, math::PointF(data.position.x, data.position.y),
+      new InputEvent(timestamp, type, data.device_id,
+                     key_code, data.key_modifiers, is_repeat,
+                     math::PointF(data.position.x, data.position.y),
                      math::PointF(data.delta.x, data.delta.y)));
 #endif
   event_dispatcher()->DispatchEvent(input_event.PassAs<base::Event>());

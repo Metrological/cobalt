@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,32 +11,56 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Starboard Linux X64 X11 Clang 3.6 platform configuration for gyp_cobalt."""
+"""Starboard Linux X64 X11 Clang 3.6 platform configuration."""
 
 import logging
+import os
+import subprocess
 
-# Import the shared Linux platform configuration.
-from starboard.linux.shared import gyp_configuration
+from starboard.linux.shared import gyp_configuration as shared_configuration
+from starboard.tools import build
 
 
-class PlatformConfig(gyp_configuration.PlatformConfig):
-  """Starboard Linux platform configuration."""
+class LinuxX64X11Clang36Configuration(shared_configuration.LinuxConfiguration):
+  """Starboard Linux X64 X11 Clang 3.6 platform configuration."""
 
   def __init__(self, platform, asan_enabled_by_default=True):
-    super(PlatformConfig, self).__init__(
-        platform, goma_supports_compiler=False)
+    super(LinuxX64X11Clang36Configuration, self).__init__(
+        platform, asan_enabled_by_default, goma_supports_compiler=False)
+
+    script_path = os.path.dirname(os.path.realpath(__file__))
+    # Run the script that ensures clang 3.6 is installed.
+    subprocess.call(
+        os.path.join(script_path, 'download_clang.sh'), cwd=script_path)
+    self.toolchain_dir = os.path.join(build.GetToolchainsDir(),
+                                      'x86_64-linux-gnu-clang-3.6', 'llvm',
+                                      'Release+Asserts')
 
   def GetEnvironmentVariables(self):
-    env_variables = {
-        'CC': 'clang-3.6',
-        'CXX': 'clang++-3.6',
-    }
+    env_variables = super(LinuxX64X11Clang36Configuration,
+                          self).GetEnvironmentVariables()
+    toolchain_bin_dir = os.path.join(self.toolchain_dir, 'bin')
+    env_variables.update({
+        'CC': os.path.join(toolchain_bin_dir, 'clang'),
+        'CXX': os.path.join(toolchain_bin_dir, 'clang++'),
+    })
     return env_variables
+
+  def GetVariables(self, config_name):
+    # A significant amount of code in V8 fails to compile on clang 3.6 using
+    # the debug config, due to an internal error in clang.
+    variables = super(LinuxX64X11Clang36Configuration,
+                      self).GetVariables(config_name)
+    variables.update({
+        'javascript_engine': 'mozjs-45',
+        'cobalt_enable_jit': 0,
+    })
+    return variables
 
 
 def CreatePlatformConfig():
   try:
-    return PlatformConfig('linux-x64x11-clang-3-6')
+    return LinuxX64X11Clang36Configuration('linux-x64x11-clang-3-6')
   except RuntimeError as e:
     logging.critical(e)
     return None

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -58,7 +58,8 @@ class AudioNodeInput : public base::RefCountedThreadSafe<AudioNodeInput> {
   // For each input, an AudioNode performs a mixing of all connections to that
   // input. FillAudioBus() performs that action. In the case of multiple
   // connections, it sums the result into |audio_bus|.
-  void FillAudioBus(ShellAudioBus* audio_bus, bool* silence);
+  void FillAudioBus(ShellAudioBus* audio_bus, bool* silence,
+                    bool* all_finished);
 
  private:
   AudioNode* const owner_node_;

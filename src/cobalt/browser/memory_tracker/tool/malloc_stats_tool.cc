@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,25 +27,6 @@
 namespace cobalt {
 namespace browser {
 namespace memory_tracker {
-namespace {
-
-// Takes in bytes -> outputs as megabytes.
-class MemoryBytesHistogramCSV : public HistogramTableCSVBase<int64_t> {
- public:
-  MemoryBytesHistogramCSV() : HistogramTableCSVBase<int64_t>(0) {}
-  std::string ValueToString(const int64_t& bytes) const OVERRIDE {
-    return ToMegabyteString(bytes);
-  }
-
-  static std::string ToMegabyteString(int64_t bytes) {
-    double mega_bytes = static_cast<double>(bytes) / (1024.0 * 1024.0);
-    char buff[128];
-    SbStringFormatF(buff, sizeof(buff), "%.1f", mega_bytes);
-    return std::string(buff);
-  }
-};
-
-}  // namespace.
 
 MallocStatsTool::MallocStatsTool() {
 }

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,10 @@
 #if defined(ENABLE_TEST_RUNNER)
 
 #include "cobalt/dom/test_runner.h"
+
+#include "base/message_loop.h"
+#include "cobalt/base/polymorphic_downcast.h"
+#include "cobalt/script/javascript_engine.h"
 
 namespace cobalt {
 namespace dom {
@@ -44,6 +48,17 @@ void TestRunner::DoNonMeasuredLayout() {
 
 void TestRunner::AdvanceClockByMs(uint64 amount) {
   clock_->Advance(base::TimeDelta::FromMilliseconds(amount));
+}
+
+void TestRunner::CollectGarbageAndThenDo(
+    script::EnvironmentSettings* settings,
+    const TestRunnerCallbackArg& callback_arg) {
+  DCHECK(settings);
+  TestRunnerCallbackArg::Reference reference(this, callback_arg);
+  DOMSettings* dom_settings =
+      base::polymorphic_downcast<dom::DOMSettings*>(settings);
+  dom_settings->javascript_engine()->CollectGarbage();
+  reference.value().Run();
 }
 
 scoped_refptr<base::Clock> TestRunner::GetClock() {

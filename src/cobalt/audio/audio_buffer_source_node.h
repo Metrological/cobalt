@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -77,19 +77,21 @@ class AudioBufferSourceNode : public AudioNode {
     SetAttributeEventListener(base::Tokens::ended(), event_listener);
   }
 
-  scoped_ptr<ShellAudioBus> PassAudioBusFromSource(
-      int32 number_of_frames, SampleType sample_type) OVERRIDE;
+  scoped_ptr<ShellAudioBus> PassAudioBusFromSource(int32 number_of_frames,
+                                                   SampleType sample_type,
+                                                   bool* finished) override;
 
   DEFINE_WRAPPABLE_TYPE(AudioBufferSourceNode);
+  void TraceMembers(script::Tracer* tracer) override;
 
  protected:
-  ~AudioBufferSourceNode() OVERRIDE;
+  ~AudioBufferSourceNode() override;
 
  private:
   enum State {
     kNone,
     kStarted,
-    kStoped,
+    kStopped,
   };
 
   scoped_refptr<AudioBuffer> buffer_;

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,6 +40,11 @@ bool MediaQueryList::matches() const {
   return media_list_->EvaluateConditionValue(
       math::Size(math::ToRoundedInt(screen_->avail_width()),
                  math::ToRoundedInt(screen_->avail_height())));
+}
+
+void MediaQueryList::TraceMembers(script::Tracer* tracer) {
+  tracer->Trace(media_list_);
+  tracer->Trace(screen_);
 }
 
 MediaQueryList::~MediaQueryList() {}

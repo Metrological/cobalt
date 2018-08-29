@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,12 +17,15 @@
 SbPlayer SbPlayerCreate(SbWindow /*window*/,
                         SbMediaVideoCodec /*video_codec*/,
                         SbMediaAudioCodec /*audio_codec*/,
+#if SB_API_VERSION < 10
                         SbMediaTime /*duration_pts*/,
+#endif  // SB_API_VERSION < 10
                         SbDrmSystem /*drm_system*/,
                         const SbMediaAudioHeader* /*audio_header*/,
                         SbPlayerDeallocateSampleFunc /*sample_deallocate_func*/,
                         SbPlayerDecoderStatusFunc /*decoder_status_func*/,
                         SbPlayerStatusFunc /*player_status_func*/,
+                        SbPlayerErrorFunc /*player_error_func*/,
                         void* /*context*/,
                         SbPlayerOutputMode /*output_mode*/,
                         SbDecodeTargetGraphicsContextProvider* /*provider*/) {

@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,15 +33,15 @@ class SolidColorBrush;
 //         return shader_;
 //       }
 //
-//       void Visit(SolidColorBrush* solid_color_brush) OVERRIDE {
+//       void Visit(SolidColorBrush* solid_color_brush) override {
 //         shader_ = new SkColorShader(...);
 //       }
 //
-//       void Visit(LinearGradientBrush* linear_gradient_brush) OVERRIDE {
+//       void Visit(LinearGradientBrush* linear_gradient_brush) override {
 //         shader_ = new SkGradientShader(...);
 //       }
 //
-//       void Visit(RadialGradientBrush* radial_gradient_brush) OVERRIDE {
+//       void Visit(RadialGradientBrush* radial_gradient_brush) override {
 //         shader_ = new SkGradientShader(...);
 //       }
 //     };

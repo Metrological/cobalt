@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 #ifndef COBALT_RENDER_TREE_CHILD_ITERATOR_H_
 #define COBALT_RENDER_TREE_CHILD_ITERATOR_H_
 
+#include "cobalt/render_tree/clear_rect_node.h"
 #include "cobalt/render_tree/composition_node.h"
 #include "cobalt/render_tree/filter_node.h"
 #include "cobalt/render_tree/image_node.h"
@@ -29,6 +30,7 @@
 namespace cobalt {
 namespace render_tree {
 
+class ClearRectNode;
 class ImageNode;
 class PunchThroughVideoNode;
 class RectNode;

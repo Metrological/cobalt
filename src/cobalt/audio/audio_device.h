@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,7 +38,16 @@ class AudioDevice {
     typedef ::media::ShellAudioBus ShellAudioBus;
 #endif  // defined(COBALT_MEDIA_SOURCE_2016)
 
-    virtual void FillAudioBus(ShellAudioBus* audio_buffer, bool* silence) = 0;
+    // |all_consumed| will be set to true if all audio frames has been consumed.
+    // This gives the AudioDestinationNode a chance to decide if the AudioDevice
+    // should be killed.
+    // |audio_buffer| contains the audio frames to be mixed with input audio if
+    // there is any.
+    // |silence| will be set to true before calling if |audio_buffer| contains
+    // only silence samples, it will be set to |false| otherwise.  It will be
+    // set to false on return if |audio_buffer| has been modified.
+    virtual void FillAudioBus(bool all_consumed, ShellAudioBus* audio_buffer,
+                              bool* silence) = 0;
 
    protected:
     ~RenderCallback() {}

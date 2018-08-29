@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@
 #include "cobalt/browser/stack_size_constants.h"
 #include "cobalt/script/mozjs-45/mozjs_global_environment.h"
 #include "starboard/once.h"
+#include "third_party/mozjs-45/cobalt_config/include/js-confdefs.h"
 #include "third_party/mozjs-45/js/public/Initialization.h"
 #include "third_party/mozjs-45/js/src/jsapi.h"
 #include "third_party/mozjs-45/js/src/vm/Runtime.h"
@@ -66,45 +67,6 @@ js::DOMProxyShadowsResult DOMProxyShadowsCheck(JSContext* context,
   return js::DoesntShadow;
 }
 
-class EngineStats {
- public:
-  EngineStats();
-
-  static EngineStats* GetInstance() {
-    return Singleton<EngineStats,
-                     StaticMemorySingletonTraits<EngineStats> >::get();
-  }
-
-  void EngineCreated() { ++engine_count_; }
-  void EngineDestroyed() { --engine_count_; }
-
-  size_t UpdateMemoryStatsAndReturnReserved() {
-    // Accessing CVals triggers a lock, so rely on local variables when
-    // possible to avoid unecessary locking.
-    size_t allocated_memory =
-        MemoryAllocatorReporter::Get()->GetCurrentBytesAllocated();
-    size_t mapped_memory =
-        MemoryAllocatorReporter::Get()->GetCurrentBytesMapped();
-
-    allocated_memory_ = allocated_memory;
-    mapped_memory_ = mapped_memory;
-
-    return allocated_memory + mapped_memory;
-  }
-
- private:
-  base::CVal<int> engine_count_;
-  base::CVal<base::cval::SizeInBytes, base::CValPublic> allocated_memory_;
-  base::CVal<base::cval::SizeInBytes, base::CValPublic> mapped_memory_;
-};
-
-EngineStats::EngineStats()
-    : engine_count_("Count.JS.Engine", 0,
-                    "Total JavaScript engine registered."),
-      allocated_memory_("Memory.JS.AllocatedMemory", 0,
-                        "JS memory occupied by the Mozjs allocator."),
-      mapped_memory_("Memory.JS.MappedMemory", 0, "JS mapped memory.") {}
-
 // Pretend we always preserve wrappers since we never call
 // SetPreserveWrapperCallback anywhere else. This is necessary for
 // TryPreserveReflector called by WeakMap to not crash. Disabling
@@ -135,11 +97,18 @@ void ReportErrorHandler(JSContext* context, const char* message,
 
 }  // namespace
 
-MozjsEngine::MozjsEngine(const Options& options)
-    : context_(nullptr), accumulated_extra_memory_cost_(0), options_(options) {
+MozjsEngine::MozjsEngine(const Options& options) : options_(options) {
   TRACE_EVENT0("cobalt::script", "MozjsEngine::MozjsEngine()");
   SbOnce(&g_js_init_once_control, CallInitAndRegisterShutDownOnce);
-  runtime_ = JS_NewRuntime(options_.gc_threshold_bytes);
+
+  // Set the nursery size to half of the GC threshold size. Analysis has shown
+  // that allocating less than this does not reduce the total amount of JS
+  // memory used, and allocating more does not provide performance improvements.
+  constexpr size_t kMinMaxNurseryBytes = 1 * 1024 * 1024;
+  uint32_t max_nursery_bytes =
+      std::max(options_.gc_threshold_bytes / 2, kMinMaxNurseryBytes);
+
+  runtime_ = JS_NewRuntime(options_.gc_threshold_bytes, max_nursery_bytes);
   CHECK(runtime_);
 
   // Sets the size of the native stack that should not be exceeded.
@@ -185,13 +154,10 @@ MozjsEngine::MozjsEngine(const Options& options)
   js::SetPreserveWrapperCallback(runtime_, DummyPreserveWrapperCallback);
 
   JS_SetErrorReporter(runtime_, ReportErrorHandler);
-
-  EngineStats::GetInstance()->EngineCreated();
 }
 
 MozjsEngine::~MozjsEngine() {
   DCHECK(thread_checker_.CalledOnValidThread());
-  EngineStats::GetInstance()->EngineDestroyed();
   JS_DestroyRuntime(runtime_);
 }
 
@@ -207,25 +173,30 @@ void MozjsEngine::CollectGarbage() {
   JS_GC(runtime_);
 }
 
-void MozjsEngine::ReportExtraMemoryCost(size_t bytes) {
+void MozjsEngine::AdjustAmountOfExternalAllocatedMemory(int64_t bytes) {
   DCHECK(thread_checker_.CalledOnValidThread());
-  accumulated_extra_memory_cost_ += bytes;
-
-  const bool do_collect_garbage =
-      accumulated_extra_memory_cost_ > options_.gc_threshold_bytes;
-  if (do_collect_garbage) {
-    accumulated_extra_memory_cost_ = 0;
+  // |force_gc_heuristic_| is only incremented, never decremented.  See its
+  // declaration in the header for details.
+  force_gc_heuristic_ += (bytes > 0) ? bytes : 0;
+  if (force_gc_heuristic_ > options_.gc_threshold_bytes) {
+    force_gc_heuristic_ = 0;
     CollectGarbage();
   }
 }
 
-bool MozjsEngine::RegisterErrorHandler(JavaScriptEngine::ErrorHandler handler) {
+bool MozjsEngine::RegisterErrorHandler(ErrorHandler handler) {
+  DCHECK(thread_checker_.CalledOnValidThread());
   error_handler_ = handler;
   return true;
 }
 
-void MozjsEngine::SetGcThreshold(int64_t bytes) {
-  runtime_->gc.setMaxMallocBytes(static_cast<size_t>(bytes));
+HeapStatistics MozjsEngine::GetHeapStatistics() {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  // There is unfortunately no easy way to get used vs total in SpiderMonkey,
+  // so just return total bytes allocated for both.
+  size_t total_heap_size =
+      MemoryAllocatorReporter::Get()->GetTotalHeapSize();
+  return {total_heap_size, total_heap_size};
 }
 
 // static
@@ -249,7 +220,7 @@ void MozjsEngine::GCCallback(JSRuntime* runtime, JSGCStatus status,
                              void* data) {
   MozjsEngine* engine = reinterpret_cast<MozjsEngine*>(data);
   if (status == JSGC_END) {
-    engine->accumulated_extra_memory_cost_ = 0;
+    engine->force_gc_heuristic_ = 0;
   }
   if (!engine->context_) {
     return;
@@ -278,33 +249,6 @@ void MozjsEngine::FinalizeCallback(JSFreeOp* free_op, JSFinalizeStatus status,
   }
 }
 
-bool MozjsEngine::ReportJSError(JSContext* context, const char* message,
-                                JSErrorReport* report) {
-  const bool is_invalid =
-      error_handler_.is_null() || !report || !report->filename;
-  if (is_invalid) {
-    return true;  // Allow error to propagate in the mozilla engine.
-  }
-  const bool do_report_error =
-      (report->flags == JSREPORT_ERROR) ||
-      (report->flags & JSREPORT_WARNING) ||
-      (report->errorNumber == JSMSG_UNCAUGHT_EXCEPTION);
-  if (do_report_error) {
-    std::string file_name = report->filename;
-    // Line/column can be zero for internal javascript exceptions. In this
-    // case set the values to 1, otherwise the base::SourceLocation object
-    // below will dcheck.
-    int line = std::max<int>(1, report->lineno);
-    int column = std::max<int>(1, report->column);
-    if (file_name.empty()) {
-      file_name = "<internal exception>";
-    }
-    base::SourceLocation source_location(file_name, line, column);
-    error_handler_.Run(source_location, message);
-  }
-  return true;  // Allow error to propagate in the mozilla engine.
-}
-
 }  // namespace mozjs
 
 // static
@@ -314,10 +258,8 @@ scoped_ptr<JavaScriptEngine> JavaScriptEngine::CreateEngine(
   return make_scoped_ptr<JavaScriptEngine>(new mozjs::MozjsEngine(options));
 }
 
-// static
-size_t JavaScriptEngine::UpdateMemoryStatsAndReturnReserved() {
-  return mozjs::EngineStats::GetInstance()
-      ->UpdateMemoryStatsAndReturnReserved();
+std::string GetJavaScriptEngineNameAndVersion() {
+  return std::string("mozjs/") + MOZILLA_VERSION;
 }
 
 }  // namespace script

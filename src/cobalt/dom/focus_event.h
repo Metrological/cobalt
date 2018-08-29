@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ class FocusEvent : public UIEvent {
   }
 
   DEFINE_WRAPPABLE_TYPE(FocusEvent);
+  void TraceMembers(script::Tracer* tracer) override;
 
  protected:
   scoped_refptr<EventTarget> related_target_;

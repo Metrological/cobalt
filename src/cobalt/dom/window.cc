@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,18 +11,18 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 #include "cobalt/dom/window.h"
 
 #include <algorithm>
 
-#include "base/base64.h"
 #include "base/bind.h"
 #include "base/bind_helpers.h"
+#include "base/debug/trace_event.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/base/tokens.h"
 #include "cobalt/cssom/css_computed_style_declaration.h"
 #include "cobalt/cssom/user_agent_style_sheet.h"
+#include "cobalt/dom/base64.h"
 #include "cobalt/dom/camera_3d.h"
 #include "cobalt/dom/console.h"
 #include "cobalt/dom/device_orientation_event.h"
@@ -45,12 +45,16 @@
 #include "cobalt/dom/performance.h"
 #include "cobalt/dom/pointer_event.h"
 #include "cobalt/dom/screen.h"
+#include "cobalt/dom/screenshot.h"
+#include "cobalt/dom/screenshot_manager.h"
 #include "cobalt/dom/storage.h"
 #include "cobalt/dom/wheel_event.h"
 #include "cobalt/dom/window_timers.h"
 #include "cobalt/media_session/media_session_client.h"
+#include "cobalt/script/environment_settings.h"
 #include "cobalt/script/javascript_engine.h"
 #include "cobalt/speech/speech_synthesis.h"
+#include "starboard/file.h"
 
 using cobalt::media_session::MediaSession;
 
@@ -63,11 +67,11 @@ class Window::RelayLoadEvent : public DocumentObserver {
   explicit RelayLoadEvent(Window* window) : window_(window) {}
 
   // From DocumentObserver.
-  void OnLoad() OVERRIDE {
+  void OnLoad() override {
     window_->PostToDispatchEvent(FROM_HERE, base::Tokens::load());
   }
-  void OnMutation() OVERRIDE {}
-  void OnFocusChanged() OVERRIDE {}
+  void OnMutation() override {}
+  void OnFocusChanged() override {}
 
  private:
   Window* window_;
@@ -75,44 +79,62 @@ class Window::RelayLoadEvent : public DocumentObserver {
   DISALLOW_COPY_AND_ASSIGN(RelayLoadEvent);
 };
 
-Window::Window(int width, int height, float device_pixel_ratio,
-               base::ApplicationState initial_application_state,
-               cssom::CSSParser* css_parser, Parser* dom_parser,
-               loader::FetcherFactory* fetcher_factory,
-               render_tree::ResourceProvider** resource_provider,
-               loader::image::AnimatedImageTracker* animated_image_tracker,
-               loader::image::ImageCache* image_cache,
-               loader::image::ReducedCacheCapacityManager*
-                   reduced_image_cache_capacity_manager,
-               loader::font::RemoteTypefaceCache* remote_typeface_cache,
-               loader::mesh::MeshCache* mesh_cache,
-               LocalStorageDatabase* local_storage_database,
-               media::CanPlayTypeHandler* can_play_type_handler,
-               media::WebMediaPlayerFactory* web_media_player_factory,
-               script::ExecutionState* execution_state,
-               script::ScriptRunner* script_runner,
-               script::ScriptValueFactory* script_value_factory,
-               MediaSource::Registry* media_source_registry,
-               DomStatTracker* dom_stat_tracker, const GURL& url,
-               const std::string& user_agent, const std::string& language,
-               const std::string& font_language_script,
-               const base::Callback<void(const GURL&)> navigation_callback,
-               const base::Callback<void(const std::string&)>& error_callback,
-               network_bridge::CookieJar* cookie_jar,
-               const network_bridge::PostSender& post_sender,
-               csp::CSPHeaderPolicy require_csp,
-               CspEnforcementType csp_enforcement_mode,
-               const base::Closure& csp_policy_changed_callback,
-               const base::Closure& ran_animation_frame_callbacks_callback,
-               const CloseCallback& window_close_callback,
-               const base::Closure& window_minimize_callback,
-               const base::Callback<SbWindow()>& get_sb_window_callback,
-               const scoped_refptr<input::Camera3D>& camera_3d,
-               const scoped_refptr<MediaSession>& media_session,
-               int csp_insecure_allowed_token, int dom_max_element_depth,
-               float video_playback_rate_multiplier, ClockType clock_type,
-               const CacheCallback& splash_screen_cache_callback)
-    : width_(width),
+namespace {
+// Ensure that the timer resolution is at the lowest 20 microseconds in
+// order to mitigate potential Spectre-related attacks.  This is following
+// Mozilla's lead as described here:
+//   https://www.mozilla.org/en-US/security/advisories/mfsa2018-01/
+const int64_t kPerformanceTimerMinResolutionInMicroseconds = 20;
+}  // namespace
+
+Window::Window(
+    int width, int height, float device_pixel_ratio,
+    base::ApplicationState initial_application_state,
+    cssom::CSSParser* css_parser, Parser* dom_parser,
+    loader::FetcherFactory* fetcher_factory,
+    loader::LoaderFactory* loader_factory,
+    render_tree::ResourceProvider** resource_provider,
+    loader::image::AnimatedImageTracker* animated_image_tracker,
+    loader::image::ImageCache* image_cache,
+    loader::image::ReducedCacheCapacityManager*
+        reduced_image_cache_capacity_manager,
+    loader::font::RemoteTypefaceCache* remote_typeface_cache,
+    loader::mesh::MeshCache* mesh_cache,
+    LocalStorageDatabase* local_storage_database,
+    media::CanPlayTypeHandler* can_play_type_handler,
+    media::WebMediaPlayerFactory* web_media_player_factory,
+    script::ExecutionState* execution_state,
+    script::ScriptRunner* script_runner,
+    script::ScriptValueFactory* script_value_factory,
+    MediaSource::Registry* media_source_registry,
+    DomStatTracker* dom_stat_tracker, const GURL& url,
+    const std::string& user_agent, const std::string& language,
+    const std::string& font_language_script,
+    const base::Callback<void(const GURL&)> navigation_callback,
+    const base::Callback<void(const std::string&)>& error_callback,
+    network_bridge::CookieJar* cookie_jar,
+    const network_bridge::PostSender& post_sender,
+    csp::CSPHeaderPolicy require_csp, CspEnforcementType csp_enforcement_mode,
+    const base::Closure& csp_policy_changed_callback,
+    const base::Closure& ran_animation_frame_callbacks_callback,
+    const CloseCallback& window_close_callback,
+    const base::Closure& window_minimize_callback,
+    OnScreenKeyboardBridge* on_screen_keyboard_bridge,
+    const scoped_refptr<input::Camera3D>& camera_3d,
+    const scoped_refptr<MediaSession>& media_session,
+    const OnStartDispatchEventCallback& on_start_dispatch_event_callback,
+    const OnStopDispatchEventCallback& on_stop_dispatch_event_callback,
+    const ScreenshotManager::ProvideScreenshotFunctionCallback&
+        screenshot_function_callback,
+    base::WaitableEvent* synchronous_loader_interrupt,
+    int csp_insecure_allowed_token, int dom_max_element_depth,
+    float video_playback_rate_multiplier, ClockType clock_type,
+    const CacheCallback& splash_screen_cache_callback,
+    const scoped_refptr<captions::SystemCaptionSettings>& captions)
+    // 'window' object EventTargets require special handling for onerror events,
+    // see EventTarget constructor for more details.
+    : EventTarget(kUnpackOnErrorEvents),
+      width_(width),
       height_(height),
       device_pixel_ratio_(device_pixel_ratio),
       is_resize_event_pending_(false),
@@ -121,18 +143,24 @@ Window::Window(int width, int height, float device_pixel_ratio,
       test_runner_(new TestRunner()),
 #endif  // ENABLE_TEST_RUNNER
       html_element_context_(new HTMLElementContext(
-          fetcher_factory, css_parser, dom_parser, can_play_type_handler,
-          web_media_player_factory, script_runner, script_value_factory,
-          media_source_registry, resource_provider, animated_image_tracker,
-          image_cache, reduced_image_cache_capacity_manager,
-          remote_typeface_cache, mesh_cache, dom_stat_tracker,
-          font_language_script, initial_application_state,
+          fetcher_factory, loader_factory, css_parser, dom_parser,
+          can_play_type_handler, web_media_player_factory, script_runner,
+          script_value_factory, media_source_registry, resource_provider,
+          animated_image_tracker, image_cache,
+          reduced_image_cache_capacity_manager, remote_typeface_cache,
+          mesh_cache, dom_stat_tracker, font_language_script,
+          initial_application_state, synchronous_loader_interrupt,
           video_playback_rate_multiplier)),
       performance_(new Performance(
 #if defined(ENABLE_TEST_RUNNER)
-          clock_type == kClockTypeTestRunner ? test_runner_->GetClock() :
+          clock_type == kClockTypeTestRunner
+              ? test_runner_->GetClock()
+              :
 #endif
-                                             new base::SystemMonotonicClock())),
+              new base::MinimumResolutionClock(
+                  new base::SystemMonotonicClock(),
+                  base::TimeDelta::FromMicroseconds(
+                      kPerformanceTimerMinResolutionInMicroseconds)))),
       ALLOW_THIS_IN_INITIALIZER_LIST(document_(new Document(
           html_element_context_.get(),
           Document::Options(
@@ -145,7 +173,7 @@ Window::Window(int width, int height, float device_pixel_ratio,
               csp_insecure_allowed_token, dom_max_element_depth)))),
       document_loader_(NULL),
       history_(new History()),
-      navigator_(new Navigator(user_agent, language, media_session,
+      navigator_(new Navigator(user_agent, language, media_session, captions,
                                script_value_factory)),
       ALLOW_THIS_IN_INITIALIZER_LIST(
           relay_on_load_event_(new RelayLoadEvent(this))),
@@ -165,13 +193,16 @@ Window::Window(int width, int height, float device_pixel_ratio,
           ran_animation_frame_callbacks_callback),
       window_close_callback_(window_close_callback),
       window_minimize_callback_(window_minimize_callback),
-#if SB_HAS(ON_SCREEN_KEYBOARD)
-      on_screen_keyboard_(new OnScreenKeyboard(get_sb_window_callback)),
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
-      splash_screen_cache_callback_(splash_screen_cache_callback) {
-#if !SB_HAS(ON_SCREEN_KEYBOARD)
-  UNREFERENCED_PARAMETER(get_sb_window_callback);
-#endif  // !SB_HAS(ON_SCREEN_KEYBOARD)
+      // We only have an on_screen_keyboard_bridge when the platform supports
+      // it. Otherwise don't even expose it in the DOM.
+      on_screen_keyboard_(on_screen_keyboard_bridge
+                              ? new OnScreenKeyboard(on_screen_keyboard_bridge,
+                                                     script_value_factory)
+                              : NULL),
+      splash_screen_cache_callback_(splash_screen_cache_callback),
+      on_start_dispatch_event_callback_(on_start_dispatch_event_callback),
+      on_stop_dispatch_event_callback_(on_stop_dispatch_event_callback),
+      screenshot_manager_(screenshot_function_callback) {
 #if !defined(ENABLE_TEST_RUNNER)
   UNREFERENCED_PARAMETER(clock_type);
 #endif
@@ -224,6 +255,26 @@ void Window::Minimize() {
 
 const scoped_refptr<Navigator>& Window::navigator() const { return navigator_; }
 
+script::Handle<ScreenshotManager::InterfacePromise> Window::Screenshot() {
+  scoped_refptr<render_tree::Node> render_tree_root =
+      document_->DoSynchronousLayoutAndGetRenderTree();
+
+  script::Handle<ScreenshotManager::InterfacePromise> promise =
+      html_element_context()
+          ->script_value_factory()
+          ->CreateInterfacePromise<dom::Screenshot>();
+
+  std::unique_ptr<ScreenshotManager::InterfacePromiseValue::Reference>
+      promise_reference(new ScreenshotManager::InterfacePromiseValue::Reference(
+          this, promise));
+
+  screenshot_manager_.Screenshot(
+      loader::image::EncodedStaticImage::ImageFormat::kPNG, render_tree_root,
+      std::move(promise_reference));
+
+  return promise;
+}
+
 scoped_refptr<cssom::CSSStyleDeclaration> Window::GetComputedStyle(
     const scoped_refptr<Element>& elt) {
   scoped_refptr<HTMLElement> html_element = elt->AsHTMLElement();
@@ -235,7 +286,7 @@ scoped_refptr<cssom::CSSStyleDeclaration> Window::GetComputedStyle(
 }
 
 scoped_refptr<cssom::CSSStyleDeclaration> Window::GetComputedStyle(
-    const scoped_refptr<Element>& elt, const std::string& pseudoElt) {
+    const scoped_refptr<Element>& elt, const std::string& pseudo_elt) {
   // The getComputedStyle(elt, pseudoElt) method must run these steps:
   // https://www.w3.org/TR/2013/WD-cssom-20131205/#dom-window-getcomputedstyle
 
@@ -254,8 +305,8 @@ scoped_refptr<cssom::CSSStyleDeclaration> Window::GetComputedStyle(
 
     // 3. If pseudoElt is as an ASCII case-insensitive match for either
     // ':before' or '::before' let obj be the ::before pseudo-element of elt.
-    if (LowerCaseEqualsASCII(pseudoElt, ":before") ||
-        LowerCaseEqualsASCII(pseudoElt, "::before")) {
+    if (LowerCaseEqualsASCII(pseudo_elt, ":before") ||
+        LowerCaseEqualsASCII(pseudo_elt, "::before")) {
       PseudoElement* pseudo_element =
           html_element->pseudo_element(kBeforePseudoElementType);
       obj = pseudo_element ? pseudo_element->css_computed_style_declaration()
@@ -264,8 +315,8 @@ scoped_refptr<cssom::CSSStyleDeclaration> Window::GetComputedStyle(
 
     // 4. If pseudoElt is as an ASCII case-insensitive match for either ':after'
     // or '::after' let obj be the ::after pseudo-element of elt.
-    if (LowerCaseEqualsASCII(pseudoElt, ":after") ||
-        LowerCaseEqualsASCII(pseudoElt, "::after")) {
+    if (LowerCaseEqualsASCII(pseudo_elt, ":after") ||
+        LowerCaseEqualsASCII(pseudo_elt, "::after")) {
       PseudoElement* pseudo_element =
           html_element->pseudo_element(kAfterPseudoElementType);
       obj = pseudo_element ? pseudo_element->css_computed_style_declaration()
@@ -301,22 +352,24 @@ scoped_refptr<Crypto> Window::crypto() const { return crypto_; }
 
 std::string Window::Btoa(const std::string& string_to_encode,
                          script::ExceptionState* exception_state) {
-  std::string output;
-  if (!base::Base64Encode(string_to_encode, &output)) {
+  TRACE_EVENT0("cobalt::dom", "Window::Btoa()");
+  auto output = ForgivingBase64Encode(string_to_encode);
+  if (!output) {
     DOMException::Raise(DOMException::kInvalidCharacterErr, exception_state);
     return std::string();
   }
-  return output;
+  return *output;
 }
 
 std::vector<uint8_t> Window::Atob(const std::string& encoded_string,
                                   script::ExceptionState* exception_state) {
-  std::string output;
-  if (!base::Base64Decode(encoded_string, &output)) {
+  TRACE_EVENT0("cobalt::dom", "Window::Atob()");
+  auto output = ForgivingBase64Decode(encoded_string);
+  if (!output) {
     DOMException::Raise(DOMException::kInvalidCharacterErr, exception_state);
     return {};
   }
-  return {output.begin(), output.end()};
+  return *output;
 }
 
 int Window::SetTimeout(const WindowTimers::TimerCallbackArg& handler,
@@ -439,6 +492,9 @@ bool Window::HasPendingAnimationFrameCallbacks() const {
 }
 
 void Window::InjectEvent(const scoped_refptr<Event>& event) {
+  TRACE_EVENT1("cobalt::dom", "Window::InjectEvent()", "event",
+               event->type().c_str());
+
   // Forward the event on to the correct object in DOM.
   if (event->GetWrappableType() == base::GetTypeId<KeyboardEvent>()) {
     // Event.target:focused element processing the key event or if no element
@@ -456,10 +512,6 @@ void Window::InjectEvent(const scoped_refptr<Event>& event) {
     if (on_screen_keyboard_) {
       on_screen_keyboard_->DispatchEvent(event);
     }
-  } else if (event->GetWrappableType() == base::GetTypeId<PointerEvent>() ||
-             event->GetWrappableType() == base::GetTypeId<MouseEvent>() ||
-             event->GetWrappableType() == base::GetTypeId<WheelEvent>()) {
-    document_->pointer_state()->QueuePointerEvent(event);
   } else {
     SB_NOTREACHED();
   }
@@ -528,9 +580,13 @@ bool Window::ReportScriptError(const script::ErrorReport& error_report) {
   return error_event->default_prevented();
 }
 
-void Window::SetSynchronousLayoutCallback(
-    const base::Closure& synchronous_layout_callback) {
-  document_->set_synchronous_layout_callback(synchronous_layout_callback);
+void Window::SetSynchronousLayoutCallback(const base::Closure& callback) {
+  document_->set_synchronous_layout_callback(callback);
+}
+
+void Window::SetSynchronousLayoutAndProduceRenderTreeCallback(
+    const SynchronousLayoutAndProduceRenderTreeCallback& callback) {
+  document_->set_synchronous_layout_and_produce_render_tree_callback(callback);
 }
 
 void Window::SetSize(int width, int height, float device_pixel_ratio) {
@@ -586,7 +642,28 @@ void Window::OnDocumentRootElementUnableToProvideOffsetDimensions() {
   }
 }
 
+void Window::OnStartDispatchEvent(const scoped_refptr<dom::Event>& event) {
+  if (!on_start_dispatch_event_callback_.is_null()) {
+    on_start_dispatch_event_callback_.Run(event);
+  }
+}
+
+void Window::OnStopDispatchEvent(const scoped_refptr<dom::Event>& event) {
+  if (!on_stop_dispatch_event_callback_.is_null()) {
+    on_stop_dispatch_event_callback_.Run(event);
+  }
+}
+
+void Window::ClearPointerStateForShutdown() {
+  document_->pointer_state()->ClearForShutdown();
+}
+
 void Window::TraceMembers(script::Tracer* tracer) {
+  EventTarget::TraceMembers(tracer);
+
+#if defined(ENABLE_TEST_RUNNER)
+  tracer->Trace(test_runner_);
+#endif  // ENABLE_TEST_RUNNER
   tracer->Trace(performance_);
   tracer->Trace(document_);
   tracer->Trace(history_);
@@ -598,6 +675,12 @@ void Window::TraceMembers(script::Tracer* tracer) {
   tracer->Trace(local_storage_);
   tracer->Trace(session_storage_);
   tracer->Trace(screen_);
+  tracer->Trace(on_screen_keyboard_);
+}
+
+void Window::SetEnvironmentSettings(script::EnvironmentSettings* settings) {
+  screenshot_manager_.SetEnvironmentSettings(settings);
+  navigator_->SetEnvironmentSettings(settings);
 }
 
 void Window::CacheSplashScreen(const std::string& content) {
@@ -611,6 +694,8 @@ void Window::CacheSplashScreen(const std::string& content) {
 const scoped_refptr<OnScreenKeyboard>& Window::on_screen_keyboard() const {
   return on_screen_keyboard_;
 }
+
+void Window::ReleaseOnScreenKeyboard() { on_screen_keyboard_ = nullptr; }
 
 Window::~Window() {
   html_element_context_->page_visibility_state()->RemoveObserver(this);

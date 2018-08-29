@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "cobalt/cssom/selector_tree.h"
+
+#include "cobalt/base/version_compatibility.h"
 #include "cobalt/css_parser/parser.h"
 #include "cobalt/cssom/css_style_rule.h"
-#include "cobalt/cssom/selector_tree.h"
 #include "cobalt/cssom/specificity.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -24,15 +26,17 @@ namespace cssom {
 TEST(SelectorTreeTest, RootShouldHaveNoChildrenAfterInitialization) {
   SelectorTree selector_tree;
   EXPECT_TRUE(
-      selector_tree.children(selector_tree.root(), kChildCombinator).empty());
-  EXPECT_TRUE(
-      selector_tree.children(selector_tree.root(), kDescendantCombinator)
+      selector_tree.children(selector_tree.root_node(), kChildCombinator)
           .empty());
   EXPECT_TRUE(
-      selector_tree.children(selector_tree.root(), kNextSiblingCombinator)
+      selector_tree.children(selector_tree.root_node(), kDescendantCombinator)
           .empty());
   EXPECT_TRUE(
-      selector_tree.children(selector_tree.root(), kFollowingSiblingCombinator)
+      selector_tree.children(selector_tree.root_node(), kNextSiblingCombinator)
+          .empty());
+  EXPECT_TRUE(
+      selector_tree
+          .children(selector_tree.root_node(), kFollowingSiblingCombinator)
           .empty());
 }
 
@@ -48,20 +52,28 @@ TEST(SelectorTreeTest, AppendRuleShouldTakeOneRule) {
                                           "[object SelectorTreeTest]", 1, 1))
           ->AsCSSStyleRule();
   selector_tree.AppendRule(css_style_rule_1);
-  ASSERT_EQ(
-      0, selector_tree.children(selector_tree.root(), kChildCombinator).size());
-  ASSERT_EQ(1,
-            selector_tree.children(selector_tree.root(), kDescendantCombinator)
-                .size());
+
+  // Verify that ValidateVersionCompatibility does not report a usage error
+  // when the minimum compatibility version is 1.
+  base::VersionCompatibility::GetInstance()->SetMinimumVersion(1);
+  EXPECT_TRUE(selector_tree.ValidateVersionCompatibility());
+
   ASSERT_EQ(0,
-            selector_tree.children(selector_tree.root(), kNextSiblingCombinator)
+            selector_tree.children(selector_tree.root_node(), kChildCombinator)
                 .size());
-  ASSERT_EQ(0, selector_tree.children(selector_tree.root(),
-                                      kFollowingSiblingCombinator)
+  ASSERT_EQ(1, selector_tree
+                   .children(selector_tree.root_node(), kDescendantCombinator)
                    .size());
+  ASSERT_EQ(0, selector_tree
+                   .children(selector_tree.root_node(), kNextSiblingCombinator)
+                   .size());
+  ASSERT_EQ(
+      0, selector_tree
+             .children(selector_tree.root_node(), kFollowingSiblingCombinator)
+             .size());
 
   const SelectorTree::Node* node_1 =
-      selector_tree.children(selector_tree.root(), kDescendantCombinator)
+      selector_tree.children(selector_tree.root_node(), kDescendantCombinator)
           .begin()
           ->second;
   ASSERT_EQ(1, node_1->rules().size());
@@ -88,17 +100,25 @@ TEST(SelectorTreeTest, AppendRuleShouldNormalizeCompoundSelector) {
           ->AsCSSStyleRule();
   selector_tree.AppendRule(css_style_rule_1);
   selector_tree.AppendRule(css_style_rule_2);
-  ASSERT_EQ(
-      0, selector_tree.children(selector_tree.root(), kChildCombinator).size());
-  ASSERT_EQ(1,
-            selector_tree.children(selector_tree.root(), kDescendantCombinator)
-                .size());
+
+  // Verify that ValidateVersionCompatibility does not report a usage error
+  // when the minimum compatibility version is 1.
+  base::VersionCompatibility::GetInstance()->SetMinimumVersion(1);
+  EXPECT_TRUE(selector_tree.ValidateVersionCompatibility());
+
   ASSERT_EQ(0,
-            selector_tree.children(selector_tree.root(), kNextSiblingCombinator)
+            selector_tree.children(selector_tree.root_node(), kChildCombinator)
                 .size());
-  ASSERT_EQ(0, selector_tree.children(selector_tree.root(),
-                                      kFollowingSiblingCombinator)
+  ASSERT_EQ(1, selector_tree
+                   .children(selector_tree.root_node(), kDescendantCombinator)
                    .size());
+  ASSERT_EQ(0, selector_tree
+                   .children(selector_tree.root_node(), kNextSiblingCombinator)
+                   .size());
+  ASSERT_EQ(
+      0, selector_tree
+             .children(selector_tree.root_node(), kFollowingSiblingCombinator)
+             .size());
 }
 
 TEST(SelectorTreeTest, AppendRuleSimpleShouldTakeTwoIdenticalRules) {
@@ -119,19 +139,26 @@ TEST(SelectorTreeTest, AppendRuleSimpleShouldTakeTwoIdenticalRules) {
   selector_tree.AppendRule(css_style_rule_1);
   selector_tree.AppendRule(css_style_rule_2);
 
-  ASSERT_EQ(
-      0, selector_tree.children(selector_tree.root(), kChildCombinator).size());
-  ASSERT_EQ(1,
-            selector_tree.children(selector_tree.root(), kDescendantCombinator)
-                .size());
+  // Verify that ValidateVersionCompatibility does not report a usage error
+  // when the minimum compatibility version is 1.
+  base::VersionCompatibility::GetInstance()->SetMinimumVersion(1);
+  EXPECT_TRUE(selector_tree.ValidateVersionCompatibility());
+
   ASSERT_EQ(0,
-            selector_tree.children(selector_tree.root(), kNextSiblingCombinator)
+            selector_tree.children(selector_tree.root_node(), kChildCombinator)
                 .size());
-  ASSERT_EQ(0, selector_tree.children(selector_tree.root(),
-                                      kFollowingSiblingCombinator)
+  ASSERT_EQ(1, selector_tree
+                   .children(selector_tree.root_node(), kDescendantCombinator)
                    .size());
+  ASSERT_EQ(0, selector_tree
+                   .children(selector_tree.root_node(), kNextSiblingCombinator)
+                   .size());
+  ASSERT_EQ(
+      0, selector_tree
+             .children(selector_tree.root_node(), kFollowingSiblingCombinator)
+             .size());
   const SelectorTree::Node* node_1 =
-      selector_tree.children(selector_tree.root(), kDescendantCombinator)
+      selector_tree.children(selector_tree.root_node(), kDescendantCombinator)
           .begin()
           ->second;
   ASSERT_EQ(2, node_1->rules().size());
@@ -160,19 +187,26 @@ TEST(SelectorTreeTest, AppendRuleSimpleShouldTakeTwoDesendantSelectors) {
   selector_tree.AppendRule(css_style_rule_1);
   selector_tree.AppendRule(css_style_rule_2);
 
-  ASSERT_EQ(
-      0, selector_tree.children(selector_tree.root(), kChildCombinator).size());
-  ASSERT_EQ(1,
-            selector_tree.children(selector_tree.root(), kDescendantCombinator)
-                .size());
+  // Verify that ValidateVersionCompatibility does not report a usage error
+  // when the minimum compatibility version is 1.
+  base::VersionCompatibility::GetInstance()->SetMinimumVersion(1);
+  EXPECT_TRUE(selector_tree.ValidateVersionCompatibility());
+
   ASSERT_EQ(0,
-            selector_tree.children(selector_tree.root(), kNextSiblingCombinator)
+            selector_tree.children(selector_tree.root_node(), kChildCombinator)
                 .size());
-  ASSERT_EQ(0, selector_tree.children(selector_tree.root(),
-                                      kFollowingSiblingCombinator)
+  ASSERT_EQ(1, selector_tree
+                   .children(selector_tree.root_node(), kDescendantCombinator)
                    .size());
+  ASSERT_EQ(0, selector_tree
+                   .children(selector_tree.root_node(), kNextSiblingCombinator)
+                   .size());
+  ASSERT_EQ(
+      0, selector_tree
+             .children(selector_tree.root_node(), kFollowingSiblingCombinator)
+             .size());
   const SelectorTree::Node* node_1 =
-      selector_tree.children(selector_tree.root(), kDescendantCombinator)
+      selector_tree.children(selector_tree.root_node(), kDescendantCombinator)
           .begin()
           ->second;
   ASSERT_EQ(1, node_1->rules().size());
@@ -189,6 +223,165 @@ TEST(SelectorTreeTest, AppendRuleSimpleShouldTakeTwoDesendantSelectors) {
   ASSERT_EQ(1, node_2->rules().size());
   EXPECT_EQ(css_style_rule_2, node_2->rules()[0]);
   EXPECT_EQ(Specificity(0, 0, 2), node_2->cumulative_specificity());
+}
+
+TEST(SelectorTreeTest, AppendRuleTwoDifferentNotSelectorsForSameElement) {
+  SelectorTree selector_tree;
+
+  // Selector Tree:
+  // root
+  //   kDescendantCombinator -> node_1("body:not(.class-1)")
+  //   kDescendantCombinator -> node_2("body:not(.class-2)")
+  scoped_ptr<css_parser::Parser> css_parser = css_parser::Parser::Create();
+  scoped_refptr<CSSStyleRule> css_style_rule_1 =
+      css_parser
+          ->ParseRule("body:not(.class-1) {}",
+                      base::SourceLocation("[object SelectorTreeTest]", 1, 1))
+          ->AsCSSStyleRule();
+  scoped_refptr<CSSStyleRule> css_style_rule_2 =
+      css_parser
+          ->ParseRule("body:not(.class-2) {}",
+                      base::SourceLocation("[object SelectorTreeTest]", 1, 1))
+          ->AsCSSStyleRule();
+  selector_tree.AppendRule(css_style_rule_1);
+  selector_tree.AppendRule(css_style_rule_2);
+
+  // Verify that ValidateVersionCompatibility does not report a usage error
+  // when the minimum compatibility version is 16.
+  base::VersionCompatibility::GetInstance()->SetMinimumVersion(16);
+  EXPECT_TRUE(selector_tree.ValidateVersionCompatibility());
+
+  // Verify that ValidateVersionCompatibility reports a usage error when the
+  // minimum compatibility version is 1.
+  base::VersionCompatibility::GetInstance()->SetMinimumVersion(1);
+  EXPECT_FALSE(selector_tree.ValidateVersionCompatibility());
+
+  ASSERT_EQ(0,
+            selector_tree.children(selector_tree.root_node(), kChildCombinator)
+                .size());
+  ASSERT_EQ(2, selector_tree
+                   .children(selector_tree.root_node(), kDescendantCombinator)
+                   .size());
+  ASSERT_EQ(0, selector_tree
+                   .children(selector_tree.root_node(), kNextSiblingCombinator)
+                   .size());
+  ASSERT_EQ(
+      0, selector_tree
+             .children(selector_tree.root_node(), kFollowingSiblingCombinator)
+             .size());
+  auto node_iter =
+      selector_tree.children(selector_tree.root_node(), kDescendantCombinator)
+          .begin();
+  const SelectorTree::Node* node_1 = node_iter->second;
+  ASSERT_EQ(1, node_1->rules().size());
+  EXPECT_EQ(css_style_rule_1, node_1->rules()[0]);
+  EXPECT_EQ(Specificity(0, 1, 1), node_1->cumulative_specificity());
+
+  const SelectorTree::Node* node_2 = (++node_iter)->second;
+  ASSERT_EQ(1, node_2->rules().size());
+  EXPECT_EQ(css_style_rule_2, node_2->rules()[0]);
+  EXPECT_EQ(Specificity(0, 1, 1), node_1->cumulative_specificity());
+}
+
+TEST(SelectorTreeTest, AppendRuleTwoNotSelectorsForDifferentElements) {
+  SelectorTree selector_tree;
+
+  // Selector Tree:
+  // root
+  //   kDescendantCombinator -> node_1("body:not(.class-1)")
+  //   kDescendantCombinator -> node_2("div:not(.class-1)")
+  scoped_ptr<css_parser::Parser> css_parser = css_parser::Parser::Create();
+  scoped_refptr<CSSStyleRule> css_style_rule_1 =
+      css_parser
+          ->ParseRule("body:not(.class-1) {}",
+                      base::SourceLocation("[object SelectorTreeTest]", 1, 1))
+          ->AsCSSStyleRule();
+  scoped_refptr<CSSStyleRule> css_style_rule_2 =
+      css_parser
+          ->ParseRule("div:not(.class-1) {}",
+                      base::SourceLocation("[object SelectorTreeTest]", 1, 1))
+          ->AsCSSStyleRule();
+  selector_tree.AppendRule(css_style_rule_1);
+  selector_tree.AppendRule(css_style_rule_2);
+
+  // Verify that ValidateVersionCompatibility does not report a usage error
+  // when the minimum compatibility version is 1.
+  base::VersionCompatibility::GetInstance()->SetMinimumVersion(1);
+  EXPECT_TRUE(selector_tree.ValidateVersionCompatibility());
+
+  ASSERT_EQ(0,
+            selector_tree.children(selector_tree.root_node(), kChildCombinator)
+                .size());
+  ASSERT_EQ(2, selector_tree
+                   .children(selector_tree.root_node(), kDescendantCombinator)
+                   .size());
+  ASSERT_EQ(0, selector_tree
+                   .children(selector_tree.root_node(), kNextSiblingCombinator)
+                   .size());
+  ASSERT_EQ(
+      0, selector_tree
+             .children(selector_tree.root_node(), kFollowingSiblingCombinator)
+             .size());
+  auto node_iter =
+      selector_tree.children(selector_tree.root_node(), kDescendantCombinator)
+          .begin();
+  const SelectorTree::Node* node_1 = node_iter->second;
+  ASSERT_EQ(1, node_1->rules().size());
+  EXPECT_EQ(css_style_rule_1, node_1->rules()[0]);
+  EXPECT_EQ(Specificity(0, 1, 1), node_1->cumulative_specificity());
+
+  const SelectorTree::Node* node_2 = (++node_iter)->second;
+  ASSERT_EQ(1, node_2->rules().size());
+  EXPECT_EQ(css_style_rule_2, node_2->rules()[0]);
+  EXPECT_EQ(Specificity(0, 1, 1), node_1->cumulative_specificity());
+}
+
+TEST(SelectorTreeTest, AppendRuleTwoIdenticalNotSelectors) {
+  SelectorTree selector_tree;
+
+  // Selector Tree:
+  // root
+  //   kDescendantCombinator -> node_1("body:not(.class-1")
+  scoped_ptr<css_parser::Parser> css_parser = css_parser::Parser::Create();
+  scoped_refptr<CSSStyleRule> css_style_rule_1 =
+      css_parser
+          ->ParseRule("body:not(.class-1) {}",
+                      base::SourceLocation("[object SelectorTreeTest]", 1, 1))
+          ->AsCSSStyleRule();
+  scoped_refptr<CSSStyleRule> css_style_rule_2 =
+      css_parser
+          ->ParseRule("body:not(.class-1) {}",
+                      base::SourceLocation("[object SelectorTreeTest]", 1, 1))
+          ->AsCSSStyleRule();
+  selector_tree.AppendRule(css_style_rule_1);
+  selector_tree.AppendRule(css_style_rule_2);
+
+  // Verify that ValidateVersionCompatibility does not report a usage error
+  // when the minimum compatibility version is 1.
+  base::VersionCompatibility::GetInstance()->SetMinimumVersion(1);
+  EXPECT_TRUE(selector_tree.ValidateVersionCompatibility());
+
+  ASSERT_EQ(0,
+            selector_tree.children(selector_tree.root_node(), kChildCombinator)
+                .size());
+  ASSERT_EQ(1, selector_tree
+                   .children(selector_tree.root_node(), kDescendantCombinator)
+                   .size());
+  ASSERT_EQ(0, selector_tree
+                   .children(selector_tree.root_node(), kNextSiblingCombinator)
+                   .size());
+  ASSERT_EQ(
+      0, selector_tree
+             .children(selector_tree.root_node(), kFollowingSiblingCombinator)
+             .size());
+  const SelectorTree::Node* node_1 =
+      selector_tree.children(selector_tree.root_node(), kDescendantCombinator)
+          .begin()
+          ->second;
+  ASSERT_EQ(2, node_1->rules().size());
+  EXPECT_EQ(css_style_rule_1, node_1->rules()[0]);
+  EXPECT_EQ(css_style_rule_2, node_1->rules()[1]);
+  EXPECT_EQ(Specificity(0, 1, 1), node_1->cumulative_specificity());
 }
 
 }  // namespace cssom

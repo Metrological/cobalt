@@ -28,7 +28,8 @@
 namespace base {
 
 MessagePumpIOStarboard::SocketWatcher::SocketWatcher()
-    : socket_(kSbSocketInvalid),
+    : interests_(kSbSocketWaiterInterestNone),
+      socket_(kSbSocketInvalid),
       pump_(NULL),
       watcher_(NULL),
       ALLOW_THIS_IN_INITIALIZER_LIST(weak_factory_(this)) {}
@@ -48,6 +49,7 @@ bool MessagePumpIOStarboard::SocketWatcher::StopWatchingSocket() {
   }
   pump_ = NULL;
   watcher_ = NULL;
+  interests_ = kSbSocketWaiterInterestNone;
   return result;
 }
 
@@ -147,6 +149,7 @@ bool MessagePumpIOStarboard::Watch(SbSocket socket,
   controller->Init(socket, persistent);
   controller->set_watcher(delegate);
   controller->set_pump(this);
+  controller->set_interests(interests);
 
   return true;
 }
@@ -193,15 +196,7 @@ void MessagePumpIOStarboard::Run(Delegate* delegate) {
     if (!keep_running_)
       break;
 
-    // Let's play catchup on all delayed work before we loop.  This fixes bug
-    // #5534709 by processing a large number of short delayed tasks quickly
-    // before looping back to process non-delayed tasks (like paint).
-    bool did_delayed_work = false;
-    do {
-      did_delayed_work = delegate->DoDelayedWork(&delayed_work_time_);
-      did_work |= did_delayed_work;
-    } while (did_delayed_work && keep_running_);
-
+    did_work |= delegate->DoDelayedWork(&delayed_work_time_);
     if (!keep_running_)
       break;
 

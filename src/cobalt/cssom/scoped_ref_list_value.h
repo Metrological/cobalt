@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -62,7 +62,7 @@ class ScopedRefListValue : public PropertyValue {
   }
 
  protected:
-  ~ScopedRefListValue() OVERRIDE {}
+  ~ScopedRefListValue() override {}
 
   const scoped_ptr<Builder> value_;
 

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -48,10 +48,10 @@ typedef ResourceCache<ImageResourceCacheType> ImageCache;
 inline static scoped_ptr<ImageCache> CreateImageCache(
     const std::string& name, uint32 cache_capacity,
     loader::LoaderFactory* loader_factory) {
-  return make_scoped_ptr<ImageCache>(
-      new ImageCache(name, cache_capacity,
-                     base::Bind(&loader::LoaderFactory::CreateImageLoader,
-                                base::Unretained(loader_factory))));
+  return make_scoped_ptr<ImageCache>(new ImageCache(
+      name, cache_capacity, false /*are_loading_retries_enabled*/,
+      base::Bind(&loader::LoaderFactory::CreateImageLoader,
+                 base::Unretained(loader_factory))));
 }
 
 // The ReducedCacheCapacityManager is a helper class that manages state which

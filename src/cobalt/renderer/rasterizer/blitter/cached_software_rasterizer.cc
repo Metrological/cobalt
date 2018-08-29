@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ CachedSoftwareRasterizer::CachedSoftwareRasterizer(
     : cache_capacity_(cache_capacity),
       device_(device),
       context_(context),
-      software_rasterizer_(0, purge_skia_font_caches_on_destruction),
+      software_rasterizer_(purge_skia_font_caches_on_destruction),
       cache_memory_usage_(
           "Memory.CachedSoftwareRasterizer.CacheUsage", 0,
           "Total memory occupied by cached software-rasterized surfaces."),
@@ -190,10 +190,11 @@ CachedSoftwareRasterizer::Surface CachedSoftwareRasterizer::GetSurface(
   SbBlitterPixelData pixel_data = SbBlitterCreatePixelData(
       device_, coord_mapping.output_bounds.width(),
       coord_mapping.output_bounds.height(), blitter_pixel_data_format);
-  DCHECK(SbBlitterIsPixelDataValid(pixel_data));
   if (!SbBlitterIsPixelDataValid(pixel_data)) {
     // We failed to allocate the pixel data, just return with a null surface
     // in this case.
+    LOG(ERROR) << "Error allocating pixel data for an offscreen software "
+                  "rasterization.";
     return software_surface;
   }
 
@@ -234,6 +235,7 @@ CachedSoftwareRasterizer::Surface CachedSoftwareRasterizer::GetSurface(
       // This surface may have already been in the cache if it was in there
       // with a different scale.  In that case, replace the old one.
       cache_memory_usage_ -= found->second.GetEstimatedMemoryUsage();
+      SbBlitterDestroySurface(found->second.surface);
       surface_map_.erase(found);
     }
 

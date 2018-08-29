@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -45,15 +45,15 @@ bool IsLocalIP(const SbSocketAddress& ip, const SbSocketAddress& source_address,
     case kSbSocketAddressTypeIpv4:
       return CompareNBytesOfAddress(ip, source_address, netmask,
                                     net::kIPv4AddressSize);
-#if SB_HAS(IPV6)
     case kSbSocketAddressTypeIpv6:
+#if SB_HAS(IPV6)
       return CompareNBytesOfAddress(ip, source_address, netmask,
                                     net::kIPv6AddressSize);
-#endif
-    default:
+#else   //  SB_HAS(IPV6)
       NOTREACHED() << "Invalid IP type " << ip.type;
-      return false;
+#endif  //  SB_HAS(IPV6)
   }
+  return false;
 }
 
 }  // namespace

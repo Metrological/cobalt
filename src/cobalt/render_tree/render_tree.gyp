@@ -1,4 +1,4 @@
-# Copyright 2014 Google Inc. All Rights Reserved.
+# Copyright 2014 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,6 +33,8 @@
         'brush_visitor.h',
         'child_iterator.h',
         'color_rgba.h',
+        'clear_rect_node.cc',
+        'clear_rect_node.h',
         'composition_node.cc',
         'composition_node.h',
         'dump_render_tree_to_string.cc',
@@ -73,6 +75,7 @@
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
         '<(DEPTH)/cobalt/math/math.gyp:math',
+        '<(DEPTH)/third_party/ots/ots.gyp:ots',
       ],
     },
 
@@ -118,7 +121,7 @@
       'variables': {
         'executable_name': 'render_tree_test',
       },
-      'includes': [ '../../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ],
 }

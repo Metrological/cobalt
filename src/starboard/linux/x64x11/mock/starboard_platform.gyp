@@ -1,4 +1,4 @@
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2017 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -61,7 +61,9 @@
         '<(DEPTH)/starboard/shared/stub/drm_create_system.cc',
         '<(DEPTH)/starboard/shared/stub/drm_destroy_system.cc',
         '<(DEPTH)/starboard/shared/stub/drm_generate_session_update_request.cc',
+        '<(DEPTH)/starboard/shared/stub/drm_is_server_certificate_updatable.cc',
         '<(DEPTH)/starboard/shared/stub/drm_system_internal.h',
+        '<(DEPTH)/starboard/shared/stub/drm_update_server_certificate.cc',
         '<(DEPTH)/starboard/shared/stub/drm_update_session.cc',
         '<(DEPTH)/starboard/shared/stub/file_can_open.cc',
         '<(DEPTH)/starboard/shared/stub/file_close.cc',
@@ -101,13 +103,17 @@
         '<(DEPTH)/starboard/shared/stub/player_destroy.cc',
         '<(DEPTH)/starboard/shared/stub/player_get_current_frame.cc',
         '<(DEPTH)/starboard/shared/stub/player_get_info.cc',
+        '<(DEPTH)/starboard/shared/stub/player_get_info2.cc',
+        '<(DEPTH)/starboard/shared/starboard/player/player_get_maximum_number_of_samples_per_write.cc',
         '<(DEPTH)/starboard/shared/stub/player_output_mode_supported.cc',
         '<(DEPTH)/starboard/shared/stub/player_seek.cc',
+        '<(DEPTH)/starboard/shared/stub/player_seek2.cc',
         '<(DEPTH)/starboard/shared/stub/player_set_bounds.cc',
         '<(DEPTH)/starboard/shared/stub/player_set_playback_rate.cc',
         '<(DEPTH)/starboard/shared/stub/player_set_volume.cc',
         '<(DEPTH)/starboard/shared/stub/player_write_end_of_stream.cc',
         '<(DEPTH)/starboard/shared/stub/player_write_sample.cc',
+        '<(DEPTH)/starboard/shared/stub/player_write_sample2.cc',
         '<(DEPTH)/starboard/shared/stub/socket_accept.cc',
         '<(DEPTH)/starboard/shared/stub/socket_bind.cc',
         '<(DEPTH)/starboard/shared/stub/socket_clear_last_error.cc',
@@ -201,6 +207,7 @@
         '<(DEPTH)/starboard/shared/stub/system_request_suspend.cc',
         '<(DEPTH)/starboard/shared/stub/system_request_unpause.cc',
         '<(DEPTH)/starboard/shared/stub/system_sort.cc',
+        '<(DEPTH)/starboard/shared/stub/system_supports_resume.cc',
         '<(DEPTH)/starboard/shared/stub/system_symbolize.cc',
         '<(DEPTH)/starboard/shared/stub/thread_create.cc',
         '<(DEPTH)/starboard/shared/stub/thread_create_local_key.cc',

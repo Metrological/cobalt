@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -70,7 +70,7 @@ class OpenMaxComponent : protected OpenMaxComponentBase {
 
   // Callbacks available to children.
   void OnErrorEvent(OMX_U32 data1, OMX_U32 data2,
-                    OMX_PTR event_data) SB_OVERRIDE;
+                    OMX_PTR event_data) override;
   virtual bool OnEnableInputPort(OMXParamPortDefinition* port_definition) {
     return false;
   }
@@ -95,9 +95,9 @@ class OpenMaxComponent : protected OpenMaxComponentBase {
   OMX_BUFFERHEADERTYPE* GetUnusedInputBuffer();
 
   // Callbacks not intended to be overridden by children.
-  void OnOutputSettingChanged() SB_OVERRIDE;
-  OMX_ERRORTYPE OnEmptyBufferDone(OMX_BUFFERHEADERTYPE* buffer) SB_OVERRIDE;
-  void OnFillBufferDone(OMX_BUFFERHEADERTYPE* buffer) SB_OVERRIDE;
+  void OnOutputSettingChanged() override;
+  OMX_ERRORTYPE OnEmptyBufferDone(OMX_BUFFERHEADERTYPE* buffer) override;
+  void OnFillBufferDone(OMX_BUFFERHEADERTYPE* buffer) override;
 
   Mutex mutex_;
   bool output_setting_changed_;

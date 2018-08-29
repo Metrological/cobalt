@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,6 +31,8 @@ class GarbageCollectionTestInterface : public script::Wrappable {
   typedef std::vector<GarbageCollectionTestInterface*>
       GarbageCollectionTestInterfaceVector;
 
+  static GarbageCollectionTestInterfaceVector& instances();
+
   GarbageCollectionTestInterface();
   ~GarbageCollectionTestInterface();
 
@@ -45,18 +47,15 @@ class GarbageCollectionTestInterface : public script::Wrappable {
   void set_next(const scoped_refptr<GarbageCollectionTestInterface>& next);
   scoped_refptr<GarbageCollectionTestInterface> next() { return next_; }
 
-  static GarbageCollectionTestInterfaceVector& instances();
-
-  void TraceMembers(script::Tracer* tracer) OVERRIDE;
-
   DEFINE_WRAPPABLE_TYPE(GarbageCollectionTestInterface);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
-  void MakeHead();
-  void MakeTail();
-
   static void Join(GarbageCollectionTestInterface* first,
                    GarbageCollectionTestInterface* second);
+
+  void MakeHead();
+  void MakeTail();
 
   // Raw pointers going upstream, strong pointers going downstream to prevent
   // reference cycles.

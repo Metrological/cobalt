@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,8 +20,6 @@
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_ptr.h"  // For scoped_array
 #include "cobalt/audio/audio_helpers.h"
-#include "cobalt/dom/float32_array.h"
-#include "cobalt/dom/int16_array.h"
 #include "cobalt/script/environment_settings.h"
 #include "cobalt/script/wrappable.h"
 
@@ -39,56 +37,31 @@ namespace audio {
 //   https://www.w3.org/TR/webaudio/#AudioBuffer
 class AudioBuffer : public script::Wrappable {
  public:
-  // The audio data passed in |channels_data| stores multi-channel audio in
-  // planar.  So for stereo audio, the first channel will be stored in the first
-  // half of |channels_data| and the second channel will be stored in the second
-  // half.
-  AudioBuffer(script::EnvironmentSettings* settings, float sample_rate,
-              int32 number_of_frames, int32 number_of_channels,
-              scoped_array<uint8> channels_data, SampleType sample_type);
+  AudioBuffer(float sample_rate, scoped_ptr<ShellAudioBus> audio_bus);
 
   // Web API: AudioBuffer
   //
   // The sample-rate for the PCM audio data in samples per second.
   float sample_rate() const { return sample_rate_; }
-
   // Length of the PCM audio data in sample-frames.
-  int32 length() const { return length_; }
-
+  int32 length() const { return static_cast<int32>(audio_bus_->frames()); }
   // Duration of the PCM audio data in seconds.
   double duration() const { return length() / sample_rate(); }
-
   // The number of discrete audio channels.
   int32 number_of_channels() const {
-    if (sample_type_ == kSampleTypeFloat32) {
-      return static_cast<int32>(channels_data_.size());
-    } else if (sample_type_ == kSampleTypeInt16) {
-      return static_cast<int32>(channels_int16_data_.size());
-    } else {
-      NOTREACHED();
-      return 0;
-    }
+    return static_cast<int32>(audio_bus_->channels());
   }
 
-  // Represents the PCM audio data for the specific channel.
-  scoped_refptr<dom::Float32Array> GetChannelData(
-      uint32 channel_index, script::ExceptionState* exception_state) const;
-
-  scoped_refptr<dom::Int16Array> GetChannelDataInt16(
-      uint32 channel_index, script::ExceptionState* exception_state) const;
+  // Custom, not in any spec
+  //
+  ShellAudioBus* audio_bus() { return audio_bus_.get(); }
 
   DEFINE_WRAPPABLE_TYPE(AudioBuffer);
 
  private:
-  typedef std::vector<scoped_refptr<dom::Float32Array> > Float32ArrayVector;
-  typedef std::vector<scoped_refptr<dom::Int16Array> > Int16ArrayVector;
+  const float sample_rate_;
 
-  float sample_rate_;
-  int32 length_;
-  SampleType sample_type_;
-
-  Float32ArrayVector channels_data_;
-  Int16ArrayVector channels_int16_data_;
+  scoped_ptr<ShellAudioBus> audio_bus_;
 
   DISALLOW_COPY_AND_ASSIGN(AudioBuffer);
 };

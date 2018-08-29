@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ TEST_P(SbSocketAcceptTest, RainyDayNotBound) {
 
   // Accept should result in an error.
   EXPECT_EQ(kSbSocketInvalid, SbSocketAccept(server_socket));
-  EXPECT_EQ(kSbSocketErrorFailed, SbSocketGetLastError(server_socket));
+  EXPECT_SB_SOCKET_ERROR_IS_ERROR(SbSocketGetLastError(server_socket));
 
   EXPECT_TRUE(SbSocketDestroy(server_socket));
 }
@@ -67,7 +67,7 @@ TEST_P(SbSocketAcceptTest, RainyDayNotListening) {
 
   // Accept should result in an error.
   EXPECT_EQ(kSbSocketInvalid, SbSocketAccept(server_socket));
-  EXPECT_EQ(kSbSocketErrorFailed, SbSocketGetLastError(server_socket));
+  EXPECT_SB_SOCKET_ERROR_IS_ERROR(SbSocketGetLastError(server_socket));
 
   EXPECT_TRUE(SbSocketDestroy(server_socket));
 }

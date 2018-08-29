@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,16 +32,16 @@ class TimingFunctionListValue : public ScopedRefListValue<TimingFunction> {
       scoped_ptr<ScopedRefListValue<TimingFunction>::Builder> value)
       : ScopedRefListValue<TimingFunction>(value.Pass()) {}
 
-  void Accept(PropertyValueVisitor* visitor) OVERRIDE {
+  void Accept(PropertyValueVisitor* visitor) override {
     visitor->VisitTimingFunctionList(this);
   }
 
-  std::string ToString() const OVERRIDE;
+  std::string ToString() const override;
 
   DEFINE_POLYMORPHIC_EQUATABLE_TYPE(TimingFunctionListValue);
 
  private:
-  virtual ~TimingFunctionListValue() OVERRIDE {}
+  ~TimingFunctionListValue() override {}
 };
 
 }  // namespace cssom

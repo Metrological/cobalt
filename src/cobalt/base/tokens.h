@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -53,6 +53,7 @@ namespace base {
     MacroOpWithNameOnly(childList)                                   \
     MacroOpWithNameOnly(click)                                       \
     MacroOpWithNameOnly(close)                                       \
+    MacroOpWithNameOnly(dataavailable)                               \
     MacroOpWithNameOnly(deviceorientation)                           \
     MacroOpWithNameOnly(durationchange)                              \
     MacroOpWithNameOnly(emptied)                                     \
@@ -118,6 +119,7 @@ namespace base {
     MacroOpWithNameOnly(sourceended)                                 \
     MacroOpWithNameOnly(sourceopen)                                  \
     MacroOpWithNameOnly(start)                                       \
+    MacroOpWithNameOnly(stop)                                        \
     MacroOpWithNameOnly(storage)                                     \
     MacroOpWithNameOnly(stalled)                                     \
     MacroOpWithNameOnly(suspend)                                     \

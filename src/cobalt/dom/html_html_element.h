@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,12 +34,12 @@ class HTMLHtmlElement : public HTMLElement {
       : HTMLElement(document, base::Token(kTagName)) {}
 
   // Custom, not in any spec.
-  scoped_refptr<HTMLHtmlElement> AsHTMLHtmlElement() OVERRIDE { return this; }
+  scoped_refptr<HTMLHtmlElement> AsHTMLHtmlElement() override { return this; }
 
   DEFINE_WRAPPABLE_TYPE(HTMLHtmlElement);
 
  private:
-  ~HTMLHtmlElement() OVERRIDE {}
+  ~HTMLHtmlElement() override {}
 };
 
 }  // namespace dom

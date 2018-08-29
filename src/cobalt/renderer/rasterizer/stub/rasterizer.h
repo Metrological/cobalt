@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,11 +29,11 @@ class Rasterizer : public rasterizer::Rasterizer {
 
   void Submit(const scoped_refptr<render_tree::Node>& render_tree,
               const scoped_refptr<backend::RenderTarget>& render_target,
-              const Options& options) OVERRIDE {}
+              const Options& options) override {}
 
-  render_tree::ResourceProvider* GetResourceProvider() OVERRIDE;
+  render_tree::ResourceProvider* GetResourceProvider() override;
 
-  void MakeCurrent() OVERRIDE {}
+  void MakeCurrent() override {}
 
  private:
   render_tree::ResourceProviderStub resource_provider_stub_;

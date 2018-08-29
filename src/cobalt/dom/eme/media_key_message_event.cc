@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ MediaKeyMessageEvent::MediaKeyMessageEvent(
     const std::string& type, const MediaKeyMessageEventInit& event_init_dict)
     : Event(base::Token(type), kNotBubbles, kNotCancelable),
       message_type_(event_init_dict.message_type()),
-      message_(event_init_dict.message()) {}
+      message_reference_(this, *event_init_dict.message()) {}
 
 }  // namespace eme
 }  // namespace dom

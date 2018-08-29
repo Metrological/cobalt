@@ -1,4 +1,4 @@
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2017 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ enable_in_app_dial = true
 gl_type = "system_gles3"
 
 # Use media source extension implementation that is conformed to the
-# Candidate Recommandation of July 5th 2016.
+# Candidate Recommendation of July 5th 2016.
 cobalt_use_media_source_2016 = true
 
 # Use ASAN by default when building with Clang.

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@
 
 #ifndef COBALT_DOM_MEDIA_ERROR_H_
 #define COBALT_DOM_MEDIA_ERROR_H_
+
+#include <string>
 
 #include "cobalt/script/wrappable.h"
 
@@ -38,16 +40,19 @@ class MediaError : public script::Wrappable {
 
   // Custom, not in any spec.
   //
-  explicit MediaError(Code code) : code_(code) {}
+  explicit MediaError(Code code, const std::string& message = "")
+      : code_(code), message_(message) {}
 
   // Web API: MediaError
   //
   uint32 code() const { return code_; }
+  const std::string& message() const { return message_; }
 
   DEFINE_WRAPPABLE_TYPE(MediaError);
 
  private:
   Code code_;
+  std::string message_;
 };
 
 }  // namespace dom

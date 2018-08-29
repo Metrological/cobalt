@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,14 +29,14 @@ namespace image {
 class PNGImageDecoder : public ImageDataDecoder {
  public:
   explicit PNGImageDecoder(render_tree::ResourceProvider* resource_provider);
-  ~PNGImageDecoder() OVERRIDE;
+  ~PNGImageDecoder() override;
 
   // From ImageDataDecoder
-  std::string GetTypeString() const OVERRIDE { return "PNGImageDecoder"; }
+  std::string GetTypeString() const override { return "PNGImageDecoder"; }
 
  private:
   // From ImageDataDecoder
-  size_t DecodeChunkInternal(const uint8* data, size_t input_byte) OVERRIDE;
+  size_t DecodeChunkInternal(const uint8* data, size_t input_byte) override;
 
   // Callbacks which feed libpng.
   static void HeaderAvailable(png_structp png, png_infop info);

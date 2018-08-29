@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -54,6 +54,7 @@ class Attr : public script::Wrappable,
   const std::string& node_value() const;
 
   DEFINE_WRAPPABLE_TYPE(Attr);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   ~Attr();

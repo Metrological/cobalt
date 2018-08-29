@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,13 +36,13 @@ class RotateFunction : public TransformFunction {
   explicit RotateFunction(float clockwise_angle_in_radians)
       : clockwise_angle_in_radians_(clockwise_angle_in_radians) {}
 
-  void Accept(TransformFunctionVisitor* visitor) const OVERRIDE;
+  void Accept(TransformFunctionVisitor* visitor) const override;
 
   float clockwise_angle_in_radians() const {
     return clockwise_angle_in_radians_;
   }
 
-  std::string ToString() const OVERRIDE {
+  std::string ToString() const override {
     return base::StringPrintf("rotate(%.7grad)", clockwise_angle_in_radians_);
   }
 

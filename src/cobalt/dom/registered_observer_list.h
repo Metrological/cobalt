@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include "cobalt/dom/mutation_observer.h"
 #include "cobalt/dom/mutation_observer_init.h"
 #include "cobalt/dom/registered_observer.h"
+#include "cobalt/script/tracer.h"
 
 namespace cobalt {
 namespace dom {
@@ -33,7 +34,7 @@ class Node;
 // Implements the functionality described in the MutationObserver.observe
 // method:
 // https://www.w3.org/TR/dom/#dom-mutationobserver-observe
-class RegisteredObserverList {
+class RegisteredObserverList : public script::Traceable {
  public:
   typedef std::vector<RegisteredObserver> RegisteredObserverVector;
 
@@ -50,6 +51,8 @@ class RegisteredObserverList {
   const RegisteredObserverVector& registered_observers() {
     return registered_observers_;
   }
+
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   const Node* target_;

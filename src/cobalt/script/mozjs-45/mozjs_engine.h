@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,13 +29,13 @@ namespace mozjs {
 class MozjsEngine : public JavaScriptEngine {
  public:
   explicit MozjsEngine(const Options& options);
-  ~MozjsEngine() OVERRIDE;
+  ~MozjsEngine() override;
 
-  scoped_refptr<GlobalEnvironment> CreateGlobalEnvironment() OVERRIDE;
-  void CollectGarbage() OVERRIDE;
-  void ReportExtraMemoryCost(size_t bytes) OVERRIDE;
-  bool RegisterErrorHandler(JavaScriptEngine::ErrorHandler handler) OVERRIDE;
-  void SetGcThreshold(int64_t bytes) OVERRIDE;
+  scoped_refptr<GlobalEnvironment> CreateGlobalEnvironment() override;
+  void CollectGarbage() override;
+  void AdjustAmountOfExternalAllocatedMemory(int64_t bytes) override;
+  bool RegisterErrorHandler(ErrorHandler handler) override;
+  HeapStatistics GetHeapStatistics() override;
 
  private:
   static bool ContextCallback(JSContext* context, unsigned context_op,
@@ -43,25 +43,28 @@ class MozjsEngine : public JavaScriptEngine {
   static void GCCallback(JSRuntime* runtime, JSGCStatus status, void* data);
   static void FinalizeCallback(JSFreeOp* free_op, JSFinalizeStatus status,
                                bool is_compartment, void* data);
-  bool ReportJSError(JSContext* context, const char* message,
-                     JSErrorReport* report);
 
   base::ThreadChecker thread_checker_;
 
-  // Top-level object that represents the Javascript engine. Typically there is
-  // one per process, but it's allowed to have multiple.
+  // Top-level object that represents the JavaScript engine.
   JSRuntime* runtime_;
 
   // The sole context created for this JSRuntime.
-  JSContext* context_;
+  JSContext* context_ = nullptr;
 
-  // The amount of externally allocated memory since last forced GC.
-  size_t accumulated_extra_memory_cost_;
+  // The amount of externally allocated memory since the last GC, regardless of
+  // whether it was forced by us.  Once this value exceeds
+  // |options_.gc_threshold_bytes|, we will force a garbage collection, and set
+  // this value back to 0.  Note that there is no guarantee that the allocations
+  // that incremented this value will have actually been collected.  Also note
+  // that this value is only incremented, never decremented, as it makes for a
+  // better force garbage collection heuristic.
+  int64_t force_gc_heuristic_ = 0;
 
-  // Used to handle javascript errors.
+  // Used to handle JavaScript errors.
   ErrorHandler error_handler_;
 
-  JavaScriptEngine::Options options_;
+  Options options_;
 };
 }  // namespace mozjs
 }  // namespace script

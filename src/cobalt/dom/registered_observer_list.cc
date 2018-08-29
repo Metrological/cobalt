@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -103,5 +103,10 @@ void RegisteredObserverList::RemoveMutationObserver(
   }
   NOTREACHED() << "Did not find a mutation observer to unregister.";
 }
+
+void RegisteredObserverList::TraceMembers(script::Tracer* tracer) {
+  tracer->TraceItems(registered_observers_);
+}
+
 }  // namespace dom
 }  // namespace cobalt

@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -477,10 +477,9 @@ std::string KeywordValue::ToString() const {
       return kUppercaseKeywordName;
     case kVisible:
       return kVisibleKeywordName;
-    default:
-      NOTREACHED();
-      return "";
   }
+  NOTREACHED();
+  return "";
 }
 
 }  // namespace cssom

@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,14 +29,23 @@
 // the following functions can have variable number of arguments
 // and, out of compatibility concerns, we chose to not use
 // __VA_ARGS__ functionality.
+#undef vsnprintf
 #define vsnprintf SbStringFormat
+#undef snprintf
 #define snprintf SbStringFormatF
+#undef sprintf
 #define sprintf SbStringFormatUnsafeF
+#undef vsscanf
 #define vsscanf SbStringScan
+#undef sscanf
 #define sscanf SbStringScanF
+#undef malloc
 #define malloc(sz) SbMemoryAllocate(sz)
+#undef calloc
 #define calloc(c, s) SbMemoryCalloc(c, s)
+#undef free
 #define free(a) SbMemoryDeallocate(a)
+#undef realloc
 #define realloc(m, sz) SbMemoryReallocate(m, sz)
 
 #endif  // POEM_NO_EMULATION

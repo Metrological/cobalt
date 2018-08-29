@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc. All Rights Reserved.
+ * Copyright 2017 The Cobalt Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,10 +35,10 @@ class InputPollerImpl : public InputPoller {
   InputPollerImpl();
   virtual ~InputPollerImpl() {}
 
-  bool IsPressed(SbKey keycode) OVERRIDE;
+  bool IsPressed(SbKey keycode) override;
   // Returns analog position. The value is normalized to a range from
   // -1.0 to 1.0
-  float AnalogInput(SbKey analog_input_id) OVERRIDE;
+  float AnalogInput(SbKey analog_input_id) override;
   void UpdateInputEvent(const system_window::InputEvent* input_event);
 
  private:

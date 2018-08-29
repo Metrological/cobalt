@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ void MutationObserverTaskManager::OnMutationObserverCreated(
   DCHECK(observers_.find(observer) == observers_.end());
   observers_.insert(observer);
 }
+
 void MutationObserverTaskManager::OnMutationObserverDestroyed(
     MutationObserver* observer) {
   DCHECK(thread_checker_.CalledOnValidThread());
@@ -50,6 +51,10 @@ void MutationObserverTaskManager::QueueMutationObserverMicrotask() {
       FROM_HERE,
       base::Bind(&MutationObserverTaskManager::NotifyMutationObservers,
                  base::Unretained(this)));
+}
+
+void MutationObserverTaskManager::TraceMembers(script::Tracer* tracer) {
+  tracer->TraceItems(observers_);
 }
 
 void MutationObserverTaskManager::NotifyMutationObservers() {

@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,60 +22,136 @@
 #include "base/message_loop.h"
 #include "cobalt/base/c_val.h"
 #include "cobalt/browser/stack_size_constants.h"
+#include "cobalt/script/v8c/isolate_fellowship.h"
 #include "cobalt/script/v8c/v8c_global_environment.h"
 #include "starboard/once.h"
-#include "v8/include/libplatform/libplatform.h"
-#include "v8/include/v8.h"
 
 namespace cobalt {
 namespace script {
-
 namespace v8c {
+
 namespace {
 
-SbOnceControl g_js_init_once_control = SB_ONCE_INITIALIZER;
-v8::Platform* g_platform = nullptr;
-v8::ArrayBuffer::Allocator* g_array_buffer_allocator = nullptr;
-
-void ShutDown(void*) {
-  v8::V8::Dispose();
-  v8::V8::ShutdownPlatform();
-
-  DCHECK(g_platform);
-  delete g_platform;
-  g_platform = nullptr;
-
-  DCHECK(g_array_buffer_allocator);
-  delete g_array_buffer_allocator;
-  g_array_buffer_allocator = nullptr;
+void VisitWeakHandlesForMinorGC(v8::Isolate* isolate) {
+  class V8cPersistentHandleVisitor : public v8::PersistentHandleVisitor {
+   public:
+    void VisitPersistentHandle(v8::Persistent<v8::Value>* value,
+                               uint16_t class_id) override {
+      DCHECK(value);
+      value->MarkActive();
+    }
+  } visitor;
+  isolate->VisitWeakHandles(&visitor);
 }
 
-void InitializeAndRegisterShutDownOnce() {
-  // TODO: Initialize V8 ICU stuff here as well.
-  g_platform = v8::platform::CreateDefaultPlatform();
-  v8::V8::InitializePlatform(g_platform);
-  v8::V8::Initialize();
-  g_array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
+size_t UsedHeapSize(v8::Isolate* isolate) {
+  v8::HeapStatistics heap_statistics;
+  isolate->GetHeapStatistics(&heap_statistics);
+  return heap_statistics.used_heap_size();
+}
 
-  base::AtExitManager::RegisterCallback(ShutDown, nullptr);
+void GCPrologueCallback(v8::Isolate* isolate, v8::GCType type,
+                        v8::GCCallbackFlags) {
+  switch (type) {
+    case v8::kGCTypeScavenge:
+      TRACE_EVENT_BEGIN1("cobalt::script", "MinorGC", "usedHeapSizeBefore",
+                         UsedHeapSize(isolate));
+      VisitWeakHandlesForMinorGC(isolate);
+      break;
+    case v8::kGCTypeMarkSweepCompact:
+      TRACE_EVENT_BEGIN2("cobalt::script", "MajorGC", "usedHeapSizeBefore",
+                         UsedHeapSize(isolate), "type", "atomic pause");
+      break;
+    case v8::kGCTypeIncrementalMarking:
+      TRACE_EVENT_BEGIN2("cobalt::script", "MajorGC", "usedHeapSizeBefore",
+                         UsedHeapSize(isolate), "type", "incremental marking");
+      break;
+    case v8::kGCTypeProcessWeakCallbacks:
+      TRACE_EVENT_BEGIN2("cobalt::script", "MajorGC", "usedHeapSizeBefore",
+                         UsedHeapSize(isolate), "type", "weak processing");
+      break;
+    default:
+      NOTREACHED();
+  }
+}
+
+void GCEpilogueCallback(v8::Isolate* isolate, v8::GCType type,
+                        v8::GCCallbackFlags) {
+  switch (type) {
+    case v8::kGCTypeScavenge:
+      TRACE_EVENT_END1("cobalt::script", "MinorGC", "usedHeapSizeAfter",
+                       UsedHeapSize(isolate));
+      break;
+    case v8::kGCTypeMarkSweepCompact:
+      TRACE_EVENT_END1("cobalt::script", "MajorGC", "usedHeapSizeAfter",
+                       UsedHeapSize(isolate));
+      break;
+    case v8::kGCTypeIncrementalMarking:
+      TRACE_EVENT_END1("cobalt::script", "MajorGC", "usedHeapSizeAfter",
+                       UsedHeapSize(isolate));
+      break;
+    case v8::kGCTypeProcessWeakCallbacks:
+      TRACE_EVENT_END1("cobalt::script", "MajorGC", "usedHeapSizeAfter",
+                       UsedHeapSize(isolate));
+      break;
+    default:
+      NOTREACHED();
+  }
+}
+
+SbOnceControl v8_flag_init_once_control = SB_ONCE_INITIALIZER;
+
+// Configure v8's global command line flag options for Cobalt.
+void V8FlagInitOnce() {
+  char optimize_for_size_flag_str[] = "--optimize_for_size=true";
+  v8::V8::SetFlagsFromString(optimize_for_size_flag_str,
+                             sizeof(optimize_for_size_flag_str));
 }
 
 }  // namespace
 
-V8cEngine::V8cEngine(const Options& options)
-    : accumulated_extra_memory_cost_(0), options_(options) {
+V8cEngine::V8cEngine(const Options& options) : options_(options) {
   TRACE_EVENT0("cobalt::script", "V8cEngine::V8cEngine()");
-  SbOnce(&g_js_init_once_control, InitializeAndRegisterShutDownOnce);
-  DCHECK(g_platform);
-  DCHECK(g_array_buffer_allocator);
 
-  v8::Isolate::CreateParams params;
-  params.array_buffer_allocator = g_array_buffer_allocator;
+  auto* isolate_fellowship = IsolateFellowship::GetInstance();
 
-  isolate_ = v8::Isolate::New(params);
+  v8::Isolate::CreateParams create_params;
+  create_params.array_buffer_allocator =
+      isolate_fellowship->array_buffer_allocator;
+  auto* startup_data = &isolate_fellowship->startup_data;
+  if (startup_data->data != nullptr) {
+    create_params.snapshot_blob = startup_data;
+  } else {
+    // Technically possible to attempt to recover here, but hitting this
+    // indicates that something is probably seriously wrong.
+    LOG(WARNING) << "Isolate fellowship startup data was null, this will "
+                    "significantly slow down startup time.";
+  }
+
+  SbOnce(&v8_flag_init_once_control, V8FlagInitOnce);
+  isolate_ = v8::Isolate::New(create_params);
   CHECK(isolate_);
 
-  DCHECK(v8::Isolate::GetNumberOfDataSlots() >= 1);
+  // There are 2 total isolate data slots, one for the sole |V8cEngine| (us),
+  // and one for the |V8cGlobalEnvironment|.
+  const int kTotalIsolateDataSlots = 2;
+  DCHECK_GE(v8::Isolate::GetNumberOfDataSlots(), kTotalIsolateDataSlots);
+  isolate_->SetData(kIsolateDataIndex, this);
+
+  v8c_heap_tracer_.reset(new V8cHeapTracer(isolate_));
+  isolate_->SetEmbedderHeapTracer(v8c_heap_tracer_.get());
+
+  isolate_->AddGCPrologueCallback(GCPrologueCallback);
+  isolate_->AddGCEpilogueCallback(GCEpilogueCallback);
+
+  // The V8 |SetStackLimit|'s parameter is the memory address that it should not
+  // pass, as opposed to the size of the stack that it should use.  We set it
+  // to 3/4 of the main thread's stack size to cover for the space underneath
+  // the stack currently, and the space we want to reserve on top of the stack
+  // for when JavaScript calls back into C++ bindings.
+  uintptr_t here = reinterpret_cast<uintptr_t>(&here);
+  isolate_->SetStackLimit(here -
+                          (3 * cobalt::browser::kWebModuleStackSize) / 4);
 }
 
 V8cEngine::~V8cEngine() {
@@ -102,19 +178,12 @@ scoped_refptr<GlobalEnvironment> V8cEngine::CreateGlobalEnvironment() {
 void V8cEngine::CollectGarbage() {
   TRACE_EVENT0("cobalt::script", "V8cEngine::CollectGarbage()");
   DCHECK(thread_checker_.CalledOnValidThread());
-  NOTIMPLEMENTED();
+  isolate_->LowMemoryNotification();
 }
 
-void V8cEngine::ReportExtraMemoryCost(size_t bytes) {
+void V8cEngine::AdjustAmountOfExternalAllocatedMemory(int64_t bytes) {
   DCHECK(thread_checker_.CalledOnValidThread());
-  accumulated_extra_memory_cost_ += bytes;
-
-  const bool do_collect_garbage =
-      accumulated_extra_memory_cost_ > options_.gc_threshold_bytes;
-  if (do_collect_garbage) {
-    accumulated_extra_memory_cost_ = 0;
-    CollectGarbage();
-  }
+  isolate_->AdjustAmountOfExternalAllocatedMemory(bytes);
 }
 
 bool V8cEngine::RegisterErrorHandler(JavaScriptEngine::ErrorHandler handler) {
@@ -122,7 +191,12 @@ bool V8cEngine::RegisterErrorHandler(JavaScriptEngine::ErrorHandler handler) {
   return true;
 }
 
-void V8cEngine::SetGcThreshold(int64_t bytes) { NOTIMPLEMENTED(); }
+HeapStatistics V8cEngine::GetHeapStatistics() {
+  v8::HeapStatistics v8_heap_statistics;
+  isolate_->GetHeapStatistics(&v8_heap_statistics);
+  return {v8_heap_statistics.total_heap_size(),
+          v8_heap_statistics.used_heap_size()};
+}
 
 }  // namespace v8c
 
@@ -133,10 +207,8 @@ scoped_ptr<JavaScriptEngine> JavaScriptEngine::CreateEngine(
   return make_scoped_ptr<JavaScriptEngine>(new v8c::V8cEngine(options));
 }
 
-// static
-size_t JavaScriptEngine::UpdateMemoryStatsAndReturnReserved() {
-  NOTIMPLEMENTED();
-  return 0;
+std::string GetJavaScriptEngineNameAndVersion() {
+  return std::string("v8/") + v8::V8::GetVersion();
 }
 
 }  // namespace script

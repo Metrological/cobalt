@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,9 @@
 
 #include "base/logging.h"
 #include "base/memory/scoped_ptr.h"
+#include "base/string_number_conversions.h"
 #include "cobalt/browser/memory_tracker/tool/compressed_time_series_tool.h"
+#include "cobalt/browser/memory_tracker/tool/internal_fragmentation_tool.h"
 #include "cobalt/browser/memory_tracker/tool/leak_finder_tool.h"
 #include "cobalt/browser/memory_tracker/tool/log_writer_tool.h"
 #include "cobalt/browser/memory_tracker/tool/malloc_logger_tool.h"
@@ -30,9 +32,8 @@
 #include "cobalt/browser/memory_tracker/tool/print_tool.h"
 #include "cobalt/browser/memory_tracker/tool/tool_impl.h"
 #include "cobalt/browser/memory_tracker/tool/tool_thread.h"
-
 #include "nb/analytics/memory_tracker_helpers.h"
-#include "nb/lexical_cast.h"
+#include "starboard/double.h"
 #include "starboard/log.h"
 
 namespace cobalt {
@@ -65,6 +66,7 @@ enum SwitchEnum {
   kAllocationLogger,
   kLeakTracer,
   kJavascriptLeakTracer,
+  kInternalFragmentationTracer,
   kMallocStats,
   kMallocLogger,
 };
@@ -85,8 +87,8 @@ struct SwitchVal {
 
 class SbLogger : public AbstractLogger {
  public:
-  virtual void Output(const char* str) OVERRIDE { SbLogRaw(str); }
-  virtual void Flush() OVERRIDE { SbLogFlush(); }
+  void Output(const char* str) override { SbLogRaw(str); }
+  void Flush() override { SbLogFlush(); }
 };
 
 // Parses out the toolname for a tool command.
@@ -147,7 +149,7 @@ class MemoryTrackerThreadImpl : public Tool {
  public:
   explicit MemoryTrackerThreadImpl(base::SimpleThread* ptr)
       : thread_ptr_(ptr) {}
-  virtual ~MemoryTrackerThreadImpl() OVERRIDE { thread_ptr_.reset(NULL); }
+  ~MemoryTrackerThreadImpl() override { thread_ptr_.reset(NULL); }
   scoped_ptr<base::SimpleThread> thread_ptr_;
 };
 
@@ -209,6 +211,11 @@ scoped_ptr<Tool> CreateMemoryTrackerTool(const std::string& command_arg) {
       "  format.\n",
       kJavascriptLeakTracer);
 
+  SwitchVal internal_fragmentation_tracer_tool(
+      "internal_fragmentation_tracer",
+      "  Traces internal fragmentation and stores it in CSV format.\n",
+      kInternalFragmentationTracer);
+
   SwitchVal malloc_stats_tool(
       "malloc_stats",
       "  Queries the allocation system for memory usage. This is the most\n"
@@ -235,6 +242,8 @@ scoped_ptr<Tool> CreateMemoryTrackerTool(const std::string& command_arg) {
   switch_map[ParseToolName(leak_tracing_tool.tool_name)] = leak_tracing_tool;
   switch_map[ParseToolName(js_leak_tracing_tool.tool_name)] =
       js_leak_tracing_tool;
+  switch_map[ParseToolName(internal_fragmentation_tracer_tool.tool_name)] =
+      internal_fragmentation_tracer_tool;
   switch_map[ParseToolName(malloc_logger_tool.tool_name)] =
       malloc_logger_tool;
 
@@ -299,8 +308,9 @@ scoped_ptr<Tool> CreateMemoryTrackerTool(const std::string& command_arg) {
     case kStartup: {
       double num_mins = 1.0;
       if (!tool_arg.empty()) {
-        num_mins = nb::lexical_cast<double>(tool_arg.c_str());
-        if ((num_mins > 0) == false) {  // Accounts for NaN.
+        if (!base::StringToDouble(tool_arg, &num_mins) ||
+            SbDoubleIsNan(num_mins) ||
+            num_mins <= 0) {
           num_mins = 1.0;
         }
       }
@@ -392,6 +402,12 @@ scoped_ptr<Tool> CreateMemoryTrackerTool(const std::string& command_arg) {
       tool_ptr.reset(leak_finder.release());
       break;
     }
+    case kInternalFragmentationTracer: {
+      memory_tracker = MemoryTracker::Get();
+      memory_tracker->InstallGlobalTrackingHooks();
+      tool_ptr.reset(new InternalFragmentationTool());
+      break;
+    }
     case kMallocStats: {
       tool_ptr.reset(new MallocStatsTool);
       break;
@@ -404,10 +420,6 @@ scoped_ptr<Tool> CreateMemoryTrackerTool(const std::string& command_arg) {
       memory_tracker->InstallGlobalTrackingHooks();
       memory_tracker->SetMemoryTrackerDebugCallback(malloc_logger.get());
       tool_ptr.reset(malloc_logger.release());
-      break;
-    }
-    default: {
-      SB_NOTREACHED() << "Unhandled case.";
       break;
     }
   }

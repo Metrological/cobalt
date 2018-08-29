@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -111,9 +111,9 @@ class WindowDriver : private ElementMapping {
 
   // ScriptExecutor::ElementMapping implementation.
   protocol::ElementId ElementToId(
-      const scoped_refptr<dom::Element>& element) OVERRIDE;
+      const scoped_refptr<dom::Element>& element) override;
   scoped_refptr<dom::Element> IdToElement(
-      const protocol::ElementId& id) OVERRIDE;
+      const protocol::ElementId& id) override;
 
   dom::Window* GetWeak() {
     DCHECK_EQ(base::MessageLoopProxy::current(), window_message_loop_);

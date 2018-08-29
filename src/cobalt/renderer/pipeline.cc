@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,8 +43,13 @@ const double kTimeToConvergeInMS = 500.0;
 
 // The stack size to be used for the renderer thread.  This is must be large
 // enough to support recursing on the render tree.
+#if defined(COBALT_BUILD_TYPE_DEBUG)
+const int kRendererThreadStackSize =
+    256 * 1024 + base::kAsanAdditionalStackSize;
+#else
 const int kRendererThreadStackSize =
     128 * 1024 + base::kAsanAdditionalStackSize;
+#endif
 
 // How many entries the rasterize periodic timer will contain before updating.
 const size_t kRasterizePeriodicTimerEntriesPerUpdate = 60;
@@ -80,9 +85,6 @@ Pipeline::Pipeline(const CreateRasterizerFunction& create_rasterizer_function,
       last_did_rasterize_(false),
       last_animations_expired_(true),
       last_stat_tracked_animations_expired_(true),
-      rasterize_periodic_timer_("Renderer.Rasterize.Duration",
-                                kRasterizePeriodicTimerEntriesPerUpdate,
-                                false /*enable_entry_list_c_val*/),
       rasterize_animations_timer_("Renderer.Rasterize.Animations",
                                   kRasterizeAnimationsTimerMaxEntries,
                                   true /*enable_entry_list_c_val*/),
@@ -204,7 +206,7 @@ void Pipeline::Clear() {
 }
 
 void Pipeline::RasterizeToRGBAPixels(
-    const Submission& render_tree_submission,
+    const scoped_refptr<render_tree::Node>& render_tree_root,
     const RasterizationCompleteCallback& complete) {
   TRACK_MEMORY_SCOPE("Renderer");
   TRACE_EVENT0("cobalt::renderer", "Pipeline::RasterizeToRGBAPixels()");
@@ -213,7 +215,7 @@ void Pipeline::RasterizeToRGBAPixels(
     rasterizer_thread_.message_loop()->PostTask(
         FROM_HERE,
         base::Bind(&Pipeline::RasterizeToRGBAPixels, base::Unretained(this),
-                   CollectAnimations(render_tree_submission), complete));
+                   render_tree_root, complete));
     return;
   }
   // Create a new target that is the same dimensions as the display target.
@@ -221,8 +223,12 @@ void Pipeline::RasterizeToRGBAPixels(
       graphics_context_->CreateDownloadableOffscreenRenderTarget(
           render_target_->GetSize());
 
+  scoped_refptr<render_tree::Node> animate_node =
+      new render_tree::animations::AnimateNode(render_tree_root);
+
+  Submission submission = Submission(animate_node);
   // Rasterize this submission into the newly created target.
-  RasterizeSubmissionToRenderTarget(render_tree_submission, offscreen_target);
+  RasterizeSubmissionToRenderTarget(submission, offscreen_target);
 
   // Load the texture's pixel data into a CPU memory buffer and return it.
   complete.Run(graphics_context_->DownloadPixelDataAsRGBA(offscreen_target),
@@ -266,9 +272,14 @@ void Pipeline::SetNewRenderTree(const Submission& render_tree_submission) {
 
   // Start the rasterization timer if it is not yet started.
   if (!rasterize_timer_) {
-    // We artificially limit the period between submissions to 7ms, in case a
-    // platform does not rate limit itself during swaps. This was changed from
-    // 15ms to accommodate 120fps requirements on some platforms.
+    // Artificially limit the period between submissions. This is useful for
+    // platforms which do not rate limit themselves during swaps. Be careful
+    // to use a non-zero interval time even if throttling occurs during frame
+    // swaps. It is possible that a submission is not rendered (this can
+    // happen if the render tree has not changed between submissions), so no
+    // frame swap occurs, and the minimum frame time is the only throttle.
+    COMPILE_ASSERT(COBALT_MINIMUM_FRAME_TIME_IN_MILLISECONDS > 0,
+                   frame_time_must_be_positive);
     rasterize_timer_.emplace(
         FROM_HERE, base::TimeDelta::FromMillisecondsD(
                        COBALT_MINIMUM_FRAME_TIME_IN_MILLISECONDS),
@@ -352,44 +363,26 @@ void Pipeline::UpdateRasterizeStats(bool did_rasterize,
   bool animations_active =
       !are_stat_tracked_animations_expired && did_rasterize;
 
-  // The rasterization is only timed with the periodic timer when the render
-  // tree has changed. This ensures that the frames being timed are consistent
-  // between platforms that submit unchanged trees and those that don't.
-  if (did_rasterize) {
-    rasterize_periodic_timer_.Start(start_time);
-    rasterize_periodic_timer_.Stop(end_time);
-  }
-
+  // Rasterizations are only tracked by the timers when there are animations.
+  // This applies when animations were active during either the last
+  // rasterization or the current one. The reason for including the last one is
+  // that if animations have just expired, then this rasterization produces the
+  // final state of the animated tree.
   if (last_animations_active || animations_active) {
-    // The rasterization is only timed with the animations timer when there are
-    // animations to track. This applies when animations were active during
-    // either the last rasterization or the current one. The reason for
-    // including the last one is that if animations have just expired, then this
-    // rasterization produces the final state of the animated tree.
     if (did_rasterize) {
       rasterize_animations_timer_.Start(start_time);
       rasterize_animations_timer_.Stop(end_time);
-    }
 
-    // If animations are going from being inactive to active, then set the c_val
-    // prior to starting the animation so that it's in the correct state while
-    // the tree is being rendered.
-    // Also, start the interval timer now. While the first entry only captures a
-    // partial interval, it's recorded to include the duration of the first
-    // submission. All subsequent entries will record a full interval.
-    if (!last_animations_active && animations_active) {
-      has_active_animations_c_val_ = true;
-      rasterize_periodic_interval_timer_.Start(start_time);
-      rasterize_animations_interval_timer_.Start(start_time);
-    }
-
-    if (!did_rasterize) {
-      // If we didn't actually rasterize anything, don't count this sample.
+      // The interval timers require animations to have been active the previous
+      // frame so that there is a full interval to record.
+      if (last_animations_active) {
+        rasterize_periodic_interval_timer_.Stop(end_time);
+        rasterize_animations_interval_timer_.Stop(end_time);
+      }
+    } else {
+      // If we didn't actually rasterize anything, then don't count this sample.
       rasterize_periodic_interval_timer_.Cancel();
       rasterize_animations_interval_timer_.Cancel();
-    } else {
-      rasterize_periodic_interval_timer_.Stop(end_time);
-      rasterize_animations_interval_timer_.Stop(end_time);
     }
 
     // If animations are active, then they are guaranteed at least one more
@@ -402,11 +395,12 @@ void Pipeline::UpdateRasterizeStats(bool did_rasterize,
     // Check for if the animations are starting or ending.
     if (!last_animations_active && animations_active) {
       animations_start_time_ = end_time.ToInternalValue();
+      has_active_animations_c_val_ = true;
     } else if (last_animations_active && !animations_active) {
       animations_end_time_ = end_time.ToInternalValue();
-      has_active_animations_c_val_ = false;
       rasterize_animations_interval_timer_.Flush();
       rasterize_animations_timer_.Flush();
+      has_active_animations_c_val_ = false;
     }
   }
 
@@ -478,8 +472,9 @@ bool Pipeline::RasterizeSubmissionToRenderTarget(
   rasterizer_options.dirty = redraw_area;
   rasterizer_->Submit(submit_tree, render_target, rasterizer_options);
 
-  if (!submission.on_rasterized_callback.is_null()) {
-    submission.on_rasterized_callback.Run();
+  // Run all of this submission's callbacks.
+  for (const auto& callback : submission.on_rasterized_callbacks) {
+    callback.Run();
   }
 
   last_render_time_ = submission.time_offset;
@@ -516,7 +511,7 @@ void Pipeline::ShutdownSubmissionQueue() {
   post_fence_submission_ = base::nullopt;
   post_fence_receipt_time_ = base::nullopt;
 
-  // Stop and shutdown the raterizer timer.  If we won't have a submission
+  // Stop and shutdown the rasterizer timer.  If we won't have a submission
   // queue anymore, we won't be able to rasterize anymore.
   rasterize_timer_ = base::nullopt;
 

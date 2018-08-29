@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ static SB_C_INLINE size_t StringGetLengthFixed(const char* s, size_t maxlen) {
   return i;
 }
 
+#undef strnlen
 #define strnlen(s, maxlen) StringGetLengthFixed(s, maxlen)
 
 #endif  // STARBOARD_CLIENT_PORTING_POEM_STRNLEN_POEM_H_

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -70,7 +70,7 @@ FilePath GetTestOutputDirectory() {
 // be found in. Files should be placed in this location by the build process.
 FilePath GetTestInputDirectory() {
   FilePath in_file_dir;
-  PathService::Get(base::DIR_SOURCE_ROOT, &in_file_dir);
+  PathService::Get(base::DIR_TEST_DATA, &in_file_dir);
   return in_file_dir.Append(FILE_PATH_LITERAL("cobalt"))
       .Append(FILE_PATH_LITERAL("renderer"))
       .Append(FILE_PATH_LITERAL("rasterizer"))

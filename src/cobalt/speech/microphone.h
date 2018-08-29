@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -59,6 +59,8 @@ class Microphone {
   virtual int MinMicrophoneReadInBytes() = 0;
   // Returns true if the microphone is valid.
   virtual bool IsValid() = 0;
+  // Returns the label representing the microphone.
+  virtual const char* Label() = 0;
 
  protected:
   Microphone() {}

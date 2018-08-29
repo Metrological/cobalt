@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include "cobalt/dom/video_playback_quality.h"
 #include "cobalt/math/rect.h"
 #include "cobalt/math/size_f.h"
+#include "cobalt/script/environment_settings.h"
 #if !defined(COBALT_MEDIA_SOURCE_2016)
 #include "media/base/shell_video_frame_provider.h"
 #endif  // !defined(COBALT_MEDIA_SOURCE_2016)
@@ -33,9 +34,9 @@ namespace dom {
 class HTMLVideoElement : public HTMLMediaElement {
  public:
 #if defined(COBALT_MEDIA_SOURCE_2016)
-  typedef media::ShellVideoFrameProvider ShellVideoFrameProvider;
+  typedef media::VideoFrameProvider VideoFrameProvider;
 #else   // defined(COBALT_MEDIA_SOURCE_2016)
-  typedef ::media::ShellVideoFrameProvider ShellVideoFrameProvider;
+  typedef ::media::ShellVideoFrameProvider VideoFrameProvider;
 #endif  // defined(WebMediaPlayerDelegate)
 
   static const char kTagName[];
@@ -50,17 +51,15 @@ class HTMLVideoElement : public HTMLMediaElement {
   void set_height(uint32 height);
   uint32 video_width() const;
   uint32 video_height() const;
-  scoped_refptr<VideoPlaybackQuality> GetVideoPlaybackQuality() const;
+  scoped_refptr<VideoPlaybackQuality> GetVideoPlaybackQuality(
+      script::EnvironmentSettings* environment_settings) const;
 
   // Custom, not in any spec
   //
   // From HTMLElement
-  scoped_refptr<HTMLVideoElement> AsHTMLVideoElement() OVERRIDE { return this; }
+  scoped_refptr<HTMLVideoElement> AsHTMLVideoElement() override { return this; }
 
-  // TODO: ShellVideoFrameProvider is guaranteed to be long live and
-  // thread safe. However, it is actually a singleton internally. We should find
-  // a better way to support concurrent video playbacks.
-  scoped_refptr<ShellVideoFrameProvider> GetVideoFrameProvider();
+  scoped_refptr<VideoFrameProvider> GetVideoFrameProvider();
 
   WebMediaPlayer::SetBoundsCB GetSetBoundsCB();
 

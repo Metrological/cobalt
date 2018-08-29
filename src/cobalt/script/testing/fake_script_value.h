@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,28 +26,27 @@ template <class T>
 class FakeScriptValue : public cobalt::script::ScriptValue<T> {
  public:
   typedef cobalt::script::ScriptValue<T> BaseClass;
-  explicit FakeScriptValue(const T* listener)
-      : value_(listener) {}
 
-  void RegisterOwner(script::Wrappable*) OVERRIDE {}
-  void DeregisterOwner(script::Wrappable*) OVERRIDE {}
-  void PreventGarbageCollection() OVERRIDE {}
-  void AllowGarbageCollection() OVERRIDE {}
-  const T* GetScriptValue(void) const OVERRIDE {
-    return value_;
-  }
-  scoped_ptr<BaseClass> MakeCopy() const OVERRIDE {
-    return make_scoped_ptr<BaseClass>(new FakeScriptValue(value_));
-  }
+  explicit FakeScriptValue(T* listener) : value_(listener) {}
 
-  bool EqualTo(const BaseClass& other) const OVERRIDE {
+  bool EqualTo(const BaseClass& other) const override {
     const FakeScriptValue* other_script_object =
         base::polymorphic_downcast<const FakeScriptValue*>(&other);
     return value_ == other_script_object->value_;
   }
 
+  void RegisterOwner(script::Wrappable*) override {}
+  void DeregisterOwner(script::Wrappable*) override {}
+  void PreventGarbageCollection() override {}
+  void AllowGarbageCollection() override {}
+  T* GetValue() override { return value_; }
+  const T* GetValue() const override { return value_; }
+  scoped_ptr<BaseClass> MakeCopy() const override {
+    return make_scoped_ptr<BaseClass>(new FakeScriptValue(value_));
+  }
+
  private:
-  const T* value_;
+  T* value_;
 };
 
 }  // namespace testing

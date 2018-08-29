@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 #define STARBOARD_SHARED_STARBOARD_PLAYER_FILTER_AUDIO_RENDERER_SINK_H_
 
 #include "starboard/audio_sink.h"
+#include "starboard/time.h"
 
 namespace starboard {
 namespace shared {
@@ -32,7 +33,12 @@ class AudioRendererSink {
                                  int* offset_in_frames,
                                  bool* is_playing,
                                  bool* is_eos_reached) = 0;
+#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+    virtual void ConsumeFrames(int frames_consumed,
+                               SbTime frames_consumed_at) = 0;
+#else   //  SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
     virtual void ConsumeFrames(int frames_consumed) = 0;
+#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 
    protected:
     ~RenderCallback() {}

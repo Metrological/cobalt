@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,13 +15,15 @@
 #ifndef STARBOARD_SHARED_STARBOARD_PLAYER_PLAYER_WORKER_H_
 #define STARBOARD_SHARED_STARBOARD_PLAYER_PLAYER_WORKER_H_
 
+#include <functional>
+#include <string>
+
 #include "starboard/common/ref_counted.h"
 #include "starboard/common/scoped_ptr.h"
 #include "starboard/log.h"
 #include "starboard/media.h"
 #include "starboard/player.h"
 #include "starboard/shared/internal_only.h"
-#include "starboard/shared/starboard/player/closure.h"
 #include "starboard/shared/starboard/player/input_buffer_internal.h"
 #include "starboard/shared/starboard/player/job_queue.h"
 #include "starboard/thread.h"
@@ -41,14 +43,9 @@ namespace player {
 // they needn't maintain the thread and queue internally.
 class PlayerWorker {
  public:
-  class Host {
-   public:
-    virtual void UpdateMediaTime(SbMediaTime media_time, int ticket) = 0;
-    virtual void UpdateDroppedVideoFrames(int dropped_video_frames) = 0;
-
-   protected:
-    ~Host() {}
-  };
+  typedef std::function<
+      void(SbTime media_time, int dropped_video_frames, int ticket)>
+      UpdateMediaInfoCB;
 
   struct Bounds {
     int z_index;
@@ -61,22 +58,27 @@ class PlayerWorker {
   // All functions of this class will be called from the JobQueue thread.
   class Handler {
    public:
-    typedef void (PlayerWorker::*UpdateMediaTimeCB)(SbMediaTime media_time);
-    typedef SbPlayerState (PlayerWorker::*GetPlayerStateCB)() const;
-    typedef void (PlayerWorker::*UpdatePlayerStateCB)(
-        SbPlayerState player_state);
-
+    typedef std::function<void(SbTime media_time, int dropped_video_frames)>
+        UpdateMediaInfoCB;
+    typedef std::function<SbPlayerState()> GetPlayerStateCB;
+    typedef std::function<void(SbPlayerState player_state)> UpdatePlayerStateCB;
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+    typedef std::function<void(SbPlayerError error,
+                               const std::string& error_message)>
+        UpdatePlayerErrorCB;
+#else   // SB_HAS(PLAYER_ERROR_MESSAGE)
+    typedef std::function<void()> UpdatePlayerErrorCB;
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
     virtual ~Handler() {}
 
     // All the following functions return false to signal a fatal error.  The
     // event processing loop in PlayerWorker will termimate in this case.
-    virtual bool Init(PlayerWorker* player_worker,
-                      JobQueue* job_queue,
-                      SbPlayer player,
-                      UpdateMediaTimeCB update_media_time_cb,
+    virtual bool Init(SbPlayer player,
+                      UpdateMediaInfoCB update_media_info_cb,
                       GetPlayerStateCB get_player_state_cb,
-                      UpdatePlayerStateCB update_player_state_cb) = 0;
-    virtual bool Seek(SbMediaTime seek_to_pts, int ticket) = 0;
+                      UpdatePlayerStateCB update_player_state_cb,
+                      UpdatePlayerErrorCB update_player_error_cb) = 0;
+    virtual bool Seek(SbTime seek_to_time, int ticket) = 0;
     virtual bool WriteSample(const scoped_refptr<InputBuffer>& input_buffer,
                              bool* written) = 0;
     virtual bool WriteEndOfStream(SbMediaType sample_type) = 0;
@@ -94,35 +96,40 @@ class PlayerWorker {
     virtual SbDecodeTarget GetCurrentDecodeTarget() = 0;
   };
 
-  PlayerWorker(Host* host,
+  PlayerWorker(SbMediaAudioCodec audio_codec,
+               SbMediaVideoCodec video_codec,
                scoped_ptr<Handler> handler,
+               UpdateMediaInfoCB update_media_info_cb,
                SbPlayerDecoderStatusFunc decoder_status_func,
                SbPlayerStatusFunc player_status_func,
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+               SbPlayerErrorFunc player_error_func,
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
                SbPlayer player,
                void* context);
   ~PlayerWorker();
 
-  void Seek(SbMediaTime seek_to_pts, int ticket) {
+  void Seek(SbTime seek_to_time, int ticket) {
     job_queue_->Schedule(
-        Bind(&PlayerWorker::DoSeek, this, seek_to_pts, ticket));
+        std::bind(&PlayerWorker::DoSeek, this, seek_to_time, ticket));
   }
 
   void WriteSample(const scoped_refptr<InputBuffer>& input_buffer) {
     job_queue_->Schedule(
-        Bind(&PlayerWorker::DoWriteSample, this, input_buffer));
+        std::bind(&PlayerWorker::DoWriteSample, this, input_buffer));
   }
 
   void WriteEndOfStream(SbMediaType sample_type) {
     job_queue_->Schedule(
-        Bind(&PlayerWorker::DoWriteEndOfStream, this, sample_type));
+        std::bind(&PlayerWorker::DoWriteEndOfStream, this, sample_type));
   }
 
   void SetBounds(Bounds bounds) {
-    job_queue_->Schedule(Bind(&PlayerWorker::DoSetBounds, this, bounds));
+    job_queue_->Schedule(std::bind(&PlayerWorker::DoSetBounds, this, bounds));
   }
 
   void SetPause(bool pause) {
-    job_queue_->Schedule(Bind(&PlayerWorker::DoSetPause, this, pause));
+    job_queue_->Schedule(std::bind(&PlayerWorker::DoSetPause, this, pause));
   }
 
   void SetPlaybackRate(double playback_rate) {
@@ -139,15 +146,11 @@ class PlayerWorker {
       playback_rate = kMaximumPlaybackRate;
     }
     job_queue_->Schedule(
-        Bind(&PlayerWorker::DoSetPlaybackRate, this, playback_rate));
+        std::bind(&PlayerWorker::DoSetPlaybackRate, this, playback_rate));
   }
 
   void SetVolume(double volume) {
-    job_queue_->Schedule(Bind(&PlayerWorker::DoSetVolume, this, volume));
-  }
-
-  void UpdateDroppedVideoFrames(int dropped_video_frames) {
-    host_->UpdateDroppedVideoFrames(dropped_video_frames);
+    job_queue_->Schedule(std::bind(&PlayerWorker::DoSetVolume, this, volume));
   }
 
   SbDecodeTarget GetCurrentDecodeTarget() {
@@ -155,15 +158,20 @@ class PlayerWorker {
   }
 
  private:
-  void UpdateMediaTime(SbMediaTime time);
+  void UpdateMediaInfo(SbTime time, int dropped_video_frames);
 
   SbPlayerState player_state() const { return player_state_; }
   void UpdatePlayerState(SbPlayerState player_state);
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+  void UpdatePlayerError(SbPlayerError error, const std::string& message);
+#else   // SB_HAS(PLAYER_ERROR_MESSAGE)
+  void UpdatePlayerError(const std::string& message);
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
 
   static void* ThreadEntryPoint(void* context);
   void RunLoop();
   void DoInit();
-  void DoSeek(SbMediaTime seek_to_pts, int ticket);
+  void DoSeek(SbTime seek_to_time, int ticket);
   void DoWriteSample(const scoped_refptr<InputBuffer>& input_buffer);
   void DoWritePendingSamples();
   void DoWriteEndOfStream(SbMediaType sample_type);
@@ -178,11 +186,17 @@ class PlayerWorker {
   SbThread thread_;
   scoped_ptr<JobQueue> job_queue_;
 
-  Host* host_;
+  SbMediaAudioCodec audio_codec_;
+  SbMediaVideoCodec video_codec_;
   scoped_ptr<Handler> handler_;
+  UpdateMediaInfoCB update_media_info_cb_;
 
   SbPlayerDecoderStatusFunc decoder_status_func_;
   SbPlayerStatusFunc player_status_func_;
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+  SbPlayerErrorFunc player_error_func_;
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
+  bool error_occurred_ = false;
   SbPlayer player_;
   void* context_;
   int ticket_;
@@ -190,7 +204,7 @@ class PlayerWorker {
   SbPlayerState player_state_;
   scoped_refptr<InputBuffer> pending_audio_buffer_;
   scoped_refptr<InputBuffer> pending_video_buffer_;
-  Closure write_pending_sample_closure_;
+  JobQueue::JobToken write_pending_sample_job_token_;
 };
 
 }  // namespace player

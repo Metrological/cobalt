@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include "cobalt/base/cobalt_paths.h"
 #include "cobalt/layout_tests/layout_snapshot.h"
 #include "cobalt/layout_tests/test_parser.h"
+#include "cobalt/layout_tests/test_utils.h"
 #include "cobalt/math/size.h"
 #include "cobalt/render_tree/animations/animate_node.h"
 #include "cobalt/renderer/render_tree_pixel_tester.h"
@@ -48,6 +49,26 @@ const char kOutputFailedTestDetails[] = "output-failed-test-details";
 // succeed as well.
 const char kOutputAllTestDetails[] = "output-all-test-details";
 }  // namespace switches
+
+namespace {
+
+void ScreenshotFunction(
+    scoped_refptr<base::MessageLoopProxy> expected_message_loop,
+    renderer::RenderTreePixelTester* pixel_tester,
+    const scoped_refptr<render_tree::Node>& node,
+    const dom::ScreenshotManager::OnUnencodedImageCallback& callback) {
+  if (base::MessageLoopProxy::current() != expected_message_loop) {
+    expected_message_loop->PostTask(
+        FROM_HERE, base::Bind(&ScreenshotFunction, expected_message_loop,
+                              pixel_tester, node, callback));
+    return;
+  }
+  scoped_array<uint8_t> image_data = pixel_tester->RasterizeRenderTree(node);
+  const math::Size& image_dimensions = pixel_tester->GetTargetSize();
+  callback.Run(image_data.Pass(), image_dimensions);
+}
+
+}  // namespace
 
 class LayoutTest : public ::testing::TestWithParam<TestInfo> {};
 TEST_P(LayoutTest, LayoutTest) {
@@ -85,7 +106,9 @@ TEST_P(LayoutTest, LayoutTest) {
       pixel_tester_options);
 
   browser::WebModule::LayoutResults layout_results = SnapshotURL(
-      GetParam().url, viewport_size, pixel_tester.GetResourceProvider());
+      GetParam().url, viewport_size, pixel_tester.GetResourceProvider(),
+      base::Bind(&ScreenshotFunction, base::MessageLoopProxy::current(),
+                 base::Unretained(&pixel_tester)));
 
   scoped_refptr<render_tree::animations::AnimateNode> animate_node =
       new render_tree::animations::AnimateNode(layout_results.render_tree);

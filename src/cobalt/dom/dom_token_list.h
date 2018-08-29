@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -55,9 +55,8 @@ class DOMTokenList : public script::Wrappable {
   // The associated element.
   Element* element() { return element_; }
 
-  void TraceMembers(script::Tracer* tracer) OVERRIDE;
-
   DEFINE_WRAPPABLE_TYPE(DOMTokenList);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   ~DOMTokenList();

@@ -1,4 +1,4 @@
-# Copyright 2014 Google Inc. All Rights Reserved.
+# Copyright 2014 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,9 +19,12 @@
     # Define the platform specific Bison binary.
     'conditions': [
       ['host_os=="win"', {
-        'bison_exe': '<(DEPTH)/third_party/bison/bin/bison',
+        'bison_exe': '<(DEPTH)/third_party/winflexbison/bin/Release/win_bison',
+        'bison_major_version': '3'
       }, {
         'bison_exe': 'bison',
+        'bison_major_version': '<!(bison --version | '
+          'head -n 1 | sed -Ee "s/[^0-9]*([0-9]+).*/\\1/")'
       }],
     ],
   },
@@ -35,7 +38,13 @@
       'type': 'none',
       'sources': [
         'grammar.h',
-        'grammar.y',
+      ],
+      'conditions': [
+        ['bison_major_version==2', {
+          'sources': ['grammar-bison-2.y'],
+        }, {
+          'sources': ['grammar.y']
+        }]
       ],
       # Generated header files are stored in the intermediate directory
       # under their module sub-directory.
@@ -102,6 +111,9 @@
         'trivial_string_piece.h',
         'trivial_type_pairs.h',
       ],
+      'defines': [
+        'BISON_VERSION_MAJOR=<@(bison_major_version)'
+      ],
       # Scanner exposes UChar32 in a header.
       'direct_dependent_settings': {
         'include_dirs': [
@@ -126,6 +138,9 @@
         'scanner_test.cc',
         'trivial_string_piece_test.cc',
       ],
+      'defines': [
+        'BISON_VERSION_MAJOR=<@(bison_major_version)'
+      ],
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
         '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
@@ -145,7 +160,7 @@
       'variables': {
         'executable_name': 'css_parser_test',
       },
-      'includes': [ '../../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
 
   ],

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ class InputDeviceManagerFuzzer : public InputDeviceManager {
  public:
   explicit InputDeviceManagerFuzzer(
       KeyboardEventCallback keyboard_event_callback);
-  ~InputDeviceManagerFuzzer() OVERRIDE {}
+  ~InputDeviceManagerFuzzer() override {}
 
  private:
   class KeyInfo {

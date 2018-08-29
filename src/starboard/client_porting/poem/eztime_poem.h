@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,12 +33,19 @@
 #undef timeval
 #define timeval EzTimeValue
 
+#undef gettimeofday
 #define gettimeofday(a, b) EzTimeValueGetNow(a, b)
+#undef gmtime_r
 #define gmtime_r(a, b) EzTimeTExplodeUTC(a, b)
+#undef localtime_r
 #define localtime_r(a, b) EzTimeTExplodeLocal(a, b)
+#undef mktime
 #define mktime(x) EzTimeTImplodeLocal(x)
+#undef time
 #define time(x) EzTimeTGetNow(x)
+#undef timegm
 #define timegm(x) EzTimeTImplodeUTC(x)
+#undef timelocal
 #define timelocal(x) EzTimeTImplodeLocal(x)
 
 #endif  // POEM_NO_EMULATION

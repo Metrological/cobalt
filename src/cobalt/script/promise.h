@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,6 +23,18 @@
 namespace cobalt {
 namespace script {
 
+// TODO: Just use JavaScript undefined once abstracted JavaScript values are
+// exposed to code outside of engine specific script implementations.
+struct PromiseResultUndefined {};
+
+// See [[PromiseState]] in
+// https://tc39.github.io/ecma262/#sec-properties-of-promise-instances
+enum class PromiseState {
+  kPending,
+  kFulfilled,
+  kRejected,
+};
+
 // Interface for interacting with a JavaScript Promise object that is resolved
 // or rejected from native code.
 template <typename T>
@@ -37,25 +49,44 @@ class Promise {
   virtual void Reject() const = 0;
   virtual void Reject(SimpleExceptionType exception) const = 0;
   virtual void Reject(const scoped_refptr<ScriptException>& result) const = 0;
+
+  // Returns the value of the [[PromiseState]] field.
+  virtual PromiseState State() const = 0;
+
   virtual ~Promise() {}
 };
 
-// Specialization of the Promise<T> class for Promise<void>, which does not take
-// a value for the Resolve function.
+// A convenience specialization in order to facilitate not having to
+// explicitly pass in |PromiseResultUndefined| when resolving a |Promise| with
+// no value.
 template <>
-class Promise<void> {
+class Promise<void> : public Promise<PromiseResultUndefined> {
  public:
-  // Call the |resolve| function passed as an argument to the Promise's executor
-  // function.
-  virtual void Resolve() const = 0;
+  using Promise<PromiseResultUndefined>::Resolve;
 
-  // Call the |reject| function passed as an argument to the Promise's executor
-  // function.
-  virtual void Reject() const = 0;
-  virtual void Reject(SimpleExceptionType exception) const = 0;
-  virtual void Reject(const scoped_refptr<ScriptException>& result) const = 0;
-  virtual ~Promise() {}
+  void Resolve() const { Resolve(PromiseResultUndefined()); }
 };
+
+#if !defined(COBALT_BUILD_TYPE_GOLD)
+
+inline std::ostream& operator<<(std::ostream& os, const PromiseState state) {
+  switch (state) {
+    case PromiseState::kFulfilled:
+      os << "Fulfilled";
+      return os;
+    case PromiseState::kPending:
+      os << "Pending";
+      return os;
+    case PromiseState::kRejected:
+      os << "Rejected";
+      return os;
+  }
+  DCHECK(false);
+  os << "Unknown promise state";
+  return os;
+}
+
+#endif  // !defined(COBALT_BUILD_TYPE_GOLD)
 
 }  // namespace script
 }  // namespace cobalt

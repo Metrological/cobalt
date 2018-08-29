@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@
 
 #ifndef COBALT_SPEECH_COBALT_SPEECH_RECOGNIZER_H_
 #define COBALT_SPEECH_COBALT_SPEECH_RECOGNIZER_H_
+
+#include <string>
 
 #include "cobalt/network/network_module.h"
 #include "cobalt/speech/endpointer_delegate.h"
@@ -51,14 +53,15 @@ class CobaltSpeechRecognizer : public SpeechRecognizer {
                          const EventCallback& event_callback);
   ~CobaltSpeechRecognizer();
 
-  void Start(const SpeechRecognitionConfig& config) SB_OVERRIDE;
-  void Stop() SB_OVERRIDE;
+  void Start(const SpeechRecognitionConfig& config) override;
+  void Stop() override;
 
  private:
   // Callbacks from mic.
   void OnDataReceived(scoped_ptr<ShellAudioBus> audio_bus);
   void OnDataCompletion();
-  void OnMicError(const scoped_refptr<dom::Event>& event);
+  void OnMicrophoneError(MicrophoneManager::MicrophoneError error,
+                         std::string error_message);
 
   // Callbacks from recognizer.
   void OnRecognizerEvent(const scoped_refptr<dom::Event>& event);

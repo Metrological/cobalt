@@ -1,4 +1,4 @@
-/* Copyright 2017 Google Inc. All Rights Reserved.
+/* Copyright 2017 The Cobalt Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@
 #include "base/memory/ref_counted.h"
 #include "base/string_piece.h"
 #include "cobalt/base/token.h"
-#include "cobalt/dom/array_buffer.h"
 #include "cobalt/dom/blob.h"
 #include "cobalt/dom/event.h"
+#include "cobalt/script/array_buffer.h"
 #include "cobalt/script/union_type.h"
 #include "cobalt/script/wrappable.h"
 #include "net/base/io_buffer.h"
@@ -34,7 +34,8 @@ namespace dom {
 class MessageEvent : public dom::Event {
  public:
   typedef script::UnionType3<std::string, scoped_refptr<dom::Blob>,
-                             scoped_refptr<dom::ArrayBuffer> > ResponseType;
+                             script::Handle<script::ArrayBuffer> >
+      ResponseType;
   // These response codes are ordered in the likelyhood of being used.
   // Keeping them in expected order will help make code faster.
   enum ResponseTypeCode { kText, kBlob, kArrayBuffer, kResponseTypeCodeMax };

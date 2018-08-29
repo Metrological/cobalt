@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,7 +23,9 @@
 
 #include "starboard/string.h"
 
+#undef vswprintf
 #define vswprintf SbStringFormatWide
+#undef wcsncmp
 #define wcsncmp(s1, s2, c) SbStringCompareWide(s1, s2, c)
 
 #endif  // POEM_NO_EMULATION

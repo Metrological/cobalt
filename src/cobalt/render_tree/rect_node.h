@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 #define COBALT_RENDER_TREE_RECT_NODE_H_
 
 #include "base/compiler_specific.h"
+#include "base/logging.h"
 #include "base/memory/scoped_ptr.h"
 #include "cobalt/base/type_id.h"
 #include "cobalt/math/rect_f.h"
@@ -34,6 +35,8 @@ class RectNode : public Node {
   class Builder {
    public:
     DECLARE_AS_MOVABLE(Builder);
+    Builder(const Builder& other);
+    explicit Builder(Moved moved);
 
     explicit Builder(const math::RectF& rect);
     Builder(const math::RectF& rect, scoped_ptr<Border> border);
@@ -49,8 +52,6 @@ class RectNode : public Node {
     Builder(const math::RectF& rect, scoped_ptr<Brush> background_brush,
             scoped_ptr<Border> border,
             scoped_ptr<RoundedCorners> rounded_corners);
-    explicit Builder(const Builder& other);
-    explicit Builder(Moved moved);
 
     bool operator==(const Builder& other) const;
 
@@ -69,47 +70,18 @@ class RectNode : public Node {
     scoped_ptr<RoundedCorners> rounded_corners;
   };
 
-  RectNode(const math::RectF& rect, scoped_ptr<Border> border)
-      : data_(rect, border.Pass()) {
-    AssertValid();
-  }
-  RectNode(const math::RectF& rect, scoped_ptr<Border> border,
-           scoped_ptr<RoundedCorners> rounded_corners)
-      : data_(rect, border.Pass(), rounded_corners.Pass()) {
-    AssertValid();
-  }
-  RectNode(const math::RectF& rect, scoped_ptr<Brush> background_brush)
-      : data_(rect, background_brush.Pass()) {
-    AssertValid();
-  }
-  RectNode(const math::RectF& rect, scoped_ptr<Brush> background_brush,
-           scoped_ptr<Border> border)
-      : data_(rect, background_brush.Pass(), border.Pass()) {
-    AssertValid();
-  }
-  RectNode(const math::RectF& rect, scoped_ptr<Brush> background_brush,
-           scoped_ptr<RoundedCorners> rounded_corners)
-      : data_(rect, background_brush.Pass(), rounded_corners.Pass()) {
-    AssertValid();
-  }
-  RectNode(const math::RectF& rect, scoped_ptr<Brush> background_brush,
-           scoped_ptr<Border> border,
-           scoped_ptr<RoundedCorners> rounded_corners)
-      : data_(rect, background_brush.Pass(), border.Pass(),
-              rounded_corners.Pass()) {
-    AssertValid();
-  }
-  explicit RectNode(const Builder& builder) : data_(builder) {
-    AssertValid();
-  }
-  explicit RectNode(Builder::Moved builder) : data_(builder) {
-    AssertValid();
+  // Forwarding constructor to the set of Builder constructors.
+  template <typename... Args>
+  RectNode(Args&&... args) : data_(std::forward<Args>(args)...) {
+    if (DCHECK_IS_ON()) {
+      AssertValid();
+    }
   }
 
-  void Accept(NodeVisitor* visitor) OVERRIDE;
-  math::RectF GetBounds() const OVERRIDE;
+  void Accept(NodeVisitor* visitor) override;
+  math::RectF GetBounds() const override;
 
-  base::TypeId GetTypeId() const OVERRIDE {
+  base::TypeId GetTypeId() const override {
     return base::GetTypeId<RectNode>();
   }
 

@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -62,9 +62,7 @@ RectNode::Builder::Builder(const math::RectF& rect,
       border(border.Pass()),
       rounded_corners(rounded_corners.Pass()) {}
 
-RectNode::Builder::Builder(const Builder& other) {
-  rect = other.rect;
-
+RectNode::Builder::Builder(const Builder& other) : rect(other.rect) {
   if (other.background_brush) {
     background_brush = CloneBrush(other.background_brush.get());
   }

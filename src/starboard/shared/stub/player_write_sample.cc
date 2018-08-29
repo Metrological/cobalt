@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 
 #include "starboard/player.h"
 
+#if SB_API_VERSION < 10
 void SbPlayerWriteSample(SbPlayer /*player*/,
                          SbMediaType /*sample_type*/,
 #if SB_API_VERSION >= 6
@@ -28,3 +29,4 @@ void SbPlayerWriteSample(SbPlayer /*player*/,
                          const SbMediaVideoSampleInfo* /*video_sample_info*/,
                          const SbDrmSampleInfo* /*sample_drm_info*/) {
 }
+#endif  // SB_API_VERSION < 10

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@
 #include "starboard/configuration.h"
 #include "starboard/export.h"
 #include "starboard/key.h"
+#include "starboard/time.h"
 #include "starboard/types.h"
 #include "starboard/window.h"
 
@@ -147,6 +148,15 @@ typedef struct SbInputVector {
 
 // Event data for |kSbEventTypeInput| events.
 typedef struct SbInputData {
+#if SB_API_VERSION >= 10
+  // The time that should be reported for this event. This is intended to
+  // facilitate calculation of time-sensitive information (e.g. velocity for
+  // kSbInputEventTypeMove). This may be set to 0 to have the relevant systems
+  // automatically set the timestamp. However, this may happen at a later time,
+  // so the relative time between events may not be preserved.
+  SbTimeMonotonic timestamp;
+#endif
+
   // The window in which the input was generated.
   SbWindow window;
 

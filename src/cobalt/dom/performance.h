@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,10 +40,9 @@ class Performance : public script::Wrappable {
   double Now() const;
 
   DEFINE_WRAPPABLE_TYPE(Performance);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
-  ~Performance() OVERRIDE;
-
   scoped_refptr<PerformanceTiming> timing_;
   scoped_refptr<MemoryInfo> memory_;
 

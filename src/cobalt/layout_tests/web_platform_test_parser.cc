@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -110,7 +110,7 @@ std::vector<WebPlatformTestInfo> EnumerateWebPlatformTests(
     bool success = global_environment->EvaluateScript(
         script::SourceCode::CreateSourceCode(
             precondition, base::SourceLocation(__FILE__, __LINE__, 1)),
-        false /*mute_errors*/, &result);
+        &result);
 
     if (!success) {
       DLOG(ERROR) << "Failed to evaluate precondition: "

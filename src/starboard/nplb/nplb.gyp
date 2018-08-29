@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
         '<(DEPTH)/starboard/common/test_main.cc',
         'accessibility_get_setting_test.cc',
         'align_test.cc',
+        'atomic_base_test.cc',
         'atomic_test.cc',
         'audio_sink_create_test.cc',
         'audio_sink_destroy_test.cc',
@@ -98,6 +99,12 @@
         'double_floor_test.cc',
         'double_is_finite_test.cc',
         'double_is_nan_test.cc',
+        'drm_create_system_test.cc',
+        'drm_helpers.cc',
+        'drm_helpers.h',
+        'drm_is_server_certificate_updatable_test.cc',
+        'drm_update_server_certificate_test.cc',
+        'extern_c_test.cc',
         'file_can_open_test.cc',
         'file_close_test.cc',
         'file_get_info_test.cc',
@@ -119,6 +126,9 @@
         'log_raw_dump_stack_test.cc',
         'log_raw_test.cc',
         'log_test.cc',
+        # TODO: Separate functions tested by media buffer test into multiple
+        # files.
+        'media_buffer_test.cc',
         'memory_align_to_page_size_test.cc',
         'memory_allocate_aligned_test.cc',
         'memory_allocate_test.cc',
@@ -147,7 +157,6 @@
         'mutex_destroy_test.cc',
         'once_test.cc',
         'optional_test.cc',
-        'player_create_with_url_test.cc',
         'random_helpers.cc',
         'rwlock_test.cc',
         'semaphore_test.cc',
@@ -242,6 +251,7 @@
         'thread_local_value_test.cc',
         'thread_set_name_test.cc',
         'thread_sleep_test.cc',
+        'thread_test.cc',
         'thread_yield_test.cc',
         'time_get_monotonic_now_test.cc',
         'time_get_now_test.cc',
@@ -265,14 +275,17 @@
       ],
       'dependencies': [
         '<@(cobalt_platform_dependencies)',
+        '<(DEPTH)/starboard/starboard.gyp:starboard',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
-        '<(DEPTH)/starboard/starboard.gyp:starboard',
       ],
       'conditions': [
         ['sb_media_platform=="starboard"', {
           'sources': [
+            '<(DEPTH)/starboard/testing/fake_graphics_context_provider.cc',
+            '<(DEPTH)/starboard/testing/fake_graphics_context_provider.h',
             'player_create_test.cc',
+            'player_create_with_url_test.cc',
             'player_output_mode_supported_test.cc',
           ],
         }],
@@ -287,7 +300,7 @@
       'variables': {
         'executable_name': 'nplb',
       },
-      'includes': [ '../build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ],
 }

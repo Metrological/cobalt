@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -69,7 +69,7 @@ class Console : public script::Wrappable {
  private:
   typedef std::set<Listener*> ListenerSet;
 
-  ~Console() OVERRIDE { weak_ptr_factory_.InvalidateWeakPtrs(); }
+  ~Console() override { weak_ptr_factory_.InvalidateWeakPtrs(); }
 
   void AddListener(Listener* listener);
   void RemoveListener(Listener* listener);

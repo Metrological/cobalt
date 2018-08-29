@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,9 @@
 
 #include "starboard/shared/starboard/player/input_buffer_internal.h"
 
+#include <cctype>
 #include <numeric>
+#include <sstream>
 
 #include "starboard/log.h"
 #include "starboard/memory.h"
@@ -24,13 +26,74 @@ namespace shared {
 namespace starboard {
 namespace player {
 
+namespace {
+
+std::string GetHexRepresentation(const uint8_t* data, int size) {
+  const char kBinToHex[] = "0123456789abcdef";
+
+  std::string result;
+
+  for (int i = 0; i < size; ++i) {
+    result += kBinToHex[data[i] / 16];
+    result += kBinToHex[data[i] % 16];
+    if (i != size - 1) {
+      result += ' ';
+    }
+  }
+
+  return result;
+}
+
+std::string GetStringRepresentation(const uint8_t* data, int size) {
+  std::string result;
+
+  for (int i = 0; i < size; ++i) {
+    if (std::isspace(data[i])) {
+      result += ' ';
+    } else if (std::isprint(data[i])) {
+      result += data[i];
+    } else {
+      result += '?';
+    }
+  }
+
+  return result;
+}
+
+std::string GetMixedRepresentation(const uint8_t* data,
+                                   int size,
+                                   int bytes_per_line) {
+  std::string result;
+
+  for (int i = 0; i < size; i += bytes_per_line) {
+    if (i + bytes_per_line <= size) {
+      result += GetHexRepresentation(data + i, bytes_per_line);
+      result += " | ";
+      result += GetStringRepresentation(data + i, bytes_per_line);
+      result += '\n';
+    } else {
+      int bytes_left = size - i;
+      result += GetHexRepresentation(data + i, bytes_left);
+      result += std::string((bytes_per_line - bytes_left) * 3, ' ');
+      result += " | ";
+      result += GetStringRepresentation(data + i, bytes_left);
+      result += std::string(bytes_per_line - bytes_left, ' ');
+      result += '\n';
+    }
+  }
+
+  return result;
+}
+
+}  // namespace
+
 InputBuffer::InputBuffer(SbMediaType sample_type,
                          SbPlayerDeallocateSampleFunc deallocate_sample_func,
                          SbPlayer player,
                          void* context,
                          const void* sample_buffer,
                          int sample_buffer_size,
-                         SbMediaTime sample_pts,
+                         SbTime sample_timestamp,
                          const SbMediaVideoSampleInfo* video_sample_info,
                          const SbDrmSampleInfo* sample_drm_info)
     : sample_type_(sample_type),
@@ -39,7 +102,7 @@ InputBuffer::InputBuffer(SbMediaType sample_type,
       context_(context),
       data_(static_cast<const uint8_t*>(sample_buffer)),
       size_(sample_buffer_size),
-      pts_(sample_pts) {
+      timestamp_(sample_timestamp) {
   SB_DCHECK(deallocate_sample_func);
   TryToAssignVideoSampleInfo(video_sample_info);
   TryToAssignDrmSampleInfo(sample_drm_info);
@@ -52,14 +115,14 @@ InputBuffer::InputBuffer(SbMediaType sample_type,
                          const void* const* sample_buffers,
                          const int* sample_buffer_sizes,
                          int number_of_sample_buffers,
-                         SbMediaTime sample_pts,
+                         SbTime sample_timestamp,
                          const SbMediaVideoSampleInfo* video_sample_info,
                          const SbDrmSampleInfo* sample_drm_info)
     : sample_type_(sample_type),
       deallocate_sample_func_(deallocate_sample_func),
       player_(player),
       context_(context),
-      pts_(sample_pts) {
+      timestamp_(sample_timestamp) {
   SB_DCHECK(deallocate_sample_func);
   SB_DCHECK(number_of_sample_buffers > 0);
 
@@ -106,6 +169,33 @@ void InputBuffer::SetDecryptedContent(const void* buffer, int size) {
   }
   size_ = size;
   has_drm_info_ = false;
+}
+
+std::string InputBuffer::ToString() const {
+  std::stringstream ss;
+  ss << "========== " << (has_drm_info_ ? "encrypted " : "clear ")
+     << (sample_type_ == kSbMediaTypeAudio ? "audio" : "video")
+     << " sample @ timestamp: " << timestamp_ << " in " << size_
+     << " bytes ==========\n";
+  if (has_video_sample_info_) {
+    ss << video_sample_info_.frame_width << " x "
+       << video_sample_info_.frame_height << '\n';
+  }
+  if (has_drm_info_) {
+    ss << "iv: "
+       << GetHexRepresentation(drm_info_.initialization_vector,
+                               drm_info_.initialization_vector_size)
+       << "\nkey_id: "
+       << GetHexRepresentation(drm_info_.identifier, drm_info_.identifier_size)
+       << '\n';
+    ss << "subsamples\n";
+    for (int i = 0; i < drm_info_.subsample_count; ++i) {
+      ss << "\t" << drm_info_.subsample_mapping[i].clear_byte_count << ", "
+         << drm_info_.subsample_mapping[i].encrypted_byte_count << "\n";
+    }
+  }
+  ss << GetMixedRepresentation(data_, size_, 16) << '\n';
+  return ss.str();
 }
 
 void InputBuffer::TryToAssignVideoSampleInfo(

@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ namespace dom {
 class ElementTest : public ::testing::Test {
  protected:
   ElementTest();
-  ~ElementTest() OVERRIDE;
+  ~ElementTest() override;
 
   scoped_ptr<css_parser::Parser> css_parser_;
   scoped_ptr<dom_parser::Parser> dom_parser_;
@@ -60,10 +60,10 @@ ElementTest::ElementTest()
     : css_parser_(css_parser::Parser::Create()),
       dom_parser_(new dom_parser::Parser()),
       dom_stat_tracker_(new DomStatTracker("ElementTest")),
-      html_element_context_(NULL, css_parser_.get(), dom_parser_.get(), NULL,
+      html_element_context_(NULL, NULL, css_parser_.get(), dom_parser_.get(),
                             NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                            NULL, NULL, dom_stat_tracker_.get(), "",
-                            base::kApplicationStateStarted) {
+                            NULL, NULL, NULL, dom_stat_tracker_.get(), "",
+                            base::kApplicationStateStarted, NULL) {
   EXPECT_TRUE(GlobalStats::GetInstance()->CheckNoLeaks());
   document_ = new Document(&html_element_context_);
   xml_document_ = new XMLDocument(&html_element_context_);
@@ -181,13 +181,17 @@ TEST_F(ElementTest, AttributesPropertyGetAndRemove) {
   EXPECT_EQ("2", attributes->GetNamedItem("a")->value());
 
   // Make sure that adding another attribute through the element affects
-  // the NamedNodeMap.
+  // the NamedNodeMap. Note that NamedNodeMap does not guarantee order of items.
   element->SetAttribute("b", "2");
   EXPECT_EQ(2, attributes->length());
   EXPECT_EQ("b", attributes->GetNamedItem("b")->name());
   EXPECT_EQ("2", attributes->GetNamedItem("b")->value());
-  EXPECT_EQ("b", attributes->Item(1)->name());
-  EXPECT_EQ("2", attributes->Item(1)->value());
+  if ("b" == attributes->Item(1)->name()) {
+    EXPECT_EQ("2", attributes->Item(1)->value());
+  } else {
+    EXPECT_EQ("b", attributes->Item(0)->name());
+    EXPECT_EQ("2", attributes->Item(0)->value());
+  }
 
   // Make sure that removing an attribute through the element affects
   // the NamedNodeMap.

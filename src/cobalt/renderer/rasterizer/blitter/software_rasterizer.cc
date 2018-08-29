@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,12 +30,11 @@ namespace rasterizer {
 namespace blitter {
 
 SoftwareRasterizer::SoftwareRasterizer(
-    backend::GraphicsContext* context, int surface_cache_size,
+    backend::GraphicsContext* context,
     bool purge_skia_font_caches_on_destruction)
     : context_(base::polymorphic_downcast<backend::GraphicsContextBlitter*>(
           context)),
-      skia_rasterizer_(surface_cache_size,
-                       purge_skia_font_caches_on_destruction) {}
+      skia_rasterizer_(purge_skia_font_caches_on_destruction) {}
 
 void SoftwareRasterizer::Submit(
     const scoped_refptr<render_tree::Node>& render_tree,

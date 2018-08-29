@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -93,7 +93,33 @@ void BaseEventHandler(const SbEvent* event) {
       g_at_exit = NULL;
       break;
     }
-    default:
+    case kSbEventTypePause:
+    case kSbEventTypeUnpause:
+    case kSbEventTypeSuspend:
+    case kSbEventTypeResume:
+    case kSbEventTypeInput:
+    case kSbEventTypeUser:
+    case kSbEventTypeLink:
+    case kSbEventTypeVerticalSync:
+    case kSbEventTypeNetworkDisconnect:
+    case kSbEventTypeNetworkConnect:
+    case kSbEventTypeScheduled:
+    case kSbEventTypeAccessiblitySettingsChanged:
+#if SB_API_VERSION >= 6
+    case kSbEventTypeLowMemory:
+#endif  // SB_API_VERSION >= 6
+#if SB_API_VERSION >= 8
+    case kSbEventTypeWindowSizeChanged:
+#endif  // SB_API_VERSION >= 8
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+    case kSbEventTypeOnScreenKeyboardShown:
+    case kSbEventTypeOnScreenKeyboardHidden:
+    case kSbEventTypeOnScreenKeyboardFocused:
+    case kSbEventTypeOnScreenKeyboardBlurred:
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_HAS(CAPTIONS)
+    case kSbEventTypeAccessibilityCaptionSettingsChanged:
+#endif  // SB_HAS(CAPTIONS)
       event_function(event);
       break;
   }

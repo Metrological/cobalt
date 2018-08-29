@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,15 +34,14 @@
             'main.cc',
           ],
         }],
-        ['cobalt_copy_test_data == 1', {
-          'dependencies': [
-            '<(DEPTH)/cobalt/browser/browser.gyp:browser_copy_test_data',
-            '<(DEPTH)/cobalt/xhr/xhr.gyp:xhr_copy_test_data',
-          ],
-        }],
         ['cobalt_copy_debug_console == 1', {
           'dependencies': [
             '<(DEPTH)/cobalt/browser/browser.gyp:browser_copy_debug_console',
+          ],
+        }],
+        ['cobalt_splash_screen_file != ""', {
+          'dependencies': [
+            '<(DEPTH)/cobalt/browser/splash_screen/splash_screen.gyp:copy_splash_screen',
           ],
         }],
       ],
@@ -57,33 +56,47 @@
       'variables': {
         'executable_name': 'cobalt',
       },
-      'includes': [ '../../starboard/build/deploy.gypi' ],
-    },
-    {
-      'target_name': 'snapshot_app_stats',
-      'type': '<(final_executable_type)',
-      'sources': [
-        'snapshot_app_stats.cc',
-      ],
-      'dependencies': [
-        'cobalt',
-        '<(DEPTH)/cobalt/browser/browser.gyp:browser',
-      ],
-    },
-    {
-      'target_name': 'snapshot_app_stats_deploy',
-      'type': 'none',
-      'dependencies': [
-        'snapshot_app_stats',
-      ],
-      'variables': {
-        'executable_name': 'snapshot_app_stats',
-      },
-      'includes': [ '../../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
 
+    {
+      # Convenience target to build cobalt and copy the demos into
+      # content/data/test/cobalt/demos
+      'target_name': 'cobalt_with_demos',
+      'type': 'none',
+      'dependencies': [
+        'cobalt',
+        '<(DEPTH)/cobalt/demos/demos.gyp:copy_demos',
+      ],
+    },
   ],
   'conditions': [
+    ['build_snapshot_app_stats', {
+      'targets': [
+        {
+          'target_name': 'snapshot_app_stats',
+          'type': '<(final_executable_type)',
+          'sources': [
+            'snapshot_app_stats.cc',
+          ],
+          'dependencies': [
+            'cobalt',
+            '<(DEPTH)/cobalt/browser/browser.gyp:browser',
+          ],
+        },
+        {
+          'target_name': 'snapshot_app_stats_deploy',
+          'type': 'none',
+          'dependencies': [
+            'snapshot_app_stats',
+          ],
+          'variables': {
+            'executable_name': 'snapshot_app_stats',
+          },
+          'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
+        },
+      ]
+    }],
     ['final_executable_type == "shared_library"', {
       'targets': [
         {

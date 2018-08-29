@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,12 +32,12 @@ class UnicodeRangeValue : public PropertyValue {
  public:
   UnicodeRangeValue(int start, int end);
 
-  void Accept(PropertyValueVisitor* visitor) OVERRIDE;
+  void Accept(PropertyValueVisitor* visitor) override;
 
   int start() const { return start_; }
   int end() const { return end_; }
 
-  std::string ToString() const OVERRIDE;
+  std::string ToString() const override;
 
   bool operator==(const UnicodeRangeValue& other) const {
     return start_ == other.start_ && end_ == other.end_;
@@ -48,7 +48,7 @@ class UnicodeRangeValue : public PropertyValue {
   DEFINE_POLYMORPHIC_EQUATABLE_TYPE(UnicodeRangeValue);
 
  private:
-  ~UnicodeRangeValue() OVERRIDE {}
+  ~UnicodeRangeValue() override {}
 
   const int start_;
   const int end_;

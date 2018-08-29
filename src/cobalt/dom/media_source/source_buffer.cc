@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Google Inc. All rights reserved.
+ * Copyright (C) 2013 Google Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -28,7 +28,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Modifications Copyright 2017 Google Inc. All Rights Reserved.
+// Modifications Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -220,16 +220,17 @@ void SourceBuffer::set_append_window_end(
   append_window_end_ = end;
 }
 
-void SourceBuffer::AppendBuffer(const scoped_refptr<ArrayBuffer>& data,
+void SourceBuffer::AppendBuffer(const script::Handle<script::ArrayBuffer>& data,
                                 script::ExceptionState* exception_state) {
-  AppendBufferInternal(static_cast<const unsigned char*>(data->data()),
-                       data->byte_length(), exception_state);
+  AppendBufferInternal(static_cast<const unsigned char*>(data->Data()),
+                       data->ByteLength(), exception_state);
 }
 
-void SourceBuffer::AppendBuffer(const scoped_refptr<ArrayBufferView>& data,
-                                script::ExceptionState* exception_state) {
-  AppendBufferInternal(static_cast<const unsigned char*>(data->base_address()),
-                       data->byte_length(), exception_state);
+void SourceBuffer::AppendBuffer(
+    const script::Handle<script::ArrayBufferView>& data,
+    script::ExceptionState* exception_state) {
+  AppendBufferInternal(static_cast<const unsigned char*>(data->RawData()),
+                       data->ByteLength(), exception_state);
 }
 
 void SourceBuffer::Abort(script::ExceptionState* exception_state) {
@@ -344,9 +345,7 @@ double SourceBuffer::GetHighestPresentationTimestamp() const {
 void SourceBuffer::TraceMembers(script::Tracer* tracer) {
   EventTarget::TraceMembers(tracer);
 
-  if (event_queue_) {
-    event_queue_->TraceMembers(tracer);
-  }
+  tracer->Trace(event_queue_);
   tracer->Trace(media_source_);
   tracer->Trace(track_defaults_);
   tracer->Trace(audio_tracks_);
@@ -406,7 +405,7 @@ bool SourceBuffer::EvictCodedFrames(size_t new_data_size) {
 }
 
 void SourceBuffer::AppendBufferInternal(
-    const unsigned char* data, uint32 size,
+    const unsigned char* data, size_t size,
     script::ExceptionState* exception_state) {
   if (!PrepareAppend(size, exception_state)) {
     return;
@@ -483,7 +482,7 @@ void SourceBuffer::AppendError() {
 
   ScheduleEvent(base::Tokens::error());
   ScheduleEvent(base::Tokens::updateend());
-  media_source_->EndOfStream(kMediaSourceEndOfStreamErrorDecode, NULL);
+  media_source_->EndOfStreamAlgorithm(kMediaSourceEndOfStreamErrorDecode);
 }
 
 void SourceBuffer::OnRemoveTimer() {

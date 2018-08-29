@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,10 +37,10 @@ class CSSKeyframeRule : public CSSRule {
                   const scoped_refptr<CSSRuleStyleDeclaration>& style);
 
   // Web API: CSSRule
-  Type type() const OVERRIDE { return kKeyframeRule; }
-  std::string css_text(script::ExceptionState* exception_state) const OVERRIDE;
+  Type type() const override { return kKeyframeRule; }
+  std::string css_text(script::ExceptionState* exception_state) const override;
   void set_css_text(const std::string& css_text,
-                    script::ExceptionState* exception_state) OVERRIDE;
+                    script::ExceptionState* exception_state) override;
 
   // Web API: CSSKeyframeRule
   //
@@ -53,13 +53,13 @@ class CSSKeyframeRule : public CSSRule {
   const std::vector<float>& offsets() const { return offsets_; }
 
   // From CSSRule.
-  void Accept(CSSRuleVisitor* visitor) OVERRIDE;
-  void AttachToCSSStyleSheet(CSSStyleSheet* style_sheet) OVERRIDE;
+  void Accept(CSSRuleVisitor* visitor) override;
+  void AttachToCSSStyleSheet(CSSStyleSheet* style_sheet) override;
 
   DEFINE_WRAPPABLE_TYPE(CSSKeyframeRule);
 
  private:
-  ~CSSKeyframeRule() OVERRIDE;
+  ~CSSKeyframeRule() override;
 
   // The set of offsets that this keyframe's rule should apply to.
   // This is computed from keyText.

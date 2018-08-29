@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,8 +27,6 @@
         'scratch_surface_cache.h',
         'streaming_best_fit_line.cc',
         'streaming_best_fit_line.h',
-        'surface_cache.cc',
-        'surface_cache.h',
         'utils.h',
         'utils.cc',
       ],

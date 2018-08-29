@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -46,9 +46,10 @@ class SpeechRecognitionResultList : public script::Wrappable {
   scoped_refptr<SpeechRecognitionResult> Item(uint32 index) const;
 
   DEFINE_WRAPPABLE_TYPE(SpeechRecognitionResultList);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
-  ~SpeechRecognitionResultList() OVERRIDE {}
+  ~SpeechRecognitionResultList() override {}
 
   SpeechRecognitionResults results_;
 

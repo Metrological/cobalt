@@ -12,7 +12,9 @@ to a specific type of performance metric (e.g. "framerate").
 
 Many of the tweaks involve adding a new gyp variable to your platform's
 `gyp_configuration.gypi` file.  The default values for these variables are
-defined in [`base.gypi`](../build/config/base.gypi).
+defined in either
+[`base_configuration.gypi`](../../starboard/build/base_configuration.gypi) or
+[`cobalt_configuration.gypi`](../build/cobalt_configuration.gypi).
 
 ### Use a Release Build
 
@@ -26,6 +28,32 @@ memory, and decrease performance while it is visible).  For the best
 performance, build Cobalt in the "gold" configuration.
 
 **Tags:** *framerate, startup, browse-to-watch, cpu memory, input latency.*
+
+
+### Switch JavaScript Engine to V8
+
+Cobalt supports both SpiderMonkey and V8 as JavaScript engines.  SpiderMonkey
+is the default JavaScript engine since it is the most compatible in that it
+does not require your platform to support Just-In-Time (JIT) compiling.
+However, if your platform supports it, we strongly recommend that you use
+V8, as it has been shown to provide 20-50% speed improvements on JavaScript
+execution across the board.  Note however that V8 has also been found to
+consume around 10MB more memory than SpiderMonkey.
+
+To enable V8, you must modify the `GetVariables()` method in your
+`gyp_configuration.py` file and ensure that the variables dictionary that is
+returned contains the following key/value pairs:
+
+```
+{
+  'javascript_engine': 'v8',
+  'cobalt_enable_jit': 1,
+}
+```
+
+Note also that use of V8 requires Starboard version 10 or higher.
+
+**Tags:** *startup, browse-to-watch, cpu memory, input latency.*
 
 
 ### Framerate throttling
@@ -182,7 +210,8 @@ is set to `0`.
 
 ### Try enabling rendering only to regions that change
 
-If you set the [`base.gypi`](../build/config/base.gypi) variable,
+If you set the
+[`cobalt_configuration.gypi`](../build/cobalt_configuration.gypi) variable,
 `render_dirty_region_only` to `1`, then Cobalt will invoke logic to detect which
 part of the frame has been affected by animations and can be configured to only
 render to that region.  However, this feature requires support from the driver
@@ -232,10 +261,16 @@ unless you explicitly set this up, it is unlikely that compiler/linker
 flags will carry over from external shell environment settings; they
 must be set explicitly in `gyp_configuration.gypi`.
 
+**Tags:** *framerate, startup, browse-to-watch, input latency*
+
+
 #### Link Time Optimization (LTO)
 If your toolchain supports it, it is recommended that you enable the LTO
 optimization, as it has been reported to yield significant performance
 improvements in many high profile projects.
+
+**Tags:** *framerate, startup, browse-to-watch, input latency*
+
 
 #### The GCC '-mplt' flag for MIPS architectures
 The '-mplt' flag has been found to improve all around performance by
@@ -303,6 +338,19 @@ The pre-allocated media buffer capacity size can be adjusted by modifying the
 value of `cobalt_media_buffer_initial_capacity` mentioned above.
 
 **Tags:** *configuration_public.h, cpu memory.*
+
+
+### Adjust media buffer size settings
+
+Many of the parameters around media buffer allocation can be adjusted in your
+gyp_configuration.gypi file.  The variables in question are the family of
+`cobalt_media_*` variables, whose default values are specified in
+[`cobalt_configuration.gypi`](../build/cobalt_configuration.gypi).  In
+particular, if your maximum video output resolution is less than 1080, then you
+may lower the budgets for many of the categories according to your maximum
+resolution.
+
+**Tags:** *cpu memory*
 
 
 ### Avoid using a the YouTube web app FPS counter (i.e. "?fps=1")

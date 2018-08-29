@@ -116,7 +116,7 @@
                 # TODO: ICU data handling should be unified with
                 # the Chromium code.
                 'includes': [
-                  '../../cobalt/build/copy_icu_data.gypi',
+                  '<(DEPTH)/cobalt/build/copy_icu_data.gypi',
                 ],
               }],
               ['OS == "android"', {
@@ -164,7 +164,7 @@
               # TODO: ICU data handling should be unified with
               # the Chromium code.
               'includes': [
-                '../../cobalt/build/copy_icu_data.gypi',
+                '<(DEPTH)/cobalt/build/copy_icu_data.gypi',
               ],
             }],
             [ 'OS == "win" and icu_use_data_file_flag==0', {
@@ -298,8 +298,14 @@
                 'U_HAVE_NL_LANGINFO=0'
               ],
               'dependencies': [
-                '<(DEPTH)/starboard/starboard.gyp:starboard',
+                '<(DEPTH)/starboard/starboard_headers_only.gyp:starboard_headers_only',
                ],
+            }],
+            ['(OS=="starboard") and (target_os=="android")', {
+              'cflags_cc': [
+                # reldtfmt.cpp compares 'UDateFormatStyle' and 'EStyle'.
+                '-Wno-enum-compare-switch',
+              ],
             }],
             ['(OS=="lb_shell" or OS=="starboard") and (target_os=="android" or target_os=="linux" or clang==1)', {
               'cflags_cc': [
@@ -441,7 +447,7 @@
             }],
             ['OS=="starboard"', {
               'dependencies': [
-                '<(DEPTH)/starboard/starboard.gyp:starboard',
+                '<(DEPTH)/starboard/starboard_headers_only.gyp:starboard_headers_only',
                ],
             }],
             ['(OS=="lb_shell" or OS=="starboard") and (target_os=="android" or target_os=="linux" or clang==1)', {

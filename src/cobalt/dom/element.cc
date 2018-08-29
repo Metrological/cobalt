@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -242,7 +242,7 @@ void Element::SetAttribute(const std::string& name, const std::string& value) {
     named_node_map_->SetAttributeInternal(attr_name, value);
   }
 
-  if (document) {
+  if (document && GetRootNode() == document) {
     document->OnDOMMutation();
   }
   OnSetAttribute(name, value);
@@ -307,7 +307,7 @@ void Element::RemoveAttribute(const std::string& name) {
     named_node_map_->RemoveAttributeInternal(attr_name);
   }
 
-  if (document) {
+  if (document && GetRootNode() == document) {
     document->OnDOMMutation();
   }
   OnRemoveAttribute(name);
@@ -636,6 +636,13 @@ void Element::CollectStyleSheetsOfElementAndDescendants(
 scoped_refptr<HTMLElement> Element::AsHTMLElement() { return NULL; }
 
 Element::~Element() { --(element_count_log.Get().count); }
+
+void Element::TraceMembers(script::Tracer* tracer) {
+  Node::TraceMembers(tracer);
+
+  tracer->Trace(named_node_map_);
+  tracer->Trace(class_list_);
+}
 
 bool Element::GetBooleanAttribute(const std::string& name) const {
   return HasAttribute(name);

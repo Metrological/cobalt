@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,25 +14,6 @@
 
 {
   'targets': [
-    {
-      'target_name': 'poem',
-      'type': 'static_library',
-      'sources': [
-        'eztime_poem.h',
-        'getenv_stub_poem.h',
-        'inet_poem.h',
-        'stdio_poem.h',
-        'stdlib_poem.h',
-        'string_poem.h',
-        'strings_poem.h',
-        'strnlen_poem.h',
-        'wchar_poem.h',
-      ],
-      'dependencies': [
-        '<(DEPTH)/starboard/client_porting/eztime/eztime.gyp:eztime',
-        '<(DEPTH)/starboard/starboard.gyp:starboard',
-      ],
-    },
     {
       'target_name': 'poem_unittests',
       'type': '<(gtest_target_type)',
@@ -56,7 +37,7 @@
       'variables': {
         'executable_name': 'poem_unittests',
       },
-      'includes': [ '../../build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ],
 }

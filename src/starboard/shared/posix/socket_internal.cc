@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -46,7 +46,17 @@ SbSocketError TranslateSocketErrno(int error) {
     case EWOULDBLOCK:
 #endif
       return kSbSocketPending;
+#if SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) || \
+    SB_API_VERSION >= 9
+    case ECONNRESET:
+    case ENETRESET:
+    case EPIPE:
+      return kSbSocketErrorConnectionReset;
+#endif  // #if SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) ||
+        //     SB_API_VERSION >= 9
   }
+
+  SB_LOG(ERROR) << "Unknown posix socket error: " << error;
 
   // Here's where we would be more nuanced if we need to be.
   return kSbSocketErrorFailed;

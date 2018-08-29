@@ -8,8 +8,11 @@ EXPORTS
     ; From starboard/shared/lib/exported/starboard_main.h:
     StarboardMain
 
-    ; From cobalt/network/lib/user_agent.h:
+    ; From cobalt/browser/lib/exported/user_agent.h:
     CbLibUserAgentSetPlatformNameSuffix
+    CbLibUserAgentSetDeviceTypeOverride
+    CbLibUserAgentSetBrandNameOverride
+    CbLibUserAgentSetModelNameOverride
 
     ; From cobalt/browser/lib/exported/main.h:
     CbLibMainSetCallbackRegistrationReadyCallback
@@ -19,10 +22,12 @@ EXPORTS
 
     ; From cobalt/render/rasterizer/lib/exported/graphics.h:
     CbLibGraphicsSetContextCreatedCallback
-    CbLibGraphicsSetBeginRenderFrameCallback
-    CbLibGraphicsSetEndRenderFrameCallback
+    CbLibGraphicsSetRenderFrameCallback
     CbLibGrapicsGetMainTextureHandle
     CbLibGraphicsSetTargetMainTextureSize
+    CbLibGraphicsRenderCobalt
+    CbLibGraphicsCopyBackbuffer
+    CbLibGraphicsSwapBackbuffer
 
     ; From cobalt/render/rasterizer/lib/exported/video.h:
     CbLibVideoSetOnUpdateProjectionTypeAndStereoMode

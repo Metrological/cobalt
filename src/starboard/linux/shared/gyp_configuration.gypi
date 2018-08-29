@@ -1,4 +1,4 @@
-# Copyright 2014 Google Inc. All Rights Reserved.
+# Copyright 2014 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,20 +19,10 @@
   'variables': {
     'target_arch%': 'x64',
     'target_os': 'linux',
-    #'starboard_path%': 'starboard/linux/x64x11',
-
-    'in_app_dial%': 1,
-
-    # This should have a default value in cobalt/base.gypi. See the comment
-    # there for acceptable values for this variable.
-    'cobalt_media_source_2016': 1,
 
     'platform_libraries': [
       '-lasound',
-      '-lavcodec',
-      '-lavformat',
-      '-lavresample',
-      '-lavutil',
+      '-ldl',
       '-lpthread',
       '-lrt',
     ],
@@ -48,6 +38,9 @@
     'variables': {
       'use_dlmalloc_allocator%': 0,
     },
+    'linker_flags': [
+      '-static-libstdc++'
+    ],
 
     'conditions': [
       ['use_dlmalloc_allocator==1 and use_asan==0', {

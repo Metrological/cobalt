@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,17 +43,17 @@ class CobaltNetLog : public net::NetLog {
   virtual ~CobaltNetLog();
 
   // NetLog implementation:
-  uint32 NextID() OVERRIDE;
-  LogLevel GetLogLevel() const OVERRIDE;
+  uint32 NextID() override;
+  LogLevel GetLogLevel() const override;
   void AddThreadSafeObserver(ThreadSafeObserver* observer,
-                             LogLevel log_level) OVERRIDE;
+                             LogLevel log_level) override;
   void SetObserverLogLevel(ThreadSafeObserver* observer,
-                           LogLevel log_level) OVERRIDE;
-  void RemoveThreadSafeObserver(ThreadSafeObserver* observer) OVERRIDE;
+                           LogLevel log_level) override;
+  void RemoveThreadSafeObserver(ThreadSafeObserver* observer) override;
 
  private:
   // NetLog implementation:
-  void OnAddEntry(const net::NetLog::Entry& entry) OVERRIDE;
+  void OnAddEntry(const net::NetLog::Entry& entry) override;
 
   // Called whenever an observer is added or removed, or has its log level
   // changed.  Must have acquired |lock_| prior to calling.

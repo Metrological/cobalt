@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 
 #include "base/hash_tables.h"
 #include "base/threading/thread_checker.h"
+#include "cobalt/script/tracer.h"
 
 namespace cobalt {
 namespace dom {
@@ -32,7 +33,7 @@ class MutationObserver;
 // The spec expects an EventLoop implementation, which Cobalt does not currently
 // have.
 // https://www.w3.org/TR/dom/#mutation-observers
-class MutationObserverTaskManager {
+class MutationObserverTaskManager : public script::Traceable {
  public:
   MutationObserverTaskManager() : task_posted_(false) {}
 
@@ -44,11 +45,13 @@ class MutationObserverTaskManager {
   // Post a task to notify mutation observers, if one is not already posted.
   void QueueMutationObserverMicrotask();
 
+  void TraceMembers(script::Tracer* tracer) override;
+
  private:
+  typedef base::hash_set<MutationObserver*> MutationObserverSet;
+
   // Notify all mutation observers.
   void NotifyMutationObservers();
-
-  typedef base::hash_set<MutationObserver*> MutationObserverSet;
 
   base::ThreadChecker thread_checker_;
   MutationObserverSet observers_;

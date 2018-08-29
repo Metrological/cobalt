@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@
 #define COBALT_SCRIPT_V8C_V8C_USER_OBJECT_HOLDER_H_
 
 #include "cobalt/script/script_value.h"
+#include "cobalt/script/v8c/v8c_engine.h"
 #include "cobalt/script/v8c/v8c_global_environment.h"
-#include "cobalt/script/v8c/weak_heap_object.h"
 #include "cobalt/script/v8c/wrapper_private.h"
 #include "v8/include/v8.h"
 
@@ -31,44 +31,106 @@ namespace v8c {
 // This class does not root the underlying v8::Object that V8cUserObjectType
 // holds a reference to. The object will be traced when any owning objects are
 // traced.
+//
+// |V8cUserObjectType| should be a |ScopedPersistent<v8::Value>|.
 template <typename V8cUserObjectType>
 class V8cUserObjectHolder
     : public ScriptValue<typename V8cUserObjectType::BaseType> {
  public:
   typedef ScriptValue<typename V8cUserObjectType::BaseType> BaseClass;
 
-  V8cUserObjectHolder() : env_(nullptr), prevent_garbage_collection_count_(0) {}
-
-  V8cUserObjectHolder(V8cGlobalEnvironment* env, v8::Local<v8::Value> value)
-      : env_(env),
-        handle_(V8cUserObjectType(env, value)),
-        prevent_garbage_collection_count_(0) {}
-
-  void RegisterOwner(Wrappable* owner) override { NOTIMPLEMENTED(); }
-  void DeregisterOwner(Wrappable* owner) override { NOTIMPLEMENTED(); }
-  void PreventGarbageCollection() override { NOTIMPLEMENTED(); }
-  void AllowGarbageCollection() override { NOTIMPLEMENTED(); }
-  scoped_ptr<BaseClass> MakeCopy() const override {
-    DCHECK(handle_);
-    v8::Local<v8::Value> value = handle_->value();
-    return make_scoped_ptr<BaseClass>(new V8cUserObjectHolder(env_, value));
+  V8cUserObjectHolder() = default;
+  V8cUserObjectHolder(v8::Isolate* isolate, v8::Local<v8::Value> value)
+      : isolate_(isolate),
+        handle_(isolate, value),
+        prevent_garbage_collection_count_(0) {
+    handle_.SetWeak();
   }
+  V8cUserObjectHolder(const V8cUserObjectHolder&) = delete;
+  V8cUserObjectHolder& operator=(const V8cUserObjectHolder&) = delete;
+  V8cUserObjectHolder(V8cUserObjectHolder&& other)
+      : isolate_(other.isolate_),
+        handle_(other.isolate_, other.v8_value()),
+        prevent_garbage_collection_count_(
+            other.prevent_garbage_collection_count_) {
+    if (prevent_garbage_collection_count_ == 0) {
+      handle_.SetWeak();
+    }
+    other.isolate_ = nullptr;
+    other.handle_.Clear();
+    other.prevent_garbage_collection_count_ = 0;
+  }
+  V8cUserObjectHolder& operator=(V8cUserObjectHolder&& other) {
+    isolate_ = other.isolate_;
+    handle_.Set(isolate_, other.v8_value());
+    prevent_garbage_collection_count_ = other.prevent_garbage_collection_count_;
+    if (prevent_garbage_collection_count_ == 0) {
+      handle_.SetWeak();
+    }
+    other.isolate_ = nullptr;
+    other.handle_.Clear();
+    other.prevent_garbage_collection_count_ = 0;
+    return *this;
+  }
+
   bool EqualTo(const BaseClass& other) const override {
-    NOTIMPLEMENTED();
-    return false;
-  }
-  const typename V8cUserObjectType::BaseType* GetScriptValue() const override {
-    NOTIMPLEMENTED();
-    return nullptr;
+    v8::HandleScope handle_scope(isolate_);
+    const V8cUserObjectHolder* v8c_other =
+        base::polymorphic_downcast<const V8cUserObjectHolder*>(&other);
+    return v8_value() == v8c_other->v8_value();
   }
 
-  v8::Local<v8::Value> v8_value() const { return handle_->value(); }
+  void RegisterOwner(Wrappable* owner) override {
+    V8cEngine::GetFromIsolate(isolate_)->heap_tracer()->AddReferencedObject(
+        owner, &handle_);
+  }
+
+  void DeregisterOwner(Wrappable* owner) override {
+    // This will get called in destructors caused by finalizers caused by the
+    // final shutdown GC.  In this case, the entire heap tracer will have
+    // already been removed, so we don't need to bother removing ourselves.
+    V8cHeapTracer* tracer = V8cEngine::GetFromIsolate(isolate_)->heap_tracer();
+    if (tracer) {
+      tracer->RemoveReferencedObject(owner, &handle_);
+    }
+  }
+
+  void PreventGarbageCollection() override {
+    if (prevent_garbage_collection_count_++ == 0 && !handle_.IsEmpty()) {
+      handle_.ClearWeak();
+    }
+  }
+
+  void AllowGarbageCollection() override {
+    DCHECK_GT(prevent_garbage_collection_count_, 0);
+    if (--prevent_garbage_collection_count_ == 0 && !handle_.IsEmpty()) {
+      handle_.SetWeak();
+    }
+  }
+
+  typename V8cUserObjectType::BaseType* GetValue() override {
+    return const_cast<typename V8cUserObjectType::BaseType*>(
+        static_cast<const V8cUserObjectHolder&>(*this).GetValue());
+  }
+
+  const typename V8cUserObjectType::BaseType* GetValue() const override {
+    return handle_.IsEmpty() ? nullptr : &handle_;
+  }
+
+  scoped_ptr<BaseClass> MakeCopy() const override {
+    v8::HandleScope handle_scope(isolate_);
+    return make_scoped_ptr<BaseClass>(
+        new V8cUserObjectHolder(isolate_, v8_value()));
+  }
+
+  v8::Local<v8::Value> v8_value() const { return handle_.NewLocal(isolate_); }
+
+  v8::Isolate* isolate() const { return isolate_; }
 
  private:
-  V8cGlobalEnvironment* env_;
-  base::optional<V8cUserObjectType> handle_;
-  int prevent_garbage_collection_count_;
-  v8::Global<v8::Value> persistent_root_;
+  v8::Isolate* isolate_ = nullptr;
+  V8cUserObjectType handle_{};
+  int prevent_garbage_collection_count_ = 0;
 };
 
 }  // namespace v8c

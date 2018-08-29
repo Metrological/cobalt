@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,9 +30,9 @@ class BlitterSurface : public common::ScratchSurfaceCache::Surface {
  public:
   BlitterSurface(SbBlitterSurface surface, const math::Size& size)
       : surface_(surface), size_(size) {}
-  ~BlitterSurface() OVERRIDE { SbBlitterDestroySurface(surface_); }
+  ~BlitterSurface() override { SbBlitterDestroySurface(surface_); }
 
-  math::Size GetSize() const OVERRIDE { return size_; }
+  math::Size GetSize() const override { return size_; }
 
   SbBlitterSurface blitter_surface() { return surface_; }
 

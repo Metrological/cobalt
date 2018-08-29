@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,12 +38,12 @@ class HTMLTitleElement : public HTMLElement {
       : HTMLElement(document, base::Token(kTagName)) {}
 
   // Custom, not in any spec.
-  scoped_refptr<HTMLTitleElement> AsHTMLTitleElement() OVERRIDE { return this; }
+  scoped_refptr<HTMLTitleElement> AsHTMLTitleElement() override { return this; }
 
   DEFINE_WRAPPABLE_TYPE(HTMLTitleElement);
 
  private:
-  ~HTMLTitleElement() OVERRIDE {}
+  ~HTMLTitleElement() override {}
 };
 
 }  // namespace dom

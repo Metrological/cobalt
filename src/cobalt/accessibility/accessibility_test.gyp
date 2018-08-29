@@ -1,4 +1,4 @@
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2017 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,18 +34,13 @@
     {
       'target_name': 'accessibility_test_data',
       'type': 'none',
-      'actions': [
-        {
-          'action_name': 'accessibility_test_copy_test_data',
-          'variables': {
-            'input_files': [
-              '<(DEPTH)/cobalt/accessibility/testdata/',
-            ],
-            'output_dir': 'cobalt/accessibility/testdata/',
-          },
-          'includes': ['../build/copy_test_data.gypi'],
-        }
-      ],
+      'variables': {
+        'content_test_input_files': [
+          '<(DEPTH)/cobalt/accessibility/testdata/',
+        ],
+        'content_test_output_subdir': 'cobalt/accessibility/testdata/',
+      },
+      'includes': ['<(DEPTH)/starboard/build/copy_test_data.gypi'],
     },
     {
       'target_name': 'accessibility_test_deploy',
@@ -56,7 +51,7 @@
       'variables': {
         'executable_name': 'accessibility_test',
       },
-      'includes': [ '../../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ]
 }

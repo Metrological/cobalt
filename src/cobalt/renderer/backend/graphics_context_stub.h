@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,18 +33,18 @@ class GraphicsContextStub : public GraphicsContext {
       : GraphicsContext(system) {}
 
   scoped_refptr<RenderTarget> CreateOffscreenRenderTarget(
-      const math::Size& dimensions) OVERRIDE {
+      const math::Size& dimensions) override {
     return scoped_refptr<RenderTarget>(new RenderTargetStub(dimensions));
   }
 
   scoped_array<uint8_t> DownloadPixelDataAsRGBA(
-      const scoped_refptr<RenderTarget>& render_target) OVERRIDE {
+      const scoped_refptr<RenderTarget>& render_target) override {
     // Since we're a stub, just return garbage data of the right size.
     return scoped_array<uint8_t>(
         new uint8_t[render_target->GetSize().GetArea() * 4]);
   }
 
-  void Finish() OVERRIDE {}
+  void Finish() override {}
 };
 
 }  // namespace backend

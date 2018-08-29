@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include "cobalt/speech/url_fetcher_fake.h"
 #endif  // defined(ENABLE_FAKE_MICROPHONE)
 #include "cobalt/speech/microphone_manager.h"
+#include "cobalt/speech/speech_recognition_error.h"
 #if defined(SB_USE_SB_MICROPHONE)
 #include "cobalt/speech/microphone_starboard.h"
 #endif  // defined(SB_USE_SB_MICROPHONE)
@@ -91,15 +92,18 @@ CobaltSpeechRecognizer::CobaltSpeechRecognizer(
 #endif  // defined(SB_USE_SB_MICROPHONE)
 
   service_.reset(new GoogleSpeechService(
-      network_module, base::Bind(&CobaltSpeechRecognizer::OnRecognizerEvent,
-                                 base::Unretained(this)),
+      network_module,
+      base::Bind(&CobaltSpeechRecognizer::OnRecognizerEvent,
+                 base::Unretained(this)),
       url_fetcher_creator));
   microphone_manager_.reset(new MicrophoneManager(
       base::Bind(&CobaltSpeechRecognizer::OnDataReceived,
                  base::Unretained(this)),
+      base::Closure(),
       base::Bind(&CobaltSpeechRecognizer::OnDataCompletion,
                  base::Unretained(this)),
-      base::Bind(&CobaltSpeechRecognizer::OnMicError, base::Unretained(this)),
+      base::Bind(&CobaltSpeechRecognizer::OnMicrophoneError,
+                 base::Unretained(this)),
       microphone_creator));
 }
 
@@ -142,9 +146,22 @@ void CobaltSpeechRecognizer::OnRecognizerEvent(
   RunEventCallback(event);
 }
 
-void CobaltSpeechRecognizer::OnMicError(
-    const scoped_refptr<dom::Event>& event) {
+void CobaltSpeechRecognizer::OnMicrophoneError(
+    MicrophoneManager::MicrophoneError error, std::string error_message) {
   // An error is occured in Mic, so stop the energy endpointer and recognizer.
+
+  SpeechRecognitionErrorCode speech_error_code =
+      kSpeechRecognitionErrorCodeAborted;
+  switch (error) {
+    case MicrophoneManager::MicrophoneError::kAborted:
+      speech_error_code = kSpeechRecognitionErrorCodeAborted;
+      break;
+    case MicrophoneManager::MicrophoneError::kAudioCapture:
+      speech_error_code = kSpeechRecognitionErrorCodeAudioCapture;
+      break;
+  }
+  scoped_refptr<dom::Event> event(
+      new SpeechRecognitionError(speech_error_code, error_message));
   endpointer_delegate_.Stop();
   service_->Stop();
   RunEventCallback(event);

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -90,9 +90,6 @@ bool CspDelegateSecure::CanLoad(ResourceType type, const GURL& url,
     case kWebSocket:
       can_load = csp_->AllowConnectToSource(url, redirect_status);
       break;
-    default:
-      NOTREACHED() << "Invalid resource type " << type;
-      break;
   }
   return can_load;
 }
@@ -113,6 +110,10 @@ bool CspDelegateSecure::IsValidNonce(ResourceType type,
 bool CspDelegateSecure::AllowInline(ResourceType type,
                                     const base::SourceLocation& location,
                                     const std::string& content) const {
+  // If CSP is not provided, allow inline script.
+  if (!was_header_received_) {
+    return true;
+  }
   bool can_load = false;
   if (type == kScript) {
     can_load = csp_->AllowInlineScript(location.file_path, location.line_number,
@@ -128,6 +129,8 @@ bool CspDelegateSecure::AllowInline(ResourceType type,
 
 bool CspDelegateSecure::AllowEval(std::string* eval_disabled_message) const {
   bool allow_eval =
+      // If CSP is not provided, allow eval() function.
+      !was_header_received_ ||
       csp_->AllowEval(csp::ContentSecurityPolicy::kSuppressReport);
   if (!allow_eval && eval_disabled_message) {
     *eval_disabled_message = csp_->disable_eval_error_message();
@@ -140,21 +143,21 @@ void CspDelegateSecure::ReportEval() const {
 }
 
 bool CspDelegateSecure::OnReceiveHeaders(const csp::ResponseHeaders& headers) {
-  if (headers.content_security_policy().empty()) {
+  was_header_received_ = !headers.content_security_policy().empty();
+  if (was_header_received_) {
+    csp_->OnReceiveHeaders(headers);
+  } else {
     // Didn't find Content-Security-Policy header.
     if (!headers.content_security_policy_report_only().empty()) {
       DLOG(INFO)
           << "Content-Security-Policy-Report-Only headers were "
              "received, but Content-Security-Policy headers are required.";
     }
-    return false;
   }
-  csp_->OnReceiveHeaders(headers);
-  was_header_received_ = true;
   if (!policy_changed_callback_.is_null()) {
     policy_changed_callback_.Run();
   }
-  return true;
+  return was_header_received_;
 }
 
 void CspDelegateSecure::OnReceiveHeader(const std::string& header,

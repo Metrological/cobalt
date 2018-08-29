@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -106,6 +106,9 @@
     ],
     'cflags_cc': [
       '-std=gnu++11',
+    ],
+    'ldflags': [
+      '-Wl,-rpath=$ORIGIN/lib',
     ],
     'target_conditions': [
       ['sb_pedantic_warnings==1', {

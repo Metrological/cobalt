@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ class StubImageDecoder : public ImageDataDecoder {
       : ImageDataDecoder(resource_provider) {}
 
   // From ImageDataDecoder
-  std::string GetTypeString() const OVERRIDE { return "StubImageDecoder"; }
+  std::string GetTypeString() const override { return "StubImageDecoder"; }
 
   static bool IsValidSignature(const uint8* header) {
     UNREFERENCED_PARAMETER(header);
@@ -41,7 +41,7 @@ class StubImageDecoder : public ImageDataDecoder {
 
  private:
   // From ImageDataDecoder
-  size_t DecodeChunkInternal(const uint8* data, size_t input_byte) OVERRIDE {
+  size_t DecodeChunkInternal(const uint8* data, size_t input_byte) override {
     UNREFERENCED_PARAMETER(data);
     UNREFERENCED_PARAMETER(input_byte);
     if (!image_data()) {

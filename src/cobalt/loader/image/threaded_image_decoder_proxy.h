@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -49,12 +49,12 @@ class ThreadedImageDecoderProxy : public Decoder {
   // From the Decoder interface.
   LoadResponseType OnResponseStarted(
       Fetcher* fetcher,
-      const scoped_refptr<net::HttpResponseHeaders>& headers) OVERRIDE;
-  void DecodeChunk(const char* data, size_t size) OVERRIDE;
-  void DecodeChunkPassed(scoped_ptr<std::string> data) OVERRIDE;
-  void Finish() OVERRIDE;
-  bool Suspend() OVERRIDE;
-  void Resume(render_tree::ResourceProvider* resource_provider) OVERRIDE;
+      const scoped_refptr<net::HttpResponseHeaders>& headers) override;
+  void DecodeChunk(const char* data, size_t size) override;
+  void DecodeChunkPassed(scoped_ptr<std::string> data) override;
+  void Finish() override;
+  bool Suspend() override;
+  void Resume(render_tree::ResourceProvider* resource_provider) override;
 
  private:
   base::WeakPtrFactory<ThreadedImageDecoderProxy> weak_ptr_factory_;

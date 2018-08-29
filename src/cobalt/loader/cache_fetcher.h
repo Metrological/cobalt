@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ class CacheFetcher : public Fetcher {
           read_cache_callback =
               base::Callback<int(const std::string&, scoped_array<char>*)>());
 
-  ~CacheFetcher() OVERRIDE;
+  ~CacheFetcher() override;
 
  private:
   void Fetch();

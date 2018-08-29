@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -119,10 +119,10 @@ class CompositionNode : public Node {
   CompositionNode(Node* node, const math::Vector2dF& offset)
       : data_(node, offset), cached_bounds_(ComputeBounds()) {}
 
-  void Accept(NodeVisitor* visitor) OVERRIDE;
-  math::RectF GetBounds() const OVERRIDE;
+  void Accept(NodeVisitor* visitor) override;
+  math::RectF GetBounds() const override;
 
-  base::TypeId GetTypeId() const OVERRIDE {
+  base::TypeId GetTypeId() const override {
     return base::GetTypeId<CompositionNode>();
   }
 

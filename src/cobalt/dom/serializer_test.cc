@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ namespace dom {
 class SerializerTest : public ::testing::Test {
  protected:
   SerializerTest();
-  ~SerializerTest() OVERRIDE {}
+  ~SerializerTest() override {}
 
   scoped_ptr<dom_parser::Parser> dom_parser_;
   scoped_ptr<DomStatTracker> dom_stat_tracker_;
@@ -45,9 +45,9 @@ SerializerTest::SerializerTest()
     : dom_parser_(new dom_parser::Parser()),
       dom_stat_tracker_(new DomStatTracker("SerializerTest")),
       html_element_context_(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                            NULL, NULL, NULL, NULL, NULL, NULL,
+                            NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                             dom_stat_tracker_.get(), "",
-                            base::kApplicationStateStarted),
+                            base::kApplicationStateStarted, NULL),
       document_(new Document(&html_element_context_)),
       root_(new Element(document_, base::Token("root"))),
       source_location_(base::SourceLocation("[object SerializerTest]", 1, 1)) {}

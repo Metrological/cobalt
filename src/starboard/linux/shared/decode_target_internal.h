@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 
 #include "starboard/common/ref_counted.h"
 #include "starboard/decode_target.h"
-#include "starboard/shared/starboard/player/video_frame_internal.h"
+#include "starboard/shared/starboard/player/filter/cpu_video_frame.h"
 
 struct SbDecodeTargetPrivate {
   class Data : public starboard::RefCounted<Data> {
@@ -40,7 +40,7 @@ namespace shared {
 // Outputs a video frame into a SbDecodeTarget.
 SbDecodeTarget DecodeTargetCreate(
     SbDecodeTargetGraphicsContextProvider* provider,
-    scoped_refptr<starboard::player::VideoFrame> frame,
+    scoped_refptr<starboard::player::filter::CpuVideoFrame> frame,
     // Possibly valid structure to reuse, instead of allocating a new object.
     SbDecodeTarget decode_target);
 

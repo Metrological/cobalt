@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -41,16 +41,16 @@ class PseudoElement : public SimpleSelector {
   explicit PseudoElement(base::Token text)
       : SimpleSelector(kPseudoElement,
                        base::Tokens::pseudo_element_selector_prefix(), text) {}
-  ~PseudoElement() OVERRIDE {}
+  ~PseudoElement() override {}
 
   // From Selector.
-  Specificity GetSpecificity() const OVERRIDE { return Specificity(0, 0, 1); }
+  Specificity GetSpecificity() const override { return Specificity(0, 0, 1); }
 
   // From SimpleSelector.
-  PseudoElement* AsPseudoElement() OVERRIDE { return this; }
+  PseudoElement* AsPseudoElement() override { return this; }
   void IndexSelectorTreeNode(SelectorTree::Node* /* parent_node */,
                              SelectorTree::Node* /* child_node */,
-                             CombinatorType /* combinator */) OVERRIDE {}
+                             CombinatorType /* combinator */) override {}
 
   // Rest of public methods.
   virtual AfterPseudoElement* AsAfterPseudoElement() { return NULL; }

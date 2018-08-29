@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,6 +13,19 @@
 // limitations under the License.
 
 #include "starboard/shared/speechd/speechd_internal.h"
+
+#if defined(ADDRESS_SANITIZER)
+// By default, Leak Sanitizer and Address Sanitizer is expected to exist
+// together. However, this is not true for all platforms.
+// HAS_LEAK_SANTIZIER=0 explicitly removes the Leak Sanitizer from code.
+#ifndef HAS_LEAK_SANITIZER
+#define HAS_LEAK_SANITIZER 1
+#endif  // HAS_LEAK_SANITIZER
+#endif  // defined(ADDRESS_SANITIZER)
+
+#if HAS_LEAK_SANITIZER
+#include <sanitizer/lsan_interface.h>
+#endif  // HAS_LEAK_SANITIZER
 
 #include "starboard/once.h"
 #include "starboard/shared/starboard/application.h"
@@ -36,7 +49,18 @@ SpeechDispatcher* SpeechDispatcher::Get() {
 
 SpeechDispatcher::SpeechDispatcher() {
   const char* client_name = "starboard_application";
+
+#if HAS_LEAK_SANITIZER
+  // spd_open leaks memory even though spd_close is eventually called.
+  // Chromium's text-to-speech system for linux ran into the same issue:
+  // http://crbug.com/317360
+  __lsan_disable();
+#endif  // HAS_LEAK_SANITIZER
   connection_ = spd_open(client_name, NULL, NULL, SPD_MODE_THREADED);
+#if HAS_LEAK_SANITIZER
+  __lsan_enable();
+#endif  // HAS_LEAK_SANITIZER
+
   if (!connection_) {
     SB_DLOG(ERROR) << "Failed to initialize SpeechDispatcher.";
   }

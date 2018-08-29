@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,12 +34,9 @@ void Decode(
 
   if (reader) {
     decode_finish_callback.Run(reader->sample_rate(),
-                               reader->number_of_frames(),
-                               reader->number_of_channels(),
-                               reader->sample_data(), reader->sample_type());
+                               reader->ResetAndReturnAudioBus().Pass());
   } else {
-    decode_finish_callback.Run(0.f, 0, 0, scoped_array<uint8>(),
-                               kSampleTypeFloat32);
+    decode_finish_callback.Run(0.f, scoped_ptr<ShellAudioBus>());
   }
 }
 

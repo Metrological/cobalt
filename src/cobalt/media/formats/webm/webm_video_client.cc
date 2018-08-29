@@ -10,6 +10,22 @@
 namespace cobalt {
 namespace media {
 
+namespace {
+// Tries to parse |data| to extract the VP9 Profile ID, or returns Profile 0.
+media::VideoCodecProfile GetVP9CodecProfile(const std::vector<uint8_t>& data) {
+  // VP9 CodecPrivate (http://wiki.webmproject.org/vp9-codecprivate) might have
+  // Profile information in the first field, if present.
+  constexpr uint8_t kVP9ProfileFieldId = 0x01;
+  constexpr uint8_t kVP9ProfileFieldLength = 1;
+  if (data.size() < 3 || data[0] != kVP9ProfileFieldId ||
+      data[1] != kVP9ProfileFieldLength || data[2] > 3) {
+    return VP9PROFILE_PROFILE0;
+  }
+  return static_cast<VideoCodecProfile>(
+      static_cast<size_t>(VP9PROFILE_PROFILE0) + data[2]);
+}
+}  // namespace
+
 WebMVideoClient::WebMVideoClient(const scoped_refptr<MediaLog>& media_log)
     : media_log_(media_log), colour_parsed_(false) {
   Reset();
@@ -44,9 +60,7 @@ bool WebMVideoClient::InitializeConfig(
     profile = VP8PROFILE_ANY;
   } else if (codec_id == "V_VP9") {
     video_codec = kCodecVP9;
-    // TODO: Find a way to read actual VP9 profile from WebM.
-    // crbug.com/592074
-    profile = VP9PROFILE_PROFILE0;
+    profile = GetVP9CodecProfile(codec_private);
   } else {
     MEDIA_LOG(ERROR, media_log_) << "Unsupported video codec_id " << codec_id;
     return false;
@@ -69,9 +83,10 @@ bool WebMVideoClient::InitializeConfig(
   if (display_unit_ == -1) display_unit_ = 0;
 
   gfx::Size coded_size(pixel_width_, pixel_height_);
-  gfx::Rect visible_rect(crop_top_, crop_left_,
-                         pixel_width_ - (crop_left_ + crop_right_),
-                         pixel_height_ - (crop_top_ + crop_bottom_));
+  gfx::RectF visible_rect_float(crop_top_, crop_left_,
+                                pixel_width_ - (crop_left_ + crop_right_),
+                                pixel_height_ - (crop_top_ + crop_bottom_));
+  gfx::Rect visible_rect = math::Rect::RoundFromRectF(visible_rect_float);
   if (display_unit_ == 0) {
     if (display_width_ <= 0) display_width_ = visible_rect.width();
     if (display_height_ <= 0) display_height_ = visible_rect.height();

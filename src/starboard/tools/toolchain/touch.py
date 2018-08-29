@@ -1,4 +1,4 @@
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2017 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,7 +34,8 @@ class Stamp(abstract.Stamp):
     # Run as much concurrent processes as possible.
     return None
 
-  def GetCommand(self, path, extra_flags, flags):
+  def GetCommand(self, path, extra_flags, flags, shell):
+    del flags, shell  # Not used.
     return '{0} {1} $out'.format(path, extra_flags)
 
   def GetDescription(self):

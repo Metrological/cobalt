@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,11 @@
 #ifndef COBALT_BROWSER_SYSTEM_PLATFORM_ERROR_HANDLER_H_
 #define COBALT_BROWSER_SYSTEM_PLATFORM_ERROR_HANDLER_H_
 
+#include <memory>
+#include <vector>
+
 #include "base/callback.h"
+#include "starboard/mutex.h"
 #include "starboard/system.h"
 
 namespace cobalt {
@@ -39,14 +43,19 @@ class SystemPlatformErrorHandler {
   // Raises a system error with the specified error type and callback.
   void RaiseSystemPlatformError(const SystemPlatformErrorOptions& options);
 
-  // Called when the platform responds to the system error.
-  void HandleSystemPlatformErrorResponse(
-      SbSystemPlatformErrorResponse response);
-
  private:
-  // The current platform error callback. Only one platform error callback may
-  // be active at a time.
-  SystemPlatformErrorCallback current_system_platform_error_callback_;
+  // This specifies the user data passed to the error response callback.
+  struct CallbackData {
+    starboard::Mutex* mutex;
+    SystemPlatformErrorCallback callback;
+  };
+
+  // This is called when the platform responds to the system error.
+  static void HandleSystemPlatformErrorResponse(
+      SbSystemPlatformErrorResponse response, void* user_data);
+
+  starboard::Mutex mutex_;
+  std::vector<std::unique_ptr<CallbackData>> callback_data_;
 };
 
 }  // namespace browser

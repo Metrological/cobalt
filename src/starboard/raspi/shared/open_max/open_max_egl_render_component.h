@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,11 +39,11 @@ class OpenMaxEglRenderComponent : public OpenMaxComponent {
   }
 
  private:
-  bool OnEnableInputPort(OMXParamPortDefinition* port_definition) SB_OVERRIDE;
-  bool OnEnableOutputPort(OMXParamPortDefinition* port_definition) SB_OVERRIDE;
+  bool OnEnableInputPort(OMXParamPortDefinition* port_definition) override;
+  bool OnEnableOutputPort(OMXParamPortDefinition* port_definition) override;
   OMX_BUFFERHEADERTYPE* AllocateBuffer(int port,
                                        int index,
-                                       OMX_U32 size) SB_OVERRIDE;
+                                       OMX_U32 size) override;
 
   EGLImageKHR output_image_;
   OpenMaxComponent* callback_component_;

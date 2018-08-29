@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 #include <string>
 
 #include "base/memory/ref_counted.h"
+#include "cobalt/script/sequence.h"
 #include "cobalt/script/wrappable.h"
 
 namespace cobalt {
@@ -25,9 +26,8 @@ namespace script {
 
 // Explicit template instantiations for all Promise types that will be used
 // in Cobalt.
-#define PROMISE_TEMPLATE_INSTANTIATION(TYPE)        \
-  template scoped_ptr<ScriptValue<Promise<TYPE> > > \
-  ScriptValueFactory::CreatePromise<TYPE>();
+#define PROMISE_TEMPLATE_INSTANTIATION(TYPE) \
+  template Handle<Promise<TYPE>> ScriptValueFactory::CreatePromise<TYPE>();
 
 PROMISE_TEMPLATE_INSTANTIATION(void);
 PROMISE_TEMPLATE_INSTANTIATION(bool);
@@ -43,6 +43,7 @@ PROMISE_TEMPLATE_INSTANTIATION(float);
 PROMISE_TEMPLATE_INSTANTIATION(double);
 PROMISE_TEMPLATE_INSTANTIATION(std::string);
 PROMISE_TEMPLATE_INSTANTIATION(scoped_refptr<Wrappable>);
+PROMISE_TEMPLATE_INSTANTIATION(Sequence<scoped_refptr<Wrappable>>);
 
 #undef PROMISE_TEMPLATE_INSTANTIATION
 

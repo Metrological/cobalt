@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -66,27 +66,36 @@ using render_tree::ViewportFilter;
 RenderTreeNodeVisitor::RenderTreeNodeVisitor(
     SbBlitterDevice device, SbBlitterContext context,
     const RenderState& render_state, ScratchSurfaceCache* scratch_surface_cache,
-    SurfaceCacheDelegate* surface_cache_delegate,
-    common::SurfaceCache* surface_cache,
     CachedSoftwareRasterizer* software_surface_cache,
     LinearGradientCache* linear_gradient_cache)
     : device_(device),
       context_(context),
       render_state_(render_state),
       scratch_surface_cache_(scratch_surface_cache),
-      surface_cache_delegate_(surface_cache_delegate),
-      surface_cache_(surface_cache),
       software_surface_cache_(software_surface_cache),
-      linear_gradient_cache_(linear_gradient_cache) {
-  DCHECK_EQ(surface_cache_delegate_ == NULL, surface_cache_ == NULL);
-  if (surface_cache_delegate_) {
-    // Update our surface cache delegate to point to this render tree node
-    // visitor and our canvas.
-    surface_cache_scoped_context_.emplace(
-        surface_cache_delegate_, &render_state_,
-        base::Bind(&RenderTreeNodeVisitor::SetRenderState,
-                   base::Unretained(this)));
-  }
+      linear_gradient_cache_(linear_gradient_cache) {}
+
+namespace {
+void DrawClearRect(SbBlitterContext context, SbBlitterRect rect,
+                   SbBlitterColor color) {
+  SbBlitterSetColor(context, color);
+  SbBlitterSetBlending(context, false);
+  SbBlitterFillRect(context, rect);
+}
+
+SbBlitterColor RenderTreeToBlitterColor(const ColorRGBA& color) {
+  return SbBlitterColorFromRGBA(color.r() * 255, color.g() * 255,
+                                color.b() * 255, color.a() * 255);
+}
+}  // namespace
+
+void RenderTreeNodeVisitor::Visit(render_tree::ClearRectNode* clear_rect_node) {
+  TRACE_EVENT0_IF_ENABLED("Visit(ClearRectNode)");
+  SbBlitterRect blitter_rect = RectFToBlitterRect(
+      render_state_.transform.TransformRect(clear_rect_node->data().rect));
+
+  DrawClearRect(context_, blitter_rect,
+                RenderTreeToBlitterColor(clear_rect_node->data().color));
 }
 
 void RenderTreeNodeVisitor::Visit(
@@ -136,9 +145,10 @@ void RenderTreeNodeVisitor::Visit(render_tree::FilterNode* filter_node) {
       return;
     }
 
-    scoped_push.emplace(&render_state_.bounds_stack,
-                        RectFToRect(render_state_.transform.TransformRect(
-                            viewport_filter.viewport())));
+    scoped_push.emplace(
+        &render_state_.bounds_stack,
+        cobalt::math::Rect::RoundFromRectF(
+            render_state_.transform.TransformRect(viewport_filter.viewport())));
   }
 
   if (!filter_node->data().opacity_filter ||
@@ -307,9 +317,7 @@ void RenderTreeNodeVisitor::Visit(
       math::Rect(blitter_rect.x, blitter_rect.y, blitter_rect.width,
                  blitter_rect.height));
 
-  SbBlitterSetColor(context_, SbBlitterColorFromRGBA(0, 0, 0, 0));
-  SbBlitterSetBlending(context_, false);
-  SbBlitterFillRect(context_, blitter_rect);
+  DrawClearRect(context_, blitter_rect, SbBlitterColorFromRGBA(0, 0, 0, 0));
 }
 
 namespace {
@@ -320,11 +328,6 @@ bool AllBorderSidesHaveSameColorAndStyle(const Border& border) {
          border.left.color == border.right.color &&
          border.left.color == border.top.color &&
          border.left.color == border.bottom.color;
-}
-
-SbBlitterColor RenderTreeToBlitterColor(const ColorRGBA& color) {
-  return SbBlitterColorFromRGBA(color.r() * 255, color.g() * 255,
-                                color.b() * 255, color.a() * 255);
 }
 
 void RenderRectNodeBorder(SbBlitterContext context, ColorRGBA color, float left,
@@ -554,8 +557,7 @@ RenderTreeNodeVisitor::RenderToOffscreenSurface(render_tree::Node* node) {
       RenderState(
           render_target, Transform(coord_mapping.sub_render_transform),
           BoundsStack(context_, Rect(coord_mapping.output_bounds.size()))),
-      scratch_surface_cache_, surface_cache_delegate_, surface_cache_,
-      software_surface_cache_, linear_gradient_cache_);
+      scratch_surface_cache_, software_surface_cache_, linear_gradient_cache_);
   node->Accept(&sub_visitor);
 
   // Restore our original render target.

@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ namespace rasterizer {
 namespace skia {
 
 GlyphBuffer::GlyphBuffer(const math::RectF& bounds, SkTextBlobBuilder* builder)
-    : render_tree::GlyphBuffer(bounds), text_blob_(builder->build()) {}
+    : render_tree::GlyphBuffer(bounds), text_blob_(builder->make()) {}
 
 const SkTextBlob* GlyphBuffer::GetTextBlob() const {
   return SkSafeRef(text_blob_.get());

@@ -1,4 +1,4 @@
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2017 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,27 +11,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Starboard Linux shared platform configuration for gyp_cobalt."""
+"""Starboard Linux shared platform configuration."""
 
-import imp
 import os
 
-import config.base
-import gyp_utils
+from starboard.build import clang
+from starboard.build import platform_configuration
+from starboard.tools import build
 from starboard.tools.testing import test_filter
 
 
-class PlatformConfig(config.base.PlatformConfigBase):
+class LinuxConfiguration(platform_configuration.PlatformConfiguration):
   """Starboard Linux platform configuration."""
 
   def __init__(self,
                platform,
                asan_enabled_by_default=True,
                goma_supports_compiler=True):
-    super(PlatformConfig, self).__init__(platform, asan_enabled_by_default)
-
-    self.host_compiler_environment = gyp_utils.GetHostCompilerEnvironment(
-        goma_supports_compiler)
+    self.goma_supports_compiler = goma_supports_compiler
+    super(LinuxConfiguration, self).__init__(platform, asan_enabled_by_default)
+    self.AppendApplicationConfigurationPath(os.path.dirname(__file__))
 
   def GetBuildFormat(self):
     """Returns the desired build format."""
@@ -40,15 +39,31 @@ class PlatformConfig(config.base.PlatformConfigBase):
     # once.
     return 'ninja,qtcreator_ninja'
 
-  def GetVariables(self, configuration):
-    return super(PlatformConfig, self).GetVariables(configuration, use_clang=1)
+  def GetVariables(self, config_name):
+    variables = super(LinuxConfiguration, self).GetVariables(
+        config_name, use_clang=1)
+    variables.update({
+        'javascript_engine': 'v8',
+        'cobalt_enable_jit': 1,
+    })
+    return variables
 
-  def GetGeneratorVariables(self, configuration):
-    _ = configuration
-    generator_variables = {'qtcreator_session_name_prefix': 'cobalt',}
+  def GetLauncherPath(self):
+    """Gets the path to the launcher module for this platform."""
+    return os.path.dirname(__file__)
+
+  def GetGeneratorVariables(self, config_name):
+    del config_name
+    generator_variables = {
+        'qtcreator_session_name_prefix': 'cobalt',
+    }
     return generator_variables
 
   def GetEnvironmentVariables(self):
+    if not hasattr(self, 'host_compiler_environment'):
+      self.host_compiler_environment = build.GetHostCompilerEnvironment(
+          clang.GetClangSpecification(), self.goma_supports_compiler)
+
     env_variables = self.host_compiler_environment
     env_variables.update({
         'CC': self.host_compiler_environment['CC_host'],
@@ -56,41 +71,21 @@ class PlatformConfig(config.base.PlatformConfigBase):
     })
     return env_variables
 
-  def GetLauncher(self):
-    """Gets the module used to launch applications on this platform."""
-    module_path = os.path.abspath(os.path.join(
-        os.path.dirname(__file__), 'launcher.py'))
-    launcher_module = imp.load_source('launcher', module_path)
-    return launcher_module
-
-  def WebdriverBenchmarksEnabled(self):
-    return True
-
   def GetTestFilters(self):
-    """Gets all tests to be excluded from a unit test run.
+    filters = super(LinuxConfiguration, self).GetTestFilters()
+    for target, tests in self._FILTERED_TESTS.iteritems():
+      filters.extend(test_filter.TestFilter(target, test) for test in tests)
+    return filters
 
-    Returns:
-      A list of initialized TestFilter objects.
-    """
-    return [
-        test_filter.TestFilter(
-            'bindings_test', ('GlobalInterfaceBindingsTest.'
-                              'PropertiesAndOperationsAreOwnProperties')),
-        test_filter.TestFilter(
-            'net_unittests', 'HostResolverImplDnsTest.DnsTaskUnspec'),
-        test_filter.TestFilter(
-            'nplb_blitter_pixel_tests', test_filter.FILTER_ALL),
-        test_filter.TestFilter(
-            'web_platform_tests', 'xhr/WebPlatformTest.Run/130', 'debug'),
-        test_filter.TestFilter(
-            'web_platform_tests', 'streams/WebPlatformTest.Run/11', 'debug'),
-        test_filter.TestFilter(
-            'starboard_platform_tests', test_filter.FILTER_ALL)
-    ]
+  _FILTERED_TESTS = {
+      'nplb': ['SbDrmTest.AnySupportedKeySystems',],
+      'player_filter_tests': [
+          # These tests have memory leaks related to av_malloc.
+          'AudioDecoderTests/AudioDecoderTest.*',
 
-  def GetTestEnvVariables(self):
-    return {
-        'base_unittests': {'ASAN_OPTIONS': 'detect_leaks=0'},
-        'crypto_unittests': {'ASAN_OPTIONS': 'detect_leaks=0'},
-        'net_unittests': {'ASAN_OPTIONS': 'detect_leaks=0'}
-    }
+          # These tests fail on buildbot.
+          'VideoDecoderTests/VideoDecoderTest.SingleInvalidInput/0',
+          'VideoDecoderTests/VideoDecoderTest.SingleInvalidInput/1',
+      ],
+      'starboard_platform_tests': [test_filter.FILTER_ALL],
+  }

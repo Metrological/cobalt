@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -363,6 +363,7 @@ OMX_ERRORTYPE OpenMaxComponent::OnEmptyBufferDone(
     OMX_BUFFERHEADERTYPE* buffer) {
   ScopedLock scoped_lock(mutex_);
   free_input_buffers_.push(buffer);
+  return OMX_ErrorNone;
 }
 
 void OpenMaxComponent::OnFillBufferDone(OMX_BUFFERHEADERTYPE* buffer) {

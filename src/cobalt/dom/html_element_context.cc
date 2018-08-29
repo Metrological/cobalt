@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ namespace dom {
 
 HTMLElementContext::HTMLElementContext()
     : fetcher_factory_(NULL),
+      loader_factory_(NULL),
       css_parser_(NULL),
       dom_parser_(NULL),
       can_play_type_handler_(NULL),
@@ -35,6 +36,7 @@ HTMLElementContext::HTMLElementContext()
       remote_typeface_cache_(NULL),
       mesh_cache_(NULL),
       dom_stat_tracker_(NULL),
+      page_visibility_state_weak_ptr_factory_(&page_visibility_state_),
       video_playback_rate_multiplier_(1.f),
       sync_load_thread_("Synchronous Load"),
       html_element_factory_(new HTMLElementFactory()) {
@@ -42,7 +44,8 @@ HTMLElementContext::HTMLElementContext()
 }
 
 HTMLElementContext::HTMLElementContext(
-    loader::FetcherFactory* fetcher_factory, cssom::CSSParser* css_parser,
+    loader::FetcherFactory* fetcher_factory,
+    loader::LoaderFactory* loader_factory, cssom::CSSParser* css_parser,
     Parser* dom_parser, media::CanPlayTypeHandler* can_play_type_handler,
     media::WebMediaPlayerFactory* web_media_player_factory,
     script::ScriptRunner* script_runner,
@@ -57,8 +60,10 @@ HTMLElementContext::HTMLElementContext(
     loader::mesh::MeshCache* mesh_cache, DomStatTracker* dom_stat_tracker,
     const std::string& font_language_script,
     base::ApplicationState initial_application_state,
+    base::WaitableEvent* synchronous_loader_interrupt,
     float video_playback_rate_multiplier)
     : fetcher_factory_(fetcher_factory),
+      loader_factory_(loader_factory),
       css_parser_(css_parser),
       dom_parser_(dom_parser),
       can_play_type_handler_(can_play_type_handler),
@@ -76,7 +81,9 @@ HTMLElementContext::HTMLElementContext(
       dom_stat_tracker_(dom_stat_tracker),
       font_language_script_(font_language_script),
       page_visibility_state_(initial_application_state),
+      page_visibility_state_weak_ptr_factory_(&page_visibility_state_),
       video_playback_rate_multiplier_(video_playback_rate_multiplier),
+      synchronous_loader_interrupt_(synchronous_loader_interrupt),
       sync_load_thread_("Synchronous Load"),
       html_element_factory_(new HTMLElementFactory()) {
   sync_load_thread_.Start();

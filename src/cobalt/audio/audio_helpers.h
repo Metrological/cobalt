@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,10 +30,12 @@ namespace cobalt {
 namespace audio {
 
 #if defined(COBALT_MEDIA_SOURCE_2016)
+typedef media::ShellAudioBus ShellAudioBus;
 typedef media::ShellAudioBus::SampleType SampleType;
 const SampleType kSampleTypeInt16 = media::ShellAudioBus::kInt16;
 const SampleType kSampleTypeFloat32 = media::ShellAudioBus::kFloat32;
 #else   // defined(COBALT_MEDIA_SOURCE_2016)
+typedef ::media::ShellAudioBus ShellAudioBus;
 typedef ::media::ShellAudioBus::SampleType SampleType;
 const SampleType kSampleTypeInt16 = ::media::ShellAudioBus::kInt16;
 const SampleType kSampleTypeFloat32 = ::media::ShellAudioBus::kFloat32;
@@ -47,7 +49,7 @@ inline size_t GetStarboardSampleTypeSize(SbMediaAudioSampleType sample_type) {
   switch (sample_type) {
     case kSbMediaAudioSampleTypeFloat32:
       return sizeof(float);
-    case kSbMediaAudioSampleTypeInt16:
+    case kSbMediaAudioSampleTypeInt16Deprecated:
       return sizeof(int16);
   }
   NOTREACHED();
@@ -77,7 +79,8 @@ inline SampleType GetPreferredOutputSampleType() {
   if (SbAudioSinkIsAudioSampleTypeSupported(kSbMediaAudioSampleTypeFloat32)) {
     return kSampleTypeFloat32;
   }
-  DCHECK(SbAudioSinkIsAudioSampleTypeSupported(kSbMediaAudioSampleTypeInt16))
+  DCHECK(SbAudioSinkIsAudioSampleTypeSupported(
+      kSbMediaAudioSampleTypeInt16Deprecated))
       << "At least one starboard audio sample type must be supported if using "
          "starboard media pipeline.";
   return kSampleTypeInt16;
@@ -96,7 +99,7 @@ inline SbMediaAudioSampleType GetPreferredOutputStarboardSampleType() {
   if (SbAudioSinkIsAudioSampleTypeSupported(kSbMediaAudioSampleTypeFloat32)) {
     return kSbMediaAudioSampleTypeFloat32;
   }
-  return kSbMediaAudioSampleTypeInt16;
+  return kSbMediaAudioSampleTypeInt16Deprecated;
 }
 #endif
 

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,11 +22,14 @@
 #include "base/hash_tables.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_ptr.h"
+#include "base/memory/weak_ptr.h"
+#include "base/synchronization/waitable_event.h"
 #include "base/timer.h"
 #include "cobalt/base/application_state.h"
 #include "cobalt/cssom/css_parser.h"
 #include "cobalt/cssom/css_style_declaration.h"
 #include "cobalt/dom/animation_frame_request_callback_list.h"
+#include "cobalt/dom/captions/system_caption_settings.h"
 #include "cobalt/dom/crypto.h"
 #include "cobalt/dom/csp_delegate_type.h"
 #include "cobalt/dom/dom_stat_tracker.h"
@@ -35,7 +38,9 @@
 #include "cobalt/dom/location.h"
 #include "cobalt/dom/media_query_list.h"
 #include "cobalt/dom/on_screen_keyboard.h"
+#include "cobalt/dom/on_screen_keyboard_bridge.h"
 #include "cobalt/dom/parser.h"
+#include "cobalt/dom/screenshot_manager.h"
 #if defined(ENABLE_TEST_RUNNER)
 #include "cobalt/dom/test_runner.h"
 #endif  // ENABLE_TEST_RUNNER
@@ -47,8 +52,10 @@
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/loader/font/remote_typeface_cache.h"
 #include "cobalt/loader/image/animated_image_tracker.h"
+#include "cobalt/loader/image/image.h"
 #include "cobalt/loader/image/image_cache.h"
 #include "cobalt/loader/loader.h"
+#include "cobalt/loader/loader_factory.h"
 #include "cobalt/loader/mesh/mesh_cache.h"
 #include "cobalt/media/can_play_type_handler.h"
 #include "cobalt/media/web_media_player_factory.h"
@@ -102,11 +109,11 @@ class Window : public EventTarget,
   typedef AnimationFrameRequestCallbackList::FrameRequestCallback
       FrameRequestCallback;
   typedef WindowTimers::TimerCallback TimerCallback;
-  typedef base::Callback<scoped_ptr<loader::Decoder>(
-      HTMLElementContext*, const scoped_refptr<Document>&,
-      const base::SourceLocation&, const base::Closure&,
-      const base::Callback<void(const std::string&)>&)>
-      HTMLDecoderCreatorCallback;
+  typedef base::Callback<void(const scoped_refptr<dom::Event>& event)>
+      OnStartDispatchEventCallback;
+  typedef base::Callback<void(const scoped_refptr<dom::Event>& event)>
+      OnStopDispatchEventCallback;
+
   // Callback that will be called when window.close() is called.  The
   // base::TimeDelta parameter will contain the document's timeline time when
   // close() was called.
@@ -114,6 +121,7 @@ class Window : public EventTarget,
   typedef UrlRegistry<MediaSource> MediaSourceRegistry;
   typedef base::Callback<bool(const GURL&, const std::string&)> CacheCallback;
   typedef base::Callback<SbWindow()> GetSbWindowCallback;
+
   enum ClockType { kClockTypeTestRunner, kClockTypeSystemTime };
 
   Window(
@@ -121,6 +129,7 @@ class Window : public EventTarget,
       base::ApplicationState initial_application_state,
       cssom::CSSParser* css_parser, Parser* dom_parser,
       loader::FetcherFactory* fetcher_factory,
+      loader::LoaderFactory* loader_factory,
       render_tree::ResourceProvider** resource_provider,
       loader::image::AnimatedImageTracker* animated_image_tracker,
       loader::image::ImageCache* image_cache,
@@ -148,13 +157,20 @@ class Window : public EventTarget,
       const base::Closure& ran_animation_frame_callbacks_callback,
       const CloseCallback& window_close_callback,
       const base::Closure& window_minimize_callback,
-      const base::Callback<SbWindow()>& get_sb_window_callback,
+      OnScreenKeyboardBridge* on_screen_keyboard_bridge,
       const scoped_refptr<input::Camera3D>& camera_3d,
       const scoped_refptr<cobalt::media_session::MediaSession>& media_session,
+      const OnStartDispatchEventCallback&
+          start_tracking_dispatch_event_callback,
+      const OnStopDispatchEventCallback& stop_tracking_dispatch_event_callback,
+      const ScreenshotManager::ProvideScreenshotFunctionCallback&
+          screenshot_function_callback,
+      base::WaitableEvent* synchronous_loader_interrupt,
       int csp_insecure_allowed_token = 0, int dom_max_element_depth = 0,
       float video_playback_rate_multiplier = 1.f,
       ClockType clock_type = kClockTypeSystemTime,
-      const CacheCallback& splash_screen_cache_callback = CacheCallback());
+      const CacheCallback& splash_screen_cache_callback = CacheCallback(),
+      const scoped_refptr<captions::SystemCaptionSettings>& captions = nullptr);
 
   // Web API: Window
   //
@@ -177,13 +193,15 @@ class Window : public EventTarget,
 
   const scoped_refptr<Navigator>& navigator() const;
 
+  script::Handle<ScreenshotManager::InterfacePromise> Screenshot();
+
   // Web API: CSSOM (partial interface)
   // Returns the computed style of the given element, as described in
   // https://www.w3.org/TR/2013/WD-cssom-20131205/#dom-window-getcomputedstyle.
   scoped_refptr<cssom::CSSStyleDeclaration> GetComputedStyle(
       const scoped_refptr<Element>& elt);
   scoped_refptr<cssom::CSSStyleDeclaration> GetComputedStyle(
-      const scoped_refptr<Element>& elt, const std::string& pseudoElt);
+      const scoped_refptr<Element>& elt, const std::string& pseudo_elt);
 
   // Web API: Timing control for script-based animations (partial interface)
   //   https://www.w3.org/TR/animation-timing/#Window-interface-extensions
@@ -303,8 +321,13 @@ class Window : public EventTarget,
   scoped_refptr<Window> opener() const { return NULL; }
 
   // Sets the function to call to trigger a synchronous layout.
+  using SynchronousLayoutAndProduceRenderTreeCallback =
+      base::Callback<scoped_refptr<render_tree::Node>()>;
   void SetSynchronousLayoutCallback(
       const base::Closure& synchronous_layout_callback);
+  void SetSynchronousLayoutAndProduceRenderTreeCallback(
+      const SynchronousLayoutAndProduceRenderTreeCallback&
+          synchronous_layout_callback);
 
   void SetSize(int width, int height, float device_pixel_ratio);
 
@@ -327,15 +350,13 @@ class Window : public EventTarget,
   bool ReportScriptError(const script::ErrorReport& error_report);
 
   // page_visibility::PageVisibilityState::Observer implementation.
-  void OnWindowFocusChanged(bool has_focus) OVERRIDE;
+  void OnWindowFocusChanged(bool has_focus) override;
   void OnVisibilityStateChanged(
-      page_visibility::VisibilityState visibility_state) OVERRIDE;
+      page_visibility::VisibilityState visibility_state) override;
 
   // Called when the document's root element has its offset dimensions requested
   // and is unable to provide them.
   void OnDocumentRootElementUnableToProvideOffsetDimensions();
-
-  void TraceMembers(script::Tracer* tracer) OVERRIDE;
 
   // Cache the passed in splash screen content for the window.location URL.
   void CacheSplashScreen(const std::string& content);
@@ -346,6 +367,20 @@ class Window : public EventTarget,
 
   // Custom on screen keyboard.
   const scoped_refptr<OnScreenKeyboard>& on_screen_keyboard() const;
+  void ReleaseOnScreenKeyboard();
+
+  void OnStartDispatchEvent(const scoped_refptr<dom::Event>& event);
+  void OnStopDispatchEvent(const scoped_refptr<dom::Event>& event);
+
+  // |PointerState| will in general create reference cycles back to us, which is
+  // ok, as they are cleared over time.  During shutdown however, since no
+  // more queue progress can possibly be made, we must forcibly clear the
+  // queue.
+  void ClearPointerStateForShutdown();
+
+  void TraceMembers(script::Tracer* tracer) override;
+
+  void SetEnvironmentSettings(script::EnvironmentSettings* settings);
 
   DEFINE_WRAPPABLE_TYPE(Window);
 
@@ -356,10 +391,10 @@ class Window : public EventTarget,
       const base::Callback<void(const std::string&)>& error_callback);
   class RelayLoadEvent;
 
-  ~Window() OVERRIDE;
+  ~Window() override;
 
   // From EventTarget.
-  std::string GetDebugName() OVERRIDE { return "Window"; }
+  std::string GetDebugName() override { return "Window"; }
 
   void FireHashChangeEvent();
 
@@ -413,6 +448,13 @@ class Window : public EventTarget,
   scoped_refptr<OnScreenKeyboard> on_screen_keyboard_;
 
   CacheCallback splash_screen_cache_callback_;
+
+  OnStartDispatchEventCallback on_start_dispatch_event_callback_;
+  OnStopDispatchEventCallback on_stop_dispatch_event_callback_;
+
+  ScreenshotManager screenshot_manager_;
+
+  script::EnvironmentSettings* environment_settings_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(Window);
 };

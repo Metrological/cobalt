@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,25 +21,33 @@ import gyp_utils
 
 def CreatePlatformConfig():
   try:
-    return PlatformConfig('stub')
+    return StubConfiguration('stub')
   except RuntimeError as e:
     logging.critical(e)
     return None
 
 
-class PlatformConfig(config.base.PlatformConfigBase):
+class StubConfiguration(config.base.PlatformConfigBase):
   """Starboard stub platform configuration."""
 
   def __init__(self, platform):
-    super(PlatformConfig, self).__init__(platform)
-    goma_supports_compiler = True
-    self.host_compiler_environment = gyp_utils.GetHostCompilerEnvironment(
-        goma_supports_compiler)
+    super(StubConfiguration, self).__init__(platform)
 
   def GetVariables(self, configuration):
-    return super(PlatformConfig, self).GetVariables(configuration, use_clang=1)
+    variables = super(StubConfiguration, self).GetVariables(
+        configuration, use_clang=1)
+    variables.update({
+        'javascript_engine': 'v8',
+        'cobalt_enable_jit': 1,
+    })
+    return variables
 
   def GetEnvironmentVariables(self):
+    if not hasattr(self, 'host_compiler_environment'):
+      goma_supports_compiler = True
+      self.host_compiler_environment = gyp_utils.GetHostCompilerEnvironment(
+          goma_supports_compiler)
+
     env_variables = self.host_compiler_environment
     env_variables.update({
         'CC': self.host_compiler_environment['CC_host'],

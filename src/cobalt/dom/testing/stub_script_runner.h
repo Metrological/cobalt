@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ class StubScriptRunner : public script::ScriptRunner {
  public:
   std::string Execute(const std::string& script_utf8,
                       const base::SourceLocation& script_location,
-                      bool mute_errors, bool* out_succeeded) OVERRIDE;
+                      bool mute_errors, bool* out_succeeded) override;
 };
 
 }  // namespace testing

@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,7 +36,10 @@ namespace render_tree {
 
 class MockResourceProvider : public ResourceProvider {
  public:
-  base::TypeId GetTypeId() const OVERRIDE {
+  // Comment out override in order to enable
+  // "-Winconsistent-missing-override" on Clang.  TODO: Remove this hack once
+  // gmock adds override support.
+  virtual base::TypeId GetTypeId() const /*override*/ {
     return base::GetTypeId<MockResourceProvider>();
   }
 

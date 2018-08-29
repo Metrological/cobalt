@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 #include "cobalt/bindings/testing/derived_interface.h"
 #include "cobalt/bindings/testing/object_type_bindings_interface.h"
 #include "cobalt/bindings/testing/script_object_owner.h"
+#include "cobalt/bindings/testing/utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 using ::testing::_;
@@ -80,19 +81,11 @@ TEST_F(PlatformObjectBindingsTest, Prototype) {
   std::string result;
   EXPECT_TRUE(
       EvaluateScript("Object.getPrototypeOf(test.arbitraryObject);", &result));
-  EXPECT_STREQ("[object ArbitraryInterfacePrototype]", result.c_str());
+
+  EXPECT_TRUE(IsAcceptablePrototypeString("ArbitraryInterface", result))
+      << result;
 }
 
-#if defined(ENGINE_DEFINES_ATTRIBUTES_ON_OBJECT)
-TEST_F(PlatformObjectBindingsTest, PropertyIsOwnProperty) {
-  EXPECT_CALL(test_mock(), arbitrary_object());
-
-  std::string result;
-  EXPECT_TRUE(EvaluateScript(
-      "test.arbitraryObject.hasOwnProperty(\"arbitraryProperty\");", &result));
-  EXPECT_STREQ("true", result.c_str());
-}
-#else
 TEST_F(PlatformObjectBindingsTest, PropertyIsDefinedOnPrototype) {
   EXPECT_CALL(test_mock(), arbitrary_object());
 
@@ -103,7 +96,6 @@ TEST_F(PlatformObjectBindingsTest, PropertyIsDefinedOnPrototype) {
       &result));
   EXPECT_STREQ("true", result.c_str());
 }
-#endif  // defined(ENGINE_DEFINES_ATTRIBUTES_ON_OBJECT)
 
 TEST_F(PlatformObjectBindingsTest, MemberFunctionIsPrototypeProperty) {
   EXPECT_CALL(test_mock(), arbitrary_object()).Times(3);
@@ -179,7 +171,9 @@ TEST_F(PlatformObjectBindingsTest, ReturnDerivedClassWrapper) {
   EXPECT_CALL(test_mock(), base_interface());
   EXPECT_TRUE(
       EvaluateScript("Object.getPrototypeOf(test.baseInterface);", &result));
-  EXPECT_STREQ("[object DerivedInterfacePrototype]", result.c_str());
+
+  EXPECT_TRUE(IsAcceptablePrototypeString("DerivedInterface", result))
+      << result;
 
   EXPECT_CALL(test_mock(), base_interface());
   EXPECT_CALL(*derived_interface_, DerivedOperation());

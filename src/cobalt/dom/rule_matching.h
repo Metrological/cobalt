@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ class Node;
 // Updates the matching rules on an element. The parent and previous sibling
 // need to have their matching rules updated before, since the current element's
 // rule matching will depend on their rule matching states.
-void UpdateMatchingRules(HTMLElement* current_element);
+void UpdateElementMatchingRules(HTMLElement* current_element);
 
 // Returns the first element in the subtree that matches the given selector.
 scoped_refptr<Element> QuerySelector(Node* node, const std::string& selectors,

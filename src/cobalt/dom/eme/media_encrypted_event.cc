@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,8 +28,13 @@ MediaEncryptedEvent::MediaEncryptedEvent(const std::string& type)
 MediaEncryptedEvent::MediaEncryptedEvent(
     const std::string& type, const MediaEncryptedEventInit& event_init_dict)
     : Event(base::Token(type), kNotBubbles, kNotCancelable),
-      init_data_type_(event_init_dict.init_data_type()),
-      init_data_(event_init_dict.init_data()) {}
+      init_data_type_(event_init_dict.init_data_type()) {
+  if (event_init_dict.init_data() && !event_init_dict.init_data()->IsNull()) {
+    init_data_reference_.reset(
+        new script::ScriptValue<script::ArrayBuffer>::Reference(
+            this, *event_init_dict.init_data()));
+  }
+}
 
 }  // namespace eme
 }  // namespace dom

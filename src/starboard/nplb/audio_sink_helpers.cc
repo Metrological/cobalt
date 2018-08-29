@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,8 +20,9 @@ namespace nplb {
 namespace {
 
 SbMediaAudioSampleType GetAnySupportedSampleType() {
-  if (SbAudioSinkIsAudioSampleTypeSupported(kSbMediaAudioSampleTypeInt16)) {
-    return kSbMediaAudioSampleTypeInt16;
+  if (SbAudioSinkIsAudioSampleTypeSupported(
+          kSbMediaAudioSampleTypeInt16Deprecated)) {
+    return kSbMediaAudioSampleTypeInt16Deprecated;
   }
   return kSbMediaAudioSampleTypeFloat32;
 }
@@ -175,7 +176,15 @@ void AudioSinkTestEnvironment::OnUpdateSourceStatus(int* frames_in_buffer,
   condition_variable_.Signal();
 }
 
-void AudioSinkTestEnvironment::OnConsumeFrames(int frames_consumed) {
+void AudioSinkTestEnvironment::OnConsumeFrames(int frames_consumed
+#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+                                               ,
+                                               SbTime frames_consumed_at
+#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+                                               ) {
+#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+  SB_DCHECK(frames_consumed_at <= SbTimeGetMonotonicNow());
+#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
   ScopedLock lock(mutex_);
   frames_consumed_ += frames_consumed;
   condition_variable_.Signal();
@@ -195,10 +204,17 @@ void AudioSinkTestEnvironment::UpdateSourceStatusFunc(int* frames_in_buffer,
 
 // static
 void AudioSinkTestEnvironment::ConsumeFramesFunc(int frames_consumed,
+#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+                                                 SbTime frames_consumed_at,
+#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                                  void* context) {
   AudioSinkTestEnvironment* environment =
       reinterpret_cast<AudioSinkTestEnvironment*>(context);
+#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+  environment->OnConsumeFrames(frames_consumed, frames_consumed_at);
+#else   // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
   environment->OnConsumeFrames(frames_consumed);
+#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 }
 
 }  // namespace nplb

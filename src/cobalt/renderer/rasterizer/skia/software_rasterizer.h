@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,8 +35,7 @@ namespace skia {
 // class can send the results to a display or render target.
 class SoftwareRasterizer {
  public:
-  explicit SoftwareRasterizer(int surface_cache_size,
-                              bool purge_skia_font_caches_on_destruction);
+  explicit SoftwareRasterizer(bool purge_skia_font_caches_on_destruction);
   ~SoftwareRasterizer();
 
   // Consume the render tree and output the results to the render target passed

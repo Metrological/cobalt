@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,14 @@
 
 namespace cobalt {
 namespace render_tree {
+
+namespace {
+const float kEpsilon = 0.0001f;
+}
+
+bool RoundedCorner::IsSquare() const {
+  return horizontal <= kEpsilon || vertical <= kEpsilon;
+}
 
 RoundedCorners RoundedCorners::Scale(float sx, float sy) const {
   return RoundedCorners(RoundedCorner(top_left.horizontal * sx,
@@ -66,7 +74,6 @@ RoundedCorners RoundedCorners::Normalize(const math::RectF& rect) const {
 bool RoundedCorners::IsNormalized(const math::RectF& rect) const {
   // Introduce a fuzz epsilon so that we are not strict about rounding errors
   // when computing Normalize().
-  const float kEpsilon = 0.0001f;
   const float fuzzed_width = rect.width() + kEpsilon;
   const float fuzzed_height = rect.height() + kEpsilon;
 

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -47,15 +47,14 @@ void* SendToServerSocketEntryPoint(void* trio_as_void_ptr) {
 
   // Continue sending to the socket until it fails to send. It's expected that
   // SbSocketSendTo will fail when the server socket closes, but the application
-  // should
-  // not terminate.
-  SbTime start = SbTimeGetNow();
+  // should not terminate.
+  SbTime start = SbTimeGetMonotonicNow();
   SbTime now = start;
   SbTime kTimeout = kSbTimeSecond;
   int result = 0;
   while (result >= 0 && (now - start < kTimeout)) {
     result = SbSocketSendTo(trio->server_socket, send_buf, kBufSize, NULL);
-    now = SbTimeGetNow();
+    now = SbTimeGetMonotonicNow();
   }
 
   delete[] send_buf;
@@ -66,6 +65,28 @@ TEST(SbSocketSendToTest, RainyDayInvalidSocket) {
   char buf[16];
   int result = SbSocketSendTo(NULL, buf, sizeof(buf), NULL);
   EXPECT_EQ(-1, result);
+}
+
+TEST(SbSocketSendToTest, RainyDayUnconnectedSocket) {
+  SbSocket socket =
+      SbSocketCreate(kSbSocketAddressTypeIpv4, kSbSocketProtocolTcp);
+  ASSERT_TRUE(SbSocketIsValid(socket));
+
+  char buf[16];
+  int result = SbSocketSendTo(socket, buf, sizeof(buf), NULL);
+  EXPECT_EQ(-1, result);
+
+#if SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) || \
+    SB_API_VERSION >= 9
+  EXPECT_SB_SOCKET_ERROR_IN(SbSocketGetLastError(socket),
+                            kSbSocketErrorConnectionReset,
+                            kSbSocketErrorFailed);
+#else
+  EXPECT_SB_SOCKET_ERROR_IS_ERROR(SbSocketGetLastError(socket));
+#endif  // SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) ||
+        // SB_API_VERSION >= 9
+
+  EXPECT_TRUE(SbSocketDestroy(socket));
 }
 
 TEST_P(PairSbSocketSendToTest, RainyDaySendToClosedSocket) {
@@ -91,11 +112,95 @@ TEST_P(PairSbSocketSendToTest, RainyDaySendToClosedSocket) {
   // Wait for the thread to exit and check the last socket error.
   void* thread_result;
   EXPECT_TRUE(SbThreadJoin(send_thread, &thread_result));
-  // Check that the server_socket failed, as expected.
-  EXPECT_EQ(SbSocketGetLastError(trio.server_socket), kSbSocketErrorFailed);
+
+#if SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) || \
+    SB_API_VERSION >= 9
+  EXPECT_SB_SOCKET_ERROR_IN(SbSocketGetLastError(trio.server_socket),
+                            kSbSocketErrorConnectionReset,
+                            kSbSocketErrorFailed);
+#else
+  EXPECT_SB_SOCKET_ERROR_IS_ERROR(SbSocketGetLastError(trio.server_socket));
+#endif  // SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) ||
+        // SB_API_VERSION >= 9
 
   // Clean up the server socket.
   EXPECT_TRUE(SbSocketDestroy(trio.server_socket));
+}
+
+// Tests the expectation that writing to a socket that is never drained
+// will result in that socket becoming full and thus will return a
+// kSbSocketPending status, which indicates that it is blocked.
+TEST_P(PairSbSocketSendToTest, RainyDaySendToSocketUntilBlocking) {
+  static const int kChunkSize = 1024;
+  // 1GB limit for sending data.
+  static const uint64_t kMaxTransferLimit = 1024 * 1024 * 1024;
+
+  scoped_ptr<ConnectedTrioWrapped> trio =
+      CreateAndConnectWrapped(GetServerAddressType(), GetClientAddressType(),
+                              GetPortNumberForTests(), kSocketTimeout);
+  // Push data into socket until it dies.
+  uint64_t num_bytes = 0;
+  while (num_bytes < kMaxTransferLimit) {
+    char buff[kChunkSize] = {};
+    int result = trio->client_socket->SendTo(buff, sizeof(buff), NULL);
+
+    if (result < 0) {
+      SbSocketError err = SbSocketGetLastError(trio->client_socket->socket());
+      EXPECT_EQ(kSbSocketPending, err);
+      return;
+    }
+
+    if (result == 0) {  // Connection dropped unexpectedly.
+      EXPECT_TRUE(false) << "Connection unexpectedly dropped.";
+    }
+
+    num_bytes += static_cast<uint64_t>(result);
+  }
+  EXPECT_TRUE(false) << "Max transfer rate reached.";
+}
+
+// Tests the expectation that killing a connection will cause the other
+// connected socket to fail to write. For sockets without socket connection
+// support this will show up as a generic error. Otherwise this will show
+// up as a connection reset error.
+TEST_P(PairSbSocketSendToTest, RainyDaySendToSocketConnectionReset) {
+  static const int kChunkSize = 1024;
+
+  scoped_ptr<ConnectedTrioWrapped> trio =
+      CreateAndConnectWrapped(GetServerAddressType(), GetClientAddressType(),
+                              GetPortNumberForTests(), kSocketTimeout);
+
+  // Kills the server, the client socket will have it's connection reset during
+  // one of the subsequent writes.
+  trio->server_socket.reset();
+
+  // Expect that after some retries the client socket will return that the
+  // connection will reset.
+  int kNumRetries = 1000;
+  for (int i = 0; i < kNumRetries; ++i) {
+    char buff[kChunkSize] = {};
+    SbThreadSleep(kSbTimeMillisecond);
+    int result = trio->client_socket->SendTo(buff, sizeof(buff), NULL);
+
+    if (result < 0) {
+      SbSocketError err = SbSocketGetLastError(trio->client_socket->socket());
+
+#if SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) || \
+    SB_API_VERSION >= 9
+      EXPECT_EQ(kSbSocketErrorConnectionReset, err)
+          << "Expected connection drop.";
+#else
+      EXPECT_EQ(kSbSocketErrorFailed, err);
+#endif
+      return;
+    }
+
+    if (result == 0) {
+      return;  // Other way in which the connection was reset.
+    }
+  }
+  ASSERT_TRUE(false) << "Connection was not dropped after "
+                     << kNumRetries << " tries.";
 }
 
 #if SB_HAS(IPV6)

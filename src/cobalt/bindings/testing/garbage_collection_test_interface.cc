@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,11 +19,17 @@
 namespace cobalt {
 namespace bindings {
 namespace testing {
+
 namespace {
 base::LazyInstance<
     GarbageCollectionTestInterface::GarbageCollectionTestInterfaceVector>
     instances;
 }  // namespace
+
+GarbageCollectionTestInterface::GarbageCollectionTestInterfaceVector&
+GarbageCollectionTestInterface::instances() {
+  return ::cobalt::bindings::testing::instances.Get();
+}
 
 GarbageCollectionTestInterface::GarbageCollectionTestInterface()
     : previous_(NULL) {
@@ -58,6 +64,17 @@ void GarbageCollectionTestInterface::set_next(
   Join(this, next.get());
 }
 
+void GarbageCollectionTestInterface::Join(
+    GarbageCollectionTestInterface* first,
+    GarbageCollectionTestInterface* second) {
+  if (first) {
+    first->next_ = second;
+  }
+  if (second) {
+    second->previous_ = first;
+  }
+}
+
 void GarbageCollectionTestInterface::MakeHead() {
   if (previous_) {
     DCHECK(previous_->next_ == this);
@@ -72,22 +89,6 @@ void GarbageCollectionTestInterface::MakeTail() {
     next_->previous_ = NULL;
   }
   next_ = NULL;
-}
-
-void GarbageCollectionTestInterface::Join(
-    GarbageCollectionTestInterface* first,
-    GarbageCollectionTestInterface* second) {
-  if (first) {
-    first->next_ = second;
-  }
-  if (second) {
-    second->previous_ = first;
-  }
-}
-
-GarbageCollectionTestInterface::GarbageCollectionTestInterfaceVector&
-GarbageCollectionTestInterface::instances() {
-  return ::cobalt::bindings::testing::instances.Get();
 }
 
 void GarbageCollectionTestInterface::TraceMembers(script::Tracer* tracer) {

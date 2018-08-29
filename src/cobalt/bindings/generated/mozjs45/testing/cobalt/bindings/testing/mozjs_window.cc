@@ -1,4 +1,6 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+
+
+// Copyright 2018 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,6 +38,7 @@
 #include "cobalt/bindings/testing/constants_interface.h"
 #include "cobalt/bindings/testing/constructor_interface.h"
 #include "cobalt/bindings/testing/constructor_with_arguments_interface.h"
+#include "cobalt/bindings/testing/convert_simple_object_interface.h"
 #include "cobalt/bindings/testing/derived_getter_setter_interface.h"
 #include "cobalt/bindings/testing/derived_interface.h"
 #include "cobalt/bindings/testing/dictionary_interface.h"
@@ -51,6 +54,7 @@
 #include "cobalt/bindings/testing/indexed_getter_interface.h"
 #include "cobalt/bindings/testing/interface_with_any.h"
 #include "cobalt/bindings/testing/interface_with_any_dictionary.h"
+#include "cobalt/bindings/testing/interface_with_date.h"
 #include "cobalt/bindings/testing/interface_with_unsupported_properties.h"
 #include "cobalt/bindings/testing/mozjs_anonymous_indexed_getter_interface.h"
 #include "cobalt/bindings/testing/mozjs_anonymous_named_getter_interface.h"
@@ -64,6 +68,7 @@
 #include "cobalt/bindings/testing/mozjs_constants_interface.h"
 #include "cobalt/bindings/testing/mozjs_constructor_interface.h"
 #include "cobalt/bindings/testing/mozjs_constructor_with_arguments_interface.h"
+#include "cobalt/bindings/testing/mozjs_convert_simple_object_interface.h"
 #include "cobalt/bindings/testing/mozjs_derived_getter_setter_interface.h"
 #include "cobalt/bindings/testing/mozjs_derived_interface.h"
 #include "cobalt/bindings/testing/mozjs_dictionary_interface.h"
@@ -79,6 +84,7 @@
 #include "cobalt/bindings/testing/mozjs_indexed_getter_interface.h"
 #include "cobalt/bindings/testing/mozjs_interface_with_any.h"
 #include "cobalt/bindings/testing/mozjs_interface_with_any_dictionary.h"
+#include "cobalt/bindings/testing/mozjs_interface_with_date.h"
 #include "cobalt/bindings/testing/mozjs_interface_with_unsupported_properties.h"
 #include "cobalt/bindings/testing/mozjs_named_constructor_interface.h"
 #include "cobalt/bindings/testing/mozjs_named_getter_interface.h"
@@ -129,10 +135,14 @@
 #include "cobalt/script/exception_state.h"
 #include "cobalt/script/mozjs-45/callback_function_conversion.h"
 #include "cobalt/script/mozjs-45/conversion_helpers.h"
+#include "cobalt/script/mozjs-45/mozjs_array_buffer.h"
+#include "cobalt/script/mozjs-45/mozjs_array_buffer_view.h"
 #include "cobalt/script/mozjs-45/mozjs_callback_function.h"
+#include "cobalt/script/mozjs-45/mozjs_data_view.h"
 #include "cobalt/script/mozjs-45/mozjs_exception_state.h"
 #include "cobalt/script/mozjs-45/mozjs_global_environment.h"
 #include "cobalt/script/mozjs-45/mozjs_property_enumerator.h"
+#include "cobalt/script/mozjs-45/mozjs_typed_arrays.h"
 #include "cobalt/script/mozjs-45/mozjs_user_object_holder.h"
 #include "cobalt/script/mozjs-45/mozjs_value_handle.h"
 #include "cobalt/script/mozjs-45/native_promise.h"
@@ -144,6 +154,7 @@
 #include "cobalt/script/sequence.h"
 #include "third_party/mozjs-45/js/src/jsapi.h"
 #include "third_party/mozjs-45/js/src/jsfriendapi.h"
+
 
 namespace {
 using cobalt::bindings::testing::Window;
@@ -162,6 +173,7 @@ using cobalt::bindings::testing::ConditionalInterface;
 using cobalt::bindings::testing::ConstantsInterface;
 using cobalt::bindings::testing::ConstructorInterface;
 using cobalt::bindings::testing::ConstructorWithArgumentsInterface;
+using cobalt::bindings::testing::ConvertSimpleObjectInterface;
 using cobalt::bindings::testing::DOMStringTestInterface;
 using cobalt::bindings::testing::DerivedGetterSetterInterface;
 using cobalt::bindings::testing::DerivedInterface;
@@ -179,6 +191,7 @@ using cobalt::bindings::testing::ImplementedInterface;
 using cobalt::bindings::testing::IndexedGetterInterface;
 using cobalt::bindings::testing::InterfaceWithAny;
 using cobalt::bindings::testing::InterfaceWithAnyDictionary;
+using cobalt::bindings::testing::InterfaceWithDate;
 using cobalt::bindings::testing::InterfaceWithUnsupportedProperties;
 using cobalt::bindings::testing::MozjsAnonymousIndexedGetterInterface;
 using cobalt::bindings::testing::MozjsAnonymousNamedGetterInterface;
@@ -194,6 +207,7 @@ using cobalt::bindings::testing::MozjsConditionalInterface;
 using cobalt::bindings::testing::MozjsConstantsInterface;
 using cobalt::bindings::testing::MozjsConstructorInterface;
 using cobalt::bindings::testing::MozjsConstructorWithArgumentsInterface;
+using cobalt::bindings::testing::MozjsConvertSimpleObjectInterface;
 using cobalt::bindings::testing::MozjsDOMStringTestInterface;
 using cobalt::bindings::testing::MozjsDerivedGetterSetterInterface;
 using cobalt::bindings::testing::MozjsDerivedInterface;
@@ -211,6 +225,7 @@ using cobalt::bindings::testing::MozjsImplementedInterface;
 using cobalt::bindings::testing::MozjsIndexedGetterInterface;
 using cobalt::bindings::testing::MozjsInterfaceWithAny;
 using cobalt::bindings::testing::MozjsInterfaceWithAnyDictionary;
+using cobalt::bindings::testing::MozjsInterfaceWithDate;
 using cobalt::bindings::testing::MozjsInterfaceWithUnsupportedProperties;
 using cobalt::bindings::testing::MozjsNamedConstructorInterface;
 using cobalt::bindings::testing::MozjsNamedGetterInterface;
@@ -296,7 +311,14 @@ namespace cobalt {
 namespace bindings {
 namespace testing {
 
+
 namespace {
+
+
+
+
+
+
 
 class MozjsWindowHandler : public ProxyHandler {
  public:
@@ -316,6 +338,7 @@ MozjsWindowHandler::named_property_hooks = {
   NULL,
   NULL,
 };
+
 ProxyHandler::IndexedPropertyHooks
 MozjsWindowHandler::indexed_property_hooks = {
   NULL,
@@ -327,6 +350,14 @@ MozjsWindowHandler::indexed_property_hooks = {
 
 static base::LazyInstance<MozjsWindowHandler>
     proxy_handler;
+
+bool DummyConstructor(JSContext* context, unsigned int argc, JS::Value* vp) {
+  MozjsExceptionState exception(context);
+  exception.SetSimpleException(
+      script::kTypeError, "Window is not constructible.");
+  return false;
+}
+
 
 bool HasInstance(JSContext *context, JS::HandleObject type,
                    JS::MutableHandleValue vp, bool *success) {
@@ -634,6 +665,7 @@ bool set_onEvent(
   return !exception_state.is_exception_set();
 }
 
+
 bool fcn_getStackTrace(
     JSContext* context, uint32_t argc, JS::Value *vp) {
   JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
@@ -687,6 +719,7 @@ bool fcn_getStackTrace(
   }
   return !exception_state.is_exception_set();
 }
+
 
 bool fcn_setTimeout(
     JSContext* context, uint32_t argc, JS::Value *vp) {
@@ -795,6 +828,7 @@ bool fcn_setTimeout(
   }
 }
 
+
 bool fcn_windowOperation(
     JSContext* context, uint32_t argc, JS::Value *vp) {
   JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
@@ -844,6 +878,7 @@ bool fcn_windowOperation(
 
 
 const JSPropertySpec prototype_properties[] = {
+
   {  // Read/Write property
     "windowProperty",
     JSPROP_SHARED | JSPROP_ENUMERATE,
@@ -879,6 +914,7 @@ const JSFunctionSpec prototype_functions[] = {
 };
 
 const JSPropertySpec interface_object_properties[] = {
+
   JS_PS_END
 };
 
@@ -899,6 +935,11 @@ void InitializePrototypeAndInterfaceObject(
 
   JS::RootedObject parent_prototype(
       context, MozjsGlobalInterfaceParent::GetPrototype(context, global_object));
+  static_assert(
+      std::is_base_of<GlobalInterfaceParent, Window>::value,
+      "Expected Window to have C++ parent class "
+      "GlobalInterfaceParent, because that is its WebIDL parent.");
+
   DCHECK(parent_prototype);
 
   interface_data->prototype = JS_NewObjectWithGivenProto(
@@ -919,17 +960,25 @@ void InitializePrototypeAndInterfaceObject(
   JS::RootedObject function_prototype(
       context, JS_GetFunctionPrototype(context, global_object));
   DCHECK(function_prototype);
-  // Create the Interface object.
-  interface_data->interface_object = JS_NewObjectWithGivenProto(
-      context, &interface_object_class_definition,
-      function_prototype);
+
+  const char name[] =
+      "Window";
+
+  JSFunction* function = js::NewFunctionWithReserved(
+      context,
+      DummyConstructor,
+      0,
+      JSFUN_CONSTRUCTOR,
+      name);
+  interface_data->interface_object = JS_GetFunctionObject(function);
 
   // Add the InterfaceObject.name property.
   JS::RootedObject rooted_interface_object(
       context, interface_data->interface_object);
   JS::RootedValue name_value(context);
-  const char name[] =
-      "Window";
+
+  js::SetPrototype(context, rooted_interface_object, function_prototype);
+
   name_value.setString(JS_NewStringCopyZ(context, name));
   success = JS_DefineProperty(
       context, rooted_interface_object, "name", name_value, JSPROP_READONLY,
@@ -956,7 +1005,7 @@ void InitializePrototypeAndInterfaceObject(
 }
 
 inline InterfaceData* GetInterfaceData(JSContext* context) {
-  const int kInterfaceUniqueId = 52;
+  const int kInterfaceUniqueId = 54;
   MozjsGlobalEnvironment* global_environment =
       static_cast<MozjsGlobalEnvironment*>(JS_GetContextPrivate(context));
   // By convention, the |MozjsGlobalEnvironment| that we are associated with
@@ -1010,6 +1059,7 @@ JSObject* MozjsWindow::CreateProxy(
   global_environment->SetGlobalObjectProxyAndWrapper(proxy, wrappable);
   return proxy;
 }
+
 // static
 const JSClass* MozjsWindow::PrototypeClass(
       JSContext* context) {
@@ -1053,8 +1103,9 @@ JSObject* MozjsWindow::GetInterfaceObject(
   return interface_data->interface_object;
 }
 
-
 namespace {
+
+
 }  // namespace
 
 
@@ -1130,6 +1181,10 @@ void MozjsGlobalEnvironment::CreateGlobalObject(
       base::Bind(MozjsConstructorWithArgumentsInterface::CreateProxy),
       base::Bind(MozjsConstructorWithArgumentsInterface::PrototypeClass));
   wrapper_factory_->RegisterWrappableType(
+      ConvertSimpleObjectInterface::ConvertSimpleObjectInterfaceWrappableType(),
+      base::Bind(MozjsConvertSimpleObjectInterface::CreateProxy),
+      base::Bind(MozjsConvertSimpleObjectInterface::PrototypeClass));
+  wrapper_factory_->RegisterWrappableType(
       DOMStringTestInterface::DOMStringTestInterfaceWrappableType(),
       base::Bind(MozjsDOMStringTestInterface::CreateProxy),
       base::Bind(MozjsDOMStringTestInterface::PrototypeClass));
@@ -1191,6 +1246,10 @@ void MozjsGlobalEnvironment::CreateGlobalObject(
       InterfaceWithAnyDictionary::InterfaceWithAnyDictionaryWrappableType(),
       base::Bind(MozjsInterfaceWithAnyDictionary::CreateProxy),
       base::Bind(MozjsInterfaceWithAnyDictionary::PrototypeClass));
+  wrapper_factory_->RegisterWrappableType(
+      InterfaceWithDate::InterfaceWithDateWrappableType(),
+      base::Bind(MozjsInterfaceWithDate::CreateProxy),
+      base::Bind(MozjsInterfaceWithDate::PrototypeClass));
   wrapper_factory_->RegisterWrappableType(
       InterfaceWithUnsupportedProperties::InterfaceWithUnsupportedPropertiesWrappableType(),
       base::Bind(MozjsInterfaceWithUnsupportedProperties::CreateProxy),

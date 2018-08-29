@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@
 
 #include "starboard/shared/starboard/player/player_worker.h"
 
+#include <string>
+
 #include "starboard/common/reset_and_return.h"
 #include "starboard/condition_variable.h"
 #include "starboard/memory.h"
@@ -25,6 +27,9 @@ namespace starboard {
 namespace player {
 
 namespace {
+
+using std::placeholders::_1;
+using std::placeholders::_2;
 
 // 8 ms is enough to ensure that DoWritePendingSamples() is called twice for
 // every frame in HFR.
@@ -43,29 +48,42 @@ struct ThreadParam {
 
 }  // namespace
 
-PlayerWorker::PlayerWorker(Host* host,
+PlayerWorker::PlayerWorker(SbMediaAudioCodec audio_codec,
+                           SbMediaVideoCodec video_codec,
                            scoped_ptr<Handler> handler,
+                           UpdateMediaInfoCB update_media_info_cb,
                            SbPlayerDecoderStatusFunc decoder_status_func,
                            SbPlayerStatusFunc player_status_func,
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+                           SbPlayerErrorFunc player_error_func,
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
                            SbPlayer player,
                            void* context)
     : thread_(kSbThreadInvalid),
-      host_(host),
+      audio_codec_(audio_codec),
+      video_codec_(video_codec),
       handler_(handler.Pass()),
+      update_media_info_cb_(update_media_info_cb),
       decoder_status_func_(decoder_status_func),
       player_status_func_(player_status_func),
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+      player_error_func_(player_error_func),
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
       player_(player),
       context_(context),
       ticket_(SB_PLAYER_INITIAL_TICKET),
       player_state_(kSbPlayerStateInitialized) {
-  SB_DCHECK(host_ != NULL);
   SB_DCHECK(handler_ != NULL);
+  SB_DCHECK(update_media_info_cb_);
 
   ThreadParam thread_param(this);
   thread_ = SbThreadCreate(0, kSbThreadPriorityHigh, kSbThreadNoAffinity, true,
                            "player_worker", &PlayerWorker::ThreadEntryPoint,
                            &thread_param);
-  SB_DCHECK(SbThreadIsValid(thread_));
+  if (!SbThreadIsValid(thread_)) {
+    SB_DLOG(ERROR) << "Failed to create thread in PlayerWorker constructor.";
+    return;
+  }
   ScopedLock scoped_lock(thread_param.mutex);
   while (!job_queue_) {
     thread_param.condition_variable.Wait();
@@ -74,7 +92,7 @@ PlayerWorker::PlayerWorker(Host* host,
 }
 
 PlayerWorker::~PlayerWorker() {
-  job_queue_->Schedule(Bind(&PlayerWorker::DoStop, this));
+  job_queue_->Schedule(std::bind(&PlayerWorker::DoStop, this));
   SbThreadJoin(thread_, NULL);
   thread_ = kSbThreadInvalid;
 
@@ -83,13 +101,23 @@ PlayerWorker::~PlayerWorker() {
   // effects are gone.
 }
 
-void PlayerWorker::UpdateMediaTime(SbMediaTime time) {
-  host_->UpdateMediaTime(time, ticket_);
+void PlayerWorker::UpdateMediaInfo(SbTime time, int dropped_video_frames) {
+  update_media_info_cb_(time, dropped_video_frames, ticket_);
 }
 
 void PlayerWorker::UpdatePlayerState(SbPlayerState player_state) {
-  SB_DLOG_IF(WARNING, player_state == kSbPlayerStateError)
-      << "encountered kSbPlayerStateError";
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+  SB_DCHECK(!error_occurred_) << "Player state should not update after error.";
+  if (error_occurred_) {
+    return;
+  }
+#else   // SB_HAS(PLAYER_ERROR_MESSAGE)
+  SB_DCHECK(error_occurred_ == (player_state == kSbPlayerStateError))
+      << "Player state error if and only if error occurred.";
+  if (error_occurred_ && (player_state != kSbPlayerStateError)) {
+    return;
+  }
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
   player_state_ = player_state;
 
   if (!player_status_func_) {
@@ -98,6 +126,27 @@ void PlayerWorker::UpdatePlayerState(SbPlayerState player_state) {
 
   player_status_func_(player_, context_, player_state_, ticket_);
 }
+
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+void PlayerWorker::UpdatePlayerError(SbPlayerError error,
+                                     const std::string& error_message) {
+  error_occurred_ = true;
+  SB_LOG(WARNING) << "Encountered player error: " << error
+                  << " with message: " << error_message;
+
+  if (!player_error_func_) {
+    return;
+  }
+
+  player_error_func_(player_, context_, error, error_message.c_str());
+}
+#else  // SB_HAS(PLAYER_ERROR_MESSAGE)
+void PlayerWorker::UpdatePlayerError(const std::string& message) {
+  SB_LOG(WARNING) << "encountered player error: " << message;
+
+  UpdatePlayerState(kSbPlayerStateError);
+}
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
 
 // static
 void* PlayerWorker::ThreadEntryPoint(void* context) {
@@ -124,42 +173,61 @@ void PlayerWorker::RunLoop() {
 void PlayerWorker::DoInit() {
   SB_DCHECK(job_queue_->BelongsToCurrentThread());
 
-  if (handler_->Init(
-          this, job_queue_.get(), player_, &PlayerWorker::UpdateMediaTime,
-          &PlayerWorker::player_state, &PlayerWorker::UpdatePlayerState)) {
+  Handler::UpdatePlayerErrorCB update_player_error_cb;
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+  update_player_error_cb =
+      std::bind(&PlayerWorker::UpdatePlayerError, this, _1, _2);
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
+  if (handler_->Init(player_,
+                     std::bind(&PlayerWorker::UpdateMediaInfo, this, _1, _2),
+                     std::bind(&PlayerWorker::player_state, this),
+                     std::bind(&PlayerWorker::UpdatePlayerState, this, _1),
+                     update_player_error_cb)) {
     UpdatePlayerState(kSbPlayerStateInitialized);
   } else {
-    UpdatePlayerState(kSbPlayerStateError);
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+    UpdatePlayerError(kSbPlayerErrorDecode,
+                      "Failed to initialize PlayerWorker.");
+#else   // SB_HAS(PLAYER_ERROR_MESSAGE)
+    UpdatePlayerError("Failed to initialize PlayerWorker.");
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
   }
 }
 
-void PlayerWorker::DoSeek(SbMediaTime seek_to_pts, int ticket) {
+void PlayerWorker::DoSeek(SbTime seek_to_time, int ticket) {
   SB_DCHECK(job_queue_->BelongsToCurrentThread());
 
   SB_DCHECK(player_state_ != kSbPlayerStateDestroyed);
-  SB_DCHECK(player_state_ != kSbPlayerStateError);
+  SB_DCHECK(!error_occurred_);
   SB_DCHECK(ticket_ != ticket);
 
-  SB_DLOG(INFO) << "Try to seek to timestamp "
-                << seek_to_pts / kSbMediaTimeSecond;
+  SB_DLOG(INFO) << "Try to seek to timestamp " << seek_to_time / kSbTimeSecond;
 
-  if (write_pending_sample_closure_.is_valid()) {
-    job_queue_->Remove(write_pending_sample_closure_);
-    write_pending_sample_closure_.reset();
+  if (write_pending_sample_job_token_.is_valid()) {
+    job_queue_->RemoveJobByToken(write_pending_sample_job_token_);
+    write_pending_sample_job_token_.ResetToInvalid();
   }
   pending_audio_buffer_ = NULL;
   pending_video_buffer_ = NULL;
 
-  if (!handler_->Seek(seek_to_pts, ticket)) {
-    UpdatePlayerState(kSbPlayerStateError);
+  if (!handler_->Seek(seek_to_time, ticket)) {
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+    UpdatePlayerError(kSbPlayerErrorDecode, "Failed seek.");
+#else   // SB_HAS(PLAYER_ERROR_MESSAGE)
+    UpdatePlayerError("Failed seek.");
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
     return;
   }
 
   ticket_ = ticket;
 
   UpdatePlayerState(kSbPlayerStatePrerolling);
-  UpdateDecoderState(kSbMediaTypeAudio, kSbPlayerDecoderStateNeedsData);
-  UpdateDecoderState(kSbMediaTypeVideo, kSbPlayerDecoderStateNeedsData);
+  if (audio_codec_ != kSbMediaAudioCodecNone) {
+    UpdateDecoderState(kSbMediaTypeAudio, kSbPlayerDecoderStateNeedsData);
+  }
+  if (video_codec_ != kSbMediaVideoCodecNone) {
+    UpdateDecoderState(kSbMediaTypeVideo, kSbPlayerDecoderStateNeedsData);
+  }
 }
 
 void PlayerWorker::DoWriteSample(
@@ -169,22 +237,31 @@ void PlayerWorker::DoWriteSample(
 
   if (player_state_ == kSbPlayerStateInitialized ||
       player_state_ == kSbPlayerStateEndOfStream ||
-      player_state_ == kSbPlayerStateDestroyed ||
-      player_state_ == kSbPlayerStateError) {
-    SB_LOG(ERROR) << "Try to write sample when |player_state_| is "
+      player_state_ == kSbPlayerStateDestroyed) {
+    SB_LOG(ERROR) << "Tried to write sample when |player_state_| is "
                   << player_state_;
+    return;
+  }
+  if (error_occurred_) {
+    SB_LOG(ERROR) << "Tried to write sample after error occurred.";
     return;
   }
 
   if (input_buffer->sample_type() == kSbMediaTypeAudio) {
+    SB_DCHECK(audio_codec_ != kSbMediaAudioCodecNone);
     SB_DCHECK(!pending_audio_buffer_);
   } else {
+    SB_DCHECK(video_codec_ != kSbMediaVideoCodecNone);
     SB_DCHECK(!pending_video_buffer_);
   }
   bool written;
   bool result = handler_->WriteSample(input_buffer, &written);
   if (!result) {
-    UpdatePlayerState(kSbPlayerStateError);
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+    UpdatePlayerError(kSbPlayerErrorDecode, "Failed to write sample.");
+#else   // SB_HAS(PLAYER_ERROR_MESSAGE)
+    UpdatePlayerError("Failed to write sample.");
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
     return;
   }
   if (written) {
@@ -196,24 +273,25 @@ void PlayerWorker::DoWriteSample(
     } else {
       pending_video_buffer_ = input_buffer;
     }
-    if (!write_pending_sample_closure_.is_valid()) {
-      write_pending_sample_closure_ =
-          Bind(&PlayerWorker::DoWritePendingSamples, this);
-      job_queue_->Schedule(write_pending_sample_closure_,
-                           kWritePendingSampleDelay);
+    if (!write_pending_sample_job_token_.is_valid()) {
+      write_pending_sample_job_token_ = job_queue_->Schedule(
+          std::bind(&PlayerWorker::DoWritePendingSamples, this),
+          kWritePendingSampleDelay);
     }
   }
 }
 
 void PlayerWorker::DoWritePendingSamples() {
   SB_DCHECK(job_queue_->BelongsToCurrentThread());
-  SB_DCHECK(write_pending_sample_closure_.is_valid());
-  write_pending_sample_closure_.reset();
+  SB_DCHECK(write_pending_sample_job_token_.is_valid());
+  write_pending_sample_job_token_.ResetToInvalid();
 
   if (pending_audio_buffer_) {
+    SB_DCHECK(audio_codec_ != kSbMediaAudioCodecNone);
     DoWriteSample(common::ResetAndReturn(&pending_audio_buffer_));
   }
   if (pending_video_buffer_) {
+    SB_DCHECK(video_codec_ != kSbMediaVideoCodecNone);
     DoWriteSample(common::ResetAndReturn(&pending_video_buffer_));
   }
 }
@@ -223,30 +301,42 @@ void PlayerWorker::DoWriteEndOfStream(SbMediaType sample_type) {
   SB_DCHECK(player_state_ != kSbPlayerStateDestroyed);
 
   if (player_state_ == kSbPlayerStateInitialized ||
-      player_state_ == kSbPlayerStateEndOfStream ||
-      player_state_ == kSbPlayerStateError) {
-    SB_LOG(ERROR) << "Try to write EOS when |player_state_| is "
+      player_state_ == kSbPlayerStateEndOfStream) {
+    SB_LOG(ERROR) << "Tried to write EOS when |player_state_| is "
                   << player_state_;
-    // Return true so the pipeline will continue running with the particular
-    // call ignored.
+    return;
+  }
+
+  if (error_occurred_) {
+    SB_LOG(ERROR) << "Tried to write EOS after error occurred.";
     return;
   }
 
   if (sample_type == kSbMediaTypeAudio) {
+    SB_DCHECK(audio_codec_ != kSbMediaAudioCodecNone);
     SB_DCHECK(!pending_audio_buffer_);
   } else {
+    SB_DCHECK(video_codec_ != kSbMediaVideoCodecNone);
     SB_DCHECK(!pending_video_buffer_);
   }
 
   if (!handler_->WriteEndOfStream(sample_type)) {
-    UpdatePlayerState(kSbPlayerStateError);
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+    UpdatePlayerError(kSbPlayerErrorDecode, "Failed to write end of stream.");
+#else   // SB_HAS(PLAYER_ERROR_MESSAGE)
+    UpdatePlayerError("Failed to write end of stream.");
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
   }
 }
 
 void PlayerWorker::DoSetBounds(Bounds bounds) {
   SB_DCHECK(job_queue_->BelongsToCurrentThread());
   if (!handler_->SetBounds(bounds)) {
-    UpdatePlayerState(kSbPlayerStateError);
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+    UpdatePlayerError(kSbPlayerErrorDecode, "Failed to set bounds");
+#else  // SB_HAS(PLAYER_ERROR_MESSAGE)
+    UpdatePlayerError("Failed to set bounds");
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
   }
 }
 
@@ -254,7 +344,11 @@ void PlayerWorker::DoSetPause(bool pause) {
   SB_DCHECK(job_queue_->BelongsToCurrentThread());
 
   if (!handler_->SetPause(pause)) {
-    UpdatePlayerState(kSbPlayerStateError);
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+    UpdatePlayerError(kSbPlayerErrorDecode, "Failed to set pause.");
+#else  // SB_HAS(PLAYER_ERROR_MESSAGE)
+    UpdatePlayerError("Failed to set pause.");
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
   }
 }
 
@@ -262,7 +356,11 @@ void PlayerWorker::DoSetPlaybackRate(double playback_rate) {
   SB_DCHECK(job_queue_->BelongsToCurrentThread());
 
   if (!handler_->SetPlaybackRate(playback_rate)) {
-    UpdatePlayerState(kSbPlayerStateError);
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+    UpdatePlayerError(kSbPlayerErrorDecode, "Failed to set playback rate.");
+#else   // SB_HAS(PLAYER_ERROR_MESSAGE)
+    UpdatePlayerError("Failed to set playback rate.");
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
   }
 }
 
@@ -275,7 +373,11 @@ void PlayerWorker::DoStop() {
   SB_DCHECK(job_queue_->BelongsToCurrentThread());
 
   handler_->Stop();
-  UpdatePlayerState(kSbPlayerStateDestroyed);
+  handler_.reset();
+
+  if (!error_occurred_) {
+    UpdatePlayerState(kSbPlayerStateDestroyed);
+  }
   job_queue_->StopSoon();
 }
 

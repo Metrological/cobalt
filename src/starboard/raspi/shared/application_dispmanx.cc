@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ namespace shared {
 using ::starboard::shared::dev_input::DevInput;
 
 namespace {
-const int kVideoLayer = -1;
+const int kVideoLayer = 0;
 }  // namespace
 
 SbWindow ApplicationDispmanx::CreateWindow(const SbWindowOptions* options) {
@@ -107,6 +107,7 @@ ApplicationDispmanx::PollNextSystemEvent() {
 ApplicationDispmanx::WaitForSystemEventWithTimeout(SbTime duration) {
   SB_DCHECK(input_);
   Event* event = input_->WaitForSystemEventWithTimeout(duration);
+  return event;
 }
 
 void ApplicationDispmanx::WakeSystemEventWait() {

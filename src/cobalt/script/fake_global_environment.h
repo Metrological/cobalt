@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,36 +25,37 @@ namespace script {
 
 class FakeGlobalEnvironment : public GlobalEnvironment {
  public:
-  void CreateGlobalObject() OVERRIDE {}
+  void CreateGlobalObject() override {}
   bool EvaluateScript(const scoped_refptr<SourceCode>& /*script_utf8*/,
-                      bool /*mute_errors*/,
-                      std::string* /*out_result*/) OVERRIDE {
+                      std::string* /*out_result*/) override {
     return false;
   }
   bool EvaluateScript(
       const scoped_refptr<SourceCode>& /*script_utf8*/,
-      const scoped_refptr<Wrappable>& /*owning_object*/, bool /*mute_errors*/,
+      const scoped_refptr<Wrappable>& /*owning_object*/,
       base::optional<ValueHandleHolder::Reference>* /*out_value_handle*/)
-      OVERRIDE {
+      override {
     return false;
   }
   // False positive lint error.
   std::vector<StackFrame> GetStackTrace(
-      int /*max_frames*/) OVERRIDE {  // NOLINT(readability/casting)
+      int /*max_frames*/) override {  // NOLINT(readability/casting)
     return std::vector<StackFrame>();
   }
   void PreventGarbageCollection(
-      const scoped_refptr<Wrappable>& /*wrappable*/) OVERRIDE {}
+      const scoped_refptr<Wrappable>& /*wrappable*/) override {}
   void AllowGarbageCollection(
-      const scoped_refptr<Wrappable>& /*wrappable*/) OVERRIDE {}
-  void DisableEval(const std::string& /*message*/) OVERRIDE {}
-  void EnableEval() OVERRIDE {}
-  void DisableJit() OVERRIDE {}
-  void SetReportEvalCallback(const base::Closure& /*report_eval*/) OVERRIDE {}
+      const scoped_refptr<Wrappable>& /*wrappable*/) override {}
+  void AddRoot(Traceable* /*traceable*/) override {}
+  void RemoveRoot(Traceable* /*traceable*/) override {}
+  void DisableEval(const std::string& /*message*/) override {}
+  void EnableEval() override {}
+  void DisableJit() override {}
+  void SetReportEvalCallback(const base::Closure& /*report_eval*/) override {}
   void SetReportErrorCallback(
-      const ReportErrorCallback& /*report_eval*/) OVERRIDE {}
+      const ReportErrorCallback& /*report_eval*/) override {}
   void Bind(const std::string& /*identifier*/,
-            const scoped_refptr<Wrappable>& /*impl*/) OVERRIDE {}
+            const scoped_refptr<Wrappable>& /*impl*/) override {}
   ScriptValueFactory* script_value_factory() { return NULL; }
 };
 

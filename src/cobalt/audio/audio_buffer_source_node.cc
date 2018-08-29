@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -92,60 +92,60 @@ void AudioBufferSourceNode::Stop(double when,
                              exception_state);
     return;
   }
-  state_ = kStoped;
+  state_ = kStopped;
 }
 
 scoped_ptr<ShellAudioBus> AudioBufferSourceNode::PassAudioBusFromSource(
-    int32 number_of_frames, SampleType sample_type) {
+    int32 number_of_frames, SampleType sample_type, bool* finished) {
+  DCHECK_GT(number_of_frames, 0);
+  DCHECK(finished);
+
   // This is called by Audio thread.
   audio_lock()->AssertLocked();
 
-  if (state_ != kStarted || !buffer_ || buffer_->length() == read_index_) {
+  *finished = false;
+
+  if (state_ == kNone || !buffer_) {
     return scoped_ptr<ShellAudioBus>();
   }
 
-  DCHECK_GT(number_of_frames, 0);
+  if (state_ == kStopped || buffer_->length() == read_index_) {
+    *finished = true;
+    return scoped_ptr<ShellAudioBus>();
+  }
+
+  DCHECK_EQ(state_, kStarted);
+
+  auto audio_bus = buffer_->audio_bus();
+  DCHECK_EQ(sample_type, audio_bus->sample_type());
+
   int32 frames_to_end = buffer_->length() - read_index_;
   number_of_frames = std::min(number_of_frames, frames_to_end);
 
-  size_t channels = static_cast<size_t>(buffer_->number_of_channels());
+  scoped_ptr<ShellAudioBus> result;
 
-  if (sample_type == kSampleTypeFloat32) {
-    std::vector<float*> audio_buffer(channels, NULL);
-    for (size_t i = 0; i < channels; ++i) {
-      scoped_refptr<dom::Float32Array> buffer_data =
-          buffer_->GetChannelData(static_cast<uint32>(i), NULL);
-      scoped_refptr<dom::Float32Array> sub_array = buffer_data->Subarray(
-          NULL, read_index_, read_index_ + number_of_frames);
-      audio_buffer[i] = sub_array->data();
-    }
+  if (sample_type == kSampleTypeInt16) {
+    result.reset(new media::ShellAudioBus(
+        audio_bus->channels(), number_of_frames,
+        reinterpret_cast<int16*>(audio_bus->interleaved_data()) +
+            read_index_ * audio_bus->channels()));
+  } else {
+    DCHECK_EQ(sample_type, kSampleTypeFloat32);
 
-    read_index_ += number_of_frames;
-
-    scoped_ptr<ShellAudioBus> audio_bus(
-        new ShellAudioBus(static_cast<size_t>(number_of_frames), audio_buffer));
-
-    return audio_bus.Pass();
-  } else if (sample_type == kSampleTypeInt16) {
-    std::vector<int16*> audio_buffer(channels, NULL);
-    for (size_t i = 0; i < channels; ++i) {
-      scoped_refptr<dom::Int16Array> buffer_data =
-          buffer_->GetChannelDataInt16(static_cast<uint32>(i), NULL);
-      scoped_refptr<dom::Int16Array> sub_array = buffer_data->Subarray(
-          NULL, read_index_, read_index_ + number_of_frames);
-      audio_buffer[i] = sub_array->data();
-    }
-
-    read_index_ += number_of_frames;
-
-    scoped_ptr<ShellAudioBus> audio_bus(
-        new ShellAudioBus(static_cast<size_t>(number_of_frames), audio_buffer));
-
-    return audio_bus.Pass();
+    result.reset(new media::ShellAudioBus(
+        audio_bus->channels(), number_of_frames,
+        reinterpret_cast<float*>(audio_bus->interleaved_data()) +
+            read_index_ * audio_bus->channels()));
   }
 
-  NOTREACHED();
-  return scoped_ptr<ShellAudioBus>();
+  read_index_ += number_of_frames;
+  return result.Pass();
+}
+
+void AudioBufferSourceNode::TraceMembers(script::Tracer* tracer) {
+  AudioNode::TraceMembers(tracer);
+
+  tracer->Trace(buffer_);
 }
 
 }  // namespace audio

@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,8 +39,6 @@ WEBPImageDecoder::WEBPImageDecoder(
   config_.options.no_fancy_upsampling = 1;
   // Don't use multi-threaded decoding.
   config_.options.use_threads = 0;
-  // Discard enhancement layer.
-  config_.options.no_enhancement = 1;
 }
 
 WEBPImageDecoder::~WEBPImageDecoder() {

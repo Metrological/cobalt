@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,6 +36,11 @@ int32_t GetPageCount(size_t byte_count) {
 int SbMemoryMapFlagsToMmapProtect(int sb_flags) {
   bool flag_set = false;
   int mmap_protect = 0;
+#if SB_API_VERSION >= 10
+  if (sb_flags == kSbMemoryMapProtectReserved) {
+    return PROT_NONE;
+  }
+#endif
   if (sb_flags & kSbMemoryMapProtectRead) {
     mmap_protect |= PROT_READ;
     flag_set = true;
@@ -70,6 +75,12 @@ void* SbPageMap(size_t size_bytes, int flags, const char* /*unused_name*/) {
 void* SbPageMapUntracked(size_t size_bytes,
                          int flags,
                          const char* /*unused_name*/) {
+#if SB_CAN(MAP_EXECUTABLE_MEMORY) && SB_API_VERSION >= 10
+  if (flags & kSbMemoryMapProtectExec) {
+    // Cobalt does not allow mapping executable memory directly.
+    return SB_MEMORY_MAP_FAILED;
+  }
+#endif
   int mmap_protect = SbMemoryMapFlagsToMmapProtect(flags);
   void* mem = mmap(0, size_bytes, mmap_protect, MAP_PRIVATE | MAP_ANON, -1, 0);
   return mem;
@@ -83,6 +94,13 @@ bool SbPageUnmap(void* ptr, size_t size_bytes) {
 bool SbPageUnmapUntracked(void* ptr, size_t size_bytes) {
   return munmap(ptr, size_bytes) == 0;
 }
+
+#if SB_API_VERSION >= 10
+bool SbPageProtect(void* virtual_address, int64_t size_bytes, int flags) {
+  int mmap_protect = SbMemoryMapFlagsToMmapProtect(flags);
+  return mprotect(virtual_address, size_bytes, mmap_protect) == 0;
+}
+#endif
 
 size_t SbPageGetTotalPhysicalMemoryBytes() {
   // Limit ourselves to remain similar to more constrained platforms.

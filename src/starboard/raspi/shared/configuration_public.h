@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 #define STARBOARD_RASPI_SHARED_CONFIGURATION_PUBLIC_H_
 
 // The API version implemented by this platform.
-#define SB_API_VERSION 6
+#define SB_API_VERSION SB_EXPERIMENTAL_API_VERSION
 
 // --- System Header Configuration -------------------------------------------
 
@@ -49,15 +49,6 @@
 // Whether the current platform provides the standard header float.h.
 #define SB_HAS_FLOAT_H 1
 
-// Whether the current platform has microphone supported.
-#define SB_HAS_MICROPHONE 0
-
-// Whether the current platform has speech recognizer.
-#define SB_HAS_SPEECH_RECOGNIZER 0
-
-// Whether the current platform has speech synthesis.
-#define SB_HAS_SPEECH_SYNTHESIS 0
-
 // Type detection for wchar_t.
 #if defined(__WCHAR_MAX__) && \
     (__WCHAR_MAX__ == 0x7fffffff || __WCHAR_MAX__ == 0xffffffff)
@@ -74,14 +65,6 @@
 #elif defined(__MIPSEL__)
 #define SB_IS_WCHAR_T_SIGNED 1
 #endif
-
-// --- Architecture Configuration --------------------------------------------
-
-// On the current version of Raspbian, real time thread scheduling seems to be
-// broken in that higher priority threads do not always have priority over lower
-// priority threads.  It looks like the thread created last will always have the
-// highest priority.
-#define SB_HAS_THREAD_PRIORITY_SUPPORT 1
 
 // --- Attribute Configuration -----------------------------------------------
 
@@ -179,6 +162,101 @@
 // The string form of SB_PATH_SEP_CHAR.
 #define SB_PATH_SEP_STRING ":"
 
+// --- Graphics Configuration ------------------------------------------------
+
+// Specifies whether this platform supports a performant accelerated blitter
+// API. The basic requirement is a scaled, clipped, alpha-blended blit.
+#define SB_HAS_BLITTER 0
+
+// Specifies the preferred byte order of color channels in a pixel. Refer to
+// starboard/configuration.h for the possible values. EGL/GLES platforms should
+// generally prefer a byte order of RGBA, regardless of endianness.
+#define SB_PREFERRED_RGBA_BYTE_ORDER SB_PREFERRED_RGBA_BYTE_ORDER_RGBA
+
+// Indicates whether or not the given platform supports bilinear filtering.
+// This can be checked to enable/disable renderer tests that verify that this is
+// working properly.
+#define SB_HAS_BILINEAR_FILTERING_SUPPORT 1
+
+// Indicates whether or not the given platform supports rendering of NV12
+// textures. These textures typically originate from video decoders.
+#define SB_HAS_NV12_TEXTURE_SUPPORT 1
+
+// Whether the current platform should frequently flip their display buffer.
+// If this is not required (e.g. SB_MUST_FREQUENTLY_FLIP_DISPLAY_BUFFER is set
+// to 0), then optimizations where the display buffer is not flipped if the
+// scene hasn't changed are enabled.
+#define SB_MUST_FREQUENTLY_FLIP_DISPLAY_BUFFER 0
+
+// --- I/O Configuration -----------------------------------------------------
+
+// Whether the current platform has microphone supported.
+#define SB_HAS_MICROPHONE 0
+
+// Whether the current platform implements the on screen keyboard interface.
+#define SB_HAS_ON_SCREEN_KEYBOARD 0
+
+// Whether the current platform has speech recognizer.
+#define SB_HAS_SPEECH_RECOGNIZER 0
+
+// Whether the current platform has speech synthesis.
+#define SB_HAS_SPEECH_SYNTHESIS 0
+
+// --- Media Configuration ---------------------------------------------------
+
+// Whether the current platform uses a media player that relies on a URL.
+#define SB_HAS_PLAYER_WITH_URL 0
+
+// The maximum audio bitrate the platform can decode.  The following value
+// equals to 5M bytes per seconds which is more than enough for compressed
+// audio.
+#define SB_MEDIA_MAX_AUDIO_BITRATE_IN_BITS_PER_SECOND (40 * 1024 * 1024)
+
+// The maximum video bitrate the platform can decode.  The following value
+// equals to 25M bytes per seconds which is more than enough for compressed
+// video.
+#define SB_MEDIA_MAX_VIDEO_BITRATE_IN_BITS_PER_SECOND (200 * 1024 * 1024)
+
+// Specifies whether this platform has webm/vp9 support.  This should be set to
+// non-zero on platforms with webm/vp9 support.
+#define SB_HAS_MEDIA_WEBM_VP9_SUPPORT 0
+
+// Specifies whether this platform updates audio frames asynchronously.  In such
+// case an extra parameter will be added to |SbAudioSinkConsumeFramesFunc| to
+// indicate the absolute time that the consumed audio frames are reported.
+// Check document for |SbAudioSinkConsumeFramesFunc| in audio_sink.h for more
+// details.
+#define SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING 0
+
+// Specifies the stack size for threads created inside media stack.  Set to 0 to
+// use the default thread stack size.  Set to non-zero to explicitly set the
+// stack size for media stack threads.
+#define SB_MEDIA_THREAD_STACK_SIZE 0U
+
+// --- Decoder-only Params ---
+
+// Specifies how media buffers must be aligned on this platform as some
+// decoders may have special requirement on the alignment of buffers being
+// decoded.
+#define SB_MEDIA_BUFFER_ALIGNMENT 128U
+
+// Specifies how video frame buffers must be aligned on this platform.
+#define SB_MEDIA_VIDEO_FRAME_ALIGNMENT 256U
+
+// The encoded video frames are compressed in different ways, their decoding
+// time can vary a lot.  Occasionally a single frame can take longer time to
+// decode than the average time per frame.  The player has to cache some frames
+// to account for such inconsistency.  The number of frames being cached are
+// controlled by the following two macros.
+//
+// Specify the number of video frames to be cached before the playback starts.
+// Note that set this value too large may increase the playback start delay.
+#define SB_MEDIA_MAXIMUM_VIDEO_PREROLL_FRAMES 4
+
+// Specify the number of video frames to be cached during playback.  A large
+// value leads to more stable fps but also causes the app to use more memory.
+#define SB_MEDIA_MAXIMUM_VIDEO_FRAMES 12
+
 // --- Memory Configuration --------------------------------------------------
 
 // The memory page size, which controls the size of chunks on memory that
@@ -214,7 +292,28 @@
 // Defines the path where memory debugging logs should be written to.
 #define SB_MEMORY_LOG_PATH "/tmp/starboard"
 
+// The Raspberry Pi does not apparently align fields in a heap-allocated struct
+// by over 16 bytes.
+#define SB_HAS_QUIRK_DOES_NOT_ALIGN_FIELDS_IN_HEAP_OVER_16_BYTES 1
+
+// The Raspberry Pi does not apparently align stack variables by over 16 bytes.
+#define SB_HAS_QUIRK_DOES_NOT_STACK_ALIGN_OVER_16_BYTES 1
+
+// --- Network Configuration -------------------------------------------------
+
+// Specifies whether this platform supports IPV6.
+#define SB_HAS_IPV6 1
+
+// Specifies whether this platform supports pipe.
+#define SB_HAS_PIPE 1
+
 // --- Thread Configuration --------------------------------------------------
+
+// On the current version of Raspbian, real time thread scheduling seems to be
+// broken in that higher priority threads do not always have priority over lower
+// priority threads.  It looks like the thread created last will always have the
+// highest priority.
+#define SB_HAS_THREAD_PRIORITY_SUPPORT 1
 
 // Defines the maximum number of simultaneous threads for this platform. Some
 // platforms require sharing thread handles with other kinds of system handles,
@@ -225,86 +324,13 @@
 #define SB_MAX_THREAD_LOCAL_KEYS 512
 
 // The maximum length of the name for a thread, including the NULL-terminator.
-#define SB_MAX_THREAD_NAME_LENGTH 16;
+#define SB_MAX_THREAD_NAME_LENGTH 16
 
-// --- Graphics Configuration ------------------------------------------------
+// --- Timing API ------------------------------------------------------------
 
-// Specifies whether this platform supports a performant accelerated blitter
-// API. The basic requirement is a scaled, clipped, alpha-blended blit.
-#define SB_HAS_BLITTER 0
-
-// Specifies the preferred byte order of color channels in a pixel. Refer to
-// starboard/configuration.h for the possible values. EGL/GLES platforms should
-// generally prefer a byte order of RGBA, regardless of endianness.
-#define SB_PREFERRED_RGBA_BYTE_ORDER SB_PREFERRED_RGBA_BYTE_ORDER_RGBA
-
-// Indicates whether or not the given platform supports bilinear filtering.
-// This can be checked to enable/disable renderer tests that verify that this is
-// working properly.
-#define SB_HAS_BILINEAR_FILTERING_SUPPORT 1
-
-// Indicates whether or not the given platform supports rendering of NV12
-// textures. These textures typically originate from video decoders.
-#define SB_HAS_NV12_TEXTURE_SUPPORT 1
-
-// Whether the current platform should frequently flip their display buffer.
-// If this is not required (e.g. SB_MUST_FREQUENTLY_FLIP_DISPLAY_BUFFER is set
-// to 0), then optimizations where the display buffer is not flipped if the
-// scene hasn't changed are enabled.
-#define SB_MUST_FREQUENTLY_FLIP_DISPLAY_BUFFER 0
-
-// --- Media Configuration ---------------------------------------------------
-
-// The maximum audio bitrate the platform can decode.  The following value
-// equals to 5M bytes per seconds which is more than enough for compressed
-// audio.
-#define SB_MEDIA_MAX_AUDIO_BITRATE_IN_BITS_PER_SECOND (40 * 1024 * 1024)
-
-// The maximum video bitrate the platform can decode.  The following value
-// equals to 25M bytes per seconds which is more than enough for compressed
-// video.
-#define SB_MEDIA_MAX_VIDEO_BITRATE_IN_BITS_PER_SECOND (200 * 1024 * 1024)
-
-// Specifies whether this platform has webm/vp9 support.  This should be set to
-// non-zero on platforms with webm/vp9 support.
-#define SB_HAS_MEDIA_WEBM_VP9_SUPPORT 0
-
-// Specifies the stack size for threads created inside media stack.  Set to 0 to
-// use the default thread stack size.  Set to non-zero to explicitly set the
-// stack size for media stack threads.
-#define SB_MEDIA_THREAD_STACK_SIZE 0U
-
-// --- Decoder-only Params ---
-
-// Specifies how media buffers must be aligned on this platform as some
-// decoders may have special requirement on the alignment of buffers being
-// decoded.
-#define SB_MEDIA_BUFFER_ALIGNMENT 128U
-
-// Specifies how video frame buffers must be aligned on this platform.
-#define SB_MEDIA_VIDEO_FRAME_ALIGNMENT 256U
-
-// The encoded video frames are compressed in different ways, their decoding
-// time can vary a lot.  Occasionally a single frame can take longer time to
-// decode than the average time per frame.  The player has to cache some frames
-// to account for such inconsistency.  The number of frames being cached are
-// controlled by the following two macros.
-//
-// Specify the number of video frames to be cached before the playback starts.
-// Note that set this value too large may increase the playback start delay.
-#define SB_MEDIA_MAXIMUM_VIDEO_PREROLL_FRAMES 4
-
-// Specify the number of video frames to be cached during playback.  A large
-// value leads to more stable fps but also causes the app to use more memory.
-#define SB_MEDIA_MAXIMUM_VIDEO_FRAMES 12
-
-// --- Network Configuration -------------------------------------------------
-
-// Specifies whether this platform supports IPV6.
-#define SB_HAS_IPV6 1
-
-// Specifies whether this platform supports pipe.
-#define SB_HAS_PIPE 1
+// Whether this platform has an API to retrieve how long the current thread
+// has spent in the executing state.
+#define SB_HAS_TIME_THREAD_NOW 1
 
 // --- Tuneable Parameters ---------------------------------------------------
 
@@ -326,19 +352,6 @@
 
 // The maximum number of users that can be signed in at the same time.
 #define SB_USER_MAX_SIGNED_IN 1
-
-// The Raspberry Pi does not apparently align fields in a heap-allocated struct
-// by over 16 bytes.
-#define SB_HAS_QUIRK_DOES_NOT_ALIGN_FIELDS_IN_HEAP_OVER_16_BYTES 1
-
-// The Raspberry Pi does not apparently align stack variables by over 16 bytes.
-#define SB_HAS_QUIRK_DOES_NOT_STACK_ALIGN_OVER_16_BYTES 1
-
-// --- Timing API ------------------------------------------------------------
-
-// Whether this platform has an API to retrieve how long the current thread
-// has spent in the executing state.
-#define SB_HAS_TIME_THREAD_NOW 1
 
 // --- Platform Specific Audits ----------------------------------------------
 

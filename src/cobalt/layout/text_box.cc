@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -568,7 +568,7 @@ int32 TextBox::GetWrapPosition(WrapAtPolicy wrap_at_policy,
       Paragraph::GetBreakPolicyFromWrapOpportunityPolicy(
           wrap_opportunity_policy, style_allows_break_word);
 
-  int32 wrap_position;
+  int32 wrap_position = -1;
   switch (wrap_at_policy) {
     case kWrapAtPolicyBefore:
       // Wrapping before the box is only permitted when the line's existence is
@@ -633,9 +633,6 @@ int32 TextBox::GetWrapPosition(WrapAtPolicy wrap_at_policy,
           paragraph_->GetNextBreakPosition(search_start_position, break_policy);
       break;
     }
-    default:
-      NOTREACHED();
-      wrap_position = -1;
   }
   return wrap_position;
 }

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -89,14 +89,14 @@ class Location : public script::Wrappable {
   const GURL& url() const { return url_utils_.url(); }
   void set_url(const GURL& url) { url_utils_.set_url(url); }
 
-  const loader::Origin& OriginObject() const {
-    return url_utils_.OriginObject();
+  loader::Origin GetOriginAsObject() const {
+    return url_utils_.GetOriginAsObject();
   }
 
   DEFINE_WRAPPABLE_TYPE(Location);
 
  private:
-  ~Location() OVERRIDE {}
+  ~Location() override {}
 
   URLUtils url_utils_;
   base::Closure hashchange_callback_;

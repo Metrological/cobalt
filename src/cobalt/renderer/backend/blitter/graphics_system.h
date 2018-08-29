@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,12 +31,12 @@ namespace backend {
 class GraphicsSystemBlitter : public GraphicsSystem {
  public:
   GraphicsSystemBlitter();
-  ~GraphicsSystemBlitter() OVERRIDE;
+  ~GraphicsSystemBlitter() override;
 
   scoped_ptr<Display> CreateDisplay(
-      system_window::SystemWindow* system_window) OVERRIDE;
+      system_window::SystemWindow* system_window) override;
 
-  scoped_ptr<GraphicsContext> CreateGraphicsContext() OVERRIDE;
+  scoped_ptr<GraphicsContext> CreateGraphicsContext() override;
 
   SbBlitterDevice GetSbBlitterDevice() { return device_; }
 

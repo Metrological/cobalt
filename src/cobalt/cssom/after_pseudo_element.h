@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,13 +35,13 @@ class AfterPseudoElement : public PseudoElement {
  public:
   AfterPseudoElement()
       : PseudoElement(base::Tokens::after_pseudo_element_selector()) {}
-  ~AfterPseudoElement() OVERRIDE {}
+  ~AfterPseudoElement() override {}
 
   // From Selector.
-  void Accept(SelectorVisitor* visitor) OVERRIDE;
+  void Accept(SelectorVisitor* visitor) override;
 
   // From PseudoElement.
-  AfterPseudoElement* AsAfterPseudoElement() OVERRIDE { return this; }
+  AfterPseudoElement* AsAfterPseudoElement() override { return this; }
 
  private:
   DISALLOW_COPY_AND_ASSIGN(AfterPseudoElement);

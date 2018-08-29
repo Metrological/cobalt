@@ -83,6 +83,7 @@ class BASE_EXPORT MessagePumpIOStarboard : public MessagePump {
     SbSocket Release();
 
     int interests() const { return interests_; }
+    void set_interests(int interests) { interests_ = interests; }
 
     void set_pump(MessagePumpIOStarboard* pump) { pump_ = pump; }
     MessagePumpIOStarboard* pump() const { return pump_; }
@@ -132,10 +133,10 @@ class BASE_EXPORT MessagePumpIOStarboard : public MessagePump {
   void RemoveIOObserver(IOObserver* obs);
 
   // MessagePump methods:
-  virtual void Run(Delegate* delegate) OVERRIDE;
-  virtual void Quit() OVERRIDE;
-  virtual void ScheduleWork() OVERRIDE;
-  virtual void ScheduleDelayedWork(const TimeTicks& delayed_work_time) OVERRIDE;
+  virtual void Run(Delegate* delegate) override;
+  virtual void Quit() override;
+  virtual void ScheduleWork() override;
+  virtual void ScheduleDelayedWork(const TimeTicks& delayed_work_time) override;
 
  protected:
   virtual ~MessagePumpIOStarboard();

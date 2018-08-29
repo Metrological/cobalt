@@ -11,7 +11,6 @@
 
 #include "base/bind.h"
 #include "base/bind_helpers.h"
-#include "base/callback.h"
 #include "base/debug/trace_event.h"
 #include "base/float_util.h"
 #include "base/message_loop_proxy.h"
@@ -102,13 +101,13 @@ base::TimeDelta ConvertSecondsToTimestamp(float seconds) {
 // TODO(acolwell): Investigate whether the key_system & session_id parameters
 // are really necessary.
 typedef base::Callback<void(const std::string&, const std::string&,
-                            scoped_array<uint8>, int)> OnNeedKeyCB;
+                            scoped_array<uint8>, int)>
+    OnNeedKeyCB;
 
 WebMediaPlayerImpl::WebMediaPlayerImpl(
     PipelineWindow window, WebMediaPlayerClient* client,
     WebMediaPlayerDelegate* delegate,
-    DecoderBuffer::Allocator* buffer_allocator,
-    const scoped_refptr<ShellVideoFrameProvider>& video_frame_provider,
+    DecoderBuffer::Allocator* buffer_allocator, bool allow_resume_after_suspend,
     const scoped_refptr<MediaLog>& media_log)
     : pipeline_thread_("media_pipeline"),
       network_state_(WebMediaPlayer::kNetworkStateEmpty),
@@ -117,7 +116,7 @@ WebMediaPlayerImpl::WebMediaPlayerImpl(
       client_(client),
       delegate_(delegate),
       buffer_allocator_(buffer_allocator),
-      video_frame_provider_(video_frame_provider),
+      allow_resume_after_suspend_(allow_resume_after_suspend),
       proxy_(new WebMediaPlayerProxy(main_loop_->message_loop_proxy(), this)),
       media_log_(media_log),
       incremented_externally_allocated_memory_(false),
@@ -126,6 +125,8 @@ WebMediaPlayerImpl::WebMediaPlayerImpl(
       suppress_destruction_errors_(false),
       drm_system_(NULL) {
   TRACE_EVENT0("cobalt::media", "WebMediaPlayerImpl::WebMediaPlayerImpl");
+
+  video_frame_provider_ = new VideoFrameProvider();
 
   DLOG_IF(ERROR, s_instance)
       << "More than one WebMediaPlayerImpl has been created.";
@@ -137,7 +138,8 @@ WebMediaPlayerImpl::WebMediaPlayerImpl(
 
   pipeline_thread_.Start();
   pipeline_ = Pipeline::Create(window, pipeline_thread_.message_loop_proxy(),
-                               media_log_);
+                               allow_resume_after_suspend_, media_log_,
+                               video_frame_provider_);
 
   // Also we want to be notified of |main_loop_| destruction.
   main_loop_->AddDestructionObserver(this);
@@ -461,6 +463,19 @@ float WebMediaPlayerImpl::GetDuration() const {
   return static_cast<float>(duration.InSecondsF());
 }
 
+#if SB_HAS(PLAYER_WITH_URL)
+base::Time WebMediaPlayerImpl::GetStartDate() const {
+  DCHECK_EQ(main_loop_, MessageLoop::current());
+
+  if (ready_state_ == WebMediaPlayer::kReadyStateHaveNothing)
+    return base::Time();
+
+  base::TimeDelta start_date = pipeline_->GetMediaStartDate();
+
+  return base::Time::FromSbTime(start_date.InMicroseconds());
+}
+#endif  // SB_HAS(PLAYER_WITH(URL)
+
 float WebMediaPlayerImpl::GetCurrentTime() const {
   DCHECK_EQ(main_loop_, MessageLoop::current());
   if (state_.paused) return static_cast<float>(state_.paused_time.InSecondsF());
@@ -549,8 +564,7 @@ unsigned WebMediaPlayerImpl::GetVideoDecodedByteCount() const {
   return stats.video_bytes_decoded;
 }
 
-scoped_refptr<ShellVideoFrameProvider>
-WebMediaPlayerImpl::GetVideoFrameProvider() {
+scoped_refptr<VideoFrameProvider> WebMediaPlayerImpl::GetVideoFrameProvider() {
   return video_frame_provider_;
 }
 
@@ -590,14 +604,6 @@ void WebMediaPlayerImpl::SetDrmSystemReadyCB(
   }
 }
 
-#if COBALT_MEDIA_ENABLE_VIDEO_DUMPER
-void WebMediaPlayerImpl::SetEMEInitDataReadyCB(
-    const EMEInitDataReadyCB& eme_init_data_ready_cb) {
-  DCHECK(!eme_init_data_ready_cb.is_null());
-  eme_init_data_ready_cb_ = eme_init_data_ready_cb;
-}
-#endif  // COBALT_MEDIA_ENABLE_VIDEO_DUMPER
-
 void WebMediaPlayerImpl::OnPipelineSeek(PipelineStatus status) {
   DCHECK_EQ(main_loop_, MessageLoop::current());
   state_.starting = false;
@@ -609,7 +615,7 @@ void WebMediaPlayerImpl::OnPipelineSeek(PipelineStatus status) {
   }
 
   if (status != PIPELINE_OK) {
-    OnPipelineError(status);
+    OnPipelineError(status, "Failed pipeline seek.");
     return;
   }
 
@@ -623,7 +629,7 @@ void WebMediaPlayerImpl::OnPipelineSeek(PipelineStatus status) {
 void WebMediaPlayerImpl::OnPipelineEnded(PipelineStatus status) {
   DCHECK_EQ(main_loop_, MessageLoop::current());
   if (status != PIPELINE_OK) {
-    OnPipelineError(status);
+    OnPipelineError(status, "Failed pipeline end.");
     return;
   }
 
@@ -631,7 +637,8 @@ void WebMediaPlayerImpl::OnPipelineEnded(PipelineStatus status) {
   GetClient()->TimeChanged(eos_played);
 }
 
-void WebMediaPlayerImpl::OnPipelineError(PipelineStatus error) {
+void WebMediaPlayerImpl::OnPipelineError(PipelineStatus error,
+                                         const std::string& message) {
   DCHECK_EQ(main_loop_, MessageLoop::current());
 
   if (suppress_destruction_errors_) return;
@@ -641,42 +648,96 @@ void WebMediaPlayerImpl::OnPipelineError(PipelineStatus error) {
   if (ready_state_ == WebMediaPlayer::kReadyStateHaveNothing) {
     // Any error that occurs before reaching ReadyStateHaveMetadata should
     // be considered a format error.
-    SetNetworkState(WebMediaPlayer::kNetworkStateFormatError);
+    SetNetworkError(WebMediaPlayer::kNetworkStateFormatError,
+                    "Ready state have nothing.");
     return;
   }
 
+  std::string default_message;
   switch (error) {
     case PIPELINE_OK:
       NOTREACHED() << "PIPELINE_OK isn't an error!";
       break;
 
     case PIPELINE_ERROR_NETWORK:
+      SetNetworkError(WebMediaPlayer::kNetworkStateNetworkError,
+                      message.empty() ? "Pipeline network error." : message);
+      break;
     case PIPELINE_ERROR_READ:
+      SetNetworkError(WebMediaPlayer::kNetworkStateNetworkError,
+                      message.empty() ? "Pipeline read error." : message);
+      break;
     case CHUNK_DEMUXER_ERROR_EOS_STATUS_NETWORK_ERROR:
-      SetNetworkState(WebMediaPlayer::kNetworkStateNetworkError);
+      SetNetworkError(
+          WebMediaPlayer::kNetworkStateNetworkError,
+          message.empty() ? "Chunk demuxer eos network error." : message);
       break;
 
     // TODO(vrk): Because OnPipelineInitialize() directly reports the
     // NetworkStateFormatError instead of calling OnPipelineError(), I believe
     // this block can be deleted. Should look into it! (crbug.com/126070)
     case PIPELINE_ERROR_INITIALIZATION_FAILED:
+      SetNetworkError(
+          WebMediaPlayer::kNetworkStateFormatError,
+          message.empty() ? "Pipeline initialization failed." : message);
+      break;
     case PIPELINE_ERROR_COULD_NOT_RENDER:
+      SetNetworkError(WebMediaPlayer::kNetworkStateFormatError,
+                      message.empty() ? "Pipeline could not render." : message);
+      break;
     case PIPELINE_ERROR_EXTERNAL_RENDERER_FAILED:
+      SetNetworkError(
+          WebMediaPlayer::kNetworkStateFormatError,
+          message.empty() ? "Pipeline extenrnal renderer failed." : message);
+      break;
     case DEMUXER_ERROR_COULD_NOT_OPEN:
+      SetNetworkError(WebMediaPlayer::kNetworkStateFormatError,
+                      message.empty() ? "Demuxer could not open." : message);
+      break;
     case DEMUXER_ERROR_COULD_NOT_PARSE:
+      SetNetworkError(WebMediaPlayer::kNetworkStateFormatError,
+                      message.empty() ? "Demuxer could not parse." : message);
+      break;
     case DEMUXER_ERROR_NO_SUPPORTED_STREAMS:
+      SetNetworkError(
+          WebMediaPlayer::kNetworkStateFormatError,
+          message.empty() ? "Demuxer no supported streams." : message);
+      break;
     case DECODER_ERROR_NOT_SUPPORTED:
-      SetNetworkState(WebMediaPlayer::kNetworkStateFormatError);
+      SetNetworkError(WebMediaPlayer::kNetworkStateFormatError,
+                      message.empty() ? "Decoder not supported." : message);
       break;
 
     case PIPELINE_ERROR_DECODE:
+      SetNetworkError(WebMediaPlayer::kNetworkStateDecodeError,
+                      message.empty() ? "Pipeline decode error." : message);
+      break;
     case PIPELINE_ERROR_ABORT:
+      SetNetworkError(WebMediaPlayer::kNetworkStateDecodeError,
+                      message.empty() ? "Pipeline abort." : message);
+      break;
     case PIPELINE_ERROR_INVALID_STATE:
+      SetNetworkError(WebMediaPlayer::kNetworkStateDecodeError,
+                      message.empty() ? "Pipeline invalid state." : message);
+      break;
     case CHUNK_DEMUXER_ERROR_APPEND_FAILED:
+      SetNetworkError(
+          WebMediaPlayer::kNetworkStateDecodeError,
+          message.empty() ? "Chunk demuxer append failed." : message);
+      break;
     case CHUNK_DEMUXER_ERROR_EOS_STATUS_DECODE_ERROR:
+      SetNetworkError(
+          WebMediaPlayer::kNetworkStateDecodeError,
+          message.empty() ? "Chunk demuxer eos decode error." : message);
+      break;
     case AUDIO_RENDERER_ERROR:
+      SetNetworkError(WebMediaPlayer::kNetworkStateDecodeError,
+                      message.empty() ? "Audio renderer error." : message);
+      break;
     case AUDIO_RENDERER_ERROR_SPLICE_FAILED:
-      SetNetworkState(WebMediaPlayer::kNetworkStateDecodeError);
+      SetNetworkError(
+          WebMediaPlayer::kNetworkStateDecodeError,
+          message.empty() ? "Audio renderer splice failed." : message);
       break;
   }
 }
@@ -729,9 +790,6 @@ void WebMediaPlayerImpl::StartPipeline(const GURL& url) {
   pipeline_->SetDecodeToTextureOutputMode(client_->PreferDecodeToTexture());
   pipeline_->Start(
       NULL, BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::SetDrmSystemReadyCB),
-#if COBALT_MEDIA_ENABLE_VIDEO_DUMPER
-      BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::SetEMEInitDataReadyCB),
-#endif  // COBALT_MEDIA_ENABLE_VIDEO_DUMPER
       BIND_TO_RENDER_LOOP(
           &WebMediaPlayerImpl::OnEncryptedMediaInitDataEncountered),
       url.spec(), BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnPipelineEnded),
@@ -751,9 +809,6 @@ void WebMediaPlayerImpl::StartPipeline(Demuxer* demuxer) {
   pipeline_->SetDecodeToTextureOutputMode(client_->PreferDecodeToTexture());
   pipeline_->Start(
       demuxer, BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::SetDrmSystemReadyCB),
-#if COBALT_MEDIA_ENABLE_VIDEO_DUMPER
-      BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::SetEMEInitDataReadyCB),
-#endif  // COBALT_MEDIA_ENABLE_VIDEO_DUMPER
       // SB_HAS(PLAYER_WITH_URL)
       BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnPipelineEnded),
       BIND_TO_RENDER_LOOP(&WebMediaPlayerImpl::OnPipelineError),
@@ -771,6 +826,15 @@ void WebMediaPlayerImpl::SetNetworkState(WebMediaPlayer::NetworkState state) {
   network_state_ = state;
   // Always notify to ensure client has the latest value.
   GetClient()->NetworkStateChanged();
+}
+
+void WebMediaPlayerImpl::SetNetworkError(WebMediaPlayer::NetworkState state,
+                                         const std::string& message) {
+  DCHECK_EQ(main_loop_, MessageLoop::current());
+  DVLOG(1) << "SetNetworkError: " << state << " message: " << message;
+  network_state_ = state;
+  // Always notify to ensure client has the latest value.
+  GetClient()->NetworkError(message);
 }
 
 void WebMediaPlayerImpl::SetReadyState(WebMediaPlayer::ReadyState state) {
@@ -844,11 +908,6 @@ void WebMediaPlayerImpl::OnEncryptedMediaInitDataEncountered(
 
   GetClient()->EncryptedMediaInitDataEncountered(init_data_type, &init_data[0],
                                                  init_data.size());
-
-#if COBALT_MEDIA_ENABLE_VIDEO_DUMPER
-  DCHECK(!eme_init_data_ready_cb_.is_null());
-  eme_init_data_ready_cb_.Run(init_data);
-#endif  // COBALT_MEDIA_ENABLE_VIDEO_DUMPER
 }
 
 WebMediaPlayerClient* WebMediaPlayerImpl::GetClient() {

@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2017 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 # limitations under the License.
 """Client to launch executables via the new launcher logic."""
 
+import signal
 import sys
 
 import _env  # pylint: disable=unused-import
@@ -39,6 +40,15 @@ def main():
       args.platform, args.target_name, args.config,
       device_id=args.device_id, target_params=target_params,
       out_directory=args.out_directory)
+
+  def Abort(signum, frame):
+    del signum, frame  # Unused.
+    sys.stderr.write("Killing thread\n")
+    launcher.Kill()
+    sys.exit(1)
+
+  signal.signal(signal.SIGINT, Abort)
+
   return launcher.Run()
 
 if __name__ == "__main__":

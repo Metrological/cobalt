@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,14 +15,16 @@
 #ifndef STARBOARD_SHARED_LIBVPX_VPX_VIDEO_DECODER_H_
 #define STARBOARD_SHARED_LIBVPX_VPX_VIDEO_DECODER_H_
 
+#include <string>
+
 #include "starboard/common/ref_counted.h"
 #include "starboard/log.h"
 #include "starboard/media.h"
 #include "starboard/queue.h"
 #include "starboard/shared/internal_only.h"
+#include "starboard/shared/starboard/player/filter/cpu_video_frame.h"
 #include "starboard/shared/starboard/player/filter/video_decoder_internal.h"
 #include "starboard/shared/starboard/player/input_buffer_internal.h"
-#include "starboard/shared/starboard/player/video_frame_internal.h"
 #include "starboard/thread.h"
 
 #define VPX_CODEC_DISABLE_COMPAT 1
@@ -33,24 +35,28 @@ namespace starboard {
 namespace shared {
 namespace vpx {
 
-class VideoDecoder : public starboard::player::filter::HostedVideoDecoder {
+class VideoDecoder : public starboard::player::filter::VideoDecoder {
  public:
-  typedef starboard::player::InputBuffer InputBuffer;
-  typedef starboard::player::VideoFrame VideoFrame;
-
   VideoDecoder(SbMediaVideoCodec video_codec,
                SbPlayerOutputMode output_mode,
                SbDecodeTargetGraphicsContextProvider*
                    decode_target_graphics_context_provider);
-  ~VideoDecoder() SB_OVERRIDE;
+  ~VideoDecoder() override;
 
-  void SetHost(Host* host) SB_OVERRIDE;
+  void Initialize(const DecoderStatusCB& decoder_status_cb,
+                  const ErrorCB& error_cb) override;
+  size_t GetPrerollFrameCount() const override { return 8; }
+  SbTime GetPrerollTimeout() const override { return kSbTimeMax; }
+
   void WriteInputBuffer(const scoped_refptr<InputBuffer>& input_buffer)
-      SB_OVERRIDE;
-  void WriteEndOfStream() SB_OVERRIDE;
-  void Reset() SB_OVERRIDE;
+      override;
+  void WriteEndOfStream() override;
+  void Reset() override;
 
  private:
+  typedef ::starboard::shared::starboard::player::filter::CpuVideoFrame
+      CpuVideoFrame;
+
   enum EventType {
     kInvalid,
     kReset,
@@ -74,7 +80,7 @@ class VideoDecoder : public starboard::player::filter::HostedVideoDecoder {
   static void* ThreadEntryPoint(void* context);
   void DecoderThreadFunc();
 
-  void ReportError();
+  void ReportError(const std::string& error_message);
 
   // The following three functions are only called on the decoder thread except
   // that TeardownCodec() can also be called on other threads when the decoder
@@ -83,13 +89,14 @@ class VideoDecoder : public starboard::player::filter::HostedVideoDecoder {
   void TeardownCodec();
   void DecodeOneBuffer(const scoped_refptr<InputBuffer>& input_buffer);
 
-  SbDecodeTarget GetCurrentDecodeTarget() SB_OVERRIDE;
+  SbDecodeTarget GetCurrentDecodeTarget() override;
 
-  bool UpdateDecodeTarget(const scoped_refptr<VideoFrame>& frame);
+  bool UpdateDecodeTarget(const scoped_refptr<CpuVideoFrame>& frame);
 
-  // |host_| will be initialized inside SetHost() and will not be changed during
-  // the life time of this class.
-  Host* host_;
+  // The following callbacks will be initialized in Initialize() and won't be
+  // changed during the life time of this class.
+  DecoderStatusCB decoder_status_cb_;
+  ErrorCB error_cb_;
 
   Queue<Event> queue_;
 

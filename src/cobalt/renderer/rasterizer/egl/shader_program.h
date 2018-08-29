@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -70,9 +70,7 @@ class ShaderProgram : public ShaderProgramBase {
   ShaderProgram() {
     Create(&vertex_shader_, &fragment_shader_);
   }
-  ~ShaderProgram() OVERRIDE {
-    Destroy(&vertex_shader_, &fragment_shader_);
-  }
+  ~ShaderProgram() override { Destroy(&vertex_shader_, &fragment_shader_); }
 
   VertexShader vertex_shader_;
   FragmentShader fragment_shader_;

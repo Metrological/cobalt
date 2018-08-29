@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,8 +16,7 @@
 
 enum MediaKeyMessageType {
   "license-request",
-  // TODO: Implement other message types.
-  // "license-renewal",
-  // "license-release",
-  // "individualization-request"
+  "license-renewal",
+  "license-release",
+  "individualization-request"
 };

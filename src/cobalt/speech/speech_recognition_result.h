@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -51,6 +51,7 @@ class SpeechRecognitionResult : public script::Wrappable {
   bool is_final() const { return final_; }
 
   DEFINE_WRAPPABLE_TYPE(SpeechRecognitionResult);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   SpeechRecognitionAlternatives alternatives_;

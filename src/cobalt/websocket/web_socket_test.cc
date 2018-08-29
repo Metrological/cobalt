@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ class FakeSettings : public dom::DOMSettings {
         base_("https://example.com") {
     this->set_network_module(NULL);
   }
-  const GURL& base_url() const OVERRIDE { return base_; }
+  const GURL& base_url() const override { return base_; }
 
   // public members, so that they're easier for testing.
   GURL base_;

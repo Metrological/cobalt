@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ class CSSGroupingRule : public CSSRule {
   // Custom, not in any spec.
   //
   // From CSSRule.
-  void Accept(CSSRuleVisitor* visitor) OVERRIDE {
+  void Accept(CSSRuleVisitor* visitor) override {
     UNREFERENCED_PARAMETER(visitor);
     NOTREACHED();
   }
@@ -61,7 +61,7 @@ class CSSGroupingRule : public CSSRule {
   DEFINE_WRAPPABLE_TYPE(CSSGroupingRule);
 
  protected:
-  virtual ~CSSGroupingRule() OVERRIDE;
+  ~CSSGroupingRule() override;
 
  private:
   scoped_refptr<CSSRuleList> css_rule_list_;

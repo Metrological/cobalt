@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -46,11 +46,11 @@ class FontStyleValue : public PropertyValue {
   static const scoped_refptr<FontStyleValue>& GetNormal();
   static const scoped_refptr<FontStyleValue>& GetOblique();
 
-  void Accept(PropertyValueVisitor* visitor) OVERRIDE;
+  void Accept(PropertyValueVisitor* visitor) override;
 
   Value value() const { return value_; }
 
-  std::string ToString() const OVERRIDE;
+  std::string ToString() const override;
 
   bool operator==(const FontStyleValue& other) const {
     return value_ == other.value_;
@@ -63,7 +63,7 @@ class FontStyleValue : public PropertyValue {
 
  private:
   explicit FontStyleValue(Value value) : value_(value) {}
-  ~FontStyleValue() OVERRIDE {}
+  ~FontStyleValue() override {}
 
   const Value value_;
 

@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ class MyNewInterface : public script::Wrappable {
  private:
   // Since script::Wrappable inherits from base::RefCounted<>, we make the
   // destructor private.
-  ~MyNewInterface() OVERRIDE;
+  ~MyNewInterface() override;
 
   std::string foo_;
 

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 
 #include "base/callback.h"
 #include "base/hash_tables.h"
+#include "base/memory/scoped_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/optional.h"
 #include "base/synchronization/lock.h"
@@ -26,9 +27,10 @@
 #include "cobalt/audio/audio_buffer.h"
 #include "cobalt/audio/audio_buffer_source_node.h"
 #include "cobalt/audio/audio_destination_node.h"
-#include "cobalt/dom/array_buffer.h"
+#include "cobalt/audio/audio_helpers.h"
 #include "cobalt/dom/dom_exception.h"
 #include "cobalt/dom/event_target.h"
+#include "cobalt/script/array_buffer.h"
 #include "cobalt/script/callback_function.h"
 #include "cobalt/script/environment_settings.h"
 #include "cobalt/script/script_value.h"
@@ -116,10 +118,10 @@ class AudioContext : public dom::EventTarget {
   // attribute after setting the responseType to "arraybuffer". Audio file data
   // can be in any of the formats supported by the audio element.
   void DecodeAudioData(script::EnvironmentSettings* settings,
-                       const scoped_refptr<dom::ArrayBuffer>& audio_data,
+                       const script::Handle<script::ArrayBuffer>& audio_data,
                        const DecodeSuccessCallbackArg& success_handler);
   void DecodeAudioData(script::EnvironmentSettings* settings,
-                       const scoped_refptr<dom::ArrayBuffer>& audio_data,
+                       const script::Handle<script::ArrayBuffer>& audio_data,
                        const DecodeSuccessCallbackArg& success_handler,
                        const DecodeErrorCallbackArg& error_handler);
 
@@ -129,30 +131,31 @@ class AudioContext : public dom::EventTarget {
   const scoped_refptr<AudioLock>& audio_lock() const { return audio_lock_; }
 
   DEFINE_WRAPPABLE_TYPE(AudioContext);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   struct DecodeCallbackInfo {
     DecodeCallbackInfo(script::EnvironmentSettings* settings,
-                       const scoped_refptr<dom::ArrayBuffer>& data,
+                       const script::Handle<script::ArrayBuffer>& data_handle,
                        AudioContext* const audio_context,
                        const DecodeSuccessCallbackArg& success_handler)
         : env_settings(settings),
-          audio_data(data),
+          audio_data_reference(audio_context, data_handle),
           success_callback(audio_context, success_handler) {}
 
     DecodeCallbackInfo(script::EnvironmentSettings* settings,
-                       const scoped_refptr<dom::ArrayBuffer>& data,
+                       const script::Handle<script::ArrayBuffer>& data_handle,
                        AudioContext* const audio_context,
                        const DecodeSuccessCallbackArg& success_handler,
                        const DecodeErrorCallbackArg& error_handler)
         : env_settings(settings),
-          audio_data(data),
+          audio_data_reference(audio_context, data_handle),
           success_callback(audio_context, success_handler) {
       error_callback.emplace(audio_context, error_handler);
     }
 
     script::EnvironmentSettings* env_settings;
-    const scoped_refptr<dom::ArrayBuffer>& audio_data;
+    script::ScriptValue<script::ArrayBuffer>::Reference audio_data_reference;
     DecodeSuccessCallbackReference success_callback;
     base::optional<DecodeErrorCallbackReference> error_callback;
   };
@@ -160,12 +163,11 @@ class AudioContext : public dom::EventTarget {
   typedef base::hash_map<int, DecodeCallbackInfo*> DecodeCallbacks;
 
   // From EventTarget.
-  std::string GetDebugName() OVERRIDE { return "AudioContext"; }
+  std::string GetDebugName() override { return "AudioContext"; }
 
   void DecodeAudioDataInternal(scoped_ptr<DecodeCallbackInfo> info);
-  void DecodeFinish(int callback_id, float sample_rate, int32 number_of_frames,
-                    int32 number_of_channels, scoped_array<uint8> channels_data,
-                    SampleType sample_type);
+  void DecodeFinish(int callback_id, float sample_rate,
+                    scoped_ptr<ShellAudioBus> audio_bus);
 
   base::WeakPtrFactory<AudioContext> weak_ptr_factory_;
   // We construct a WeakPtr upon AudioContext's construction in order to

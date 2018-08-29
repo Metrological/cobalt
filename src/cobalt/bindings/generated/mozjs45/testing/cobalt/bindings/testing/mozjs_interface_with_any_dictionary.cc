@@ -1,4 +1,6 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+
+
+// Copyright 2018 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,10 +33,14 @@
 #include "cobalt/script/exception_state.h"
 #include "cobalt/script/mozjs-45/callback_function_conversion.h"
 #include "cobalt/script/mozjs-45/conversion_helpers.h"
+#include "cobalt/script/mozjs-45/mozjs_array_buffer.h"
+#include "cobalt/script/mozjs-45/mozjs_array_buffer_view.h"
 #include "cobalt/script/mozjs-45/mozjs_callback_function.h"
+#include "cobalt/script/mozjs-45/mozjs_data_view.h"
 #include "cobalt/script/mozjs-45/mozjs_exception_state.h"
 #include "cobalt/script/mozjs-45/mozjs_global_environment.h"
 #include "cobalt/script/mozjs-45/mozjs_property_enumerator.h"
+#include "cobalt/script/mozjs-45/mozjs_typed_arrays.h"
 #include "cobalt/script/mozjs-45/mozjs_user_object_holder.h"
 #include "cobalt/script/mozjs-45/mozjs_value_handle.h"
 #include "cobalt/script/mozjs-45/native_promise.h"
@@ -46,6 +52,7 @@
 #include "cobalt/script/sequence.h"
 #include "third_party/mozjs-45/js/src/jsapi.h"
 #include "third_party/mozjs-45/js/src/jsfriendapi.h"
+
 
 namespace {
 using cobalt::bindings::testing::InterfaceWithAnyDictionary;
@@ -87,7 +94,14 @@ namespace cobalt {
 namespace bindings {
 namespace testing {
 
+
 namespace {
+
+
+
+
+
+
 
 class MozjsInterfaceWithAnyDictionaryHandler : public ProxyHandler {
  public:
@@ -107,6 +121,7 @@ MozjsInterfaceWithAnyDictionaryHandler::named_property_hooks = {
   NULL,
   NULL,
 };
+
 ProxyHandler::IndexedPropertyHooks
 MozjsInterfaceWithAnyDictionaryHandler::indexed_property_hooks = {
   NULL,
@@ -120,6 +135,8 @@ static base::LazyInstance<MozjsInterfaceWithAnyDictionaryHandler>
     proxy_handler;
 
 bool Constructor(JSContext* context, unsigned int argc, JS::Value* vp);
+
+
 bool HasInstance(JSContext *context, JS::HandleObject type,
                    JS::MutableHandleValue vp, bool *success) {
   JS::RootedObject global_object(
@@ -178,6 +195,7 @@ const JSClass interface_object_class_definition = {
     Constructor,
 };
 
+
 bool fcn_getAny(
     JSContext* context, uint32_t argc, JS::Value *vp) {
   JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
@@ -229,6 +247,7 @@ bool fcn_getAny(
   }
   return !exception_state.is_exception_set();
 }
+
 
 bool fcn_hasAny(
     JSContext* context, uint32_t argc, JS::Value *vp) {
@@ -282,6 +301,7 @@ bool fcn_hasAny(
   return !exception_state.is_exception_set();
 }
 
+
 bool fcn_hasAnyDefault(
     JSContext* context, uint32_t argc, JS::Value *vp) {
   JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
@@ -333,6 +353,7 @@ bool fcn_hasAnyDefault(
   }
   return !exception_state.is_exception_set();
 }
+
 
 bool fcn_setAny(
     JSContext* context, uint32_t argc, JS::Value *vp) {
@@ -401,6 +422,7 @@ bool fcn_setAny(
 
 
 const JSPropertySpec prototype_properties[] = {
+
   JS_PS_END
 };
 
@@ -421,6 +443,7 @@ const JSFunctionSpec prototype_functions[] = {
 };
 
 const JSPropertySpec interface_object_properties[] = {
+
   JS_PS_END
 };
 
@@ -461,17 +484,25 @@ void InitializePrototypeAndInterfaceObject(
   JS::RootedObject function_prototype(
       context, JS_GetFunctionPrototype(context, global_object));
   DCHECK(function_prototype);
-  // Create the Interface object.
-  interface_data->interface_object = JS_NewObjectWithGivenProto(
-      context, &interface_object_class_definition,
-      function_prototype);
+
+  const char name[] =
+      "InterfaceWithAnyDictionary";
+
+  JSFunction* function = js::NewFunctionWithReserved(
+      context,
+      Constructor,
+      0,
+      JSFUN_CONSTRUCTOR,
+      name);
+  interface_data->interface_object = JS_GetFunctionObject(function);
 
   // Add the InterfaceObject.name property.
   JS::RootedObject rooted_interface_object(
       context, interface_data->interface_object);
   JS::RootedValue name_value(context);
-  const char name[] =
-      "InterfaceWithAnyDictionary";
+
+  js::SetPrototype(context, rooted_interface_object, function_prototype);
+
   name_value.setString(JS_NewStringCopyZ(context, name));
   success = JS_DefineProperty(
       context, rooted_interface_object, "name", name_value, JSPROP_READONLY,
@@ -507,7 +538,7 @@ void InitializePrototypeAndInterfaceObject(
 }
 
 inline InterfaceData* GetInterfaceData(JSContext* context) {
-  const int kInterfaceUniqueId = 28;
+  const int kInterfaceUniqueId = 29;
   MozjsGlobalEnvironment* global_environment =
       static_cast<MozjsGlobalEnvironment*>(JS_GetContextPrivate(context));
   // By convention, the |MozjsGlobalEnvironment| that we are associated with
@@ -528,6 +559,7 @@ JSObject* MozjsInterfaceWithAnyDictionary::CreateProxy(
       MozjsGlobalEnvironment::GetFromContext(context)->global_object());
   DCHECK(global_object);
 
+  JSAutoCompartment auto_compartment(context, global_object);
   InterfaceData* interface_data = GetInterfaceData(context);
   JS::RootedObject prototype(context, GetPrototype(context, global_object));
   DCHECK(prototype);
@@ -586,8 +618,10 @@ JSObject* MozjsInterfaceWithAnyDictionary::GetInterfaceObject(
   return interface_data->interface_object;
 }
 
-
 namespace {
+
+
+
 bool Constructor(JSContext* context, unsigned int argc, JS::Value* vp) {
   MozjsExceptionState exception_state(context);
   JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
@@ -600,6 +634,8 @@ bool Constructor(JSContext* context, unsigned int argc, JS::Value* vp) {
   args.rval().setObject(result_value.toObject());
   return true;
 }
+
+
 }  // namespace
 
 

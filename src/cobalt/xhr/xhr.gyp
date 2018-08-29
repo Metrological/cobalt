@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,7 +30,6 @@
       ],
       'dependencies': [
         '<(DEPTH)/cobalt/dom/dom.gyp:dom',
-        '<(DEPTH)/cobalt/speech/speech.gyp:speech',
         '<(DEPTH)/cobalt/dom_parser/dom_parser.gyp:dom_parser',
       ],
       'conditions': [
@@ -62,12 +61,10 @@
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
         '<(DEPTH)/cobalt/dom/dom.gyp:dom',
-        '<(DEPTH)/cobalt/speech/speech.gyp:speech',
         '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
         'xhr',
-        'xhr_copy_test_data',
 
         # TODO: Remove the dependency below, it works around the fact that
         #       ScriptValueFactory has non-virtual method CreatePromise().
@@ -83,24 +80,7 @@
       'variables': {
         'executable_name': 'xhr_test',
       },
-      'includes': [ '../../starboard/build/deploy.gypi' ],
-    },
-
-    {
-      'target_name': 'xhr_copy_test_data',
-      'type': 'none',
-      'actions': [
-        {
-          'action_name': 'xhr_copy_test_data',
-          'variables': {
-            'input_files': [
-              '<(DEPTH)/cobalt/xhr/testdata/',
-            ],
-            'output_dir': 'cobalt/xhr/testdata/',
-          },
-          'includes': [ '../build/copy_test_data.gypi' ],
-        },
-      ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ],
 }

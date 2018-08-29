@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,15 +30,15 @@ class CSSFontFaceDeclarationData : public CSSDeclarationData {
   CSSFontFaceDeclarationData();
 
   // From CSSDeclarationData
-  bool IsSupportedPropertyKey(PropertyKey key) const OVERRIDE;
-  scoped_refptr<PropertyValue> GetPropertyValue(PropertyKey key) const OVERRIDE;
+  bool IsSupportedPropertyKey(PropertyKey key) const override;
+  scoped_refptr<PropertyValue> GetPropertyValue(PropertyKey key) const override;
   void SetPropertyValueAndImportance(
       PropertyKey key, const scoped_refptr<PropertyValue>& property_value,
-      bool important) OVERRIDE {
+      bool important) override {
     UNREFERENCED_PARAMETER(important);
     SetPropertyValue(key, property_value);
   }
-  void ClearPropertyValueAndImportance(PropertyKey key) OVERRIDE {
+  void ClearPropertyValueAndImportance(PropertyKey key) override {
     SetPropertyValue(key, NULL);
   }
 

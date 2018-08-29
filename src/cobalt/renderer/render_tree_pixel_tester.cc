@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -108,19 +108,23 @@ SkBitmap BlurBitmap(const SkBitmap& bitmap, float sigma) {
     // We need to convert our image to premultiplied alpha and N32 color
     // before proceeding to blur them, as Skia is designed to primarily deal
     // only with images in this format.
-    SkImageInfo premul_alpha_image_info = SkImageInfo::Make(
-        bitmap.width(), bitmap.height(), kN32_SkColorType, kPremul_SkAlphaType);
-    premul_alpha_bitmap.allocPixels(premul_alpha_image_info);
+    SkImageInfo premul_alpha_image_info =
+        SkImageInfo::MakeN32Premul(bitmap.width(), bitmap.height());
+    bool allocation_successful =
+        premul_alpha_bitmap.tryAllocPixels(premul_alpha_image_info);
+    // Since this is a test, just crash.
+    DCHECK(allocation_successful);
     bitmap.readPixels(premul_alpha_image_info, premul_alpha_bitmap.getPixels(),
                       premul_alpha_bitmap.rowBytes(), 0, 0);
   }
   SkBitmap blurred_bitmap;
-  blurred_bitmap.allocPixels(SkImageInfo::Make(
-      bitmap.width(), bitmap.height(), kN32_SkColorType, kPremul_SkAlphaType));
+  bool blurred_bitmap_allocated =
+      blurred_bitmap.tryAllocN32Pixels(bitmap.width(), bitmap.height());
+  DCHECK(blurred_bitmap_allocated);
 
   SkPaint paint;
-  SkAutoTUnref<SkBlurImageFilter> blur_filter(
-      SkBlurImageFilter::Create(sigma, sigma));
+  sk_sp<SkImageFilter> blur_filter(
+      SkBlurImageFilter::Make(sigma, sigma, nullptr));
   paint.setImageFilter(blur_filter);
 
   SkCanvas canvas(blurred_bitmap);
@@ -136,8 +140,8 @@ bool BitmapsAreEqual(const SkBitmap& bitmap_a, const SkBitmap& bitmap_b) {
     return false;
   }
 
-  SkAutoLockPixels lock_a(bitmap_a);
-  SkAutoLockPixels lock_b(bitmap_b);
+  // Do not need to lock pixels here.  See:
+  // https://bugs.chromium.org/p/skia/issues/detail?id=6481&desc=2
   void* pixels_a = reinterpret_cast<void*>(bitmap_a.getPixels());
   void* pixels_b = reinterpret_cast<void*>(bitmap_b.getPixels());
   size_t byte_count = bitmap_a.rowBytes() * bitmap_a.height();
@@ -178,7 +182,7 @@ SkBitmap DiffBitmaps(const SkBitmap& bitmap_a, const SkBitmap& bitmap_b,
         bitmap_diff.rowBytes() * r / sizeof(uint32_t);
     for (int c = 0; c < bitmap_a.width(); ++c) {
       // Check each pixel in the current row for differences.  We do this by
-      // looking at each color channel seperately and taking the max of the
+      // looking at each color channel separately and taking the max of the
       // differences we see in each channel.
       int max_diff = 0;
       for (int i = 0; i < 4; ++i) {

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,10 +37,10 @@ class PseudoClass : public SimpleSelector {
   explicit PseudoClass(base::Token text)
       : SimpleSelector(kPseudoClass,
                        base::Tokens::pseudo_class_selector_prefix(), text) {}
-  ~PseudoClass() OVERRIDE {}
+  ~PseudoClass() override {}
 
   // From Selector.
-  Specificity GetSpecificity() const OVERRIDE { return Specificity(0, 1, 0); }
+  Specificity GetSpecificity() const override { return Specificity(0, 1, 0); }
 
   // Rest of public methods.
   virtual ActivePseudoClass* AsActivePseudoClass() { return NULL; }

@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,11 +20,10 @@ function ConsoleValues() {
   this.DEFAULT_KEY = 'default';
   // Reduced space-separated list of CVal prefixes to display at start-up.
   this.DEFAULT_ACTIVE_SET =
-      'Cobalt DevTools WebDriver ' +
-      'Memory.CPU Memory.MainWebModule Memory.JS Memory.Font ' +
+      'Cobalt Memory.CPU Memory.MainWebModule Memory.JS Memory.Font ' +
       'Count.MainWebModule.ImageCache.Resource ' +
       'Count.MainWebModule.DOM.HtmlElement Count.MainWebModule.Layout.Box ' +
-      'Event.Count.MainWebModule.KeyDown.DOM.HtmlElement.Added ' +
+      'Event.Count.MainWebModule.KeyDown.DOM.HtmlElement.Document.Added ' +
       'Event.Count.MainWebModule.KeyDown.Layout.Box.Created ' +
       'Event.Count.MainWebModule.KeyDown.Layout.Box.Destroyed ' +
       'Event.Duration.MainWebModule.DOM.VideoStartDelay ' +

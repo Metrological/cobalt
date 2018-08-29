@@ -106,10 +106,7 @@
         'base/video_codecs.h',
         'base/video_decoder_config.cc',
         'base/video_decoder_config.h',
-        'base/video_dmp_reader.cc',
-        'base/video_dmp_reader.h',
-        'base/video_dumper.cc',
-        'base/video_dumper.h',
+        'base/video_frame_provider.h',
         'base/video_util.cc',
         'base/video_util.h',
         'filters/chunk_demuxer.cc',
@@ -230,6 +227,23 @@
       ],
     },
     {
+      'target_name': 'media2_format_unittests',
+      'type': '<(gtest_target_type)',
+      'dependencies': [
+        'media2',
+        '<(DEPTH)/cobalt/base/base.gyp:base',
+        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
+        '<(DEPTH)/testing/gmock.gyp:gmock',
+        '<(DEPTH)/testing/gtest.gyp:gtest',
+        '<(DEPTH)/ui/ui.gyp:ui',
+      ],
+      'sources': [
+        'formats/webm/webm_video_client_unittest.cc',
+        'base/mock_media_log.cc',
+      ],
+    },
+
+    {
       # Rename 'media2_unittests' to 'media_unittests' once the original media
       # is removed.
       'target_name': 'media2_unittests',
@@ -242,7 +256,7 @@
         '<(DEPTH)/base/base.gyp:test_support_base',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
-        '<(DEPTH)/ui/ui.gyp:ui',
+
       ],
       'sources': [
         'base/audio_bus_unittest.cc',

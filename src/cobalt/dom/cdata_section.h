@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,22 +37,22 @@ class CDATASection : public Text {
 
   // Web API: Node
   //
-  base::Token node_name() const OVERRIDE;
-  NodeType node_type() const OVERRIDE { return Node::kCdataSectionNode; }
+  base::Token node_name() const override;
+  NodeType node_type() const override { return Node::kCdataSectionNode; }
 
   // Custom, not in any spec: Node.
   //
-  CDATASection* AsCDATASection() OVERRIDE { return this; }
+  CDATASection* AsCDATASection() override { return this; }
 
-  void Accept(NodeVisitor* visitor) OVERRIDE;
-  void Accept(ConstNodeVisitor* visitor) const OVERRIDE;
+  void Accept(NodeVisitor* visitor) override;
+  void Accept(ConstNodeVisitor* visitor) const override;
 
-  scoped_refptr<Node> Duplicate() const OVERRIDE;
+  scoped_refptr<Node> Duplicate() const override;
 
   DEFINE_WRAPPABLE_TYPE(CDATASection);
 
  private:
-  ~CDATASection() OVERRIDE {}
+  ~CDATASection() override {}
 };
 
 }  // namespace dom

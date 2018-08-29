@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,8 +22,7 @@ interface MediaKeySession : EventTarget {
   readonly attribute MediaKeyStatusMap keyStatuses;
   attribute EventHandler onkeystatuseschange;
   attribute EventHandler onmessage;
-  Promise<void> generateRequest(DOMString initDataType,
-                                BufferSource initData);
+  [CallWith=EnvironmentSettings] Promise<void> generateRequest(DOMString initDataType, BufferSource initData);
   // TODO: Trivially implement persistent sessions.
   // Promise<boolean> load(DOMString sessionId);
   Promise<void> update(BufferSource response);

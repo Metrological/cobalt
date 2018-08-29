@@ -1,5 +1,5 @@
 #
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,22 +15,23 @@
 #
 """Constants and functions for commonly referenced paths."""
 
-import os
+from os import path
 
 import _env  # pylint: disable=unused-import
-import cobalt
-import starboard.tools.paths
+from starboard.tools import paths
 
-STARBOARD_ROOT = starboard.tools.paths.STARBOARD_ROOT
+STARBOARD_ROOT = paths.STARBOARD_ROOT
 
-COBALT_ROOT = os.path.abspath(os.path.dirname(cobalt.__file__))
+REPOSITORY_ROOT = paths.REPOSITORY_ROOT
 
-REPOSITORY_ROOT = os.path.abspath(os.path.join(COBALT_ROOT, os.pardir))
+COBALT_ROOT = path.join(REPOSITORY_ROOT, 'cobalt')
 
-THIRD_PARTY_ROOT = os.path.join(REPOSITORY_ROOT, 'third_party')
+BUILD_ROOT = path.join(COBALT_ROOT, 'build')
 
-BUILD_OUTPUT_ROOT = os.path.join(REPOSITORY_ROOT, 'out')
+THIRD_PARTY_ROOT = paths.THIRD_PARTY_ROOT
+
+BUILD_OUTPUT_ROOT = paths.BUILD_OUTPUT_ROOT
 
 
 def BuildOutputDirectory(platform, config):
-  return os.path.join(BUILD_OUTPUT_ROOT, '%s_%s' %(platform, config))
+  return paths.BuildOutputDirectory(platform, config)

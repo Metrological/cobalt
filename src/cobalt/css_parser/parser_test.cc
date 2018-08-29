@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -96,7 +96,7 @@ class MockParserObserver {
 class ParserTestBase : public ::testing::Test {
  public:
   explicit ParserTestBase(Parser::SupportsMapToMeshFlag supports_map_to_mesh);
-  ~ParserTestBase() OVERRIDE {}
+  ~ParserTestBase() override {}
 
  protected:
   ::testing::StrictMock<MockParserObserver> parser_observer_;

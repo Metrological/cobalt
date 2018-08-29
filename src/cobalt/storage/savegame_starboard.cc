@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include "base/memory/scoped_ptr.h"
 #include "base/optional.h"
 #include "base/path_service.h"
+#include "cobalt/storage/store_upgrade/upgrade.h"
 #include "starboard/storage.h"
 #include "starboard/user.h"
 
@@ -28,9 +29,30 @@ namespace cobalt {
 namespace storage {
 namespace {
 
+using cobalt::storage::store_upgrade::IsUpgradeRequired;
+using cobalt::storage::store_upgrade::UpgradeStore;
+
 // An arbitrary max size for the save game file so that, for example, a corrupt
 // filesystem cannot cause us to allocate a fatally large memory buffer.
 size_t kMaxSaveGameSizeBytes = 4 * 1024 * 1024;
+
+bool WriteRecord(const scoped_ptr<starboard::StorageRecord>& record,
+                 const Savegame::ByteVector& bytes);
+
+bool Upgrade(Savegame::ByteVector* bytes_ptr,
+             const scoped_ptr<starboard::StorageRecord>& record) {
+  DLOG(INFO) << "UPGRADING Record with size=" << bytes_ptr->size();
+  if (IsUpgradeRequired(*bytes_ptr)) {
+    if (!UpgradeStore(bytes_ptr)) {
+      DLOG(ERROR) << "Upgrade failed";
+      return false;
+    }
+  }
+
+  WriteRecord(record, *bytes_ptr);
+  DLOG(INFO) << "UPGRADING bytes_ptr.size=" << bytes_ptr->size();
+  return true;
+}
 
 bool ReadRecord(Savegame::ByteVector* bytes_ptr, size_t max_to_read,
                 const scoped_ptr<starboard::StorageRecord>& record) {
@@ -60,13 +82,27 @@ bool ReadRecord(Savegame::ByteVector* bytes_ptr, size_t max_to_read,
       record->Read(reinterpret_cast<char*>(bytes.data()), size);
   bytes.resize(
       static_cast<size_t>(std::max(static_cast<int64_t>(0), bytes_read)));
-  return bytes_read == size;
+
+  bool success = (bytes_read == size);
+  if (success) {
+    DLOG(INFO) << "Successfully read storage record.";
+  }
+  if (!Upgrade(bytes_ptr, record)) {
+    DLOG(WARNING) << __FUNCTION__ << ": Upgrade Failed";
+    return false;
+  }
+  return success;
 }
 
 bool WriteRecord(const scoped_ptr<starboard::StorageRecord>& record,
                  const Savegame::ByteVector& bytes) {
   int64_t byte_count = static_cast<int64_t>(bytes.size());
-  return record->Write(reinterpret_cast<const char*>(bytes.data()), byte_count);
+  bool success =
+      record->Write(reinterpret_cast<const char*>(bytes.data()), byte_count);
+  if (success) {
+    DLOG(INFO) << "Successfully wrote storage record.";
+  }
+  return success;
 }
 
 scoped_ptr<starboard::StorageRecord> CreateRecord(
@@ -100,14 +136,13 @@ bool EnsureRecord(scoped_ptr<starboard::StorageRecord>* record,
 class SavegameStarboard : public Savegame {
  public:
   explicit SavegameStarboard(const Options& options);
-  ~SavegameStarboard() OVERRIDE;
-  bool PlatformRead(ByteVector* bytes, size_t max_to_read) OVERRIDE;
-  bool PlatformWrite(const ByteVector& bytes) OVERRIDE;
-  bool PlatformDelete() OVERRIDE;
+  ~SavegameStarboard() override;
+  bool PlatformRead(ByteVector* bytes, size_t max_to_read) override;
+  bool PlatformWrite(const ByteVector& bytes) override;
+  bool PlatformDelete() override;
 
  private:
   bool MigrateFromFallback();
-
   scoped_ptr<starboard::StorageRecord> record_;
 };
 
@@ -182,6 +217,8 @@ bool SavegameStarboard::MigrateFromFallback() {
 
   if (buffer.size() == 0) {
     // We migrated nothing successfully.
+    DLOG(INFO) << "Migrated storage record data successfully (but trivially, "
+               << "there was no data).";
     return true;
   }
 
@@ -199,6 +236,8 @@ bool SavegameStarboard::MigrateFromFallback() {
 
   // Now cleanup the fallback record.
   fallback_record->Delete();
+  DLOG(INFO) << "Migrated storage record data successfully for user id: "
+             << options_.id;
   return true;
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@
 
 #ifndef COBALT_SPEECH_MICROPHONE_MANAGER_H_
 #define COBALT_SPEECH_MICROPHONE_MANAGER_H_
+
+#include <string>
 
 #include "cobalt/speech/speech_configuration.h"
 
@@ -36,17 +38,23 @@ namespace speech {
 // a self-managed poller to fetch audio data from microphone.
 class MicrophoneManager {
  public:
+  enum class MicrophoneError {
+    kAudioCapture,
+    kAborted,
+  };
 #if defined(COBALT_MEDIA_SOURCE_2016)
   typedef media::ShellAudioBus ShellAudioBus;
 #else   // defined(COBALT_MEDIA_SOURCE_2016)
   typedef ::media::ShellAudioBus ShellAudioBus;
 #endif  // defined(COBALT_MEDIA_SOURCE_2016)
   typedef base::Callback<void(scoped_ptr<ShellAudioBus>)> DataReceivedCallback;
-  typedef base::Callback<void(void)> CompletionCallback;
-  typedef base::Callback<void(const scoped_refptr<dom::Event>&)> ErrorCallback;
+  typedef base::Closure CompletionCallback;
+  typedef base::Closure SuccessfulOpenCallback;
+  typedef base::Callback<void(MicrophoneError, std::string)> ErrorCallback;
   typedef base::Callback<scoped_ptr<Microphone>(int)> MicrophoneCreator;
 
   MicrophoneManager(const DataReceivedCallback& data_received,
+                    const SuccessfulOpenCallback& successful_open,
                     const CompletionCallback& completion,
                     const ErrorCallback& error,
                     const MicrophoneCreator& microphone_creator);
@@ -75,6 +83,7 @@ class MicrophoneManager {
   const DataReceivedCallback data_received_callback_;
   const CompletionCallback completion_callback_;
   const ErrorCallback error_callback_;
+  const SuccessfulOpenCallback successful_open_callback_;
   const MicrophoneCreator microphone_creator_;
 
   scoped_ptr<Microphone> microphone_;

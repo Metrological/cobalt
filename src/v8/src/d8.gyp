@@ -39,12 +39,9 @@
     # TODO: Enable i18n support.
     'v8_enable_i18n_support': 0,
   },
-  # TODO: Remove after starboardization.
   'target_defaults': {
     'defines': [
-      'V8_OS_POSIX=1',
-      'V8_OS_LINUX=1',
-      'V8_TRAP_HANDLER_SUPPORTED=1',
+      'V8_OS_STARBOARD=1',
     ],
    },
   'includes': ['../gypfiles/toolchain.gypi', '../gypfiles/features.gypi'],
@@ -56,6 +53,7 @@
         'v8.gyp:v8',
         'v8.gyp:v8_libbase',
         'v8.gyp:v8_libplatform',
+        '<(DEPTH)/starboard/starboard.gyp:starboard',
       ],
       # Generated source files need this explicitly:
       'include_dirs+': [

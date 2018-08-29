@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -112,16 +112,15 @@ class AudioNode : public dom::EventTarget {
   // Called when a new input node has been connected.
   virtual void OnInputNodeConnected() {}
 
-  // TODO: Support wrapping ShellAudioBus into another ShellAudioBus.
   virtual scoped_ptr<ShellAudioBus> PassAudioBusFromSource(
-      int32 number_of_frames, SampleType sample_type) = 0;
+      int32 number_of_frames, SampleType sample_type, bool* finished) = 0;
 
   AudioLock* audio_lock() const { return audio_lock_.get(); }
 
   DEFINE_WRAPPABLE_TYPE(AudioNode);
 
  protected:
-  ~AudioNode() OVERRIDE;
+  ~AudioNode() override;
 
   void AddInput(const scoped_refptr<AudioNodeInput>& input);
   void AddOutput(const scoped_refptr<AudioNodeOutput>& output);
@@ -137,7 +136,7 @@ class AudioNode : public dom::EventTarget {
   typedef std::vector<scoped_refptr<AudioNodeOutput> > AudioNodeOutputVector;
 
   // From EventTarget.
-  std::string GetDebugName() OVERRIDE { return "AudioNode"; }
+  std::string GetDebugName() override { return "AudioNode"; }
 
   AudioNodeInputVector inputs_;
   AudioNodeOutputVector outputs_;

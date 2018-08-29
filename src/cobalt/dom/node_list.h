@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -44,9 +44,10 @@ class NodeList : public script::Wrappable {
   void AppendNode(const scoped_refptr<Node>& node);
 
   DEFINE_WRAPPABLE_TYPE(NodeList);
+  void TraceMembers(script::Tracer* tracer) override;
 
  protected:
-  ~NodeList() OVERRIDE;
+  ~NodeList() override;
 
   void ReserveForInternalCollection(int capacity) {
     collection_.reserve(capacity);

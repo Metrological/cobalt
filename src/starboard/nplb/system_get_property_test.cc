@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -65,7 +65,6 @@ void BasicTest(SbSystemPropertyId id,
 TEST(SbSystemGetPropertyTest, ReturnsRequired) {
   BasicTest(kSbSystemPropertyFriendlyName, true, true, __LINE__);
   BasicTest(kSbSystemPropertyPlatformName, true, true, __LINE__);
-  BasicTest(kSbSystemPropertyPlatformUuid, true, true, __LINE__);
 
   BasicTest(kSbSystemPropertyChipsetModelNumber, false, true, __LINE__);
   BasicTest(kSbSystemPropertyFirmwareVersion, false, true, __LINE__);
@@ -99,6 +98,37 @@ TEST(SbSystemGetPropertyTest, FailsGracefullyNullBufferAndZeroLength) {
 
 TEST(SbSystemGetPropertyTest, FailsGracefullyBogusId) {
   BasicTest(static_cast<SbSystemPropertyId>(99999), true, false, __LINE__);
+}
+
+TEST(SbSystemGetPropertyTest, SpeechApiKeyNotLeaked) {
+  static const size_t kSize = 512;
+  char speech_api_key[kSize] = {0};
+  bool has_speech_key =
+      SbSystemGetProperty(kSbSystemPropertySpeechApiKey, speech_api_key, kSize);
+
+  if (!has_speech_key) {
+    EXPECT_EQ(0, SbStringGetLength(speech_api_key));
+    return;
+  }
+
+  SbSystemPropertyId enum_values[] = {
+    kSbSystemPropertyChipsetModelNumber,
+    kSbSystemPropertyFirmwareVersion,
+    kSbSystemPropertyFriendlyName,
+    kSbSystemPropertyManufacturerName,
+    kSbSystemPropertyModelName,
+    kSbSystemPropertyModelYear,
+    kSbSystemPropertyNetworkOperatorName,
+    kSbSystemPropertyPlatformName,
+  };
+
+  for (SbSystemPropertyId val : enum_values) {
+    char value[kSize] = {0};
+
+    if (SbSystemGetProperty(val, value, kSize)) {
+      ASSERT_FALSE(SbStringFindString(value, speech_api_key));
+    }
+  }
 }
 
 }  // namespace

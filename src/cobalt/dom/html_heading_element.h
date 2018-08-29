@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,14 +35,14 @@ class HTMLHeadingElement : public HTMLElement {
       : HTMLElement(document, tag_name) {}
 
   // Custom, not in any spec.
-  scoped_refptr<HTMLHeadingElement> AsHTMLHeadingElement() OVERRIDE {
+  scoped_refptr<HTMLHeadingElement> AsHTMLHeadingElement() override {
     return this;
   }
 
   DEFINE_WRAPPABLE_TYPE(HTMLHeadingElement);
 
  private:
-  ~HTMLHeadingElement() OVERRIDE {}
+  ~HTMLHeadingElement() override {}
 };
 
 }  // namespace dom

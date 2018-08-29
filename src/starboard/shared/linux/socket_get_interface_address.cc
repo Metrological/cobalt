@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -372,8 +372,15 @@ bool SbSocketGetInterfaceAddress(const SbSocketAddress* const destination,
   } else if (IsAnyAddress(*destination)) {
     return FindInterfaceIP(destination->type, out_source_address, out_netmask);
   } else {
-    return (FindSourceAddressForDestination(*destination, out_source_address) &&
-            GetNetMaskForInterfaceAddress(*out_source_address, out_netmask));
+    SbSocketAddress destination_copy = *destination;
+    // On some platforms, passing a socket address with port 0 to connect()
+    // results in EADDRNOTAVAIL.
+    if (!destination_copy.port) {
+      destination_copy.port = 80;
+    }
+    return (
+        FindSourceAddressForDestination(destination_copy, out_source_address) &&
+        GetNetMaskForInterfaceAddress(*out_source_address, out_netmask));
   }
 
   return false;

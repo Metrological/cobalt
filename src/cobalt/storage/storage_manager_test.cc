@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -79,44 +79,32 @@ class FlushWaiter : public CallbackWaiter {
   DISALLOW_COPY_AND_ASSIGN(FlushWaiter);
 };
 
-class SqlWaiter : public CallbackWaiter {
+class MemoryStoreWaiter : public CallbackWaiter {
  public:
-  SqlWaiter() {}
-  void OnSqlConnection(SqlContext* sql_context) {
-    UNREFERENCED_PARAMETER(sql_context);
+  MemoryStoreWaiter() {}
+  void OnMemoryStore(MemoryStore* memory_store) {
+    UNREFERENCED_PARAMETER(memory_store);
     Signal();
   }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(SqlWaiter);
+  DISALLOW_COPY_AND_ASSIGN(MemoryStoreWaiter);
 };
 
-void FlushCallback(SqlContext* sql_context) {
-  sql::Connection* conn = sql_context->sql_connection();
-  bool ok = conn->Execute("CREATE TABLE FlushTest(test_name TEXT);");
-  EXPECT_EQ(true, ok);
-}
+class ReadOnlyMemoryStoreWaiter : public CallbackWaiter {
+ public:
+  ReadOnlyMemoryStoreWaiter() {}
+  void OnMemoryStore(const MemoryStore& memory_store) {
+    UNREFERENCED_PARAMETER(memory_store);
+    Signal();
+  }
 
-void QuerySchemaCallback(SqlContext* sql_context) {
-  int schema_version;
-  EXPECT_EQ(false, sql_context->GetSchemaVersion("Nonexistent table",
-                                                 &schema_version));
+ private:
+  DISALLOW_COPY_AND_ASSIGN(ReadOnlyMemoryStoreWaiter);
+};
 
-  sql::Connection* conn = sql_context->sql_connection();
-  bool ok = conn->Execute("CREATE TABLE TestTable(test_name TEXT);");
-  EXPECT_EQ(true, ok);
-
-  EXPECT_EQ(true, sql_context->GetSchemaVersion("TestTable", &schema_version));
-  EXPECT_EQ(static_cast<int>(StorageManager::kSchemaTableIsNew),
-            schema_version);
-
-  sql_context->UpdateSchemaVersion("TestTable", 100);
-}
-
-void InspectSchemaVersionCallback(SqlContext* sql_context) {
-  int schema_version;
-  EXPECT_EQ(true, sql_context->GetSchemaVersion("TestTable", &schema_version));
-  EXPECT_EQ(100, schema_version);
+void FlushCallback(MemoryStore* memory_store) {
+  EXPECT_NE(memory_store, nullptr);
 }
 
 }  // namespace
@@ -146,45 +134,42 @@ class StorageManagerTest : public ::testing::Test {
         new StorageManagerType(upgrade_handler.Pass(), options));
   }
 
+  template <typename StorageManagerType>
+  void FinishIO() {
+    storage_manager_->FinishIO();
+  }
+
   MessageLoop message_loop_;
   scoped_ptr<StorageManager> storage_manager_;
 };
 
-TEST_F(StorageManagerTest, ObtainConnection) {
-  // Verify that the SQL connection is non-null.
+TEST_F(StorageManagerTest, WithMemoryStore) {
   Init<StorageManager>();
-  SqlWaiter waiter;
-  storage_manager_->GetSqlContext(
-      base::Bind(&SqlWaiter::OnSqlConnection, base::Unretained(&waiter)));
+  MemoryStoreWaiter waiter;
+  storage_manager_->WithMemoryStore(
+      base::Bind(&MemoryStoreWaiter::OnMemoryStore, base::Unretained(&waiter)));
   message_loop_.RunUntilIdle();
-  EXPECT_EQ(true, waiter.TimedWait());
+  EXPECT_TRUE(waiter.TimedWait());
 }
 
-TEST_F(StorageManagerTest, QuerySchemaVersion) {
-  Init<StorageManager>(false /* delete_savegame */);
-  storage_manager_->GetSqlContext(base::Bind(&QuerySchemaCallback));
-  message_loop_.RunUntilIdle();
-
-  // Force a write to disk and wait until it's done.
-  FlushWaiter waiter;
-  storage_manager_->FlushNow(
-      base::Bind(&FlushWaiter::OnFlushDone, base::Unretained(&waiter)));
-  EXPECT_EQ(true, waiter.TimedWait());
-
+TEST_F(StorageManagerTest, WithReadOnlyMemoryStore) {
   Init<StorageManager>();
-  storage_manager_->GetSqlContext(base::Bind(&InspectSchemaVersionCallback));
+  ReadOnlyMemoryStoreWaiter waiter;
+  storage_manager_->WithReadOnlyMemoryStore(base::Bind(
+      &ReadOnlyMemoryStoreWaiter::OnMemoryStore, base::Unretained(&waiter)));
   message_loop_.RunUntilIdle();
+  EXPECT_TRUE(waiter.TimedWait());
 }
 
 TEST_F(StorageManagerTest, FlushNow) {
   // Ensure the Flush callback is called.
   Init<StorageManager>();
-  storage_manager_->GetSqlContext(base::Bind(&FlushCallback));
+  storage_manager_->WithMemoryStore(base::Bind(&FlushCallback));
   message_loop_.RunUntilIdle();
   FlushWaiter waiter;
   storage_manager_->FlushNow(
       base::Bind(&FlushWaiter::OnFlushDone, base::Unretained(&waiter)));
-  EXPECT_EQ(true, waiter.TimedWait());
+  EXPECT_TRUE(waiter.TimedWait());
 }
 
 TEST_F(StorageManagerTest, FlushNowWithFlushOnChange) {
@@ -192,7 +177,7 @@ TEST_F(StorageManagerTest, FlushNowWithFlushOnChange) {
   // FlushOnChange() and FlushNow().
   Init<MockStorageManager>();
 
-  storage_manager_->GetSqlContext(base::Bind(&FlushCallback));
+  storage_manager_->WithMemoryStore(base::Bind(&FlushCallback));
   message_loop_.RunUntilIdle();
 
   FlushWaiter waiter;
@@ -200,7 +185,6 @@ TEST_F(StorageManagerTest, FlushNowWithFlushOnChange) {
       *dynamic_cast<MockStorageManager*>(storage_manager_.get());
 
   // When QueueFlush() is called, have it also call FlushWaiter::OnFlushDone().
-  // We will wait for this in TimedWait().
   ON_CALL(storage_manager, QueueFlush(_))
       .WillByDefault(InvokeWithoutArgs(&waiter, &FlushWaiter::OnFlushDone));
   EXPECT_CALL(storage_manager, QueueFlush(_)).Times(1);
@@ -211,7 +195,7 @@ TEST_F(StorageManagerTest, FlushNowWithFlushOnChange) {
 
   base::PlatformThread::Sleep(base::TimeDelta::FromMilliseconds(3000));
 
-  EXPECT_EQ(true, waiter.IsSignaled());
+  EXPECT_TRUE(waiter.IsSignaled());
 }
 
 TEST_F(StorageManagerTest, FlushOnChange) {
@@ -219,7 +203,7 @@ TEST_F(StorageManagerTest, FlushOnChange) {
   // FlushOnChange() multiple times.
   Init<MockStorageManager>();
 
-  storage_manager_->GetSqlContext(base::Bind(&FlushCallback));
+  storage_manager_->WithMemoryStore(base::Bind(&FlushCallback));
   message_loop_.RunUntilIdle();
 
   FlushWaiter waiter;
@@ -238,7 +222,7 @@ TEST_F(StorageManagerTest, FlushOnChange) {
 
   base::PlatformThread::Sleep(base::TimeDelta::FromMilliseconds(3000));
 
-  EXPECT_EQ(true, waiter.TimedWait());
+  EXPECT_TRUE(waiter.TimedWait());
 }
 
 TEST_F(StorageManagerTest, FlushOnChangeMaxDelay) {
@@ -246,7 +230,7 @@ TEST_F(StorageManagerTest, FlushOnChangeMaxDelay) {
   // there are constant calls to FlushOnChange().
   Init<MockStorageManager>();
 
-  storage_manager_->GetSqlContext(base::Bind(&FlushCallback));
+  storage_manager_->WithMemoryStore(base::Bind(&FlushCallback));
   message_loop_.RunUntilIdle();
 
   FlushWaiter waiter;
@@ -254,7 +238,6 @@ TEST_F(StorageManagerTest, FlushOnChangeMaxDelay) {
       *dynamic_cast<MockStorageManager*>(storage_manager_.get());
 
   // When QueueFlush() is called, have it also call FlushWaiter::OnFlushDone().
-  // We will wait for this in TimedWait().
   ON_CALL(storage_manager, QueueFlush(_))
       .WillByDefault(InvokeWithoutArgs(&waiter, &FlushWaiter::OnFlushDone));
   EXPECT_CALL(storage_manager, QueueFlush(_)).Times(1);
@@ -264,7 +247,30 @@ TEST_F(StorageManagerTest, FlushOnChangeMaxDelay) {
     storage_manager_->FlushOnChange();
   }
 
-  EXPECT_EQ(true, waiter.IsSignaled());
+  EXPECT_TRUE(waiter.IsSignaled());
+}
+
+TEST_F(StorageManagerTest, FlushOnShutdown) {
+  // Test that pending flushes are completed on shutdown.
+  Init<MockStorageManager>();
+
+  storage_manager_->WithMemoryStore(base::Bind(&FlushCallback));
+  message_loop_.RunUntilIdle();
+
+  FlushWaiter waiter;
+  MockStorageManager& storage_manager =
+      *dynamic_cast<MockStorageManager*>(storage_manager_.get());
+
+  // When QueueFlush() is called, have it also call FlushWaiter::OnFlushDone().
+  ON_CALL(storage_manager, QueueFlush(_))
+      .WillByDefault(InvokeWithoutArgs(&waiter, &FlushWaiter::OnFlushDone));
+  EXPECT_CALL(storage_manager, QueueFlush(_)).Times(1);
+
+  storage_manager_->FlushOnChange();
+  FinishIO<StorageManager>();
+  storage_manager_.reset();
+
+  EXPECT_TRUE(waiter.IsSignaled());
 }
 
 TEST_F(StorageManagerTest, Upgrade) {
@@ -285,7 +291,7 @@ TEST_F(StorageManagerTest, Upgrade) {
   FlushWaiter waiter;
   storage_manager_->FlushNow(
       base::Bind(&FlushWaiter::OnFlushDone, base::Unretained(&waiter)));
-  EXPECT_EQ(true, waiter.TimedWait());
+  EXPECT_TRUE(waiter.TimedWait());
   message_loop_.RunUntilIdle();
 }
 

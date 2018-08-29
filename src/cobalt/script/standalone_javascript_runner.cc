@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -69,8 +69,7 @@ void StandaloneJavascriptRunner::ExecuteAndPrintResult(
 
   // Execute the script and get the results of execution.
   std::string result;
-  bool success = global_environment_->EvaluateScript(
-      source, false /*mute_errors*/, &result);
+  bool success = global_environment_->EvaluateScript(source, &result);
   // Echo the results to stdout.
   if (!success) {
     std::cout << "Exception: ";

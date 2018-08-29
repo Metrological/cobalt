@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -46,15 +46,16 @@ class DOMException : public script::ScriptException {
     kQuotaExceededErr = 22,
     kHighestErrCodeValue = kQuotaExceededErr,
     kReadOnlyErr,
-    kInvalidPointerIdErr
+    kInvalidPointerIdErr,
+    kNotAllowedErr
   };
 
   explicit DOMException(ExceptionCode code);
   DOMException(ExceptionCode code, const std::string& message);
 
   uint16 code() const { return static_cast<uint16>(code_); }
-  std::string name() const OVERRIDE { return name_; }
-  std::string message() const OVERRIDE { return message_; }
+  std::string name() const override { return name_; }
+  std::string message() const override { return message_; }
 
   // Helper function to raise a DOMException in the ExceptionState passed in.
   static void Raise(ExceptionCode code,

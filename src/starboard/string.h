@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -403,5 +403,40 @@ SB_EXPORT double SbStringParseDouble(const char* start, char** out_end);
 #ifdef __cplusplus
 }  // extern "C"
 #endif
+
+#ifdef __cplusplus
+
+extern "C++" {
+
+#include <string>
+#include <vector>
+
+namespace starboard {
+
+SB_EXPORT SB_C_INLINE std::string FormatString(const char* format, ...)
+    SB_PRINTF_FORMAT(1, 2);
+
+SB_EXPORT SB_C_INLINE std::string FormatString(const char* format, ...) {
+  va_list arguments;
+  va_start(arguments, format);
+  int expected_size = ::SbStringFormat(NULL, 0, format, arguments);
+  va_end(arguments);
+
+  std::string result;
+  if (expected_size <= 0) {
+    return result;
+  }
+
+  std::vector<char> buffer(expected_size + 1);
+  va_start(arguments, format);
+  ::SbStringFormat(buffer.data(), buffer.size(), format, arguments);
+  va_end(arguments);
+  return std::string(buffer.data(), expected_size);
+}
+
+}  // namespace starboard
+}  // extern "C++"
+
+#endif  // __cplusplus
 
 #endif  // STARBOARD_STRING_H_

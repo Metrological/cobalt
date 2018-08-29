@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ class CommandResultHandlerImpl
 
   void SendResult(const base::optional<protocol::SessionId>& session_id,
                   protocol::Response::StatusCode status_code,
-                  scoped_ptr<base::Value> webdriver_response_value) OVERRIDE {
+                  scoped_ptr<base::Value> webdriver_response_value) override {
     scoped_ptr<base::Value> response = protocol::Response::CreateResponse(
         session_id, status_code, webdriver_response_value.Pass());
     if (status_code == protocol::Response::kSuccess) {
@@ -51,7 +51,7 @@ class CommandResultHandlerImpl
   }
 
   void SendInvalidRequestResponse(RequestError error,
-                                  const std::string& error_string) OVERRIDE {
+                                  const std::string& error_string) override {
     switch (error) {
       case kInvalidParameters:
         response_handler_->MissingCommandParameters(error_string);

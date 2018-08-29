@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -69,6 +69,7 @@ class MutationRecord : public script::Wrappable {
       const scoped_refptr<dom::Node>& next_sibling);
 
   DEFINE_WRAPPABLE_TYPE(MutationRecord);
+  void TraceMembers(script::Tracer* tracer) override;
 
  private:
   MutationRecord(const base::Token& type, const scoped_refptr<Node>& target);

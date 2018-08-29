@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,11 +18,13 @@
 #include <string>
 
 #include "base/memory/ref_counted.h"
+#include "cobalt/dom/captions/system_caption_settings.h"
 #if defined(COBALT_MEDIA_SOURCE_2016)
 #include "cobalt/dom/eme/media_key_system_configuration.h"
 #endif  // defined(COBALT_MEDIA_SOURCE_2016)
 #include "cobalt/dom/mime_type_array.h"
 #include "cobalt/dom/plugin_array.h"
+#include "cobalt/media_capture/media_devices.h"
 #include "cobalt/media_session/media_session.h"
 #include "cobalt/script/promise.h"
 #include "cobalt/script/script_value_factory.h"
@@ -38,8 +40,9 @@ namespace dom {
 class Navigator : public script::Wrappable {
  public:
   Navigator(const std::string& user_agent, const std::string& language,
-            scoped_refptr<cobalt::media_session::MediaSession> media_session,
-            script::ScriptValueFactory* script_value_factory);
+      scoped_refptr<cobalt::media_session::MediaSession> media_session,
+      scoped_refptr<cobalt::dom::captions::SystemCaptionSettings> captions,
+      script::ScriptValueFactory* script_value_factory);
 
   // Web API: NavigatorID
   const std::string& user_agent() const;
@@ -52,6 +55,10 @@ class Navigator : public script::Wrappable {
 
   // Web API: NavigatorPlugins
   bool cookie_enabled() const;
+
+  // Web API: MediaDevices
+  scoped_refptr<media_capture::MediaDevices> media_devices();
+
   const scoped_refptr<MimeTypeArray>& mime_types() const;
   const scoped_refptr<PluginArray>& plugins() const;
 
@@ -60,24 +67,34 @@ class Navigator : public script::Wrappable {
 
 #if defined(COBALT_MEDIA_SOURCE_2016)
   // Web API: extension defined in Encrypted Media Extensions (16 March 2017).
-  typedef script::ScriptValue<script::Promise<
-      scoped_refptr<script::Wrappable> > > InterfacePromiseValue;
-  scoped_ptr<InterfacePromiseValue> RequestMediaKeySystemAccess(
+  using InterfacePromise = script::Promise<scoped_refptr<script::Wrappable>>;
+  script::Handle<InterfacePromise> RequestMediaKeySystemAccess(
       const std::string& key_system,
       const script::Sequence<eme::MediaKeySystemConfiguration>&
           supported_configurations);
 #endif  // defined(COBALT_MEDIA_SOURCE_2016)
 
+  const scoped_refptr<cobalt::dom::captions::SystemCaptionSettings>&
+    system_caption_settings() const;
+
   DEFINE_WRAPPABLE_TYPE(Navigator);
+  void TraceMembers(script::Tracer* tracer) override;
+
+  void SetEnvironmentSettings(script::EnvironmentSettings* settings) {
+    media_devices_->SetEnvironmentSettings(settings);
+  }
 
  private:
-  ~Navigator() OVERRIDE {}
+  ~Navigator() override {}
 
   std::string user_agent_;
   std::string language_;
   scoped_refptr<MimeTypeArray> mime_types_;
   scoped_refptr<PluginArray> plugins_;
   scoped_refptr<cobalt::media_session::MediaSession> media_session_;
+  scoped_refptr<cobalt::media_capture::MediaDevices> media_devices_;
+  scoped_refptr<cobalt::dom::captions::SystemCaptionSettings>
+    system_caption_settings_;
   script::ScriptValueFactory* script_value_factory_;
 
   DISALLOW_COPY_AND_ASSIGN(Navigator);

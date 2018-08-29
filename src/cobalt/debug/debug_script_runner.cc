@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -82,8 +82,7 @@ bool DebugScriptRunner::EvaluateScript(const std::string& js_code,
       script::SourceCode::CreateSourceCode(js_code, GetInlineSourceLocation());
 
   ForceEnableEval();
-  bool succeeded = global_environment_->EvaluateScript(
-      source_code, false /*mute_errors*/, result);
+  bool succeeded = global_environment_->EvaluateScript(source_code, result);
   SetEvalAllowedFromCsp();
   return succeeded;
 }

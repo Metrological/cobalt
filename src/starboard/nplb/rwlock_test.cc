@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -55,7 +55,7 @@ class ReadAndSignalTestThread : public AbstractTestThread {
   explicit ReadAndSignalTestThread(SharedData* shared_data)
       : shared_data_(shared_data) {}
 
-  virtual void Run() SB_OVERRIDE {
+  void Run() override {
     shared_data_->rw_mutex.AcquireReadLock();
     // Indicate that this thread has entered the read state.
     shared_data_->read_count++;
@@ -108,7 +108,7 @@ class ThreadHoldsWriteLockForTime : public AbstractTestThread {
   explicit ThreadHoldsWriteLockForTime(SharedData* shared_data)
       : shared_data_(shared_data) {}
 
-  virtual void Run() SB_OVERRIDE {
+  void Run() override {
     ScopedWriteLock write_lock(&shared_data_->rw_lock);
     shared_data_->signal_write_lock.Put();
     SbThreadSleep(shared_data_->time_to_hold);
@@ -155,7 +155,7 @@ class ThreadRWLockStressTest : public AbstractTestThread {
         end_value_(end_value),
         shared_data_(shared_data) {}
 
-  virtual void Run() SB_OVERRIDE {
+  void Run() override {
     SbThread current_thread = SbThreadGetCurrent();
     SB_UNREFERENCED_PARAMETER(current_thread);
 

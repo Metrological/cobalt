@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ class JSONScriptExecutorResult : public ScriptExecutorResult::ResultHandler {
 
 class ScriptExecutorTest : public ::testing::Test {
  protected:
-  void SetUp() OVERRIDE {
+  void SetUp() override {
     stub_window_.reset(new dom::testing::StubWindow());
     script_executor_ =
         ScriptExecutor::Create(&element_mapping_, global_environment());

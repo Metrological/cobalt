@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,16 +30,16 @@ class StubFetcherHandler : public Fetcher::Handler {
       : run_loop_(run_loop), fetcher_(NULL) {}
 
   // From Fetcher::Handler.
-  void OnReceived(Fetcher* fetcher, const char* data, size_t size) OVERRIDE {
+  void OnReceived(Fetcher* fetcher, const char* data, size_t size) override {
     UNREFERENCED_PARAMETER(data);
     UNREFERENCED_PARAMETER(size);
     CheckSameFetcher(fetcher);
   }
-  void OnDone(Fetcher* fetcher) OVERRIDE {
+  void OnDone(Fetcher* fetcher) override {
     CheckSameFetcher(fetcher);
     MessageLoop::current()->PostTask(FROM_HERE, run_loop_->QuitClosure());
   }
-  void OnError(Fetcher* fetcher, const std::string& error_message) OVERRIDE {
+  void OnError(Fetcher* fetcher, const std::string& error_message) override {
     CheckSameFetcher(fetcher);
     error_message_ = error_message;
     MessageLoop::current()->PostTask(FROM_HERE, run_loop_->QuitClosure());
@@ -73,7 +73,7 @@ class FetcherFactoryTest : public ::testing::Test {
   FetcherFactoryTest()
       : message_loop_(MessageLoop::TYPE_DEFAULT),
         fetcher_factory_(NULL) {}
-  ~FetcherFactoryTest() OVERRIDE {}
+  ~FetcherFactoryTest() override {}
 
   MessageLoop message_loop_;
   FetcherFactory fetcher_factory_;

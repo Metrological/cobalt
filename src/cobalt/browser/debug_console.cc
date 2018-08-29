@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -166,13 +166,10 @@ DebugConsole::DebugConsole(
         render_tree_produced_callback,
     network::NetworkModule* network_module, const math::Size& window_dimensions,
     render_tree::ResourceProvider* resource_provider, float layout_refresh_rate,
-    const debug::Debugger::GetDebugServerCallback& get_debug_server_callback,
-    const script::JavaScriptEngine::Options& javascript_engine_options,
-    const dom::Window::GetSbWindowCallback& get_sb_window_callback) {
+    const debug::Debugger::GetDebugServerCallback& get_debug_server_callback) {
   mode_ = GetInitialMode();
 
   WebModule::Options web_module_options;
-  web_module_options.javascript_engine_options = javascript_engine_options;
   web_module_options.name = "DebugConsoleWebModule";
   // The debug console does not load any image assets.
   web_module_options.image_cache_capacity = 0;
@@ -181,6 +178,10 @@ DebugConsole::DebugConsole(
   web_module_options.csp_enforcement_mode = dom::kCspEnforcementDisable;
   web_module_options.csp_insecure_allowed_token =
       dom::CspDelegateFactory::GetInsecureAllowedToken();
+
+  // Since the debug console is intended to be overlaid on top of the main
+  // web module contents, make sure blending is enabled for its background.
+  web_module_options.clear_window_with_background_color = false;
 
   // Attach a DebugHub object to the "debugHub" Window attribute for this
   // web module so that JavaScript within this WebModule has access to DebugHub
@@ -195,10 +196,9 @@ DebugConsole::DebugConsole(
       base::Bind(&DebugConsole::OnError, base::Unretained(this)),
       WebModule::CloseCallback(), /* window_close_callback */
       base::Closure(),            /* window_minimize_callback */
-      get_sb_window_callback, NULL /* can_play_type_handler */,
-      NULL /* web_media_player_factory */, network_module, window_dimensions,
-      1.f /*video_pixel_ratio*/, resource_provider, layout_refresh_rate,
-      web_module_options));
+      NULL /* can_play_type_handler */, NULL /* web_media_player_factory */,
+      network_module, window_dimensions, 1.f /*video_pixel_ratio*/,
+      resource_provider, layout_refresh_rate, web_module_options));
 }
 
 DebugConsole::~DebugConsole() {}

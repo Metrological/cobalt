@@ -294,33 +294,21 @@
       ],
       'dependencies': [
         'base',
+        'base_copy_test_data',
         'base_i18n',
         'base_static',
         'run_all_unittests',
         'test_support_base',
         'third_party/dynamic_annotations/dynamic_annotations.gyp:dynamic_annotations',
-        '../testing/gmock.gyp:gmock',
-        '../testing/gtest.gyp:gtest',
-        '../third_party/icu/icu.gyp:icui18n',
-        '../third_party/icu/icu.gyp:icuuc',
+        '<(DEPTH)/testing/gmock.gyp:gmock',
+        '<(DEPTH)/testing/gtest.gyp:gtest',
+        '<(DEPTH)/third_party/icu/icu.gyp:icui18n',
+        '<(DEPTH)/third_party/icu/icu.gyp:icuuc',
       ],
       'variables': {
          # TODO(ajwong): Is there a way to autodetect this?
-        'module_dir': 'base'
+        'module_dir': 'base',
       },
-      'actions': [
-        {
-          'action_name': 'copy_test_data',
-          'variables': {
-            'input_files': [
-              'data/json',
-              'data/file_util_unittest',
-            ],
-            'output_dir': 'base/data',
-          },
-          'includes': [ '../cobalt/build/copy_test_data.gypi' ],
-        },
-      ],
       'msvs_disabled_warnings': [
         # forcing value to bool 'true' or 'false' (performance warning)
         4800,
@@ -329,14 +317,26 @@
       ],
     },
     {
+      'target_name': 'base_copy_test_data',
+      'type': 'none',
+      'variables': {
+        'content_test_input_files': [
+          'data/json',
+          'data/file_util_unittest',
+        ],
+        'content_test_output_subdir': 'base/data',
+      },
+      'includes': [ '<(DEPTH)/starboard/build/copy_test_data.gypi' ],
+    },
+    {
       'target_name': 'test_support_base',
       'type': 'static_library',
       'dependencies': [
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
         'base',
-        'base_static',
         'base_i18n',
+        'base_static',
       ],
       'export_dependent_settings': [
         'base',
@@ -381,7 +381,7 @@
       'variables': {
         'executable_name': 'base_unittests',
       },
-      'includes': [ '../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ],
 }

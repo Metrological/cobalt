@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,13 +17,9 @@
 namespace cobalt {
 namespace dom {
 
-URLUtils::URLUtils(const GURL& url, bool is_opaque)
-    : url_(url), origin_(is_opaque ? loader::Origin() : loader::Origin(url)) {}
-URLUtils::URLUtils(const GURL& url, const UpdateStepsCallback& update_steps,
-                   bool is_opaque)
-    : url_(url),
-      update_steps_(update_steps),
-      origin_(is_opaque ? loader::Origin() : loader::Origin(url)) {}
+URLUtils::URLUtils(const GURL& url) : url_(url) {}
+URLUtils::URLUtils(const GURL& url, const UpdateStepsCallback& update_steps)
+    : url_(url), update_steps_(update_steps) {}
 
 std::string URLUtils::href() const { return url_.possibly_invalid_spec(); }
 
@@ -141,7 +137,13 @@ void URLUtils::RunPreUpdateSteps(const GURL& new_url,
   }
 }
 
-std::string URLUtils::origin() const { return origin_.SerializedOrigin(); }
+std::string URLUtils::origin() const {
+  return GetOriginAsObject().SerializedOrigin();
+}
+
+loader::Origin URLUtils::GetOriginAsObject() const {
+  return loader::Origin(url_);
+}
 
 }  // namespace dom
 }  // namespace cobalt

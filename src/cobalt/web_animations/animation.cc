@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -115,6 +115,11 @@ Animation::Data::ComputeTimelineTimeFromLocalTime(
 void Animation::set_current_time(const base::optional<double>& current_time) {
   UNREFERENCED_PARAMETER(current_time);
   NOTIMPLEMENTED();
+}
+
+void Animation::TraceMembers(script::Tracer* tracer) {
+  tracer->Trace(effect_);
+  tracer->Trace(timeline_);
 }
 
 Animation::~Animation() {

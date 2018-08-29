@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,11 +30,11 @@ namespace memory_tracker {
 class PrintTool : public AbstractTool {
  public:
   PrintTool();
-  ~PrintTool() OVERRIDE;
+  ~PrintTool() override;
 
   // Overridden so that the thread can exit gracefully.
-  virtual void Run(Params* params) OVERRIDE;
-  virtual std::string tool_name() const OVERRIDE;
+  void Run(Params* params) override;
+  std::string tool_name() const override;
 
  private:
   class CvalsMap;

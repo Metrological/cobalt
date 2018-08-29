@@ -1,4 +1,4 @@
-// Copyright 2012 Google Inc. All Rights Reserved.
+// Copyright 2012 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@
 #include "cobalt/media/base/decoder_buffer.h"
 #include "cobalt/media/base/limits.h"
 #include "cobalt/media/base/media_export.h"
-#include "cobalt/media/base/shell_video_frame_provider.h"
 #include "cobalt/render_tree/resource_provider.h"
 #include "starboard/decode_target.h"
 
@@ -58,10 +57,6 @@ class MEDIA_EXPORT ShellMediaPlatform {
   // See implementation of SourceBufferStream for more details.
   virtual size_t GetSourceBufferStreamAudioMemoryLimit() const = 0;
   virtual size_t GetSourceBufferStreamVideoMemoryLimit() const = 0;
-
-  virtual scoped_refptr<ShellVideoFrameProvider> GetVideoFrameProvider() {
-    return NULL;
-  }
 
   virtual SbDecodeTargetGraphicsContextProvider*
   GetSbDecodeTargetGraphicsContextProvider() {

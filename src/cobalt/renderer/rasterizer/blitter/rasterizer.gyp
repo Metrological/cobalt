@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -39,7 +39,6 @@
 
       'sources': [
         'cached_software_rasterizer.cc',
-        'cobalt_blitter_conversions.cc',
         'hardware_rasterizer.cc',
         'image.cc',
         'linear_gradient.cc',
@@ -49,7 +48,6 @@
         'render_tree_node_visitor.cc',
         'resource_provider.cc',
         'scratch_surface_cache.cc',
-        'surface_cache_delegate.cc',
       ],
 
       'dependencies': [
@@ -117,7 +115,7 @@
       'variables': {
         'executable_name': 'blitter_rasterizer_tests',
       },
-      'includes': [ '../../../../starboard/build/deploy.gypi' ],
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ],
 }

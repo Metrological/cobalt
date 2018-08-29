@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ size_t GetSampleSize(SbMediaAudioSampleType sample_type) {
   switch (sample_type) {
     case kSbMediaAudioSampleTypeFloat32:
       return sizeof(float);
-    case kSbMediaAudioSampleTypeInt16:
+    case kSbMediaAudioSampleTypeInt16Deprecated:
       return sizeof(int16_t);
   }
   SB_NOTREACHED();
@@ -88,16 +88,16 @@ class AlsaAudioSink : public SbAudioSinkPrivate {
                 SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
                 SbAudioSinkConsumeFramesFunc consume_frame_func,
                 void* context);
-  ~AlsaAudioSink() SB_OVERRIDE;
+  ~AlsaAudioSink() override;
 
-  bool IsType(Type* type) SB_OVERRIDE { return type_ == type; }
+  bool IsType(Type* type) override { return type_ == type; }
 
-  void SetPlaybackRate(double playback_rate) SB_OVERRIDE {
+  void SetPlaybackRate(double playback_rate) override {
     ScopedLock lock(mutex_);
     playback_rate_ = playback_rate;
   }
 
-  void SetVolume(double volume) SB_OVERRIDE {
+  void SetVolume(double volume) override {
     ScopedLock lock(mutex_);
     volume_ = volume;
   }

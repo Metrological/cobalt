@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,6 +35,8 @@ bool CopyStringAndTestIfSuccess(char* out_value,
   SbStringCopy(out_value, from_value, value_length);
   return true;
 }
+
+#if SB_API_VERSION < 10
 
 bool GetPlatformUuid(char* out_value, int value_length) {
   struct ifreq interface;
@@ -78,6 +80,8 @@ bool GetPlatformUuid(char* out_value, int value_length) {
   return false;
 }
 
+#endif  // SB_API_VERSION < 10
+
 }  // namespace
 
 bool SbSystemGetProperty(SbSystemPropertyId property_id,
@@ -103,8 +107,10 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
     case kSbSystemPropertyPlatformName:
       return CopyStringAndTestIfSuccess(out_value, value_length, kPlatformName);
 
+#if SB_API_VERSION < 10
     case kSbSystemPropertyPlatformUuid:
       return GetPlatformUuid(out_value, value_length);
+#endif  // SB_API_VERSION < 10
 
     default:
       SB_DLOG(WARNING) << __FUNCTION__

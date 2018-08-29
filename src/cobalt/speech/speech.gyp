@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -72,7 +72,6 @@
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
         '<(DEPTH)/cobalt/browser/browser_bindings_gen.gyp:generated_types',
-        '<(DEPTH)/cobalt/dom/dom.gyp:dom',
         '<(DEPTH)/content/browser/speech/speech.gyp:speech',
         '<(DEPTH)/third_party/flac/flac.gyp:libflac',
         '<(DEPTH)/third_party/protobuf/protobuf.gyp:protobuf_lite',
@@ -101,6 +100,9 @@
             'url_fetcher_fake.cc',
             'url_fetcher_fake.h',
           ],
+          'dependencies': [
+            '<(DEPTH)/cobalt/audio/audio.gyp:audio',
+          ],
           'defines': [
             'ENABLE_FAKE_MICROPHONE',
           ],
@@ -109,21 +111,14 @@
           },
         }],
         ['cobalt_copy_test_data == 1', {
-          'actions': [
-            {
-              'action_name': 'speech_copy_test_data',
-              'variables': {
-                'input_files': [
-                  '<(DEPTH)/cobalt/speech/testdata/',
-                ],
-                'output_dir': 'cobalt/speech/testdata/',
-              },
-              'includes': [ '../build/copy_test_data.gypi' ],
-            },
-          ],
-        }
-
-        ],
+          'variables': {
+            'content_test_input_files': [
+              '<(DEPTH)/cobalt/speech/testdata/',
+            ],
+            'content_test_output_subdir': 'cobalt/speech/testdata/',
+          },
+          'includes': [ '<(DEPTH)/starboard/build/copy_test_data.gypi' ],
+        }],
       ],
     },
   ],

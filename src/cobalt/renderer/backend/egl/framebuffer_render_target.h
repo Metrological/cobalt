@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,13 +32,13 @@ class FramebufferRenderTargetEGL : public RenderTargetEGL {
                              const math::Size& size)
       : framebuffer_(graphics_context, size, GL_RGBA, GL_NONE) {}
 
-  const math::Size& GetSize() const OVERRIDE { return framebuffer_.GetSize(); }
+  const math::Size& GetSize() const override { return framebuffer_.GetSize(); }
 
   // This render target does not have an EGLSurface.
-  EGLSurface GetSurface() const OVERRIDE { return EGL_NO_SURFACE; }
+  EGLSurface GetSurface() const override { return EGL_NO_SURFACE; }
 
   // This handle is suitable for use with glBindFramebuffer.
-  intptr_t GetPlatformHandle() const OVERRIDE {
+  intptr_t GetPlatformHandle() const override {
     return framebuffer_.gl_handle();
   }
 
@@ -52,10 +52,10 @@ class FramebufferRenderTargetEGL : public RenderTargetEGL {
     return framebuffer_.GetColorTexture();
   }
 
-  bool CreationError() OVERRIDE { return framebuffer_.CreationError(); }
+  bool CreationError() override { return framebuffer_.CreationError(); }
 
  private:
-  ~FramebufferRenderTargetEGL() OVERRIDE {}
+  ~FramebufferRenderTargetEGL() override {}
 
   FramebufferEGL framebuffer_;
 };

@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@
 #include "cobalt/media/base/demuxer_stream.h"
 #include "cobalt/media/base/sbplayer_set_bounds_helper.h"
 #include "cobalt/media/base/video_decoder_config.h"
+#include "cobalt/media/base/video_frame_provider.h"
 #include "starboard/media.h"
 #include "starboard/player.h"
 
@@ -44,6 +45,10 @@ class StarboardPlayer {
     virtual void OnNeedData(DemuxerStream::Type type) = 0;
 #endif  // !SB_HAS(PLAYER_WITH_URL)
     virtual void OnPlayerStatus(SbPlayerState state) = 0;
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+    virtual void OnPlayerError(SbPlayerError error,
+                               const std::string& message) = 0;
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
 
    protected:
     ~Host() {}
@@ -56,16 +61,20 @@ class StarboardPlayer {
   StarboardPlayer(const scoped_refptr<base::MessageLoopProxy>& message_loop,
                   const std::string& url, SbWindow window, Host* host,
                   SbPlayerSetBoundsHelper* set_bounds_helper,
+                  bool allow_resume_after_suspend,
                   bool prefer_decode_to_texture,
                   const OnEncryptedMediaInitDataEncounteredCB&
-                      encrypted_media_init_data_encountered_cb);
+                      encrypted_media_init_data_encountered_cb,
+                  VideoFrameProvider* const video_frame_provider);
 #else   // SB_HAS(PLAYER_WITH_URL)
   StarboardPlayer(const scoped_refptr<base::MessageLoopProxy>& message_loop,
                   const AudioDecoderConfig& audio_config,
                   const VideoDecoderConfig& video_config, SbWindow window,
                   SbDrmSystem drm_system, Host* host,
                   SbPlayerSetBoundsHelper* set_bounds_helper,
-                  bool prefer_decode_to_texture);
+                  bool allow_resume_after_suspend,
+                  bool prefer_decode_to_texture,
+                  VideoFrameProvider* const video_frame_provider);
 #endif  // SB_HAS(PLAYER_WITH_URL)
   ~StarboardPlayer();
 
@@ -87,9 +96,16 @@ class StarboardPlayer {
   void SetPlaybackRate(double playback_rate);
   void GetInfo(uint32* video_frames_decoded, uint32* video_frames_dropped,
                base::TimeDelta* media_time);
+#if SB_HAS(PLAYER_WITH_URL)
+  void GetInfo(uint32* video_frames_decoded, uint32* video_frames_dropped,
+               base::TimeDelta* media_time, base::TimeDelta* buffer_start_time,
+               base::TimeDelta* buffer_length_time, int* frame_width,
+               int* frame_height);
+#endif  // SB_HAS(PLAYER_WITH_URL)
 
 #if SB_HAS(PLAYER_WITH_URL)
   base::TimeDelta GetDuration();
+  base::TimeDelta GetStartDate();
   void SetDrmSystem(SbDrmSystem drm_system);
 #endif  // SB_HAS(PLAYER_WITH_URL)
 
@@ -116,6 +132,10 @@ class StarboardPlayer {
     void OnDecoderStatus(SbPlayer player, SbMediaType type,
                          SbPlayerDecoderState state, int ticket);
     void OnPlayerStatus(SbPlayer player, SbPlayerState state, int ticket);
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+    void OnPlayerError(SbPlayer player, SbPlayerError error,
+                       const std::string& message);
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
     void OnDeallocateSample(const void* sample_buffer);
     void ResetPlayer();
 
@@ -140,19 +160,33 @@ class StarboardPlayer {
   void CreatePlayerWithUrl(const std::string& url);
 #else   // SB_HAS(PLAYER_WITH_URL)
   void CreatePlayer();
+
+  void WriteNextBufferFromCache(DemuxerStream::Type type);
+  void WriteBufferInternal(DemuxerStream::Type type,
+                           const scoped_refptr<DecoderBuffer>& buffer);
 #endif  // SB_HAS(PLAYER_WITH_URL)
+
+  void UpdateBounds_Locked();
 
   void ClearDecoderBufferCache();
 
   void OnDecoderStatus(SbPlayer player, SbMediaType type,
                        SbPlayerDecoderState state, int ticket);
   void OnPlayerStatus(SbPlayer player, SbPlayerState state, int ticket);
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+  void OnPlayerError(SbPlayer player, SbPlayerError error,
+                     const std::string& message);
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
   void OnDeallocateSample(const void* sample_buffer);
 
   static void DecoderStatusCB(SbPlayer player, void* context, SbMediaType type,
                               SbPlayerDecoderState state, int ticket);
   static void PlayerStatusCB(SbPlayer player, void* context,
                              SbPlayerState state, int ticket);
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+  static void PlayerErrorCB(SbPlayer player, void* context, SbPlayerError error,
+                            const char* message);
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
   static void DeallocateSampleCB(SbPlayer player, void* context,
                                  const void* sample_buffer);
 
@@ -178,32 +212,31 @@ class StarboardPlayer {
   AudioDecoderConfig audio_config_;
   VideoDecoderConfig video_config_;
   const SbWindow window_;
-  const SbDrmSystem drm_system_;
+  SbDrmSystem drm_system_ = kSbDrmSystemInvalid;
   Host* const host_;
   // Consider merge |SbPlayerSetBoundsHelper| into CallbackHelper.
   SbPlayerSetBoundsHelper* const set_bounds_helper_;
+  const bool allow_resume_after_suspend_;
 
   // The following variables are only changed or accessed from the
   // |message_loop_|.
-  int frame_width_;
-  int frame_height_;
+  int frame_width_ = 1;
+  int frame_height_ = 1;
   DecodingBuffers decoding_buffers_;
-  int ticket_;
-  float volume_;
-  double playback_rate_;
-  bool paused_;
-  bool seek_pending_;
+  int ticket_ = SB_PLAYER_INITIAL_TICKET;
+  float volume_ = 1.0f;
+  double playback_rate_ = 0.0;
+  bool seek_pending_ = false;
   DecoderBufferCache decoder_buffer_cache_;
-  // If |SetBounds| is called while we are in a suspended state, then the
-  // |z_index| and |rect| that we are passed will be saved to here, and then
-  // immediately set on the new player that we construct when we are resumed.
-  base::optional<int> pending_set_bounds_z_index_;
-  base::optional<gfx::Rect> pending_set_bounds_rect_;
 
   // The following variables can be accessed from GetInfo(), which can be called
   // from any threads.  So some of their usages have to be guarded by |lock_|.
   base::Lock lock_;
-  State state_;
+
+  // Stores the |z_index| and |rect| parameters of the latest SetBounds() call.
+  base::optional<int> set_bounds_z_index_;
+  base::optional<gfx::Rect> set_bounds_rect_;
+  State state_ = kPlaying;
   SbPlayer player_;
   uint32 cached_video_frames_decoded_;
   uint32 cached_video_frames_dropped_;
@@ -211,6 +244,8 @@ class StarboardPlayer {
 
   // Keep track of the output mode we are supposed to output to.
   SbPlayerOutputMode output_mode_;
+
+  VideoFrameProvider* const video_frame_provider_;
 };
 
 }  // namespace media

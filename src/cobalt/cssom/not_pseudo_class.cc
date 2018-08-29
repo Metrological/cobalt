@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ void NotPseudoClass::IndexSelectorTreeNode(SelectorTree::Node* parent_node,
   parent_node->AppendPseudoClassNode(kNotPseudoClass, combinator, child_node);
 }
 
-CompoundSelector* NotPseudoClass::selector() {
+CompoundSelector* NotPseudoClass::selector() const {
   return compound_selector_.get();
 }
 

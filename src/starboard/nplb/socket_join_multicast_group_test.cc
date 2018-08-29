@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -79,7 +79,11 @@ TEST(SbSocketJoinMulticastGroupTest, SunnyDay) {
   }
 
   SbSocketAddress receive_address;
+  int loop_counts = 10000;
   while (true) {
+    // Breaks the case where the test will hang in a loop when
+    // SbSocketReceiveFrom() always returns kSbSocketPending.
+    ASSERT_GE(loop_counts--, 0) << "Multicast timed out.";
     int received = SbSocketReceiveFrom(
         receive_socket, buf, SB_ARRAY_SIZE_INT(buf), &receive_address);
     if (received < 0 &&

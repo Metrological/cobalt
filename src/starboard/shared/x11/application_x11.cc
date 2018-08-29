@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@
 #include "starboard/player.h"
 #include "starboard/shared/posix/time_internal.h"
 #include "starboard/shared/starboard/audio_sink/audio_sink_internal.h"
+#include "starboard/shared/starboard/player/filter/cpu_video_frame.h"
 #include "starboard/shared/x11/window_internal.h"
 #include "starboard/time.h"
 
@@ -689,14 +690,12 @@ int ErrorHandler(Display* display, XErrorEvent* event) {
 
 }  // namespace
 
-using shared::starboard::player::VideoFrame;
+using shared::starboard::player::filter::CpuVideoFrame;
 
 ApplicationX11::ApplicationX11()
     : wake_up_atom_(None),
       wm_delete_atom_(None),
       composite_event_id_(kSbEventIdInvalid),
-      frame_read_index_(0),
-      frames_updated_(false),
       display_(NULL),
       paste_buffer_key_release_pending_(false) {
   SbAudioSinkPrivate::Initialize();
@@ -754,30 +753,31 @@ void ApplicationX11::Composite() {
   if (!windows_.empty()) {
     SbWindow window = windows_[0];
     if (SbWindowIsValid(window)) {
-      std::map<int, FrameInfo> frame_infos;
-      {
-        ScopedLock lock(frame_mutex_);
-        if (frames_updated_) {
-          // Increment the index to the next frame, which has been written.
-          frame_read_index_ = (frame_read_index_ + 1) % kNumFrames;
-          frame_infos.swap(frame_infos_[frame_read_index_]);
+      ScopedLock lock(frame_mutex_);
 
-          // Clear the frame written flag, so we will not advance frames until
-          // the next frame is written.
-          frames_updated_ = false;
-        }
-      }
       window->BeginComposite();
-      for (auto& iter : frame_infos) {
-        FrameInfo& frame_info = iter.second;
-
-        if (frame_info.frame && !frame_info.frame->IsEndOfStream() &&
-            frame_info.frame->format() != VideoFrame::kBGRA32) {
-          frame_info.frame = frame_info.frame->ConvertTo(VideoFrame::kBGRA32);
+      for (auto& frame_info : current_video_bounds_) {
+        // Get the cached video frame.
+        SbPlayer player = frame_info.player;
+        scoped_refptr<CpuVideoFrame> cpu_video_frame =
+            static_cast<CpuVideoFrame*>(current_video_frames_[player].get());
+        if (!cpu_video_frame) {
+          // Need to generate a new video frame.
+          cpu_video_frame =
+              static_cast<CpuVideoFrame*>(next_video_frames_[player].get());
+          if (!cpu_video_frame) {
+            // The player was already destroyed, so nothing to render.
+            continue;
+          }
+          if (cpu_video_frame->format() != CpuVideoFrame::kBGRA32) {
+            cpu_video_frame = cpu_video_frame->ConvertTo(
+                CpuVideoFrame::kBGRA32);
+          }
+          current_video_frames_[player] = cpu_video_frame;
         }
         window->CompositeVideoFrame(frame_info.x, frame_info.y,
                                     frame_info.width, frame_info.height,
-                                    frame_info.frame);
+                                    cpu_video_frame);
       }
       window->EndComposite();
     }
@@ -794,28 +794,56 @@ void ApplicationX11::AcceptFrame(SbPlayer player,
                                  int width,
                                  int height) {
   ScopedLock lock(frame_mutex_);
-  // Always write ahead 1 frame of the current read frame.
-  int write_index = (frame_read_index_ + 1) % kNumFrames;
 
-  for (auto iter = frame_infos_[write_index].begin();
-       iter != frame_infos_[write_index].end(); ++iter) {
-    if (iter->second.player == player) {
-      frame_infos_[write_index].erase(iter);
-      break;
-    }
+  if (frame->is_end_of_stream()) {
+    // Remove all references the the player and its resources.
+    next_video_frames_.erase(player);
+    next_video_bounds_.erase(player);
+  } else {
+    next_video_frames_[player] = frame;
   }
 
-  // Copy the frame.
-  FrameInfo& frame_info = frame_infos_[write_index][z_index];
+  // Invalidate the cache of this player's current frame.
+  current_video_frames_.erase(player);
+}
+
+void ApplicationX11::SwapBuffersBegin() {
+  // Prevent compositing while the GL layer is changing.
+  frame_mutex_.Acquire();
+}
+
+void ApplicationX11::SwapBuffersEnd() {
+  // Determine the video bounds that should be used with the new GL layer.
+
+  // Sort the video bounds according to their z_index.
+  current_video_bounds_.clear();
+  for (auto& iter : next_video_bounds_) {
+    const FrameInfo& bounds = iter.second;
+    auto position = current_video_bounds_.begin();
+    while (position != current_video_bounds_.end()) {
+      if (bounds.z_index < position->z_index) {
+        break;
+      }
+      ++position;
+    }
+    current_video_bounds_.insert(position, bounds);
+  }
+
+  frame_mutex_.Release();
+}
+
+void ApplicationX11::PlayerSetBounds(SbPlayer player,
+    int z_index, int x, int y, int width, int height) {
+  ScopedLock lock(frame_mutex_);
+
+  // The bounds should only take effect once the UI frame is submitted.
+  FrameInfo& frame_info = next_video_bounds_[player];
   frame_info.player = player;
-  frame_info.frame = frame;
   frame_info.z_index = z_index;
   frame_info.x = x;
   frame_info.y = y;
   frame_info.width = width;
   frame_info.height = height;
-
-  frames_updated_ = true;
 }
 
 void ApplicationX11::Initialize() {
@@ -1238,7 +1266,7 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
       return NULL;
     }
     case ConfigureNotify: {
-#if SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+#if SB_API_VERSION >= 8
       XConfigureEvent* x_configure_event =
           reinterpret_cast<XConfigureEvent*>(x_event);
       scoped_ptr<SbEventWindowSizeChangedData> data(
@@ -1258,9 +1286,9 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
       data->window->unhandled_resize = false;
       return new Event(kSbEventTypeWindowSizeChanged, data.release(),
                        &DeleteDestructor<SbInputData>);
-#else  // SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+#else   // SB_API_VERSION >= 8
       return NULL;
-#endif  // SB_API_VERSION >= SB_WINDOW_SIZE_CHANGED_API_VERSION
+#endif  // SB_API_VERSION >= 8
     }
     case SelectionNotify: {
       XSelectionEvent* x_selection_event =

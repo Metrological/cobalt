@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,11 +37,11 @@ class StubAudioSinkType : public SbAudioSinkPrivate::Type {
       SbAudioSinkConsumeFramesFunc consume_frames_func,
       void* context);
 
-  bool IsValid(SbAudioSink audio_sink) SB_OVERRIDE {
+  bool IsValid(SbAudioSink audio_sink) override {
     return audio_sink != kSbAudioSinkInvalid && audio_sink->IsType(this);
   }
 
-  void Destroy(SbAudioSink audio_sink) SB_OVERRIDE {
+  void Destroy(SbAudioSink audio_sink) override {
     if (audio_sink != kSbAudioSinkInvalid && !IsValid(audio_sink)) {
       SB_LOG(WARNING) << "audio_sink is invalid.";
       return;

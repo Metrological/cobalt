@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,6 +31,16 @@
 extern "C" {
 #endif
 
+typedef struct CbLibRenderContext {
+  CbLibRenderContext() {}
+  // An EGLSurface that will be mirrored to the system window, if provided.
+  // uintptr_t is used for the type, to avoid pulling in possibly conflicting
+  // EGL headers.
+  uintptr_t surface_to_mirror = 0;
+  // Horizontal amount of the surface to mirror, in the range [0.0, 1.0].
+  float width_to_mirror = 1.0f;
+} CbLibRenderContext;
+
 typedef struct CbLibSize {
   CbLibSize(int width, int height) : width(width), height(height) {}
   int width;
@@ -38,8 +48,7 @@ typedef struct CbLibSize {
 } CbLibSize;
 
 typedef void (*CbLibGraphicsContextCreatedCallback)(void* context);
-typedef void (*CbLibGraphicsBeginRenderFrameCallback)(void* context);
-typedef void (*CbLibGraphicsEndRenderFrameCallback)(void* context);
+typedef void (*CbLibGraphicsRenderFrameCallback)(void* context);
 
 // Sets a callback which will be called from the rasterization thread once the
 // graphics context has been created.
@@ -48,13 +57,10 @@ SB_EXPORT_PLATFORM void CbLibGraphicsSetContextCreatedCallback(
 
 // Sets a callback which will be called as often as the platform can swap
 // buffers from the rasterization thread.
-SB_EXPORT_PLATFORM void CbLibGraphicsSetBeginRenderFrameCallback(
-    void* context, CbLibGraphicsBeginRenderFrameCallback callback);
-
-// Sets a callback which will be called at the end of rendering, after swap
-// buffers has been called.
-SB_EXPORT_PLATFORM void CbLibGraphicsSetEndRenderFrameCallback(
-    void* context, CbLibGraphicsEndRenderFrameCallback callback);
+//
+// All rendering must be performed inside of this callback.
+SB_EXPORT_PLATFORM void CbLibGraphicsSetRenderFrameCallback(
+    void* context, CbLibGraphicsRenderFrameCallback callback);
 
 // Returns the texture ID for the current RenderTree. This should be
 // re-retrieved each frame in the event that the underlying texture has
@@ -71,6 +77,30 @@ SB_EXPORT_PLATFORM intptr_t CbLibGrapicsGetMainTextureHandle();
 // next frame.
 SB_EXPORT_PLATFORM void CbLibGraphicsSetTargetMainTextureSize(
     const CbLibSize& target_render_size);
+
+// Performs all Cobalt-related rendering, including the browser UI and the
+// video if one is playing.
+//
+// This should only be called from the Cobalt rendering thread, inside of a
+// callback set by CbLibGraphicsSetRenderFrameCallback.
+SB_EXPORT_PLATFORM void CbLibGraphicsRenderCobalt();
+
+// Copies the contents of the offscreen backbuffer to the Cobalt system window.
+// Note that this call only copies the contents of the buffer but does not
+// perform any presentation.  You must also call CbLibGraphicsSwapBackbuffer
+// in order to make the contents of the offscreen backbuffer visible!
+//
+// This should only be called from the Cobalt rendering thread, inside of a
+// callback set by CbLibGraphicsSetRenderFrameCallback.
+SB_EXPORT_PLATFORM void CbLibGraphicsCopyBackbuffer(uintptr_t surface,
+                                                    float width_scale);
+
+// Swaps the backbuffer for the Cobalt system window, making a new frame
+// visibile.
+//
+// This should only be called from the Cobalt rendering thread, inside of a
+// callback set by CbLibGraphicsSetRenderFrameCallback.
+SB_EXPORT_PLATFORM void CbLibGraphicsSwapBackbuffer();
 
 #ifdef __cplusplus
 }  // extern "C"

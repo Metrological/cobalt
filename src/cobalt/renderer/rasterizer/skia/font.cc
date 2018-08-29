@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ Font::Font(SkiaTypeface* typeface, SkScalar size)
   glyph_bounds_thread_checker_.DetachFromThread();
 }
 
-SkTypeface_Cobalt* Font::GetSkTypeface() const {
+const sk_sp<SkTypeface_Cobalt>& Font::GetSkTypeface() const {
   return typeface_->GetSkTypeface();
 }
 
@@ -137,7 +137,7 @@ float Font::GetGlyphWidth(render_tree::GlyphIndex glyph) {
 
 SkPaint Font::GetSkPaint() const {
   SkPaint paint(GetDefaultSkPaint());
-  SkAutoTUnref<SkTypeface> typeface(typeface_->GetSkTypeface());
+  const sk_sp<SkTypeface>& typeface(typeface_->GetSkTypeface());
   paint.setTypeface(typeface);
   paint.setTextSize(size_);
   return paint;

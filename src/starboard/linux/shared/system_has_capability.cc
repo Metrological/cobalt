@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,6 +22,10 @@ bool SbSystemHasCapability(SbSystemCapabilityId capability_id) {
       return false;
     case kSbSystemCapabilityCanQueryGPUMemoryStats:
       return false;
+#if SB_API_VERSION >= 10
+    case kSbSystemCapabilitySetsInputTimestamp:
+      return false;
+#endif
   }
 
   SB_DLOG(WARNING) << "Unrecognized capability: " << capability_id;

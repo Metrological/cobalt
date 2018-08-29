@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -55,6 +55,8 @@ class MapToMeshFunction : public FilterFunction {
   // Type of the source of the mesh: either a built-in mesh type or a custom
   // mesh.
   enum MeshSpecType {
+    // Built-in rectangular mesh.
+    kRectangular,
     // Built-in equirectangular mesh.
     kEquirectangular,
     // List of custom binary mesh URLs.
@@ -67,7 +69,7 @@ class MapToMeshFunction : public FilterFunction {
    public:
     explicit MeshSpec(MeshSpecType mesh_type) : mesh_type_(mesh_type) {
       // Check that this is a built-in mesh type.
-      DCHECK_EQ(mesh_type, kEquirectangular);
+      DCHECK(mesh_type == kRectangular || mesh_type == kEquirectangular);
     }
 
     MeshSpec(MeshSpecType mesh_type,
@@ -108,6 +110,7 @@ class MapToMeshFunction : public FilterFunction {
         transform_(transform),
         stereo_mode_(stereo_mode) {
     DCHECK(mesh_spec_);
+    DCHECK_NE(mesh_spec_->mesh_type(), kRectangular);
     DCHECK(stereo_mode_);
   }
 
@@ -135,10 +138,23 @@ class MapToMeshFunction : public FilterFunction {
         vertical_fov_in_radians_(vertical_fov_in_radians),
         transform_(transform),
         stereo_mode_(stereo_mode) {
+    DCHECK_NE(spec_type, kRectangular);
     DCHECK(stereo_mode_);
   }
 
-  ~MapToMeshFunction() OVERRIDE {}
+  // Alternate constructor for built-in meshes without FOV or transforms.
+  MapToMeshFunction(MeshSpecType spec_type,
+                    const scoped_refptr<KeywordValue>& stereo_mode)
+      : mesh_spec_(new MeshSpec(spec_type)),
+        horizontal_fov_in_radians_(0.0f),
+        vertical_fov_in_radians_(0.0f),
+        transform_(glm::mat4()),
+        stereo_mode_(stereo_mode) {
+    DCHECK_EQ(spec_type, kRectangular);
+    DCHECK(stereo_mode_);
+  }
+
+  ~MapToMeshFunction() override {}
 
   const MeshSpec& mesh_spec() const { return *mesh_spec_; }
   float horizontal_fov_in_radians() const { return horizontal_fov_in_radians_; }
@@ -148,7 +164,7 @@ class MapToMeshFunction : public FilterFunction {
     return stereo_mode_;
   }
 
-  std::string ToString() const OVERRIDE;
+  std::string ToString() const override;
 
   bool operator==(const MapToMeshFunction& rhs) const;
 

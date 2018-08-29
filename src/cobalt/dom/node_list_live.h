@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,9 +34,9 @@ class NodeListLive : public NodeList {
 
   // Web API: NodeList
   //
-  unsigned int length() OVERRIDE;
+  unsigned int length() override;
 
-  scoped_refptr<Node> Item(unsigned int item) OVERRIDE;
+  scoped_refptr<Node> Item(unsigned int item) override;
 
   // Custom, not in any spec.
   //
@@ -44,7 +44,7 @@ class NodeListLive : public NodeList {
 
  private:
   explicit NodeListLive(const scoped_refptr<const Node>& base);
-  ~NodeListLive() OVERRIDE {}
+  ~NodeListLive() override {}
 
   // Base node that was used to generate the collection.
   const scoped_refptr<const Node> base_;

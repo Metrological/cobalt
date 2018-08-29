@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ class CreateImagesThread : public base::SimpleThread {
         num_images_to_create_(num_images_to_create),
         image_size_(image_size) {}
 
-  void Run() OVERRIDE {
+  void Run() override {
     for (int i = 0; i < num_images_to_create_; ++i) {
       scoped_ptr<render_tree::ImageData> image_data =
           resource_provider_->AllocateImageData(
@@ -95,7 +95,7 @@ class CreateImagesSpawnerThread : public base::SimpleThread {
         image_size_(image_size),
         finished_callback_(finished_callback) {}
 
-  void Run() OVERRIDE {
+  void Run() override {
     // First, create our threads.
     typedef std::vector<CreateImagesThread*> ThreadVector;
     ThreadVector image_creating_threads;

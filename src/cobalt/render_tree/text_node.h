@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ namespace render_tree {
 class TextNode : public Node {
  public:
   struct Builder {
+    Builder(const Builder&) = default;
     Builder(const math::Vector2dF& offset,
             const scoped_refptr<GlyphBuffer>& glyph_buffer,
             const ColorRGBA& color);
@@ -64,16 +65,14 @@ class TextNode : public Node {
     base::optional<std::vector<Shadow> > shadows;
   };
 
-  explicit TextNode(const Builder& builder) : data_(builder) {}
-  TextNode(const math::Vector2dF& offset,
-           const scoped_refptr<GlyphBuffer>& glyph_buffer,
-           const ColorRGBA& color)
-      : data_(offset, glyph_buffer, color) {}
+  // Forwarding constructor to the set of Builder constructors.
+  template <typename... Args>
+  TextNode(Args&&... args) : data_(std::forward<Args>(args)...) {}
 
-  void Accept(NodeVisitor* visitor) OVERRIDE;
-  math::RectF GetBounds() const OVERRIDE;
+  void Accept(NodeVisitor* visitor) override;
+  math::RectF GetBounds() const override;
 
-  base::TypeId GetTypeId() const OVERRIDE {
+  base::TypeId GetTypeId() const override {
     return base::GetTypeId<TextNode>();
   }
 

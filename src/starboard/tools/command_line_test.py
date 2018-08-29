@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2017 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,9 +36,12 @@ def _RestoreMapping(target, source):
 
 
 def _ClearEnviron():
-  del os.environ['BUILD_CONFIGURATION']
-  del os.environ['BUILD_TYPE']
-  del os.environ['BUILD_PLATFORM']
+  if 'BUILD_CONFIGURATION' in os.environ:
+    del os.environ['BUILD_CONFIGURATION']
+  if 'BUILD_TYPE' in os.environ:
+    del os.environ['BUILD_TYPE']
+  if 'BUILD_PLATFORM' in os.environ:
+    del os.environ['BUILD_PLATFORM']
 
 
 def _SetEnvironConfig(config):

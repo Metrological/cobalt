@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -54,7 +54,11 @@ class Search {
         NodeListToElementVector(node_list, &found_elements);
         break;
       }
-      default:
+      case protocol::SearchStrategy::kId:
+      case protocol::SearchStrategy::kLinkText:
+      case protocol::SearchStrategy::kName:
+      case protocol::SearchStrategy::kPartialLinkText:
+      case protocol::SearchStrategy::kXPath:
         NOTIMPLEMENTED();
     }
     return PopulateFindResults<T>(found_elements, element_mapping);

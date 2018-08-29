@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@
 #include "base/message_loop_proxy.h"
 #include "base/optional.h"
 #include "base/stringprintf.h"
+#include "cobalt/base/c_val.h"
 #include "cobalt/base/language.h"
 #include "cobalt/base/startup_timer.h"
 #include "cobalt/base/tokens.h"
@@ -42,6 +43,7 @@
 #include "cobalt/dom/element.h"
 #include "cobalt/dom/event.h"
 #include "cobalt/dom/global_stats.h"
+#include "cobalt/dom/html_script_element.h"
 #include "cobalt/dom/input_event.h"
 #include "cobalt/dom/input_event_init.h"
 #include "cobalt/dom/keyboard_event.h"
@@ -134,52 +136,59 @@ class WebModule::Impl {
 #endif  // ENABLE_DEBUG_CONSOLE
 
 #if SB_HAS(ON_SCREEN_KEYBOARD)
-  // Called to inject an on screen keyboard input event into the web module.
-  // Event is directed at a specific element if the element is non-null.
-  // Otherwise, the currently focused element receives the event.
-  // If element is specified, we must be on the WebModule's message loop.
+  // Injects an on screen keyboard input event into the web module. Event is
+  // directed at a specific element if the element is non-null. Otherwise, the
+  // currently focused element receives the event. If element is specified, we
+  // must be on the WebModule's message loop.
   void InjectOnScreenKeyboardInputEvent(scoped_refptr<dom::Element> element,
                                         base::Token type,
                                         const dom::InputEventInit& event);
-  // Called to inject an on screen keyboard input event into the web module.
-  // Event is directed at the on screen keyboard element.
-  void InjectOnScreenKeyboardShownEvent();
-  // Called to inject an on screen keyboard input event into the web module.
-  // Event is directed at the on screen keyboard element.
-  void InjectOnScreenKeyboardHiddenEvent();
+  // Injects an on screen keyboard shown event into the web module. Event is
+  // directed at the on screen keyboard element.
+  void InjectOnScreenKeyboardShownEvent(int ticket);
+  // Injects an on screen keyboard hidden event into the web module. Event is
+  // directed at the on screen keyboard element.
+  void InjectOnScreenKeyboardHiddenEvent(int ticket);
+  // Injects an on screen keyboard focused event into the web module. Event is
+  // directed at the on screen keyboard element.
+  void InjectOnScreenKeyboardFocusedEvent(int ticket);
+  // Injects an on screen keyboard blurred event into the web module. Event is
+  // directed at the on screen keyboard element.
+  void InjectOnScreenKeyboardBlurredEvent(int ticket);
 
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
-  // Called to inject a keyboard event into the web module.
-  // Event is directed at a specific element if the element is non-null.
-  // Otherwise, the currently focused element receives the event.
-  // If element is specified, we must be on the WebModule's message loop
+  // Injects a keyboard event into the web module. Event is directed at a
+  // specific element if the element is non-null. Otherwise, the currently
+  // focused element receives the event. If element is specified, we must be
+  // on the WebModule's message loop
   void InjectKeyboardEvent(scoped_refptr<dom::Element> element,
                            base::Token type,
                            const dom::KeyboardEventInit& event);
 
-  // Called to inject a pointer event into the web module.
-  // Event is directed at a specific element if the element is non-null.
-  // Otherwise, the currently focused element receives the event.
-  // If element is specified, we must be on the WebModule's message loop
+  // Injects a pointer event into the web module. Event is directed at a
+  // specific element if the element is non-null. Otherwise, the currently
+  // focused element receives the event. If element is specified, we must be
+  // on the WebModule's message loop
   void InjectPointerEvent(scoped_refptr<dom::Element> element, base::Token type,
                           const dom::PointerEventInit& event);
 
-  // Called to inject a wheel event into the web module.
-  // Event is directed at a specific element if the element is non-null.
-  // Otherwise, the currently focused element receives the event.
-  // If element is specified, we must be on the WebModule's message loop
+  // Injects a wheel event into the web module. Event is directed at a
+  // specific element if the element is non-null. Otherwise, the currently
+  // focused element receives the event. If element is specified, we must be
+  // on the WebModule's message loop
   void InjectWheelEvent(scoped_refptr<dom::Element> element, base::Token type,
                         const dom::WheelEventInit& event);
 
-  // Called to inject a beforeunload event into the web module. If
-  // this event is not handled by the web application,
-  // |on_before_unload_fired_but_not_handled_| will be called. The event
-  // is not directed at a specific element.
+  // Injects a beforeunload event into the web module. If this event is not
+  // handled by the web application, |on_before_unload_fired_but_not_handled_|
+  // will be called. The event is not directed at a specific element.
   void InjectBeforeUnloadEvent();
 
-  // Called to execute JavaScript in this WebModule. Sets the |result|
-  // output parameter and signals |got_result|.
+  void InjectCaptionSettingsChangedEvent();
+
+  // Executes JavaScript in this WebModule. Sets the |result| output parameter
+  // and signals |got_result|.
   void ExecuteJavascript(const std::string& script_utf8,
                          const base::SourceLocation& script_location,
                          base::WaitableEvent* got_result, std::string* result,
@@ -211,7 +220,6 @@ class WebModule::Impl {
       media::WebMediaPlayerFactory* web_media_player_factory);
   void SetImageCacheCapacity(int64_t bytes);
   void SetRemoteTypefaceCacheCapacity(int64_t bytes);
-  void SetJavascriptGcThreshold(int64_t bytes);
 
   // Sets the application state, asserts preconditions to transition to that
   // state, and dispatches any precipitate web events.
@@ -234,9 +242,13 @@ class WebModule::Impl {
   void Resume(render_tree::ResourceProvider* resource_provider);
 
   void ReduceMemory();
+  void GetJavaScriptHeapStatistics(
+      const JavaScriptHeapStatisticsCallback& callback);
 
   void LogScriptError(const base::SourceLocation& source_location,
                       const std::string& error_message);
+
+  void CancelSynchronousLoads();
 
  private:
   class DocumentLoadedObserver;
@@ -259,6 +271,19 @@ class WebModule::Impl {
   // the render tree (e.g. to add a debug overlay), then runs the callback
   // specified in the constructor, |render_tree_produced_callback_|.
   void OnRenderTreeProduced(const LayoutResults& layout_results);
+
+  // Called by the Renderer on the Renderer thread when it rasterizes a render
+  // tree with this callback attached. It includes the time the render tree was
+  // produced.
+  void OnRenderTreeRasterized(
+      scoped_refptr<base::MessageLoopProxy> web_module_message_loop,
+      const base::TimeTicks& produced_time);
+
+  // WebModule thread handling of the OnRenderTreeRasterized() callback. It
+  // includes the time that the render tree was produced and the time that the
+  // render tree was rasterized.
+  void ProcessOnRenderTreeRasterized(const base::TimeTicks& produced_time,
+                                     const base::TimeTicks& rasterized_time);
 
   void OnCspPolicyChanged();
 
@@ -285,6 +310,9 @@ class WebModule::Impl {
   // Initializes the ResourceProvider and dependent resources.
   void SetResourceProvider(render_tree::ResourceProvider* resource_provider);
 
+  void OnStartDispatchEvent(const scoped_refptr<dom::Event>& event);
+  void OnStopDispatchEvent(const scoped_refptr<dom::Event>& event);
+
   // Thread checker ensures all calls to the WebModule are made from the same
   // thread that it is created in.
   base::ThreadChecker thread_checker_;
@@ -293,6 +321,12 @@ class WebModule::Impl {
 
   // Simple flag used for basic error checking.
   bool is_running_;
+
+  // The most recent time that a new render tree was produced.
+  base::TimeTicks last_render_tree_produced_time_;
+
+  // Whether or not a render tree has been produced but not yet rasterized.
+  base::CVal<bool, base::CValPublic> is_render_tree_rasterization_pending_;
 
   // Object that provides renderer resources like images and fonts.
   render_tree::ResourceProvider* resource_provider_;
@@ -407,6 +441,16 @@ class WebModule::Impl {
   base::Closure on_before_unload_fired_but_not_handled_;
 
   bool should_retain_remote_typeface_cache_on_suspend_;
+
+  scoped_refptr<cobalt::dom::captions::SystemCaptionSettings>
+      system_caption_settings_;
+
+  // This event is used to interrupt the loader when JavaScript is loaded
+  // synchronously.  It is manually reset so that events like Suspend can be
+  // correctly execute, even if there are multiple synchronous loads in queue
+  // before the suspend (or other) event handlers.
+  base::WaitableEvent synchronous_loader_interrupt_ = {
+      true /* manually reset */, false /* initially signaled */};
 };
 
 class WebModule::Impl::DocumentLoadedObserver : public dom::DocumentObserver {
@@ -415,14 +459,14 @@ class WebModule::Impl::DocumentLoadedObserver : public dom::DocumentObserver {
   explicit DocumentLoadedObserver(const ClosureVector& loaded_callbacks)
       : loaded_callbacks_(loaded_callbacks) {}
   // Called at most once, when document and all referred resources are loaded.
-  void OnLoad() OVERRIDE {
+  void OnLoad() override {
     for (size_t i = 0; i < loaded_callbacks_.size(); ++i) {
       loaded_callbacks_[i].Run();
     }
   }
 
-  void OnMutation() OVERRIDE{};
-  void OnFocusChanged() OVERRIDE{};
+  void OnMutation() override {}
+  void OnFocusChanged() override {}
 
  private:
   ClosureVector loaded_callbacks_;
@@ -431,6 +475,9 @@ class WebModule::Impl::DocumentLoadedObserver : public dom::DocumentObserver {
 WebModule::Impl::Impl(const ConstructionData& data)
     : name_(data.options.name),
       is_running_(false),
+      is_render_tree_rasterization_pending_(
+          StringPrintf("%s.IsRenderTreeRasterizationPending", name_.c_str()),
+          false, "True when a render tree is produced but not yet rasterized."),
       resource_provider_(data.resource_provider),
       resource_provider_type_id_(data.resource_provider->GetTypeId()) {
   // Currently we rely on a platform to explicitly specify that it supports
@@ -449,7 +496,9 @@ WebModule::Impl::Impl(const ConstructionData& data)
   // testing whether it parses or not via the CSS.supports() Web API.
   css_parser::Parser::SupportsMapToMeshFlag supports_map_to_mesh =
 #if defined(ENABLE_MAP_TO_MESH)
-      css_parser::Parser::kSupportsMapToMesh;
+      data.options.enable_map_to_mesh_rectangular
+          ? css_parser::Parser::kSupportsMapToMeshRectangular
+          : css_parser::Parser::kSupportsMapToMesh;
 #else
       css_parser::Parser::kDoesNotSupportMapToMesh;
 #endif
@@ -551,14 +600,22 @@ WebModule::Impl::Impl(const ConstructionData& data)
 
   media_session_client_ = media_session::MediaSessionClient::Create();
 
+  system_caption_settings_ =
+      new cobalt::dom::captions::SystemCaptionSettings();
+
   dom::Window::CacheCallback splash_screen_cache_callback =
       CacheUrlContentCallback(data.options.splash_screen_cache);
+
+  // These members will reference other |Traceable|s, however are not
+  // accessible from |Window|, so we must explicitly add them as roots.
+  global_environment_->AddRoot(&mutation_observer_task_manager_);
+  global_environment_->AddRoot(media_source_registry_.get());
 
   window_ = new dom::Window(
       data.window_dimensions.width(), data.window_dimensions.height(),
       data.video_pixel_ratio, data.initial_application_state, css_parser_.get(),
-      dom_parser_.get(), fetcher_factory_.get(), &resource_provider_,
-      animated_image_tracker_.get(), image_cache_.get(),
+      dom_parser_.get(), fetcher_factory_.get(), loader_factory_.get(),
+      &resource_provider_, animated_image_tracker_.get(), image_cache_.get(),
       reduced_image_cache_capacity_manager_.get(), remote_typeface_cache_.get(),
       mesh_cache_.get(), local_storage_database_.get(),
       data.can_play_type_handler, data.web_media_player_factory,
@@ -578,8 +635,12 @@ WebModule::Impl::Impl(const ConstructionData& data)
       base::Bind(&WebModule::Impl::OnRanAnimationFrameCallbacks,
                  base::Unretained(this)),
       data.window_close_callback, data.window_minimize_callback,
-      data.get_sb_window_callback, data.options.camera_3d,
+      data.options.on_screen_keyboard_bridge, data.options.camera_3d,
       media_session_client_->GetMediaSession(),
+      base::Bind(&WebModule::Impl::OnStartDispatchEvent,
+                 base::Unretained(this)),
+      base::Bind(&WebModule::Impl::OnStopDispatchEvent, base::Unretained(this)),
+      data.options.provide_screenshot_function, &synchronous_loader_interrupt_,
       data.options.csp_insecure_allowed_token, data.dom_max_element_depth,
       data.options.video_playback_rate_multiplier,
 #if defined(ENABLE_TEST_RUNNER)
@@ -589,7 +650,7 @@ WebModule::Impl::Impl(const ConstructionData& data)
 #else
       dom::Window::kClockTypeSystemTime,
 #endif
-      splash_screen_cache_callback);
+      splash_screen_cache_callback, system_caption_settings_);
   DCHECK(window_);
 
   window_weak_ = base::AsWeakPtr(window_.get());
@@ -602,6 +663,8 @@ WebModule::Impl::Impl(const ConstructionData& data)
       global_environment_.get(), &mutation_observer_task_manager_,
       data.options.dom_settings_options));
   DCHECK(environment_settings_);
+
+  window_->SetEnvironmentSettings(environment_settings_.get());
 
   global_environment_->CreateGlobalObject(window_, environment_settings_.get());
 
@@ -619,7 +682,8 @@ WebModule::Impl::Impl(const ConstructionData& data)
       data.options.layout_trigger, data.dom_max_element_depth,
       data.layout_refresh_rate, data.network_module->preferred_language(),
       data.options.enable_image_animations,
-      web_module_stat_tracker_->layout_stat_tracker()));
+      web_module_stat_tracker_->layout_stat_tracker(),
+      data.options.clear_window_with_background_color));
   DCHECK(layout_manager_);
 
 #if defined(ENABLE_DEBUG_CONSOLE)
@@ -679,6 +743,7 @@ WebModule::Impl::~Impl() {
   layout_manager_.reset();
   environment_settings_.reset();
   window_weak_.reset();
+  window_->ClearPointerStateForShutdown();
   window_ = NULL;
   media_source_registry_.reset();
   blob_registry_.reset();
@@ -699,21 +764,27 @@ WebModule::Impl::~Impl() {
 
 void WebModule::Impl::InjectInputEvent(scoped_refptr<dom::Element> element,
                                        const scoped_refptr<dom::Event>& event) {
+  TRACE_EVENT1("cobalt::browser", "WebModule::Impl::InjectInputEvent()",
+               "event", event->type().c_str());
   DCHECK(thread_checker_.CalledOnValidThread());
   DCHECK(is_running_);
   DCHECK(window_);
 
-  web_module_stat_tracker_->OnStartInjectEvent(event);
-
   if (element) {
     element->DispatchEvent(event);
   } else {
-    window_->InjectEvent(event);
+    if (dom::PointerState::CanQueueEvent(event)) {
+      // As an optimization we batch together pointer/mouse events for as long
+      // as we can get away with it (e.g. until a non-pointer event is received
+      // or whenever the next layout occurs).
+      window_->document()->pointer_state()->QueuePointerEvent(event);
+    } else {
+      // In order to maintain the correct input event ordering, we first
+      // dispatch any queued pending pointer events.
+      HandlePointerEvents();
+      window_->InjectEvent(event);
+    }
   }
-
-  web_module_stat_tracker_->OnEndInjectEvent(
-      window_->HasPendingAnimationFrameCallbacks(),
-      layout_manager_->IsRenderTreePending());
 }
 
 #if SB_HAS(ON_SCREEN_KEYBOARD)
@@ -725,39 +796,42 @@ void WebModule::Impl::InjectOnScreenKeyboardInputEvent(
   InjectInputEvent(element, input_event);
 }
 
-void WebModule::Impl::InjectOnScreenKeyboardShownEvent() {
+void WebModule::Impl::InjectOnScreenKeyboardShownEvent(int ticket) {
   DCHECK(thread_checker_.CalledOnValidThread());
   DCHECK(is_running_);
   DCHECK(window_);
   DCHECK(window_->on_screen_keyboard());
 
-  scoped_refptr<dom::Event> event = new dom::Event(base::Tokens::show());
-
-  web_module_stat_tracker_->OnStartInjectEvent(event);
-
-  window_->on_screen_keyboard()->DispatchEvent(event);
-
-  web_module_stat_tracker_->OnEndInjectEvent(
-      window_->HasPendingAnimationFrameCallbacks(),
-      layout_manager_->IsRenderTreePending());
+  window_->on_screen_keyboard()->DispatchShowEvent(ticket);
 }
 
-void WebModule::Impl::InjectOnScreenKeyboardHiddenEvent() {
+void WebModule::Impl::InjectOnScreenKeyboardHiddenEvent(int ticket) {
   DCHECK(thread_checker_.CalledOnValidThread());
   DCHECK(is_running_);
   DCHECK(window_);
   DCHECK(window_->on_screen_keyboard());
 
-  scoped_refptr<dom::Event> event = new dom::Event(base::Tokens::hide());
-
-  web_module_stat_tracker_->OnStartInjectEvent(event);
-
-  window_->on_screen_keyboard()->DispatchEvent(event);
-
-  web_module_stat_tracker_->OnEndInjectEvent(
-      window_->HasPendingAnimationFrameCallbacks(),
-      layout_manager_->IsRenderTreePending());
+  window_->on_screen_keyboard()->DispatchHideEvent(ticket);
 }
+
+void WebModule::Impl::InjectOnScreenKeyboardFocusedEvent(int ticket) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK(is_running_);
+  DCHECK(window_);
+  DCHECK(window_->on_screen_keyboard());
+
+  window_->on_screen_keyboard()->DispatchFocusEvent(ticket);
+}
+
+void WebModule::Impl::InjectOnScreenKeyboardBlurredEvent(int ticket) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK(is_running_);
+  DCHECK(window_);
+  DCHECK(window_->on_screen_keyboard());
+
+  window_->on_screen_keyboard()->DispatchBlurEvent(ticket);
+}
+
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
 void WebModule::Impl::InjectKeyboardEvent(scoped_refptr<dom::Element> element,
@@ -824,14 +898,48 @@ void WebModule::Impl::OnRenderTreeProduced(
     const LayoutResults& layout_results) {
   DCHECK(thread_checker_.CalledOnValidThread());
   DCHECK(is_running_);
-  // Notify the stat tracker that a render tree has been produced.
-  web_module_stat_tracker_->OnRenderTreeProduced();
+
+  last_render_tree_produced_time_ = base::TimeTicks::Now();
+  is_render_tree_rasterization_pending_ = true;
+
+  web_module_stat_tracker_->OnRenderTreeProduced(
+      last_render_tree_produced_time_);
+
+  LayoutResults layout_results_with_callback(
+      layout_results.render_tree, layout_results.layout_time,
+      base::Bind(&WebModule::Impl::OnRenderTreeRasterized,
+                 base::Unretained(this), base::MessageLoopProxy::current(),
+                 last_render_tree_produced_time_));
 
 #if defined(ENABLE_DEBUG_CONSOLE)
-  debug_overlay_->OnRenderTreeProduced(layout_results);
+  debug_overlay_->OnRenderTreeProduced(layout_results_with_callback);
 #else  // ENABLE_DEBUG_CONSOLE
-  render_tree_produced_callback_.Run(layout_results);
+  render_tree_produced_callback_.Run(layout_results_with_callback);
 #endif  // ENABLE_DEBUG_CONSOLE
+}
+
+void WebModule::Impl::OnRenderTreeRasterized(
+    scoped_refptr<base::MessageLoopProxy> web_module_message_loop,
+    const base::TimeTicks& produced_time) {
+  web_module_message_loop->PostTask(
+      FROM_HERE, base::Bind(&WebModule::Impl::ProcessOnRenderTreeRasterized,
+                            base::Unretained(this), produced_time,
+                            base::TimeTicks::Now()));
+}
+
+void WebModule::Impl::ProcessOnRenderTreeRasterized(
+    const base::TimeTicks& produced_time,
+    const base::TimeTicks& rasterized_time) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  web_module_stat_tracker_->OnRenderTreeRasterized(produced_time,
+                                                   rasterized_time);
+  if (produced_time >= last_render_tree_produced_time_) {
+    is_render_tree_rasterization_pending_ = false;
+  }
+}
+
+void WebModule::Impl::CancelSynchronousLoads() {
+  synchronous_loader_interrupt_.Signal();
 }
 
 #if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
@@ -930,10 +1038,6 @@ void WebModule::Impl::SetRemoteTypefaceCacheCapacity(int64_t bytes) {
   remote_typeface_cache_->SetCapacity(static_cast<uint32>(bytes));
 }
 
-void WebModule::Impl::SetJavascriptGcThreshold(int64_t bytes) {
-  javascript_engine_->SetGcThreshold(bytes);
-}
-
 void WebModule::Impl::SetSize(math::Size window_dimensions,
                               float video_pixel_ratio) {
   window_->SetSize(window_dimensions.width(), window_dimensions.height(),
@@ -975,6 +1079,18 @@ void WebModule::Impl::SetResourceProvider(
   }
 }
 
+void WebModule::Impl::OnStartDispatchEvent(
+    const scoped_refptr<dom::Event>& event) {
+  web_module_stat_tracker_->OnStartDispatchEvent(event);
+}
+
+void WebModule::Impl::OnStopDispatchEvent(
+    const scoped_refptr<dom::Event>& event) {
+  web_module_stat_tracker_->OnStopDispatchEvent(
+      event, window_->HasPendingAnimationFrameCallbacks(),
+      layout_manager_->IsRenderTreePending());
+}
+
 void WebModule::Impl::Start(render_tree::ResourceProvider* resource_provider) {
   TRACE_EVENT0("cobalt::browser", "WebModule::Impl::Start()");
   SetResourceProvider(resource_provider);
@@ -988,6 +1104,7 @@ void WebModule::Impl::Pause() {
 
 void WebModule::Impl::Unpause() {
   TRACE_EVENT0("cobalt::browser", "WebModule::Impl::Unpause()");
+  synchronous_loader_interrupt_.Reset();
   SetApplicationState(base::kApplicationStateStarted);
 }
 
@@ -1046,6 +1163,7 @@ void WebModule::Impl::FinishSuspend() {
 
 void WebModule::Impl::Resume(render_tree::ResourceProvider* resource_provider) {
   TRACE_EVENT0("cobalt::browser", "WebModule::Impl::Resume()");
+  synchronous_loader_interrupt_.Reset();
   SetResourceProvider(resource_provider);
   SetApplicationState(base::kApplicationStatePaused);
 }
@@ -1056,6 +1174,9 @@ void WebModule::Impl::ReduceMemory() {
   if (!is_running_) {
     return;
   }
+  synchronous_loader_interrupt_.Reset();
+
+  layout_manager_->Purge();
 
   // Retain the remote typeface cache when reducing memory.
   PurgeResourceCaches(true /*should_retain_remote_typeface_cache*/);
@@ -1065,6 +1186,16 @@ void WebModule::Impl::ReduceMemory() {
   if (javascript_engine_) {
     javascript_engine_->CollectGarbage();
   }
+}
+
+void WebModule::Impl::GetJavaScriptHeapStatistics(
+    const JavaScriptHeapStatisticsCallback& callback) {
+  TRACE_EVENT0("cobalt::browser",
+               "WebModule::Impl::GetJavaScriptHeapStatistics()");
+  DCHECK(thread_checker_.CalledOnValidThread());
+  script::HeapStatistics heap_statistics =
+      javascript_engine_->GetHeapStatistics();
+  callback.Run(heap_statistics);
 }
 
 void WebModule::Impl::LogScriptError(
@@ -1095,6 +1226,11 @@ void WebModule::Impl::InjectBeforeUnloadEvent() {
   }
 }
 
+void WebModule::Impl::InjectCaptionSettingsChangedEvent() {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  system_caption_settings_->OnCaptionSettingsChanged();
+}
+
 void WebModule::Impl::PurgeResourceCaches(
     bool should_retain_remote_typeface_cache) {
   image_cache_->Purge();
@@ -1112,6 +1248,25 @@ void WebModule::Impl::DisableCallbacksInResourceCaches() {
   mesh_cache_->DisableCallbacks();
 }
 
+void WebModule::Impl::HandlePointerEvents() {
+  TRACE_EVENT0("cobalt::browser", "WebModule::Impl::HandlePointerEvents");
+  const scoped_refptr<dom::Document>& document = window_->document();
+  scoped_refptr<dom::Event> event;
+  do {
+    event = document->pointer_state()->GetNextQueuedPointerEvent();
+    if (event) {
+      SB_DCHECK(
+          window_ ==
+          base::polymorphic_downcast<const dom::UIEvent* const>(event.get())
+              ->view());
+      if (!topmost_event_target_) {
+        topmost_event_target_.reset(new layout::TopmostEventTarget());
+      }
+      topmost_event_target_->MaybeSendPointerEvents(event);
+    }
+  } while (event && !layout_manager_->IsRenderTreePending());
+}
+
 WebModule::DestructionObserver::DestructionObserver(WebModule* web_module)
     : web_module_(web_module) {}
 
@@ -1125,6 +1280,7 @@ WebModule::Options::Options()
       image_cache_capacity(32 * 1024 * 1024),
       remote_typeface_cache_capacity(4 * 1024 * 1024),
       mesh_cache_capacity(COBALT_MESH_CACHE_SIZE_IN_BYTES),
+      enable_map_to_mesh_rectangular(false),
       csp_enforcement_mode(dom::kCspEnforcementEnable),
       csp_insecure_allowed_token(0),
       track_event_stats(false),
@@ -1135,7 +1291,8 @@ WebModule::Options::Options()
       video_playback_rate_multiplier(1.f),
       enable_image_animations(true),
       should_retain_remote_typeface_cache_on_suspend(false),
-      can_fetch_cache(false) {}
+      can_fetch_cache(false),
+      clear_window_with_background_color(true) {}
 
 WebModule::WebModule(
     const GURL& initial_url, base::ApplicationState initial_application_state,
@@ -1143,7 +1300,6 @@ WebModule::WebModule(
     const OnErrorCallback& error_callback,
     const CloseCallback& window_close_callback,
     const base::Closure& window_minimize_callback,
-    const dom::Window::GetSbWindowCallback& get_sb_window_callback,
     media::CanPlayTypeHandler* can_play_type_handler,
     media::WebMediaPlayerFactory* web_media_player_factory,
     network::NetworkModule* network_module, const math::Size& window_dimensions,
@@ -1153,8 +1309,8 @@ WebModule::WebModule(
   ConstructionData construction_data(
       initial_url, initial_application_state, render_tree_produced_callback,
       error_callback, window_close_callback, window_minimize_callback,
-      get_sb_window_callback, can_play_type_handler, web_media_player_factory,
-      network_module, window_dimensions, video_pixel_ratio, resource_provider,
+      can_play_type_handler, web_media_player_factory, network_module,
+      window_dimensions, video_pixel_ratio, resource_provider,
       kDOMMaxElementDepth, layout_refresh_rate, options);
 
   // Start the dedicated thread and create the internal implementation
@@ -1235,24 +1391,50 @@ void WebModule::InjectOnScreenKeyboardInputEvent(
                             scoped_refptr<dom::Element>(), type, event));
 }
 
-void WebModule::InjectOnScreenKeyboardShownEvent() {
-  TRACE_EVENT0("cobalt::browser",
-               "WebModule::InjectOnScreenKeyboardShownEvent()");
+void WebModule::InjectOnScreenKeyboardShownEvent(int ticket) {
+  TRACE_EVENT1("cobalt::browser",
+               "WebModule::InjectOnScreenKeyboardShownEvent()", "ticket",
+               ticket);
   DCHECK(message_loop());
   DCHECK(impl_);
   message_loop()->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::InjectOnScreenKeyboardShownEvent,
-                            base::Unretained(impl_.get())));
+                            base::Unretained(impl_.get()), ticket));
 }
 
-void WebModule::InjectOnScreenKeyboardHiddenEvent() {
-  TRACE_EVENT0("cobalt::browser",
-               "WebModule::InjectOnScreenKeyboardHiddenEvent()");
+void WebModule::InjectOnScreenKeyboardHiddenEvent(int ticket) {
+  TRACE_EVENT1("cobalt::browser",
+               "WebModule::InjectOnScreenKeyboardHiddenEvent()", "ticket",
+               ticket);
   DCHECK(message_loop());
   DCHECK(impl_);
   message_loop()->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::InjectOnScreenKeyboardHiddenEvent,
-                            base::Unretained(impl_.get())));
+                            base::Unretained(impl_.get()), ticket));
+}
+
+void WebModule::InjectOnScreenKeyboardFocusedEvent(int ticket) {
+  TRACE_EVENT1("cobalt::browser",
+               "WebModule::InjectOnScreenKeyboardFocusedEvent()", "ticket",
+               ticket);
+  DCHECK(message_loop());
+  DCHECK(impl_);
+  message_loop()->PostTask(
+      FROM_HERE,
+      base::Bind(&WebModule::Impl::InjectOnScreenKeyboardFocusedEvent,
+                 base::Unretained(impl_.get()), ticket));
+}
+
+void WebModule::InjectOnScreenKeyboardBlurredEvent(int ticket) {
+  TRACE_EVENT1("cobalt::browser",
+               "WebModule::InjectOnScreenKeyboardBlurredEvent()", "ticket",
+               ticket);
+  DCHECK(message_loop());
+  DCHECK(impl_);
+  message_loop()->PostTask(
+      FROM_HERE,
+      base::Bind(&WebModule::Impl::InjectOnScreenKeyboardBlurredEvent,
+                 base::Unretained(impl_.get()), ticket));
 }
 
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
@@ -1300,6 +1482,16 @@ void WebModule::InjectBeforeUnloadEvent() {
   message_loop()->PostTask(FROM_HERE,
                            base::Bind(&WebModule::Impl::InjectBeforeUnloadEvent,
                                       base::Unretained(impl_.get())));
+}
+
+void WebModule::InjectCaptionSettingsChangedEvent() {
+  TRACE_EVENT0("cobalt::browser",
+               "WebModule::InjectCaptionSettingsChangedEvent()");
+  DCHECK(message_loop());
+  DCHECK(impl_);
+  message_loop()->PostTask(
+      FROM_HERE, base::Bind(&WebModule::Impl::InjectCaptionSettingsChangedEvent,
+                            base::Unretained(impl_.get())));
 }
 
 std::string WebModule::ExecuteJavascript(
@@ -1409,12 +1601,6 @@ void WebModule::SetRemoteTypefaceCacheCapacity(int64_t bytes) {
                             base::Unretained(impl_.get()), bytes));
 }
 
-void WebModule::SetJavascriptGcThreshold(int64_t bytes) {
-  message_loop()->PostTask(
-      FROM_HERE, base::Bind(&WebModule::Impl::SetJavascriptGcThreshold,
-                            base::Unretained(impl_.get()), bytes));
-}
-
 void WebModule::Prestart() {
   // Must only be called by a thread external from the WebModule thread.
   DCHECK_NE(MessageLoop::current(), message_loop());
@@ -1447,6 +1633,8 @@ void WebModule::Pause() {
   // Must only be called by a thread external from the WebModule thread.
   DCHECK_NE(MessageLoop::current(), message_loop());
 
+  impl_->CancelSynchronousLoads();
+
   // We must block here so that the call doesn't return until the web
   // application has had a chance to process the whole event.
   message_loop()->PostBlockingTask(
@@ -1466,6 +1654,8 @@ void WebModule::Unpause() {
 void WebModule::Suspend() {
   // Must only be called by a thread external from the WebModule thread.
   DCHECK_NE(MessageLoop::current(), message_loop());
+
+  impl_->CancelSynchronousLoads();
 
   // We must block here so that we don't queue the finish until after
   // SuspendLoaders has run to completion, and therefore has already queued any
@@ -1495,6 +1685,8 @@ void WebModule::ReduceMemory() {
   // Must only be called by a thread external from the WebModule thread.
   DCHECK_NE(MessageLoop::current(), message_loop());
 
+  impl_->CancelSynchronousLoads();
+
   // We block here so that we block the Low Memory event handler until we have
   // reduced our memory consumption.
   message_loop()->PostBlockingTask(FROM_HERE,
@@ -1502,23 +1694,14 @@ void WebModule::ReduceMemory() {
                                               base::Unretained(impl_.get())));
 }
 
-void WebModule::Impl::HandlePointerEvents() {
-  TRACE_EVENT0("cobalt::browser", "WebModule::Impl::HandlePointerEvents");
-  const scoped_refptr<dom::Document>& document = window_->document();
-  scoped_refptr<dom::Event> event;
-  do {
-    event = document->pointer_state()->GetNextQueuedPointerEvent();
-    if (event) {
-      SB_DCHECK(
-          window_ ==
-          base::polymorphic_downcast<const dom::UIEvent* const>(event.get())
-              ->view());
-      if (!topmost_event_target_) {
-        topmost_event_target_.reset(new layout::TopmostEventTarget());
-      }
-      topmost_event_target_->MaybeSendPointerEvents(event);
-    }
-  } while (event && !layout_manager_->IsRenderTreePending());
+void WebModule::RequestJavaScriptHeapStatistics(
+    const JavaScriptHeapStatisticsCallback& callback) {
+  // Must only be called by a thread external from the WebModule thread.
+  DCHECK_NE(MessageLoop::current(), message_loop());
+
+  message_loop()->PostTask(
+      FROM_HERE, base::Bind(&WebModule::Impl::GetJavaScriptHeapStatistics,
+                            base::Unretained(impl_.get()), callback));
 }
 
 }  // namespace browser

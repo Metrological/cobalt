@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,7 +19,9 @@
 #include "base/path_service.h"
 #include "base/run_loop.h"
 #include "base/synchronization/waitable_event.h"
+#include "cobalt/browser/user_agent_string.h"
 #include "cobalt/browser/web_module.h"
+#include "cobalt/dom/screenshot_manager.h"
 #include "cobalt/dom/window.h"
 #include "cobalt/network/network_module.h"
 #include "cobalt/render_tree/resource_provider.h"
@@ -51,15 +53,13 @@ void WebModuleErrorCallback(base::RunLoop* run_loop, MessageLoop* message_loop,
   LOG(FATAL) << "Error loading document: " << error << ". URL: " << url;
   message_loop->PostTask(FROM_HERE, base::Bind(Quit, run_loop));
 }
-
-// Return a NULL SbWindow, since we do not need to pass a valid SbWindow to an
-// on screen keyboard.
-SbWindow GetNullSbWindow() { return NULL; }
 }  // namespace
 
 browser::WebModule::LayoutResults SnapshotURL(
     const GURL& url, const math::Size& viewport_size,
-    render_tree::ResourceProvider* resource_provider) {
+    render_tree::ResourceProvider* resource_provider,
+    const dom::ScreenshotManager::ProvideScreenshotFunctionCallback&
+        screenshot_provider) {
   base::RunLoop run_loop;
 
   // Setup WebModule's auxiliary components.
@@ -67,7 +67,10 @@ browser::WebModule::LayoutResults SnapshotURL(
   // Some layout tests test Content Security Policy; allow HTTP so we
   // don't interfere.
   net_options.https_requirement = network::kHTTPSOptional;
-  network::NetworkModule network_module(net_options);
+  network::NetworkModule network_module(
+      browser::CreateUserAgentString(
+          browser::GetUserAgentPlatformInfoFromSystem()),
+      NULL, NULL, net_options);
 
   // Use 128M of image cache to minimize the effect of image loading.
   const size_t kImageCacheCapacity = 128 * 1024 * 1024;
@@ -77,6 +80,8 @@ browser::WebModule::LayoutResults SnapshotURL(
   browser::WebModule::Options web_module_options;
   web_module_options.layout_trigger = layout::LayoutManager::kTestRunnerMode;
   web_module_options.image_cache_capacity = kImageCacheCapacity;
+
+  web_module_options.provide_screenshot_function = screenshot_provider;
 
   // Prepare a slot for our results to be placed when ready.
   base::optional<browser::WebModule::LayoutResults> results;
@@ -89,9 +94,9 @@ browser::WebModule::LayoutResults SnapshotURL(
       base::Bind(&WebModuleErrorCallback, &run_loop, MessageLoop::current()),
       browser::WebModule::CloseCallback() /* window_close_callback */,
       base::Closure() /* window_minimize_callback */,
-      base::Bind(&GetNullSbWindow), NULL /* can_play_type_handler */,
-      NULL /* web_media_player_factory */, &network_module, viewport_size, 1.f,
-      resource_provider, 60.0f, web_module_options);
+      NULL /* can_play_type_handler */, NULL /* web_media_player_factory */,
+      &network_module, viewport_size, 1.f, resource_provider, 60.0f,
+      web_module_options);
 
   run_loop.Run();
 

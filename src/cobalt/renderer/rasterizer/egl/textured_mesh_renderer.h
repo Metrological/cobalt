@@ -1,4 +1,4 @@
-// Copyright 2017 Google Inc. All Rights Reserved.
+// Copyright 2017 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,6 +52,9 @@ class TexturedMeshRenderer {
       // YUV BT709 image where the Y, U and V components are all on different
       // textures.
       YUV_3PLANE_BT709,
+      // YUV BT2020 image where the Y, U and V components are all on different
+      // 10bit unnormalized textures.
+      YUV_3PLANE_10BIT_BT2020,
       // 1 texture is used that contains RGBA pixels.
       RGBA,
       // 1 texture plane is used where Y is sampled twice for each UV sample
@@ -69,6 +72,7 @@ class TexturedMeshRenderer {
       switch (type) {
         case YUV_2PLANE_BT709:
           return 2;
+        case YUV_3PLANE_10BIT_BT2020:
         case YUV_3PLANE_BT709:
           return 3;
         case RGBA:

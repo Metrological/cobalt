@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ TEST(SbSocketClearLastErrorTest, SunnyDay) {
 
   // Accept on the unbound socket should result in an error.
   EXPECT_EQ(kSbSocketInvalid, SbSocketAccept(server_socket));
-  EXPECT_EQ(kSbSocketErrorFailed, SbSocketGetLastError(server_socket));
+  EXPECT_SB_SOCKET_ERROR_IS_ERROR(SbSocketGetLastError(server_socket));
 
   // After we clear the error, it should be OK.
   EXPECT_TRUE(SbSocketClearLastError(server_socket));

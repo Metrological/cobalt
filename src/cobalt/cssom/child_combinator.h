@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,11 +29,11 @@ class CombinatorVisitor;
 class ChildCombinator : public Combinator {
  public:
   ChildCombinator() {}
-  ~ChildCombinator() OVERRIDE {}
+  ~ChildCombinator() override {}
 
   // From Combinator.
-  void Accept(CombinatorVisitor* visitor) OVERRIDE;
-  CombinatorType GetCombinatorType() OVERRIDE { return kChildCombinator; }
+  void Accept(CombinatorVisitor* visitor) override;
+  CombinatorType GetCombinatorType() override { return kChildCombinator; }
 
  private:
   DISALLOW_COPY_AND_ASSIGN(ChildCombinator);

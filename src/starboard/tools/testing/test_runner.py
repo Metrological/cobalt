@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2017 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,16 +27,44 @@ import traceback
 
 import _env  # pylint: disable=unused-import
 from starboard.tools import abstract_launcher
+from starboard.tools import build
 from starboard.tools import command_line
-from starboard.tools import environment
 from starboard.tools.testing import test_filter
-
+from starboard.tools.testing import build_tests
 
 _TOTAL_TESTS_REGEX = (r"\[==========\] (.*) tests? from .*"
                       r"test cases? ran. \(.* ms total\)")
 _TESTS_PASSED_REGEX = r"\[  PASSED  \] (.*) tests?"
 _TESTS_FAILED_REGEX = r"\[  FAILED  \] (.*) tests?, listed below:"
 _SINGLE_TEST_FAILED_REGEX = r"\[  FAILED  \] (.*)"
+
+
+def _FilterTests(target_list, filters, config_name):
+  """Returns a Mapping of test targets -> filtered tests."""
+
+  targets = {}
+  for target in target_list:
+    targets[target] = []
+
+  for platform_filter in filters:
+    if platform_filter == test_filter.DISABLE_TESTING:
+      return {}
+
+    # Only filter the tests specifying our config or all configs.
+    if platform_filter.config and platform_filter.config != config_name:
+      continue
+
+    target_name = platform_filter.target_name
+    if platform_filter.test_name == test_filter.FILTER_ALL:
+      if target_name in targets:
+        # Filter the whole test binary
+        del targets[target_name]
+    else:
+      if target_name not in targets:
+        continue
+      targets[target_name].append(platform_filter.test_name)
+
+  return targets
 
 
 class TestLineReader(object):
@@ -53,12 +81,17 @@ class TestLineReader(object):
     self.stop_event = threading.Event()
     self.reader_thread = threading.Thread(target=self._ReadLines)
 
+    # Don't allow this thread to block sys.exit() when ctrl+c is pressed.
+    # Otherwise it will hang forever waiting for the pipe to close.
+    self.reader_thread.daemon = True
+
   def _ReadLines(self):
     """Continuously reads and stores lines of test output."""
     while not self.stop_event.is_set():
       line = self.read_pipe.readline()
       if line:
         sys.stdout.write(line)
+        sys.stdout.flush()
       else:
         break
 
@@ -77,11 +110,11 @@ class TestLineReader(object):
     self.stop_event.set()
 
   def Join(self):
+    """Ensures that all test output from the test launcher has been read."""
     self.reader_thread.join()
-    self.read_pipe.close()
 
   def GetLines(self):
-    """Stops file reading, then returns stored output as a list of lines."""
+    """Returns stored output as a list of lines."""
     return self.output_lines.getvalue().split("\n")
 
 
@@ -92,11 +125,8 @@ class TestLauncher(object):
   communicate, and for the main thread to shut them down.
   """
 
-  # The write end of the pipe is provided here because if the launcher
-  # errors out and fails to close it, it needs to be closed anyway.
-  def __init__(self, launcher, write_pipe):
+  def __init__(self, launcher):
     self.launcher = launcher
-    self.write_pipe = write_pipe
     self.runner_thread = threading.Thread(target=self._Run)
 
     self.return_code_lock = threading.Lock()
@@ -109,14 +139,10 @@ class TestLauncher(object):
     """Kills the running launcher."""
     try:
       self.launcher.Kill()
-    except Exception:
+    except Exception:  # pylint: disable=broad-except
       sys.stderr.write("Error while killing {}:\n".format(
           self.launcher.target_name))
       traceback.print_exc(file=sys.stderr)
-      # Close the write end of the pipe if the launcher errored out
-      # before closing it.
-      if not self.write_pipe.closed:
-        self.write_pipe.close()
 
   def Join(self):
     self.runner_thread.join()
@@ -126,7 +152,7 @@ class TestLauncher(object):
     return_code = 1
     try:
       return_code = self.launcher.Run()
-    except Exception:
+    except Exception:  # pylint: disable=broad-except
       sys.stderr.write("Error while running {}:\n".format(
           self.launcher.target_name))
       traceback.print_exc(file=sys.stderr)
@@ -145,15 +171,24 @@ class TestLauncher(object):
 class TestRunner(object):
   """Runs unit tests."""
 
-  def __init__(self, platform, config, device_id, single_target,
-               target_params, out_directory):
+  def __init__(self,
+               platform,
+               config,
+               device_id,
+               single_target,
+               target_params,
+               out_directory,
+               application_name=None,
+               dry_run=False):
     self.platform = platform
     self.config = config
     self.device_id = device_id
     self.target_params = target_params
     self.out_directory = out_directory
-    self._platform_config = abstract_launcher.GetGypModuleForPlatform(
-        platform).CreatePlatformConfig()
+    self._platform_config = build.GetPlatformConfig(platform)
+    self._app_config = self._platform_config.GetApplicationConfiguration(
+        application_name)
+    self.dry_run = dry_run
     self.threads = []
 
     # If a particular test binary has been provided, configure only that one.
@@ -178,29 +213,15 @@ class TestRunner(object):
       RuntimeError:  The specified test binary has been disabled for the given
         platform and configuration.
     """
-    platform_filters = self._platform_config.GetTestFilters()
+    targets = _FilterTests([single_target], self._GetTestFilters(), self.config)
+    if not targets:
+      # If the provided target name has been filtered,
+      # nothing will be run.
+      sys.stderr.write(
+          "\"{}\" has been filtered; no tests will be run.\n".format(
+              single_target))
 
-    final_targets = {}
-    final_targets[single_target] = []
-
-    for platform_filter in platform_filters:
-      if platform_filter == test_filter.DISABLE_TESTING:
-        return {}
-      if platform_filter.target_name == single_target:
-        # Only filter the tests specifying our config or all configs.
-        if platform_filter.config == self.config or not platform_filter.config:
-          if platform_filter.test_name == test_filter.FILTER_ALL:
-            # If the provided target name has been filtered,
-            # nothing will be run.
-            sys.stderr.write(
-                "\"{}\" has been filtered; no tests will be run.\n".format(
-                    platform_filter.target_name))
-            del final_targets[platform_filter.target_name]
-          else:
-            final_targets[single_target].append(
-                platform_filter.test_name)
-
-    return final_targets
+    return targets
 
   def _GetTestTargets(self):
     """Collects all test targets for a given platform and configuration.
@@ -210,62 +231,34 @@ class TestRunner(object):
         each test binary.  If a test binary has no filters, its list is
         empty.
     """
-    platform_filters = self._platform_config.GetTestFilters()
+    targets = self._platform_config.GetTestTargets()
+    targets.extend(self._app_config.GetTestTargets())
+    targets = list(set(targets))
 
-    final_targets = {}
-
-    all_targets = environment.GetTestTargets()
-    for target in all_targets:
-      final_targets[target] = []
-
-    for platform_filter in platform_filters:
-      if platform_filter == test_filter.DISABLE_TESTING:
-        return {}
-      # Only filter the tests specifying our config or all configs.
-      if platform_filter.config == self.config or not platform_filter.config:
-        if platform_filter.test_name == test_filter.FILTER_ALL:
-          # Filter the whole test binary
-          del final_targets[platform_filter.target_name]
-        else:
-          final_targets[platform_filter.target_name].append(
-              platform_filter.test_name)
+    final_targets = _FilterTests(targets, self._GetTestFilters(), self.config)
+    if not final_targets:
+      sys.stderr.write("All tests were filtered; no tests will be run.\n")
 
     return final_targets
 
+  def _GetTestFilters(self):
+    filters = self._platform_config.GetTestFilters()
+    if not filters:
+      filters = []
+    app_filters = self._app_config.GetTestFilters()
+    if app_filters:
+      filters.extend(app_filters)
+    return filters
+
   def _GetAllTestEnvVariables(self):
     """Gets all environment variables used for tests on the given platform."""
-    return self._platform_config.GetTestEnvVariables()
-
-  def _BuildTests(self, ninja_flags):
-    """Builds all specified test binaries.
-
-    Args:
-      ninja_flags: Command line flags to pass to ninja.
-    """
-    if not self.test_targets:
-      return
-
-    if self.out_directory:
-      build_dir = self.out_directory
-    else:
-      build_dir = abstract_launcher.DynamicallyBuildOutDirectory(
-          self.platform, self.config)
-
-    args_list = ["ninja", "-C", build_dir]
-    args_list.extend([
-        "{}_deploy".format(test_name) for test_name in self.test_targets])
-    if ninja_flags:
-      args_list.append(ninja_flags)
-    if "TEST_RUNNER_BUILD_FLAGS" in os.environ:
-      args_list.append(os.environ["TEST_RUNNER_BUILD_FLAGS"])
-    sys.stderr.write("{}\n".format(args_list))
-    # We set shell=True because otherwise Windows doesn't recognize
-    # PATH properly.
-    #   https://bugs.python.org/issue15451
-    # We flatten the arguments to a string because with shell=True, Linux
-    # doesn't parse them properly.
-    #   https://bugs.python.org/issue6689
-    subprocess.check_call(" ".join(args_list), shell=True)
+    env_variables = self._platform_config.GetTestEnvVariables()
+    for test, test_env in self._app_config.GetTestEnvVariables().iteritems():
+      if test in env_variables:
+        env_variables[test].update(test_env)
+      else:
+        env_variables[test] = test_env
+    return env_variables
 
   def _RunTest(self, target_name):
     """Runs a single unit test binary and collects all of the output.
@@ -293,25 +286,40 @@ class TestRunner(object):
     test_params.extend(self.target_params)
 
     launcher = abstract_launcher.LauncherFactory(
-        self.platform, target_name, self.config,
-        device_id=self.device_id, target_params=test_params,
-        output_file=write_pipe, out_directory=self.out_directory,
+        self.platform,
+        target_name,
+        self.config,
+        device_id=self.device_id,
+        target_params=test_params,
+        output_file=write_pipe,
+        out_directory=self.out_directory,
         env_variables=env)
 
     test_reader = TestLineReader(read_pipe)
-    test_launcher = TestLauncher(launcher, write_pipe)
+    test_launcher = TestLauncher(launcher)
 
     self.threads.append(test_launcher)
     self.threads.append(test_reader)
 
-    sys.stdout.write("Starting {}\n".format(target_name))
+    if self.dry_run:
+      sys.stdout.write("{} {}\n".format(target_name, test_params)
+                       if test_params else "{}\n".format(target_name))
+      write_pipe.close()
+      read_pipe.close()
 
-    test_reader.Start()
-    test_launcher.Start()
+    else:
+      sys.stdout.write("Starting {}\n".format(target_name))
+      test_reader.Start()
+      test_launcher.Start()
 
-    # If there are actives threads during a ctrl+c exit, they will join here.
-    test_launcher.Join()
-    test_reader.Join()
+      # Wait for the launcher to exit then close the write pipe, which will
+      # cause the reader to exit.
+      test_launcher.Join()
+      write_pipe.close()
+
+      # Only after closing the write pipe, wait for the reader to exit.
+      test_reader.Join()
+      read_pipe.close()
 
     output = test_reader.GetLines()
 
@@ -372,6 +380,10 @@ class TestRunner(object):
         failed_tests.append(test_failed_match.group(1))
     return failed_tests
 
+  def _GetFilteredTestList(self, target_name):
+    return _FilterTests([target_name], self._GetTestFilters(), self.config).get(
+        target_name, [])
+
   def _ProcessAllTestResults(self, results):
     """Collects and returns output for all selected tests.
 
@@ -381,12 +393,18 @@ class TestRunner(object):
     Returns:
       True if the test run succeeded, False if not.
     """
+    if self.dry_run:
+      print "\n{} TOTAL TEST TARGETS".format(len(results))
+      return True
+
     total_run_count = 0
     total_passed_count = 0
     total_failed_count = 0
+    total_flaky_failed_count = 0
+    total_filtered_count = 0
 
     # If the number of run tests from a test binary cannot be
-    # determined, assume an error occured while running it.
+    # determined, assume an error occurred while running it.
     error = False
 
     print "\nTEST RUN COMPLETE. RESULTS BELOW:\n"
@@ -399,6 +417,9 @@ class TestRunner(object):
       failed_count = result_set[3]
       failed_tests = result_set[4]
       return_code = result_set[5]
+      flaky_failed_tests = [
+          test_name for test_name in failed_tests if ".FLAKY_" in test_name
+      ]
 
       test_status = "SUCCEEDED"
       if return_code != 0:
@@ -407,7 +428,7 @@ class TestRunner(object):
 
       print "{}: {}.".format(target_name, test_status)
       if run_count == 0:
-        print"  Results not available.  Did the test crash?\n"
+        print "  Results not available.  Did the test crash?\n"
         continue
 
       print "  TOTAL TESTS RUN: {}".format(run_count)
@@ -417,16 +438,23 @@ class TestRunner(object):
       if failed_count > 0:
         print "  FAILED: {}".format(failed_count)
         total_failed_count += failed_count
+        total_flaky_failed_count += len(flaky_failed_tests)
         print "\n  FAILED TESTS:"
         for line in failed_tests:
           print "    {}".format(line)
+      filtered_count = len(self._GetFilteredTestList(target_name))
+      if filtered_count > 0:
+        print "  FILTERED: {}".format(filtered_count)
+        total_filtered_count += filtered_count
       # Print a single newline to separate results from each test run
       print
 
     overall_status = "SUCCEEDED"
     result = True
 
-    if error or total_failed_count > 0:
+    # If we only failed tests that are considered flaky, then count this run
+    # as a pass.
+    if error or total_failed_count - total_flaky_failed_count > 0:
       overall_status = "FAILED"
       result = False
 
@@ -434,6 +462,8 @@ class TestRunner(object):
     print "  TOTAL TESTS RUN: {}".format(total_run_count)
     print "  TOTAL TESTS PASSED: {}".format(total_passed_count)
     print "  TOTAL TESTS FAILED: {}".format(total_failed_count)
+    print "  TOTAL TESTS FILTERED: {}".format(total_filtered_count)
+    print "  TOTAL FLAKY TESTS FAILED: {}".format(total_flaky_failed_count)
 
     return result
 
@@ -449,7 +479,20 @@ class TestRunner(object):
     result = True
 
     try:
-      self._BuildTests(ninja_flags)
+      if self.out_directory:
+        out_directory = self.out_directory
+      else:
+        out_directory = abstract_launcher.DynamicallyBuildOutDirectory(
+            self.platform, self.config)
+
+      if ninja_flags:
+        extra_flags = [ninja_flags]
+      else:
+        extra_flags = []
+
+      build_tests.BuildTargets(self.test_targets, out_directory, self.dry_run,
+                               extra_flags)
+
     except subprocess.CalledProcessError as e:
       result = False
       sys.stderr.write("Error occurred during building.\n")
@@ -487,9 +530,17 @@ def main():
       " If both the \"--build\" and \"--run\" flags are not"
       " provided, this is the default.")
   arg_parser.add_argument(
-      "-t",
-      "--target_name",
-      help="Name of executable target.")
+      "-n",
+      "--dry_run",
+      action="store_true",
+      help="Specifies to show what would be done without actually doing it.")
+  arg_parser.add_argument(
+      "-t", "--target_name", help="Name of executable target.")
+  arg_parser.add_argument(
+      "-a",
+      "--application_name",
+      default="cobalt",  # TODO: Pass this in explicitly.
+      help="Name of the application to run tests under, e.g. 'cobalt'.")
   arg_parser.add_argument(
       "--ninja_flags",
       help="Flags to pass to the ninja build system. Provide them exactly"
@@ -504,7 +555,8 @@ def main():
     target_params = args.target_params.split(" ")
 
   runner = TestRunner(args.platform, args.config, args.device_id,
-                      args.target_name, target_params, args.out_directory)
+                      args.target_name, target_params, args.out_directory,
+                      args.application_name, args.dry_run)
 
   def Abort(signum, frame):
     del signum, frame  # Unused.
@@ -522,6 +574,9 @@ def main():
   build_success = True
   run_success = True
 
+  if args.dry_run:
+    sys.stderr.write("=== Dry run ===\n")
+
   if args.build:
     build_success = runner.BuildAllTests(args.ninja_flags)
     # If the build fails, don't try to run the tests.
@@ -536,6 +591,7 @@ def main():
     return 1
   else:
     return 0
+
 
 if __name__ == "__main__":
   sys.exit(main())

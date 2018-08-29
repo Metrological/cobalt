@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,12 +23,17 @@
 #include "base/memory/scoped_ptr.h"
 #include "base/optional.h"
 #include "base/stringprintf.h"
+#include "base/time.h"
 #include "cobalt/base/compiler.h"
 #include "cobalt/base/enable_if.h"
 #include "cobalt/base/token.h"
+#include "cobalt/script/mozjs-45/mozjs_array_buffer.h"
+#include "cobalt/script/mozjs-45/mozjs_array_buffer_view.h"
 #include "cobalt/script/mozjs-45/mozjs_callback_interface_holder.h"
+#include "cobalt/script/mozjs-45/mozjs_data_view.h"
 #include "cobalt/script/mozjs-45/mozjs_exception_state.h"
 #include "cobalt/script/mozjs-45/mozjs_global_environment.h"
+#include "cobalt/script/mozjs-45/mozjs_typed_arrays.h"
 #include "cobalt/script/mozjs-45/mozjs_user_object_holder.h"
 #include "cobalt/script/mozjs-45/mozjs_value_handle.h"
 #include "cobalt/script/mozjs-45/type_traits.h"
@@ -249,7 +254,6 @@ inline void FromJSValue(
     typename base::enable_if<std::numeric_limits<T>::is_specialized &&
                                  std::numeric_limits<T>::is_integer,
                              T>::type* = NULL) {
-  using namespace ::cobalt::script::mozjs::internal;
   TRACK_MEMORY_SCOPE("Javascript");
   DCHECK(out_number);
 
@@ -261,14 +265,15 @@ inline void FromJSValue(
 
   // Convert a JavaScript value to an integer type as specified by the
   // ECMAScript standard.
-  typename IntegralTypeToJsOutType<T>::type out;
+  using OutType = typename internal::IntegralTypeToJsOutType<T>::type;
+  OutType out;
   bool success;
   if (UNLIKELY(conversion_flags & kConversionFlagClamped)) {
-    JS::RootedValue value_to_convert(context);
-    ClampedValue<T>(context, value, &value_to_convert);
-    success = JSToIntegral(context, value_to_convert, &out);
+    JS::RootedValue clamped_value(context);
+    ClampedValue<T>(context, value, &clamped_value);
+    success = internal::JSToIntegral(context, clamped_value, &out);
   } else {
-    success = JSToIntegral(context, value, &out);
+    success = internal::JSToIntegral(context, value, &out);
   }
 
   // It is possible for |JS::To{Uint,Int}{32,64}| to fail in certain edge
@@ -429,6 +434,15 @@ inline void FromJSValue(JSContext* context, JS::HandleValue value,
 void ToJSValue(JSContext* context, const ValueHandleHolder* value_handle_holder,
                JS::MutableHandleValue out_value);
 
+// base::Time -> JSValue
+void ToJSValue(JSContext* context, const base::Time& time,
+               JS::MutableHandleValue out_value);
+
+// JSValue -> base::Time
+void FromJSValue(JSContext* context, JS::HandleValue value,
+                 int conversion_flags, ExceptionState* exception_state,
+                 base::Time* out_time);
+
 // JSValue -> ValueHandle
 void FromJSValue(JSContext* context, JS::HandleValue value,
                  int conversion_flags, ExceptionState* exception_state,
@@ -509,7 +523,9 @@ inline void FromJSValue(JSContext* context, JS::HandleValue value,
   exception_state->SetSimpleException(kDoesNotImplementInterface);
 }
 
-// CallbackInterface -> JSValue
+// ScriptValue<T> (where T is a CallbackInterface) -> JSValue
+// Note that there is currently no implementation for ScriptValue<T> where T
+// is not a CallbackInterface.
 template <typename T>
 inline void ToJSValue(JSContext* context,
                       const ScriptValue<T>* callback_interface,
@@ -534,7 +550,7 @@ inline void ToJSValue(JSContext* context,
   // can get the implementing object.
   const MozjsCallbackInterfaceClass* mozjs_callback_interface =
       base::polymorphic_downcast<const MozjsCallbackInterfaceClass*>(
-          user_object_holder->GetScriptValue());
+          user_object_holder->GetValue());
   DCHECK(mozjs_callback_interface);
   out_value.setObjectOrNull(mozjs_callback_interface->handle());
 }
@@ -570,6 +586,7 @@ inline void FromJSValue(
   *out_callback_interface = MozjsCallbackInterfaceHolder<T>(context, value);
 }
 
+// Sequence -> JSValue
 template <typename T>
 void ToJSValue(JSContext* context, const script::Sequence<T>& sequence,
                JS::MutableHandleValue out_value) {
@@ -603,6 +620,7 @@ void ToJSValue(JSContext* context, const script::Sequence<T>& sequence,
   out_value.setObject(*array);
 }
 
+// JSValue -> Sequence
 template <typename T>
 void FromJSValue(JSContext* context, JS::HandleValue value,
                  int conversion_flags, ExceptionState* exception_state,
@@ -674,6 +692,44 @@ void FromJSValue(JSContext* context, JS::HandleValue value,
 
   util::IteratorClose(context, iter);
   return;
+}
+
+template <typename T>
+void ToJSValue(JSContext* context,
+               const ScriptValue<Promise<T>>* promise_holder,
+               JS::MutableHandleValue out_value);
+
+template <typename T>
+void ToJSValue(JSContext* context, ScriptValue<Promise<T>>* promise_holder,
+               JS::MutableHandleValue out_value);
+
+// script::Handle<T> -> JSValue
+template <typename T>
+void ToJSValue(JSContext* context, const Handle<T>& handle,
+               JS::MutableHandleValue out_value) {
+  TRACK_MEMORY_SCOPE("Javascript");
+  ToJSValue(context, handle.GetScriptValue(), out_value);
+}
+
+// script::Handle<JSValue> -> object
+template <typename T>
+inline void FromJSValue(JSContext* context, JS::HandleValue value,
+                        int conversion_flags, ExceptionState* exception_state,
+                        Handle<T>* out_object) {
+  DCHECK_EQ(conversion_flags & ~kConversionFlagsObject, 0)
+      << "Unexpected conversion flags found.";
+
+  if (value.isNullOrUndefined()) {
+    if (!(conversion_flags & kConversionFlagNullable)) {
+      exception_state->SetSimpleException(kNotNullableType);
+    }
+    return;
+  }
+
+  typename TypeTraits<T>::ConversionType temporary_holder;
+  FromJSValue(context, value, conversion_flags, exception_state,
+              &temporary_holder);
+  *out_object = std::move(Handle<T>(temporary_holder));
 }
 
 }  // namespace mozjs

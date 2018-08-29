@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,19 +36,19 @@ namespace starboard {
 class QueueApplication : public Application {
  public:
   QueueApplication() {}
-  ~QueueApplication() SB_OVERRIDE {}
+  ~QueueApplication() override {}
 
  protected:
   // Wakes up GetNextEvent, and ensures it recalculates the wait duration.
   void Wake();
 
   // --- Application overrides ---
-  Event* GetNextEvent() SB_OVERRIDE;
-  void Inject(Event* event) SB_OVERRIDE;
-  void InjectTimedEvent(TimedEvent* timed_event) SB_OVERRIDE;
-  void CancelTimedEvent(SbEventId event_id) SB_OVERRIDE;
-  TimedEvent* GetNextDueTimedEvent() SB_OVERRIDE;
-  SbTimeMonotonic GetNextTimedEventTargetTime() SB_OVERRIDE;
+  Event* GetNextEvent() override;
+  void Inject(Event* event) override;
+  void InjectTimedEvent(TimedEvent* timed_event) override;
+  void CancelTimedEvent(SbEventId event_id) override;
+  TimedEvent* GetNextDueTimedEvent() override;
+  SbTimeMonotonic GetNextTimedEventTargetTime() override;
 
   // Returns true if it is valid to poll/query for system events.
   virtual bool MayHaveSystemEvents() = 0;
