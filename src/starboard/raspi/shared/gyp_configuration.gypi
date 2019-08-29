@@ -61,6 +61,11 @@
       '-I<(sysroot)/opt/vc/include',
       '-I<(sysroot)/opt/vc/include/interface/vcos/pthreads',
       '-I<(sysroot)/opt/vc/include/interface/vmcs_host/linux',
+
+      # GStreamer includes
+      '-I<(sysroot)/usr/include/gstreamer-1.0',
+      '-I<(sysroot)/usr/include/glib-2.0',
+      '-I<(sysroot)/usr/lib/glib-2.0/include/',
     ],
     'linker_flags': [
       '--sysroot=<(sysroot)',
@@ -120,9 +125,11 @@
     ],
     'platform_libraries': [
       '-lasound',
-      '-lavcodec',
-      '-lavformat',
-      '-lavutil',
+      '-lgstreamer-1.0',
+      '-lgstvideo-1.0',
+      '-lgstapp-1.0',
+      '-lgobject-2.0',
+      '-lglib-2.0',
       '-lEGL',
       '-lGLESv2',
       '-lpthread',
