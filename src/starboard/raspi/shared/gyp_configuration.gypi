@@ -20,6 +20,9 @@
     'sysroot%': '/',
     'gl_type': 'system_gles2',
 
+        # This is to create cobalt shared library
+    'final_executable_type': '<!(echo $COBALT_EXECUTABLE_TYPE)',
+
     # Define platform specific compiler and linker flags.
     # Refer to base.gypi for a list of all available variables.
     'compiler_flags_host': [
