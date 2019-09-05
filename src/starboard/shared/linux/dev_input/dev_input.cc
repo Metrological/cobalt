@@ -12,6 +12,301 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#ifdef USE_COMPOSITOR
+#include "starboard/shared/linux/dev_input/dev_input.h"
+#include "starboard/raspi/shared/window_internal.h"
+#include "starboard/input.h"
+#include "starboard/key.h"
+#include "starboard/shared/posix/time_internal.h"
+#include <WPEFramework/compositor/Client.h>
+#include <linux/input.h>
+#include <fcntl.h>
+
+namespace starboard {
+namespace shared {
+namespace dev_input {
+namespace {
+
+using ::starboard::shared::starboard::Application;
+typedef int FileDescriptor;
+
+class DevInputImpl : public DevInput, public WPEFramework::Compositor::IDisplay::IKeyboard {
+public:
+    explicit DevInputImpl(SbWindow window);
+    DevInputImpl(SbWindow window, FileDescriptor wake_up_fd);
+    ~DevInputImpl() override;
+
+    Event* PollNextSystemEvent() override;
+    Event* WaitForSystemEventWithTimeout(SbTime time) override;
+    void WakeSystemEventWait() override;
+
+    virtual void AddRef() const override {
+    }
+    virtual uint32_t Release() const override {
+        return 0;
+    }
+    virtual void KeyMap(const char information[], const uint16_t size) override {
+    }
+    virtual void Key(const uint32_t key,
+            const IKeyboard::state action, const uint32_t time) override {
+    }
+    virtual void Modifiers(uint32_t depressedMods,
+            uint32_t latchedMods, uint32_t lockedMods, uint32_t group) override {
+    }
+    virtual void Repeat(int32_t rate, int32_t delay) override {
+    }
+    virtual void Direct(const uint32_t key, const state action) override {
+        event_.type = EV_KEY;
+        event_.code = key;
+        event_.value = action;
+        new_key_input_ = true;
+    }
+    Event* KeyInputToApplicationEvent(const struct input_event& event, int modifiers);
+
+private:
+    SbWindow window_;
+    struct input_event event_;
+    bool new_key_input_;
+    WPEFramework::Compositor::IDisplay *idisplay;
+};
+
+DevInputImpl::DevInputImpl(SbWindow window)
+: window_(window), new_key_input_(false) {
+    struct SbWindowPrivate *win = window_;
+    WPEFramework::Compositor::IDisplay::ISurface* isurface;
+    isurface = win->element->GetSurface();
+    isurface->Keyboard(this);
+
+    std::string displayName = isurface->Name();
+    displayName.pop_back();
+    displayName.pop_back();
+    idisplay = WPEFramework::Compositor::IDisplay::Instance(displayName);
+
+    int fd = idisplay->FileDescriptor();
+    fcntl(fd, F_SETFL, O_NONBLOCK);
+}
+
+DevInputImpl::DevInputImpl(SbWindow window, FileDescriptor wake_up_fd)
+: window_(window) {
+}
+
+DevInputImpl::~DevInputImpl() {
+}
+
+DevInput::Event* DevInputImpl::PollNextSystemEvent() {
+
+    idisplay->Process(1);
+    if (new_key_input_) {
+        new_key_input_ = false;
+        return KeyInputToApplicationEvent(event_, 0);
+    }
+    return NULL;
+}
+
+DevInput::Event* DevInputImpl::WaitForSystemEventWithTimeout(SbTime duration) {
+    Event* event = PollNextSystemEvent();
+    if (event) {
+        return event;
+    }
+
+    int fd = idisplay->FileDescriptor();
+    fd_set fdSet;
+    FD_ZERO(&fdSet);
+    FD_SET(fd, &fdSet);
+    struct timeval tv;
+    SbTime clamped_duration = std::max(duration, (SbTime)0);
+    ToTimevalDuration(clamped_duration, &tv);
+    select(fd+1, &fdSet, NULL, NULL, &tv);
+
+    return PollNextSystemEvent();
+}
+
+void DevInputImpl::WakeSystemEventWait() {
+}
+
+SbKey KeyCodeToSbKey(uint16_t code) {
+    switch (code) {
+    case KEY_BACKSPACE:
+        return kSbKeyBack;
+    case KEY_DELETE:
+        return kSbKeyDelete;
+    case KEY_TAB:
+        return kSbKeyTab;
+    case KEY_LINEFEED:
+    case KEY_ENTER:
+    case KEY_KPENTER:
+        return kSbKeyReturn;
+    case KEY_CLEAR:
+        return kSbKeyClear;
+    case KEY_SPACE:
+        return kSbKeySpace;
+    case KEY_HOME:
+        return kSbKeyHome;
+    case KEY_END:
+        return kSbKeyEnd;
+    case KEY_PAGEUP:
+        return kSbKeyPrior;
+    case KEY_PAGEDOWN:
+        return kSbKeyNext;
+    case KEY_LEFT:
+        return kSbKeyLeft;
+    case KEY_RIGHT:
+        return kSbKeyRight;
+    case KEY_DOWN:
+        return kSbKeyDown;
+    case KEY_UP:
+        return kSbKeyUp;
+    case KEY_ESC:
+        return kSbKeyEscape;
+
+    case KEY_A:
+        return kSbKeyA;
+    case KEY_B:
+        return kSbKeyB;
+    case KEY_C:
+        return kSbKeyC;
+    case KEY_D:
+        return kSbKeyD;
+    case KEY_E:
+        return kSbKeyE;
+    case KEY_F:
+        return kSbKeyF;
+    case KEY_G:
+        return kSbKeyG;
+    case KEY_H:
+        return kSbKeyH;
+    case KEY_I:
+        return kSbKeyI;
+    case KEY_J:
+        return kSbKeyJ;
+    case KEY_K:
+        return kSbKeyK;
+    case KEY_L:
+        return kSbKeyL;
+    case KEY_M:
+        return kSbKeyM;
+    case KEY_N:
+        return kSbKeyN;
+    case KEY_O:
+        return kSbKeyO;
+    case KEY_P:
+        return kSbKeyP;
+    case KEY_Q:
+        return kSbKeyQ;
+    case KEY_R:
+        return kSbKeyR;
+    case KEY_S:
+        return kSbKeyS;
+    case KEY_T:
+        return kSbKeyT;
+    case KEY_U:
+        return kSbKeyU;
+    case KEY_V:
+        return kSbKeyV;
+    case KEY_W:
+        return kSbKeyW;
+    case KEY_X:
+        return kSbKeyX;
+    case KEY_Y:
+        return kSbKeyY;
+    case KEY_Z:
+        return kSbKeyZ;
+
+    case KEY_0:
+        return kSbKey0;
+    case KEY_1:
+        return kSbKey1;
+    case KEY_2:
+        return kSbKey2;
+    case KEY_3:
+        return kSbKey3;
+    case KEY_4:
+        return kSbKey4;
+    case KEY_5:
+        return kSbKey5;
+    case KEY_6:
+        return kSbKey6;
+    case KEY_7:
+        return kSbKey7;
+    case KEY_8:
+        return kSbKey8;
+    case KEY_9:
+        return kSbKey9;
+
+    case KEY_NUMERIC_0:
+    case KEY_NUMERIC_1:
+    case KEY_NUMERIC_2:
+    case KEY_NUMERIC_3:
+    case KEY_NUMERIC_4:
+    case KEY_NUMERIC_5:
+    case KEY_NUMERIC_6:
+    case KEY_NUMERIC_7:
+    case KEY_NUMERIC_8:
+    case KEY_NUMERIC_9:
+        return static_cast<SbKey>(kSbKey0 + (code - KEY_NUMERIC_0));
+
+    case KEY_KP0:
+        return kSbKeyNumpad0;
+    case KEY_KP1:
+        return kSbKeyNumpad1;
+    case KEY_KP2:
+        return kSbKeyNumpad2;
+    case KEY_KP3:
+        return kSbKeyNumpad3;
+    case KEY_KP4:
+        return kSbKeyNumpad4;
+    case KEY_KP5:
+        return kSbKeyNumpad5;
+    case KEY_KP6:
+        return kSbKeyNumpad6;
+    case KEY_KP7:
+        return kSbKeyNumpad7;
+    case KEY_KP8:
+        return kSbKeyNumpad8;
+    case KEY_KP9:
+        return kSbKeyNumpad9;
+    }
+    return kSbKeyUnknown;
+}
+
+SbKeyLocation KeyCodeToSbKeyLocation(uint16_t code) {
+    return kSbKeyLocationUnspecified;
+}
+
+DevInput::Event* DevInputImpl::KeyInputToApplicationEvent(
+        const struct input_event& event,
+        int modifiers) {
+    SB_DCHECK(event.type == EV_KEY);
+    SB_DCHECK(event.value <= 2);
+    SbInputData* data = new SbInputData();
+    SbMemorySet(data, 0, sizeof(*data));
+    data->window = window_;
+    data->type =
+            (event.value == 0 ? kSbInputEventTypeUnpress : kSbInputEventTypePress);
+    data->device_type = kSbInputDeviceTypeKeyboard;
+    data->device_id = 1;
+    data->key = KeyCodeToSbKey(event.code);
+    data->key_location = KeyCodeToSbKeyLocation(event.code);
+    data->key_modifiers = modifiers;
+    return new Event(kSbEventTypeInput, data,
+            &Application::DeleteDestructor<SbInputData>);
+}
+
+}  // namespace
+
+DevInput* DevInput::Create(SbWindow window) {
+    return new DevInputImpl(window);
+}
+
+DevInput* DevInput::Create(SbWindow window, int wake_up_fd) {
+    return new DevInputImpl(window, wake_up_fd);
+}
+
+}  // namespace dev_input
+}  // namespace shared
+}  // namespace starboard
+
+#else
 #include "starboard/shared/linux/dev_input/dev_input.h"
 
 #include <errno.h>
@@ -1332,3 +1627,5 @@ DevInput* DevInput::Create(SbWindow window, int wake_up_fd) {
 }  // namespace dev_input
 }  // namespace shared
 }  // namespace starboard
+
+#endif

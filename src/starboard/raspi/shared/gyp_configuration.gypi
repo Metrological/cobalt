@@ -19,8 +19,8 @@
 
     'sysroot%': '/',
     'gl_type': 'system_gles2',
-
-        # This is to create cobalt shared library
+    
+    # This is to create cobalt shared library
     'final_executable_type': '<!(echo $COBALT_EXECUTABLE_TYPE)',
 
     # Define platform specific compiler and linker flags.
@@ -154,6 +154,18 @@
         'compiler_flags_qa': [
         ],
         'compiler_flags_gold': [
+        ],
+      }],
+      ['"<!(echo $COBALT_USE_COMPOSITOR)"=="y"', {
+        'compiler_flags': [
+          '-DUSE_COMPOSITOR',
+          '-I<(sysroot)/usr/include/WPEFramework/compositor/',
+        ],
+        'platform_libraries': [
+          '-lWPEFrameworkCore',
+          '-lWPEFrameworkPlugins',
+          '-lWPEFrameworkProtocols',
+          '-lcompositorclient',
         ],
       }],
     ],

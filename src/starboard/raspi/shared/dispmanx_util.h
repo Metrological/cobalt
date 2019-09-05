@@ -26,6 +26,11 @@
 #include "starboard/shared/starboard/player/filter/video_frame_internal.h"
 #include "starboard/types.h"
 
+#ifdef USE_COMPOSITOR
+#include <WPEFramework/compositor/Client.h>
+#include <chrono>
+#endif
+
 namespace starboard {
 namespace raspi {
 namespace shared {
@@ -41,20 +46,53 @@ class DispmanxRect : public VC_RECT_T {
 class DispmanxDisplay {
  public:
   DispmanxDisplay() {
+#ifdef USE_COMPOSITOR
+    const char* callsign(std::getenv("CLIENT_IDENTIFIER"));
+    if (callsign == nullptr) {
+        display_name_ = "CobaltBrowser" + std::to_string(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch()).count());
+    }
+    else {
+        const char* delimiter = nullptr;
+        if ((delimiter = strchr(callsign, ',')) == nullptr) {
+            display_name_ = callsign;
+        }
+        else {
+            display_name_ = std::string(callsign, (delimiter - callsign));
+        }
+    }
+    idisplay_ = WPEFramework::Compositor::IDisplay::Instance(display_name_);
+#else
     bcm_host_init();
     handle_ = vc_dispmanx_display_open(0);
     SB_DCHECK(handle_ != DISPMANX_NO_HANDLE);
+#endif
   }
   ~DispmanxDisplay() {
+#ifdef USE_COMPOSITOR
+    idisplay_->Release();
+#else
     int result = vc_dispmanx_display_close(handle_);
     SB_DCHECK(result == 0);
     bcm_host_deinit();
+#endif
   }
 
+#ifdef USE_COMPOSITOR
+  WPEFramework::Compositor::IDisplay *handle() const { return idisplay_; }
+  std::string DisplayName() const { return display_name_; }
+#else
   DISPMANX_DISPLAY_HANDLE_T handle() const { return handle_; }
+#endif
 
  private:
+#ifdef USE_COMPOSITOR
+  WPEFramework::Compositor::IDisplay *idisplay_;
+  std::string display_name_;
+#else
   DISPMANX_DISPLAY_HANDLE_T handle_;
+#endif
 
   SB_DISALLOW_COPY_AND_ASSIGN(DispmanxDisplay);
 };
@@ -136,9 +174,15 @@ class DispmanxElement {
 
   DISPMANX_ELEMENT_HANDLE_T handle() const { return handle_; }
   void ChangeSource(const DispmanxResource& new_src);
+#ifdef USE_COMPOSITOR
+  WPEFramework::Compositor::IDisplay::ISurface* GetSurface() { return isurface_; }
+#endif
 
  private:
   DISPMANX_ELEMENT_HANDLE_T handle_;
+#ifdef USE_COMPOSITOR
+  WPEFramework::Compositor::IDisplay::ISurface* isurface_;
+#endif
 
   SB_DISALLOW_COPY_AND_ASSIGN(DispmanxElement);
 };
