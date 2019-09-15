@@ -137,6 +137,7 @@
       '-lGLESv2',
       '-lpthread',
       '-lrt',
+      '-locdm',
       '-lopenmaxil',
       '-lbcm_host',
       '-lvcos',
