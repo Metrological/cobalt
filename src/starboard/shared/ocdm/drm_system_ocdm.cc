@@ -112,6 +112,9 @@ void DrmSystemOcdm::OCDMKeyUpdate(struct OpenCDMSession *session,
 void DrmSystemOcdm::OCDMKeyUpdateInternal(struct OpenCDMSession *session,
         const uint8_t key_id[], const uint8_t length) {
 
+    std::string keyid_str(reinterpret_cast<char const*>(key_id), length);
+    keyid_to_session_.insert(std::make_pair(keyid_str, session));
+
     std::string session_id = SessionToSessionId(session);
     int ticket = GetAndResetTicket(session);
     session_updated_callback_(this, context_, ticket, kSbDrmStatusSuccess, "",
@@ -132,17 +135,90 @@ void DrmSystemOcdm::UpdateServerCertificate(int ticket, const void *certificate,
         int certificate_size) {
 }
 
+void IncrementIv(uint8_t *iv, size_t block_count) {
+    if (0 == block_count)
+        return;
+    uint8_t carry = 0;
+    uint8_t n = static_cast<uint8_t>(16 - 1);
+
+    while (n >= 8) {
+        uint32_t temp = block_count & 0xff;
+        temp += iv[n];
+        temp += carry;
+        iv[n] = temp & 0xff;
+        carry = (temp & 0x100) ? 1 : 0;
+        block_count = block_count >> 8;
+        n--;
+        if (0 == block_count && !carry) {
+            break;
+        }
+    }
+}
+
 SbDrmSystemPrivate::DecryptStatus DrmSystemOcdm::Decrypt(InputBuffer *buffer) {
 
     const SbDrmSampleInfo *drm_info = buffer->drm_info();
-    const SbDrmSubSampleMapping &subsample =
-            buffer->drm_info()->subsample_mapping[0];
+    uint8_t *keyid = (uint8_t*) drm_info->identifier;
+    uint32_t keyid_length = drm_info->identifier_size;
+    std::string keyid_str(reinterpret_cast<char const*>(keyid), keyid_length);
 
-    DEBUG_LOG("BUFFER INFO %p %d %d %d %d %s\n", buffer->data(), buffer->size(),
-            subsample.clear_byte_count, subsample.encrypted_byte_count,
-            buffer->sample_type(),
-            std::string(reinterpret_cast<const char*>(&drm_info->identifier[0]),
-                    drm_info->identifier_size).c_str());
+    OpenCDMSession *session = nullptr;
+    auto iter = keyid_to_session_.find(keyid_str);
+    if (iter == keyid_to_session_.end()) {
+        return kRetry;
+    } else {
+        session = iter->second;
+    }
+
+    uint8_t *data = (uint8_t*) buffer->data();
+    uint32_t data_length = buffer->size();
+
+    std::vector<uint8_t> initialization_vector(drm_info->initialization_vector,
+            drm_info->initialization_vector
+                    + drm_info->initialization_vector_size);
+    uint8_t *iv = initialization_vector.data();
+    uint32_t iv_length = initialization_vector.size();
+
+    uint64_t block_offset = 0;
+    uint64_t byte_offset = 0;
+    size_t block_counter = 0;
+    size_t encrypted_offset = 0;
+
+    for (size_t i = 0; i < buffer->drm_info()->subsample_count; i++) {
+
+        const SbDrmSubSampleMapping &subsample =
+                buffer->drm_info()->subsample_mapping[i];
+
+        if (subsample.clear_byte_count) {
+            data = data + subsample.clear_byte_count;
+            data_length -= subsample.clear_byte_count;
+        }
+        if (subsample.encrypted_byte_count) {
+
+            OcdmCounterContext counter_context = { 0 };
+            NETWORKBYTES_TO_QWORD(counter_context.initialization_vector_, iv,
+                    0);
+            NETWORKBYTES_TO_QWORD(block_offset, iv, 8);
+            counter_context.block_offset_ = block_offset;
+            counter_context.byte_offset_ = byte_offset;
+            const uint8_t *piv = (const uint8_t*) &counter_context;
+
+            opencdm_session_decrypt(session, data,
+                    subsample.encrypted_byte_count, piv,
+                    sizeof(OcdmCounterContext), drm_info->identifier,
+                    drm_info->identifier_size, 1);
+
+            data = data + subsample.encrypted_byte_count;
+            data_length -= subsample.encrypted_byte_count;
+        }
+        byte_offset += subsample.encrypted_byte_count;
+        byte_offset %= 16;
+
+        encrypted_offset += subsample.encrypted_byte_count;
+        size_t new_block_counter = encrypted_offset / 16;
+        IncrementIv(iv, new_block_counter - block_counter);
+        block_counter = new_block_counter;
+    }
     return kSuccess;
 }
 

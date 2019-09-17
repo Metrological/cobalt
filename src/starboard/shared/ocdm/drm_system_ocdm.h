@@ -6,6 +6,7 @@
 #include "starboard/shared/starboard/drm/drm_system_internal.h"
 #include "starboard/shared/starboard/thread_checker.h"
 #include "starboard/common/string.h"
+#include "starboard/memory.h"
 
 #include "opencdm/open_cdm.h"
 
@@ -19,6 +20,22 @@ typedef OpenCDMSystem OPEN_CDM_SYSTEM;
 #else
 typedef OpenCDMAccessor OPEN_CDM_SYSTEM;
 #endif
+
+struct OcdmCounterContext {
+    uint64_t initialization_vector_;
+    uint64_t block_offset_;
+    unsigned char byte_offset_;
+};
+
+#define NETWORKBYTES_TO_QWORD(qword, byte, index)                              \
+        do { (qword)  = ((unsigned char*)(byte))[(index)+0]; (qword) <<= 8;    \
+             (qword) |= ((unsigned char*)(byte))[(index)+1]; (qword) <<= 8;    \
+             (qword) |= ((unsigned char*)(byte))[(index)+2]; (qword) <<= 8;    \
+             (qword) |= ((unsigned char*)(byte))[(index)+3]; (qword) <<= 8;    \
+             (qword) |= ((unsigned char*)(byte))[(index)+4]; (qword) <<= 8;    \
+             (qword) |= ((unsigned char*)(byte))[(index)+5]; (qword) <<= 8;    \
+             (qword) |= ((unsigned char*)(byte))[(index)+6]; (qword) <<= 8;    \
+             (qword) |= ((unsigned char*)(byte))[(index)+7]; } while( false )
 
 class DrmSystemOcdm: public SbDrmSystemPrivate {
 
@@ -77,6 +94,7 @@ private:
     void *const context_;
     int pre_session_ticket_;
     std::map<OpenCDMSession*, int> session_to_ticket_;
+    std::map<std::string, OpenCDMSession*> keyid_to_session_;
 
     const SbDrmSessionUpdateRequestFunc session_update_request_callback_;
     const SbDrmSessionUpdatedFunc session_updated_callback_;
