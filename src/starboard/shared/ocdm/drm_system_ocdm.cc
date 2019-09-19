@@ -51,7 +51,8 @@ void DrmSystemOcdm::GenerateSessionUpdateRequest(int ticket, const char *type,
     memset(&session_callbacks_, 0, sizeof(session_callbacks_));
     session_callbacks_.process_challenge_callback = OCDMProcessChallenge;
     session_callbacks_.key_update_callback = OCDMKeyUpdate;
-    session_callbacks_.message_callback = OCDMMessage;
+    session_callbacks_.keys_updated_callback = OCDMKeyUpdated;
+    session_callbacks_.error_message_callback = OCDMMessage;
 
     pre_session_ticket_ = ticket;
 
@@ -94,14 +95,6 @@ void DrmSystemOcdm::OCDMProcessChallengeInternal(OpenCDMSession *session,
             challenge_length, url);
 }
 
-void DrmSystemOcdm::UpdateSession(int ticket, const void *key, int key_size,
-        const void *session_id, int session_id_size) {
-
-    OpenCDMSession *session = SessionIdToSession(session_id, session_id_size);
-    SetTicket(session, ticket);
-    opencdm_session_update(session, (const uint8_t*) key, key_size);
-}
-
 void DrmSystemOcdm::OCDMKeyUpdate(struct OpenCDMSession *session,
         void *user_data, const uint8_t key_id[], const uint8_t length) {
 
@@ -111,12 +104,30 @@ void DrmSystemOcdm::OCDMKeyUpdate(struct OpenCDMSession *session,
 
 void DrmSystemOcdm::OCDMKeyUpdateInternal(struct OpenCDMSession *session,
         const uint8_t key_id[], const uint8_t length) {
+}
 
-    std::string keyid_str(reinterpret_cast<char const*>(key_id), length);
-    keyid_to_session_.insert(std::make_pair(keyid_str, session));
+void DrmSystemOcdm::UpdateSession(int ticket, const void *key, int key_size,
+        const void *session_id, int session_id_size) {
+
+    OpenCDMSession *session = SessionIdToSession(session_id, session_id_size);
+    SetTicket(session, ticket);
+    opencdm_session_update(session, (const uint8_t*) key, key_size);
+}
+
+void DrmSystemOcdm::OCDMKeyUpdated(const struct OpenCDMSession *session,
+        void *user_data) {
+
+    ((DrmSystemOcdm*) user_data)->OCDMKeyUpdatedInternal(
+            (struct OpenCDMSession*) session);
+}
+
+void DrmSystemOcdm::OCDMKeyUpdatedInternal(struct OpenCDMSession *session) {
 
     std::string session_id = SessionToSessionId(session);
+
     int ticket = GetAndResetTicket(session);
+    if (ticket == kSbDrmTicketInvalid) return;
+
     session_updated_callback_(this, context_, ticket, kSbDrmStatusSuccess, "",
             session_id.c_str(), static_cast<int>(session_id.size()));
 }
@@ -162,12 +173,9 @@ SbDrmSystemPrivate::DecryptStatus DrmSystemOcdm::Decrypt(InputBuffer *buffer) {
     uint32_t keyid_length = drm_info->identifier_size;
     std::string keyid_str(reinterpret_cast<char const*>(keyid), keyid_length);
 
-    OpenCDMSession *session = nullptr;
-    auto iter = keyid_to_session_.find(keyid_str);
-    if (iter == keyid_to_session_.end()) {
+    OpenCDMSession *session = opencdm_get_session(keyid, keyid_length, 0);
+    if (!session) {
         return kRetry;
-    } else {
-        session = iter->second;
     }
 
     uint8_t *data = (uint8_t*) buffer->data();

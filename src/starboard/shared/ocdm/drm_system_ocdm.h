@@ -72,6 +72,7 @@ public:
             const uint8_t challenge[], const uint16_t challenge_length);
     void OCDMKeyUpdateInternal(struct OpenCDMSession *session,
             const uint8_t key_id[], const uint8_t length);
+    void OCDMKeyUpdatedInternal(struct OpenCDMSession *session);
     void OCDMMessageInternal(struct OpenCDMSession *session,
             const char message[]);
 
@@ -81,6 +82,8 @@ private:
             const uint16_t challenge_length);
     static void OCDMKeyUpdate(struct OpenCDMSession *session, void *user_data,
             const uint8_t key_id[], const uint8_t length);
+    static void OCDMKeyUpdated(const struct OpenCDMSession *session,
+            void *user_data);
     static void OCDMMessage(struct OpenCDMSession *session, void *user_data,
             const char message[]);
 
@@ -94,7 +97,6 @@ private:
     void *const context_;
     int pre_session_ticket_;
     std::map<OpenCDMSession*, int> session_to_ticket_;
-    std::map<std::string, OpenCDMSession*> keyid_to_session_;
 
     const SbDrmSessionUpdateRequestFunc session_update_request_callback_;
     const SbDrmSessionUpdatedFunc session_updated_callback_;
