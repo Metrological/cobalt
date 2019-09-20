@@ -15,12 +15,13 @@
 #ifndef COBALT_SCRIPT_V8C_V8C_GLOBAL_ENVIRONMENT_H_
 #define COBALT_SCRIPT_V8C_V8C_GLOBAL_ENVIRONMENT_H_
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "base/basictypes.h"
-#include "base/hash_tables.h"
+#include "base/containers/hash_tables.h"
 #include "base/logging.h"
 #include "base/optional.h"
 #include "base/stl_util.h"
@@ -66,7 +67,7 @@ class V8cGlobalEnvironment : public GlobalEnvironment,
   bool EvaluateScript(
       const scoped_refptr<SourceCode>& script_utf8,
       const scoped_refptr<Wrappable>& owning_object,
-      base::optional<ValueHandleHolder::Reference>* out_value_handle) override;
+      base::Optional<ValueHandleHolder::Reference>* out_value_handle) override;
 
   std::vector<StackFrame> GetStackTrace(int max_frames) override;
   using GlobalEnvironment::GetStackTrace;
@@ -74,8 +75,7 @@ class V8cGlobalEnvironment : public GlobalEnvironment,
   void PreventGarbageCollection(
       const scoped_refptr<Wrappable>& wrappable) override;
 
-  void AllowGarbageCollection(
-      const scoped_refptr<Wrappable>& wrappable) override;
+  void AllowGarbageCollection(Wrappable* wrappable) override;
 
   void AddRoot(Traceable* traceable) override;
 
@@ -117,7 +117,7 @@ class V8cGlobalEnvironment : public GlobalEnvironment,
 
   WrapperFactory* wrapper_factory() const { return wrapper_factory_.get(); }
 
-  Wrappable* global_wrappable() const { return global_wrappable_; }
+  Wrappable* global_wrappable() const { return global_wrappable_.get(); }
 
   EnvironmentSettings* GetEnvironmentSettings() const {
     return environment_settings_;
@@ -155,7 +155,9 @@ class V8cGlobalEnvironment : public GlobalEnvironment,
   // |v8::Isolate|.
   static const int kIsolateDataIndex = 1;
 
-  base::ThreadChecker thread_checker_;
+  THREAD_CHECKER(thread_checker_);
+  // Flag indicating when the destructor is called.
+  bool destructing_ = false;
   v8::Isolate* isolate_;
 
   // Hold an extra reference to the global wrappable in order to properly
@@ -166,8 +168,8 @@ class V8cGlobalEnvironment : public GlobalEnvironment,
   v8::Global<v8::Context> context_;
   v8::Global<v8::Object> global_object_;
 
-  scoped_ptr<WrapperFactory> wrapper_factory_;
-  scoped_ptr<V8cScriptValueFactory> script_value_factory_;
+  std::unique_ptr<WrapperFactory> wrapper_factory_;
+  std::unique_ptr<V8cScriptValueFactory> script_value_factory_;
 
   // Data that is cached on a per-interface basis. Note that we can get to
   // everything (the function instance, the prototype template, and the

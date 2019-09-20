@@ -60,6 +60,16 @@ void FromJSValue(JSContext* context, JS::HandleValue value,
                  int conversion_flags, ExceptionState* exception_state,
                  script::UnionType4<T1, T2, T3, T4>* out_union);
 
+template <typename T1, typename T2, typename T3, typename T4, typename T5>
+void ToJSValue(JSContext* context,
+               const script::UnionType5<T1, T2, T3, T4, T5>& in_union,
+               JS::MutableHandleValue out_value);
+
+template <typename T1, typename T2, typename T3, typename T4, typename T5>
+void FromJSValue(JSContext* context, JS::HandleValue value,
+                 int conversion_flags, ExceptionState* exception_state,
+                 script::UnionType5<T1, T2, T3, T4, T5>* out_union);
+
 }  // namespace mozjs
 }  // namespace script
 }  // namespace cobalt

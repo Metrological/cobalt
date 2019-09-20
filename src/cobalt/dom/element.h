@@ -17,14 +17,16 @@
 
 #include <string>
 
+#include "base/containers/hash_tables.h"
 #include "base/containers/small_map.h"
-#include "base/hash_tables.h"
 #include "base/memory/weak_ptr.h"
 #include "base/optional.h"
-#include "base/string_piece.h"
+#include "base/strings/string_piece.h"
 #include "cobalt/base/token.h"
 #include "cobalt/cssom/style_sheet_list.h"
 #include "cobalt/dom/dom_exception.h"
+#include "cobalt/dom/element_intersection_observer_module.h"
+#include "cobalt/dom/intersection_observer.h"
 #include "cobalt/dom/node.h"
 #include "cobalt/script/exception_state.h"
 #include "cobalt/web_animations/animation_set.h"
@@ -45,16 +47,16 @@ class NamedNodeMap;
 //   https://www.w3.org/TR/2014/WD-dom-20140710/#interface-element
 class Element : public Node {
  public:
-  // NOTE1: The array size of base::SmallMap and the decision to use
+  // NOTE1: The array size of base::small_map and the decision to use
   // base::hash_map as the underlying container type are based on extensive
   // performance testing. Do not change these unless additional profiling data
   // justifies it.
-  // NOTE2: Using base::SmallMap rather than base::hash_map also results in
+  // NOTE2: Using base::small_map rather than base::hash_map also results in
   // substantial memory gains when live videos are played. These videos trigger
   // the creation of XML documents with over 20k elements, of which over 99%
-  // contain a single attribute. By using base::SmallMap, these single attribute
-  // elements are contained within arrays rather than hash_maps.
-  typedef base::SmallMap<base::hash_map<std::string, std::string>, 1>
+  // contain a single attribute. By using base::small_map, these single
+  // attribute elements are contained within arrays rather than hash_maps.
+  typedef base::small_map<std::unordered_map<std::string, std::string>, 1>
       AttributeMap;
 
   explicit Element(Document* document);
@@ -65,9 +67,9 @@ class Element : public Node {
   base::Token node_name() const override { return tag_name(); }
   NodeType node_type() const override { return Node::kElementNode; }
 
-  base::optional<std::string> text_content() const override;
+  base::Optional<std::string> text_content() const override;
   void set_text_content(
-      const base::optional<std::string>& text_content) override;
+      const base::Optional<std::string>& text_content) override;
 
   bool HasAttributes() const override;
 
@@ -88,10 +90,16 @@ class Element : public Node {
   const scoped_refptr<DOMTokenList>& class_list();
   scoped_refptr<NamedNodeMap> attributes();
 
-  base::optional<std::string> GetAttribute(const std::string& name) const;
+  base::Optional<std::string> GetAttribute(const std::string& name) const;
   void SetAttribute(const std::string& name, const std::string& value);
   void RemoveAttribute(const std::string& name);
   bool HasAttribute(const std::string& name) const;
+
+  base::Optional<std::string> GetAttributeNS(const std::string& namespace_uri,
+                                             const std::string& name) const;
+  bool HasAttributeNS(const std::string& namespace_uri,
+                      const std::string& name) const;
+  bool Matches(const std::string& selectors,script::ExceptionState* exception_state);
 
   scoped_refptr<HTMLCollection> GetElementsByTagName(
       const std::string& local_name) const;
@@ -107,6 +115,20 @@ class Element : public Node {
   virtual float client_left();
   virtual float client_width();
   virtual float client_height();
+
+  // Updated version of the CSSOM View Module extensions:
+  //   https://www.w3.org/TR/cssom-view-1/#extension-to-the-element-interface
+  // If the element does not have any associated CSS layout box return zero.
+  virtual int32 scroll_width() { return 0; }
+  virtual int32 scroll_height() { return 0; }
+  virtual float scroll_left() { return 0.0f; }
+  virtual float scroll_top() { return 0.0f; }
+
+  // If the element does not have any associated CSS layout box, the element
+  // has no associated scrolling box, or the element has no overflow, terminate
+  // these steps.
+  virtual void set_scroll_left(float /* x */) {}
+  virtual void set_scroll_top(float /* y */) {}
 
   // Web API: DOM Parsing and Serialization (partial interface)
   //   https://www.w3.org/TR/DOM-Parsing/#extensions-to-the-element-interface
@@ -155,14 +177,14 @@ class Element : public Node {
   // opening_tag_location points to ">" of opening tag.
   virtual void OnParserStartTag(
       const base::SourceLocation& opening_tag_location) {
-    UNREFERENCED_PARAMETER(opening_tag_location);
+    SB_UNREFERENCED_PARAMETER(opening_tag_location);
   }
   virtual void OnParserEndTag() {}
 
   // Used to ensure that the style attribute value reflects the style
   // declaration.
   //   https://www.w3.org/TR/html5/dom.html#the-style-attribute
-  virtual base::optional<std::string> GetStyleAttribute() const;
+  virtual base::Optional<std::string> GetStyleAttribute() const;
   virtual void SetStyleAttribute(const std::string& value);
   virtual void RemoveStyleAttribute();
 
@@ -177,6 +199,15 @@ class Element : public Node {
   const scoped_refptr<web_animations::AnimationSet>& animations() {
     return animations_;
   }
+
+  void RegisterIntersectionObserverRoot(IntersectionObserver* observer);
+  void UnregisterIntersectionObserverRoot(IntersectionObserver* observer);
+  void RegisterIntersectionObserverTarget(IntersectionObserver* observer);
+  void UnregisterIntersectionObserverTarget(IntersectionObserver* observer);
+  ElementIntersectionObserverModule::LayoutIntersectionObserverRootVector
+  GetLayoutIntersectionObserverRoots();
+  ElementIntersectionObserverModule::LayoutIntersectionObserverTargetVector
+  GetLayoutIntersectionObserverTargets();
 
   DEFINE_WRAPPABLE_TYPE(Element);
   void TraceMembers(script::Tracer* tracer) override;
@@ -210,6 +241,8 @@ class Element : public Node {
   // Callback for error when parsing inner / outer HTML.
   void HTMLParseError(const std::string& error);
 
+  void EnsureIntersectionObserverModuleInitialized();
+
   // Local name of the element.
   base::Token local_name_;
   // A map that holds the actual element attributes.
@@ -227,6 +260,9 @@ class Element : public Node {
 
   // A set of all animations currently applied to this element.
   scoped_refptr<web_animations::AnimationSet> animations_;
+
+  std::unique_ptr<ElementIntersectionObserverModule>
+      element_intersection_observer_module_;
 };
 
 }  // namespace dom

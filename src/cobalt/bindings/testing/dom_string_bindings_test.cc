@@ -162,9 +162,27 @@ TEST_F(DOMStringBindingsTest, SetUndefinedAsEmptyString) {
       EvaluateScript("test.undefinedIsEmptyProperty = undefined;", NULL));
 
   EXPECT_CALL(test_mock(), set_nullable_undefined_is_empty_property(
-                               base::optional<std::string>("")));
+                               base::Optional<std::string>("")));
   EXPECT_TRUE(EvaluateScript(
       "test.nullableUndefinedIsEmptyProperty = undefined;", NULL));
+}
+
+TEST_F(DOMStringBindingsTest, StringContainingNull) {
+  EXPECT_CALL(test_mock(), set_property(std::string("mock\0_value", 11)));
+
+  std::string result;
+  std::string input("test.property = \"mock\0_value\";", 30);
+  EXPECT_TRUE(EvaluateScript(input, &result));
+  EXPECT_STREQ("mock\0_value", result.c_str());
+}
+
+TEST_F(DOMStringBindingsTest, ForeignStringContainingNull) {
+  EXPECT_CALL(test_mock(), set_property(std::string("かわいい\0です", 19)));
+
+  std::string result;
+  std::string input("test.property = \"かわいい\0です\";", 38);
+  EXPECT_TRUE(EvaluateScript(input, &result));
+  EXPECT_STREQ("かわいい\0です", result.c_str());
 }
 
 }  // namespace testing

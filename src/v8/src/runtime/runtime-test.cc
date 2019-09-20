@@ -642,6 +642,7 @@ RUNTIME_FUNCTION(Runtime_DebugPrint) {
   SealHandleScope shs(isolate);
   DCHECK_EQ(1, args.length());
 
+#ifndef V8_OS_STARBOARD
   OFStream os(stdout);
 #ifdef DEBUG
   if (args[0]->IsString() && isolate->context() != nullptr) {
@@ -665,6 +666,7 @@ RUNTIME_FUNCTION(Runtime_DebugPrint) {
   os << Brief(args[0]);
 #endif
   os << std::endl;
+#endif
 
   return args[0];  // return TOS
 }
@@ -691,7 +693,9 @@ RUNTIME_FUNCTION(Runtime_PrintWithNameForAssert) {
 RUNTIME_FUNCTION(Runtime_DebugTrace) {
   SealHandleScope shs(isolate);
   DCHECK_EQ(0, args.length());
+#ifndef V8_OS_STARBOARD
   isolate->PrintStack(stdout);
+#endif
   return isolate->heap()->undefined_value();
 }
 
@@ -764,7 +768,9 @@ RUNTIME_FUNCTION(Runtime_Abort) {
   CONVERT_SMI_ARG_CHECKED(message_id, 0);
   const char* message = GetAbortReason(static_cast<AbortReason>(message_id));
   base::OS::PrintError("abort: %s\n", message);
+#ifndef V8_OS_STARBOARD
   isolate->PrintStack(stderr);
+#endif
   base::OS::Abort();
   UNREACHABLE();
 }
@@ -775,7 +781,9 @@ RUNTIME_FUNCTION(Runtime_AbortJS) {
   DCHECK_EQ(1, args.length());
   CONVERT_ARG_HANDLE_CHECKED(String, message, 0);
   base::OS::PrintError("abort: %s\n", message->ToCString().get());
+#ifndef V8_OS_STARBOARD
   isolate->PrintStack(stderr);
+#endif
   base::OS::Abort();
   UNREACHABLE();
 }
@@ -797,9 +805,11 @@ RUNTIME_FUNCTION(Runtime_DisassembleFunction) {
       !Compiler::Compile(func, Compiler::KEEP_EXCEPTION)) {
     return isolate->heap()->exception();
   }
+#ifndef V8_OS_STARBOARD
   OFStream os(stdout);
   func->code()->Print(os);
   os << std::endl;
+#endif  // V8_OS_STARBOARD
 #endif  // DEBUG
   return isolate->heap()->undefined_value();
 }
@@ -828,7 +838,9 @@ RUNTIME_FUNCTION(Runtime_TraceEnter) {
   SealHandleScope shs(isolate);
   DCHECK_EQ(0, args.length());
   PrintIndentation(isolate);
+#ifndef V8_OS_STARBOARD
   JavaScriptFrame::PrintTop(isolate, stdout, true, false);
+#endif
   PrintF(" {\n");
   return isolate->heap()->undefined_value();
 }

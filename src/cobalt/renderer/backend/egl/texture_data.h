@@ -15,11 +15,10 @@
 #ifndef COBALT_RENDERER_BACKEND_EGL_TEXTURE_DATA_H_
 #define COBALT_RENDERER_BACKEND_EGL_TEXTURE_DATA_H_
 
-#include <GLES2/gl2.h>
-
+#include <memory>
 #include "base/memory/ref_counted.h"
-#include "base/memory/scoped_ptr.h"
 #include "cobalt/math/size.h"
+#include "cobalt/renderer/egl_and_gles.h"
 
 namespace cobalt {
 namespace renderer {
@@ -90,8 +89,8 @@ class ConstRawTextureMemoryEGL
     : public base::RefCountedThreadSafe<ConstRawTextureMemoryEGL> {
  public:
   explicit ConstRawTextureMemoryEGL(
-      scoped_ptr<RawTextureMemoryEGL> raw_texture_memory)
-      : raw_texture_memory_(raw_texture_memory.Pass()) {
+      std::unique_ptr<RawTextureMemoryEGL> raw_texture_memory)
+      : raw_texture_memory_(std::move(raw_texture_memory)) {
     raw_texture_memory_->MakeConst();
   }
 
@@ -106,7 +105,7 @@ class ConstRawTextureMemoryEGL
  private:
   virtual ~ConstRawTextureMemoryEGL() {}
 
-  scoped_ptr<RawTextureMemoryEGL> raw_texture_memory_;
+  std::unique_ptr<RawTextureMemoryEGL> raw_texture_memory_;
 
   friend class base::RefCountedThreadSafe<ConstRawTextureMemoryEGL>;
 };

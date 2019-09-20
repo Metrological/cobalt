@@ -15,28 +15,24 @@
 #ifndef COBALT_BROWSER_WEB_MODULE_H_
 #define COBALT_BROWSER_WEB_MODULE_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "base/callback.h"
-#include "base/file_path.h"
-#include "base/hash_tables.h"
-#include "base/message_loop.h"
+#include "base/containers/hash_tables.h"
+#include "base/files/file_path.h"
+#include "base/message_loop/message_loop.h"
 #include "base/synchronization/waitable_event.h"
 #include "base/threading/thread.h"
 #include "base/threading/thread_checker.h"
-#include "cobalt/accessibility/tts_engine.h"
 #include "cobalt/base/address_sanitizer.h"
-#include "cobalt/base/console_commands.h"
 #include "cobalt/base/source_location.h"
 #include "cobalt/browser/lifecycle_observer.h"
 #include "cobalt/browser/screen_shot_writer.h"
 #include "cobalt/browser/splash_screen_cache.h"
 #include "cobalt/css_parser/parser.h"
-#if defined(ENABLE_DEBUG_CONSOLE)
-#include "cobalt/debug/debug_server.h"
-#include "cobalt/debug/render_overlay.h"
-#endif  // ENABLE_DEBUG_CONSOLE
+#include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/blob.h"
 #include "cobalt/dom/csp_delegate.h"
 #include "cobalt/dom/dom_settings.h"
@@ -61,8 +57,16 @@
 #include "cobalt/script/global_environment.h"
 #include "cobalt/script/javascript_engine.h"
 #include "cobalt/script/script_runner.h"
+#include "cobalt/ui_navigation/nav_item.h"
 #include "cobalt/webdriver/session_driver.h"
-#include "googleurl/src/gurl.h"
+#include "url/gurl.h"
+
+#if defined(ENABLE_DEBUGGER)
+#include "cobalt/debug/backend/debug_dispatcher.h"
+#include "cobalt/debug/backend/debugger_state.h"
+#include "cobalt/debug/backend/render_overlay.h"
+#include "cobalt/debug/console/command_manager.h"
+#endif  // ENABLE_DEBUGGER
 
 namespace cobalt {
 namespace browser {
@@ -110,7 +114,7 @@ class WebModule : public LifecycleObserver {
     layout::LayoutManager::LayoutTrigger layout_trigger;
 
     // Optional directory to add to the search path for web files (file://).
-    FilePath extra_web_file_dir;
+    base::FilePath extra_web_file_dir;
 
     // The navigation_callback functor will be called when JavaScript internal
     // to the WebModule requests a page navigation, e.g. by modifying
@@ -131,49 +135,54 @@ class WebModule : public LifecycleObserver {
     // Whether Cobalt is forbidden to render without receiving CSP headers.
     csp::CSPHeaderPolicy require_csp;
 
+    // Encoded image cache capacity in bytes.
+    int encoded_image_cache_capacity = 1024 * 1024;
+
     // Image cache capacity in bytes.
-    int image_cache_capacity;
+    int image_cache_capacity = 32 * 1024 * 1024;
 
     // Typeface cache capacity in bytes.
-    int remote_typeface_cache_capacity;
+    int remote_typeface_cache_capacity = 4 * 1024 * 1024;
 
     // Mesh cache capacity in bytes.
     int mesh_cache_capacity;
 
     // Whether map-to-mesh for rectangular videos is enabled.
-    bool enable_map_to_mesh_rectangular;
+    bool enable_map_to_mesh_rectangular = false;
 
     // Content Security Policy enforcement mode for this web module.
-    dom::CspEnforcementType csp_enforcement_mode;
+    dom::CspEnforcementType csp_enforcement_mode = dom::kCspEnforcementEnable;
 
     // Token obtained from CSP to allow creation of insecure delegates.
-    int csp_insecure_allowed_token;
+    int csp_insecure_allowed_token = 0;
 
     // Whether or not the web module's stat tracker should track event stats.
-    bool track_event_stats;
+    bool track_event_stats = false;
 
     // If set to something other than 1.0f, when a video starts to play, the
     // image cache will be flushed and temporarily multiplied by this value (
     // must be less than or equal to 1.0f) until the video ends.  This can
     // help for platforms that are low on image memory while playing a video.
-    float image_cache_capacity_multiplier_when_playing_video;
+    float image_cache_capacity_multiplier_when_playing_video = 1.0f;
 
     // Specifies the priority of the web module's thread.  This is the thread
     // that is responsible for executing JavaScript, managing the DOM, and
-    // performing layouts.  The default value is base::kThreadPriority_Normal.
-    base::ThreadPriority thread_priority;
+    // performing layouts.  The default value is base::ThreadPriority::NORMAL.
+    base::ThreadPriority thread_priority = base::ThreadPriority::NORMAL;
 
     // Specifies the priority that the web module's corresponding loader thread
     // will be assigned.  This is the thread responsible for performing resource
     // decoding, such as image decoding.  The default value is
-    // base::kThreadPriority_Low.
-    base::ThreadPriority loader_thread_priority;
+    // base::ThreadPriority::BACKGROUND.
+    base::ThreadPriority loader_thread_priority =
+        base::ThreadPriority::BACKGROUND;
 
     // Specifies the priority tha the web module's animated image decoding
     // thread will be assigned. This thread is responsible for decoding,
     // blending and constructing individual frames from animated images. The
-    // default value is base::kThreadPriority_Low.
-    base::ThreadPriority animated_image_decode_thread_priority;
+    // default value is base::ThreadPriority::BACKGROUND.
+    base::ThreadPriority animated_image_decode_thread_priority =
+        base::ThreadPriority::BACKGROUND;
 
     // To support 3D camera movements.
     scoped_refptr<input::Camera3D> camera_3d;
@@ -182,15 +191,15 @@ class WebModule : public LifecycleObserver {
 
     // The video playback rate will be multiplied with the following value.  Its
     // default value is 1.0.
-    float video_playback_rate_multiplier;
+    float video_playback_rate_multiplier = 1.f;
 
     // Allows image animations to be enabled/disabled.  Its default value
     // is true to enable them.
-    bool enable_image_animations;
+    bool enable_image_animations = true;
 
     // Whether or not to retain the remote typeface cache when the app enters
     // the suspend state.
-    bool should_retain_remote_typeface_cache_on_suspend;
+    bool should_retain_remote_typeface_cache_on_suspend = false;
 
     // The language and script to use with fonts. If left empty, then the
     // language-script combination provided by base::GetSystemLanguageScript()
@@ -210,7 +219,7 @@ class WebModule : public LifecycleObserver {
 
     // Whether or not the WebModule is allowed to fetch from cache via
     // h5vcc-cache://.
-    bool can_fetch_cache;
+    bool can_fetch_cache = false;
 
     // The dom::OnScreenKeyboard forwards calls to this interface.
     dom::OnScreenKeyboardBridge* on_screen_keyboard_bridge = NULL;
@@ -231,7 +240,27 @@ class WebModule : public LifecycleObserver {
     // as a clear, i.e. with blending disabled.  This means that a background
     // color of transparent will replace existing pixel values, effectively
     // clearing the screen.
-    bool clear_window_with_background_color;
+    bool clear_window_with_background_color = true;
+
+    // As a preventative measure against Spectre attacks, we explicitly limit
+    // the resolution of the performance timer by default.  Setting this option
+    // can allow the limit to be disabled.
+    bool limit_performance_timer_resolution = true;
+
+#if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
+    // Whether layout is optimized to re-use boxes for still-valid elements.
+    bool enable_partial_layout = true;
+#endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
+
+#if defined(ENABLE_DEBUGGER)
+    // Whether the debugger should block until remote devtools connects.
+    bool wait_for_web_debugger = false;
+
+    // The debugger state returned from a previous web module's FreezeDebugger()
+    // that should be restored in the new WebModule after navigation. Null if
+    // there is no state to restore.
+    debug::backend::DebuggerState* debugger_state = nullptr;
+#endif  // defined(ENABLE_DEBUGGER)
   };
 
   typedef layout::LayoutManager::LayoutResults LayoutResults;
@@ -251,7 +280,8 @@ class WebModule : public LifecycleObserver {
             media::CanPlayTypeHandler* can_play_type_handler,
             media::WebMediaPlayerFactory* web_media_player_factory,
             network::NetworkModule* network_module,
-            const math::Size& window_dimensions, float video_pixel_ratio,
+            const cssom::ViewportSize& window_dimensions,
+            float video_pixel_ratio,
             render_tree::ResourceProvider* resource_provider,
             float layout_refresh_rate, const Options& options);
   ~WebModule();
@@ -269,6 +299,11 @@ class WebModule : public LifecycleObserver {
   void InjectOnScreenKeyboardFocusedEvent(int ticket);
   // Injects an on screen keyboard blurred event into the web module.
   void InjectOnScreenKeyboardBlurredEvent(int ticket);
+#if SB_API_VERSION >= 11
+  // Injects an on screen keyboard suggestions updated event into the web
+  // module.
+  void InjectOnScreenKeyboardSuggestionsUpdatedEvent(int ticket);
+#endif  // SB_API_VERSION >= 11
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
   // Injects a keyboard event into the web module. The value for type
@@ -301,27 +336,38 @@ class WebModule : public LifecycleObserver {
 #if defined(ENABLE_WEBDRIVER)
   // Creates a new webdriver::WindowDriver that interacts with the Window that
   // is owned by this WebModule instance.
-  scoped_ptr<webdriver::WindowDriver> CreateWindowDriver(
+  std::unique_ptr<webdriver::WindowDriver> CreateWindowDriver(
       const webdriver::protocol::WindowId& window_id);
 #endif
 
-#if defined(ENABLE_DEBUG_CONSOLE)
-  // Gets a reference to the debug server that interacts with this web module.
-  // The debug server is part of the debug server module owned by this web
+#if defined(ENABLE_DEBUGGER)
+  // Gets a reference to the debug dispatcher that interacts with this web
+  // module. The debug dispatcher is part of the debug module owned by this web
   // module, which is lazily created by this function if necessary.
-  debug::DebugServer* GetDebugServer();
-#endif  // ENABLE_DEBUG_CONSOLE
+  debug::backend::DebugDispatcher* GetDebugDispatcher();
+
+  // Moves the debugger state out of this WebModule prior to navigating so that
+  // it can be restored in the new WebModule after the navigation.
+  std::unique_ptr<debug::backend::DebuggerState> FreezeDebugger();
+#endif  // ENABLE_DEBUGGER
 
   // Sets the size and pixel ratio of this web module, possibly causing relayout
   // and re-render with the new parameters. Does nothing if the parameters are
   // not different from the current parameters.
-  void SetSize(const math::Size& window_dimensions, float video_pixel_ratio);
+  void SetSize(const cssom::ViewportSize& view_port_size,
+               float video_pixel_ratio);
 
   void SetCamera3D(const scoped_refptr<input::Camera3D>& camera_3d);
   void SetWebMediaPlayerFactory(
       media::WebMediaPlayerFactory* web_media_player_factory);
   void SetImageCacheCapacity(int64_t bytes);
   void SetRemoteTypefaceCacheCapacity(int64_t bytes);
+
+  // This returns the UI navigation root container which contains all active
+  // UI navigation items created by this web module.
+  const scoped_refptr<ui_navigation::NavItem>& GetUiNavRoot() const {
+    return ui_nav_root_;
+  }
 
   // LifecycleObserver implementation
   void Prestart() override;
@@ -357,9 +403,10 @@ class WebModule : public LifecycleObserver {
         media::CanPlayTypeHandler* can_play_type_handler,
         media::WebMediaPlayerFactory* web_media_player_factory,
         network::NetworkModule* network_module,
-        const math::Size& window_dimensions, float video_pixel_ratio,
+        const cssom::ViewportSize& window_dimensions, float video_pixel_ratio,
         render_tree::ResourceProvider* resource_provider,
         int dom_max_element_depth, float layout_refresh_rate,
+        const scoped_refptr<ui_navigation::NavItem>& ui_nav_root,
         const Options& options)
         : initial_url(initial_url),
           initial_application_state(initial_application_state),
@@ -375,6 +422,7 @@ class WebModule : public LifecycleObserver {
           resource_provider(resource_provider),
           dom_max_element_depth(dom_max_element_depth),
           layout_refresh_rate(layout_refresh_rate),
+          ui_nav_root(ui_nav_root),
           options(options) {}
 
     GURL initial_url;
@@ -386,11 +434,12 @@ class WebModule : public LifecycleObserver {
     media::CanPlayTypeHandler* can_play_type_handler;
     media::WebMediaPlayerFactory* web_media_player_factory;
     network::NetworkModule* network_module;
-    math::Size window_dimensions;
+    cssom::ViewportSize window_dimensions;
     float video_pixel_ratio;
     render_tree::ResourceProvider* resource_provider;
     int dom_max_element_depth;
     float layout_refresh_rate;
+    scoped_refptr<ui_navigation::NavItem> ui_nav_root;
     Options options;
   };
 
@@ -399,7 +448,7 @@ class WebModule : public LifecycleObserver {
 
   // Destruction observer used to safely tear down this WebModule after the
   // thread has been stopped.
-  class DestructionObserver : public MessageLoop::DestructionObserver {
+  class DestructionObserver : public base::MessageLoop::DestructionObserver {
    public:
     explicit DestructionObserver(WebModule* web_module);
     void WillDestroyCurrentMessageLoop() override;
@@ -416,26 +465,20 @@ class WebModule : public LifecycleObserver {
 
   void CancelSynchronousLoads();
 
-#if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
-  void OnPartialLayoutConsoleCommandReceived(const std::string& message);
-#endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
-
   // The message loop this object is running on.
-  MessageLoop* message_loop() const { return thread_.message_loop(); }
+  base::MessageLoop* message_loop() const { return thread_.message_loop(); }
 
   // Private implementation object.
-  scoped_ptr<Impl> impl_;
+  std::unique_ptr<Impl> impl_;
 
   // The thread created and owned by this WebModule.
   // All sub-objects of this object are created on this thread, and all public
   // member functions are re-posted to this thread if necessary.
   base::Thread thread_;
 
-#if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
-  // Handles the 'partial_layout' command.
-  scoped_ptr<base::ConsoleCommandManager::CommandHandler>
-      partial_layout_command_handler_;
-#endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
+  // This is the root UI navigation container which contains all active UI
+  // navigation items created by this web module.
+  scoped_refptr<ui_navigation::NavItem> ui_nav_root_;
 };
 
 }  // namespace browser

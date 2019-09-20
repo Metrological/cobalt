@@ -15,6 +15,7 @@
 #include "cobalt/cssom/compound_selector.h"
 
 #include <algorithm>
+#include <memory>
 
 #include "cobalt/cssom/pseudo_element.h"
 #include "cobalt/cssom/selector_visitor.h"
@@ -23,18 +24,12 @@ namespace cobalt {
 namespace cssom {
 namespace {
 
-bool SimpleSelectorsLessThan(const SimpleSelector* lhs,
-                             const SimpleSelector* rhs) {
+bool SimpleSelectorsLessThan(const std::unique_ptr<SimpleSelector>& lhs,
+                             const std::unique_ptr<SimpleSelector>& rhs) {
   if (lhs->type() < rhs->type()) {
     return true;
   }
   if (rhs->type() < lhs->type()) {
-    return false;
-  }
-  if (lhs->prefix() < rhs->prefix()) {
-    return true;
-  }
-  if (rhs->prefix() < lhs->prefix()) {
     return false;
   }
   if (lhs->text() < rhs->text()) {
@@ -104,7 +99,7 @@ void CompoundSelector::Accept(SelectorVisitor* visitor) {
 }
 
 void CompoundSelector::AppendSelector(
-    scoped_ptr<SimpleSelector> simple_selector) {
+    std::unique_ptr<SimpleSelector> simple_selector) {
   specificity_.AddFrom(simple_selector->GetSpecificity());
   has_pseudo_element_ =
       has_pseudo_element_ || simple_selector->AsPseudoElement() != NULL;
@@ -121,18 +116,16 @@ void CompoundSelector::AppendSelector(
       !simple_selectors_.empty() ||
       simple_selector->AlwaysRequiresRuleMatchingVerificationVisit();
 
-  bool should_sort =
-      !simple_selectors_.empty() &&
-      SimpleSelectorsLessThan(simple_selector.get(), simple_selectors_.back());
-  simple_selectors_.push_back(simple_selector.release());
-  if (should_sort) {
-    std::sort(simple_selectors_.begin(), simple_selectors_.end(),
-              SimpleSelectorsLessThan);
-  }
+  // Insert the new selector in sorted order.
+  auto pos =
+      std::lower_bound(simple_selectors_.begin(), simple_selectors_.end(),
+                       simple_selector, SimpleSelectorsLessThan);
+  simple_selectors_.insert(pos, std::move(simple_selector));
 }
 
-void CompoundSelector::set_right_combinator(scoped_ptr<Combinator> combinator) {
-  right_combinator_ = combinator.Pass();
+void CompoundSelector::set_right_combinator(
+    std::unique_ptr<Combinator> combinator) {
+  right_combinator_ = std::move(combinator);
 }
 
 }  // namespace cssom

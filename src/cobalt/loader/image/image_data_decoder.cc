@@ -15,8 +15,9 @@
 #include "cobalt/loader/image/image_data_decoder.h"
 
 #include <algorithm>
+#include <memory>
 
-#include "base/debug/trace_event.h"
+#include "base/trace_event/trace_event.h"
 
 namespace cobalt {
 namespace loader {
@@ -57,9 +58,8 @@ void ImageDataDecoder::DecodeChunk(const uint8* data, size_t size) {
           std::min(kMaxBufferSizeBytes - data_buffer_.size(), size - offset);
 
       // Append new data to data_buffer
-      data_buffer_.insert(
-          data_buffer_.end(),
-          data + offset, data + offset + fill_buffer_size);
+      data_buffer_.insert(data_buffer_.end(), data + offset,
+                          data + offset + fill_buffer_size);
 
       input_bytes = &data_buffer_[0];
       input_size = data_buffer_.size();
@@ -99,33 +99,33 @@ void ImageDataDecoder::DecodeChunk(const uint8* data, size_t size) {
   }
 }
 
-bool ImageDataDecoder::FinishWithSuccess() {
+scoped_refptr<Image> ImageDataDecoder::FinishAndMaybeReturnImage() {
   TRACE_EVENT0("cobalt::loader::image_decoder",
-               "ImageDataDecoder::FinishWithSuccess");
+               "ImageDataDecoder::FinishAndMaybeReturnImage");
 
-  FinishInternal();
-
-  if (state_ != kDone) {
-    image_data_.reset();
-  }
-
-  return state_ == kDone;
+  return FinishInternal();
 }
 
-bool ImageDataDecoder::AllocateImageData(const math::Size& size,
-                                         bool has_alpha) {
+std::unique_ptr<render_tree::ImageData> ImageDataDecoder::AllocateImageData(
+    const math::Size& size, bool has_alpha) {
   DCHECK(resource_provider_->AlphaFormatSupported(
       render_tree::kAlphaFormatOpaque));
   DCHECK(resource_provider_->AlphaFormatSupported(
       render_tree::kAlphaFormatPremultiplied));
-  image_data_ = resource_provider_->AllocateImageData(
-      size, pixel_format(), has_alpha ? render_tree::kAlphaFormatPremultiplied
-                                      : render_tree::kAlphaFormatOpaque);
-  if (!image_data_) {
-    DLOG(ERROR) << "Failed to allocate image data (" << size.width() << "x"
-                << size.height() << ").";
-  }
-  return image_data_;
+  auto image_data = resource_provider_->AllocateImageData(
+      size, pixel_format(),
+      has_alpha ? render_tree::kAlphaFormatPremultiplied
+                : render_tree::kAlphaFormatOpaque);
+  DLOG_IF(ERROR, !image_data) << "Failed to allocate image data ("
+                              << size.width() << "x" << size.height() << ").";
+  return image_data;
+}
+
+scoped_refptr<Image> ImageDataDecoder::CreateStaticImage(
+    std::unique_ptr<render_tree::ImageData> image_data) {
+  DCHECK(image_data);
+  return new StaticImage(
+      resource_provider()->CreateImage(std::move(image_data)));
 }
 
 void ImageDataDecoder::CalculatePixelFormat() {

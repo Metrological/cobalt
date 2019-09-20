@@ -15,13 +15,14 @@
 #ifndef COBALT_LOADER_FETCHER_H_
 #define COBALT_LOADER_FETCHER_H_
 
+#include <memory>
 #include <string>
 
 #include "base/callback.h"
 #include "cobalt/dom/url_utils.h"
 #include "cobalt/loader/loader_types.h"
-#include "googleurl/src/gurl.h"
 #include "net/http/http_response_headers.h"
+#include "url/gurl.h"
 
 namespace cobalt {
 namespace loader {
@@ -47,8 +48,8 @@ class Fetcher {
         Fetcher* fetcher,
         const scoped_refptr<net::HttpResponseHeaders>& headers)
         WARN_UNUSED_RESULT {
-      UNREFERENCED_PARAMETER(fetcher);
-      UNREFERENCED_PARAMETER(headers);
+      SB_UNREFERENCED_PARAMETER(fetcher);
+      SB_UNREFERENCED_PARAMETER(headers);
       return kLoadResponseContinue;
     }
     virtual void OnReceived(Fetcher* fetcher, const char* data,
@@ -56,11 +57,11 @@ class Fetcher {
     virtual void OnDone(Fetcher* fetcher) = 0;
     virtual void OnError(Fetcher* fetcher, const std::string& error) = 0;
 
-    // By default, |OnReceivedPassed| forwards the scoped_ptr<std::string>
+    // By default, |OnReceivedPassed| forwards the std::unique_ptr<std::string>
     // data into |OnReceived|.  Implementations have the opportunity to hold
-    // onto the scoped_ptr through overriding |OnReceivedPassed|.
+    // onto the std::unique_ptr through overriding |OnReceivedPassed|.
     virtual void OnReceivedPassed(Fetcher* fetcher,
-                                  scoped_ptr<std::string> data) {
+                                  std::unique_ptr<std::string> data) {
       OnReceived(fetcher, data->data(), data->length());
     }
 
@@ -73,33 +74,23 @@ class Fetcher {
   };
 
   // Concrete Fetcher subclass should start fetching immediately in constructor.
-  explicit Fetcher(Handler* handler)
-      : handler_(handler), did_fail_from_transient_error_(false) {}
-
-  const Origin& last_url_origin() const { return last_url_origin_; }
-
-  bool did_fail_from_transient_error() const {
-    return did_fail_from_transient_error_;
-  }
+  explicit Fetcher(Handler* handler) : handler_(handler) {}
 
   // Concrete Fetcher subclass should cancel fetching in destructor.
   virtual ~Fetcher() = 0;
 
- protected:
-  Handler* handler() const { return handler_; }
-
-  void SetLastUrlOrigin(const Origin& origin) { last_url_origin_ = origin; }
-  void SetFailedFromTransientError() { did_fail_from_transient_error_ = true; }
-
- private:
-  Handler* handler_;
-
   // Indicates whether the resource is cross-origin.
-  Origin last_url_origin_;
+  virtual Origin last_url_origin() const { return Origin(); }
 
   // Whether or not the fetcher failed from an error that is considered
   // transient, indicating that the same fetch may later succeed.
-  bool did_fail_from_transient_error_;
+  virtual bool did_fail_from_transient_error() const { return false; }
+
+ protected:
+  Handler* handler() const { return handler_; }
+
+ private:
+  Handler* handler_;
 };
 
 }  // namespace loader

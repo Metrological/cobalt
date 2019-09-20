@@ -15,7 +15,7 @@
 #include "starboard/shared/starboard/player/filter/audio_renderer_sink_impl.h"
 
 #include "starboard/audio_sink.h"
-#include "starboard/log.h"
+#include "starboard/common/log.h"
 #include "starboard/shared/starboard/thread_checker.h"
 
 namespace starboard {
@@ -73,6 +73,9 @@ void AudioRendererSinkImpl::Start(
       audio_frame_storage_type, frame_buffers, frames_per_channel,
       &AudioRendererSinkImpl::UpdateSourceStatusFunc,
       &AudioRendererSinkImpl::ConsumeFramesFunc, this);
+  if (!SbAudioSinkIsValid(audio_sink_)) {
+    return;
+  }
   // TODO: Remove SetPlaybackRate() support from audio sink as it only need to
   // support play/pause.
   audio_sink_->SetPlaybackRate(playback_rate_);

@@ -41,10 +41,6 @@ config("compiler_defaults") {
     defines += [ "STARBOARD_ALLOWS_MEMORY_TRACKING" ]
   }
 
-  if (sb_enable_lib) {
-    defines += [ "SB_IS_LIBRARY=1" ]
-  }
-
   # There doesn't appear to be any way to use the C preprocessor to do
   # string concatenation with the / character. This prevents us from using
   # the preprocessor to assemble an include file path, so we have to do
@@ -56,12 +52,6 @@ config("compiler_defaults") {
     "STARBOARD_THREAD_TYPES_INCLUDE=\"$starboard_path/thread_types_public.h\"",
   ]
 
-  # TODO: find a way to remove this dependence on Cobalt
-  if (sb_media_platform == "starboard") {
-    defines += [ "SB_GYP_CAN_MEDIA_USE_STARBOARD_PIPELINE=1" ]
-  } else {
-    defines += [ "SB_GYP_CAN_MEDIA_USE_STARBOARD_PIPELINE=0" ]
-  }
 }
 
 # =============================================================================

@@ -15,7 +15,8 @@
 #include "cobalt/dom/mutation_observer_task_manager.h"
 
 #include "base/callback.h"
-#include "base/message_loop.h"
+#include "base/message_loop/message_loop.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/dom/mutation_observer.h"
 
 namespace cobalt {
@@ -23,20 +24,27 @@ namespace dom {
 
 void MutationObserverTaskManager::OnMutationObserverCreated(
     MutationObserver* observer) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(observers_.find(observer) == observers_.end());
+  TRACE_EVENT0("cobalt::dom",
+               "MutationObserverTaskManager::OnMutationObserverCreated()");
   observers_.insert(observer);
 }
 
 void MutationObserverTaskManager::OnMutationObserverDestroyed(
     MutationObserver* observer) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(observers_.find(observer) != observers_.end());
+  TRACE_EVENT0("cobalt::dom",
+               "MutationObserverTaskManager::OnMutationObserverDestroyed()");
   observers_.erase(observer);
 }
 
 void MutationObserverTaskManager::QueueMutationObserverMicrotask() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  TRACE_EVENT0("cobalt::dom",
+               "MutationObserverTaskManager::QueueMutationObserverMicrotask()");
+
   // https://www.w3.org/TR/dom/#queue-a-mutation-observer-compound-microtask
   // To queue a mutation observer compound microtask, run these steps:
   // 1. If mutation observer compound microtask queued flag is set, terminate
@@ -47,7 +55,7 @@ void MutationObserverTaskManager::QueueMutationObserverMicrotask() {
   // 2. Set mutation observer compound microtask queued flag.
   task_posted_ = true;
   // 3. Queue a compound microtask to notify mutation observers.
-  MessageLoop::current()->PostTask(
+  base::MessageLoop::current()->task_runner()->PostTask(
       FROM_HERE,
       base::Bind(&MutationObserverTaskManager::NotifyMutationObservers,
                  base::Unretained(this)));
@@ -58,9 +66,11 @@ void MutationObserverTaskManager::TraceMembers(script::Tracer* tracer) {
 }
 
 void MutationObserverTaskManager::NotifyMutationObservers() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  TRACE_EVENT0("cobalt::dom",
+               "MutationObserverTaskManager::NotifyMutationObservers()");
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(task_posted_);
-  DCHECK(MessageLoop::current());
+  DCHECK(base::MessageLoop::current());
   // https://www.w3.org/TR/dom/#notify-mutation-observers
   // To notify mutation observers, run these steps:
   // 1. Unset mutation observer compound microtask queued flag.

@@ -5,6 +5,7 @@
 #include "cobalt/media/base/stream_parser_buffer.h"
 
 #include <algorithm>
+#include <memory>
 
 #include "base/logging.h"
 #include "cobalt/media/base/timestamp_constants.h"
@@ -13,19 +14,28 @@ namespace cobalt {
 namespace media {
 
 scoped_refptr<StreamParserBuffer> StreamParserBuffer::CreateEOSBuffer() {
-  return make_scoped_refptr(new StreamParserBuffer);
+  return base::WrapRefCounted(new StreamParserBuffer);
 }
 
 scoped_refptr<StreamParserBuffer> StreamParserBuffer::CopyFrom(
     Allocator* allocator, const uint8_t* data, int data_size, bool is_key_frame,
     Type type, TrackId track_id) {
   scoped_refptr<StreamParserBuffer> stream_parser_buffer =
-      make_scoped_refptr(new StreamParserBuffer(allocator, data, data_size,
-                                                is_key_frame, type, track_id));
+      base::WrapRefCounted(new StreamParserBuffer(
+          allocator, data, data_size, NULL, 0, is_key_frame, type, track_id));
   if (!stream_parser_buffer->has_data()) {
     return NULL;
   }
   return stream_parser_buffer;
+}
+
+scoped_refptr<StreamParserBuffer> StreamParserBuffer::CopyFrom(
+    Allocator* allocator, const uint8_t* data, int data_size,
+    const uint8_t* side_data, int side_data_size, bool is_key_frame, Type type,
+    TrackId track_id) {
+  return base::WrapRefCounted(
+      new StreamParserBuffer(allocator, data, data_size, side_data,
+                             side_data_size, is_key_frame, type, track_id));
 }
 
 DecodeTimestamp StreamParserBuffer::GetDecodeTimestamp() const {
@@ -47,9 +57,11 @@ StreamParserBuffer::StreamParserBuffer()
 
 StreamParserBuffer::StreamParserBuffer(Allocator* allocator,
                                        const uint8_t* data, int data_size,
-                                       bool is_key_frame, Type type,
-                                       TrackId track_id)
-    : DecoderBuffer(allocator, type, data, data_size),
+                                       const uint8_t* side_data,
+                                       int side_data_size, bool is_key_frame,
+                                       Type type, TrackId track_id)
+    : DecoderBuffer(allocator, type, data, data_size, side_data,
+                    side_data_size),
       decode_timestamp_(kNoDecodeTimestamp()),
       config_id_(kInvalidConfigId),
       track_id_(track_id),
@@ -69,9 +81,10 @@ StreamParserBuffer::StreamParserBuffer(Allocator* allocator,
 
 StreamParserBuffer::StreamParserBuffer(Allocator* allocator,
                                        Allocator::Allocations allocations,
-                                       bool is_key_frame, Type type,
-                                       TrackId track_id)
-    : DecoderBuffer(allocator, type, allocations),
+                                       const uint8_t* side_data,
+                                       int side_data_size, bool is_key_frame,
+                                       Type type, TrackId track_id)
+    : DecoderBuffer(allocator, type, allocations, side_data, side_data_size),
       decode_timestamp_(kNoDecodeTimestamp()),
       config_id_(kInvalidConfigId),
       track_id_(track_id),
@@ -94,13 +107,15 @@ void StreamParserBuffer::SetConfigId(int config_id) {
 }
 
 int StreamParserBuffer::GetSpliceBufferConfigId(size_t index) const {
-  return index < splice_buffers().size() ? splice_buffers_[index]->GetConfigId()
-                                         : GetConfigId();
+  if (!splice_buffers_ || index >= splice_buffers().size()) {
+    return GetConfigId();
+  }
+  return (*splice_buffers_)[index]->GetConfigId();
 }
 
 void StreamParserBuffer::ConvertToSpliceBuffer(
     const BufferQueue& pre_splice_buffers) {
-  DCHECK(splice_buffers_.empty());
+  DCHECK(!splice_buffers_);
   DCHECK(duration() > base::TimeDelta())
       << "Only buffers with a valid duration can convert to a splice buffer."
       << " pts " << timestamp().InSecondsF() << " dts "
@@ -151,6 +166,7 @@ void StreamParserBuffer::ConvertToSpliceBuffer(
                    pre_splice_buffers.back()->duration()) -
       first_splice_buffer->timestamp());
 
+  splice_buffers_.reset(new BufferQueue);
   // Copy all pre splice buffers into our wrapper buffer.
   for (BufferQueue::const_iterator it = pre_splice_buffers.begin();
        it != pre_splice_buffers.end(); ++it) {
@@ -159,11 +175,11 @@ void StreamParserBuffer::ConvertToSpliceBuffer(
     DCHECK(!buffer->preroll_buffer().get());
     DCHECK(buffer->splice_buffers().empty());
     DCHECK(!buffer->is_duration_estimated());
-    splice_buffers_.push_back(buffer->Clone());
-    splice_buffers_.back()->set_splice_timestamp(splice_timestamp());
+    splice_buffers_->push_back(buffer->Clone());
+    splice_buffers_->back()->set_splice_timestamp(splice_timestamp());
   }
 
-  splice_buffers_.push_back(overlapping_buffer);
+  splice_buffers_->push_back(overlapping_buffer);
 }
 
 void StreamParserBuffer::SetPrerollBuffer(
@@ -199,7 +215,8 @@ scoped_refptr<StreamParserBuffer> StreamParserBuffer::Clone() const {
   }
 
   scoped_refptr<StreamParserBuffer> clone = new StreamParserBuffer(
-      allocator(), allocations(), is_key_frame(), type(), track_id());
+      allocator(), allocations(), side_data(), side_data_size(), is_key_frame(),
+      type(), track_id());
   clone->SetDecodeTimestamp(GetDecodeTimestamp());
   clone->SetConfigId(GetConfigId());
   clone->set_timestamp(timestamp());
@@ -209,7 +226,7 @@ scoped_refptr<StreamParserBuffer> StreamParserBuffer::Clone() const {
   clone->set_splice_timestamp(splice_timestamp());
   const DecryptConfig* decrypt_config = this->decrypt_config();
   if (decrypt_config) {
-    clone->set_decrypt_config(scoped_ptr<DecryptConfig>(
+    clone->set_decrypt_config(std::unique_ptr<DecryptConfig>(
         new DecryptConfig(decrypt_config->key_id(), decrypt_config->iv(),
                           decrypt_config->subsamples())));
   }

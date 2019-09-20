@@ -23,15 +23,17 @@ class LinuxX64X11MockConfiguration(
     platform_configuration.PlatformConfiguration):
   """Starboard mock platform configuration."""
 
-  def __init__(self, platform):
-    super(LinuxX64X11MockConfiguration, self).__init__(platform)
-
   def GetBuildFormat(self):
     return 'ninja,qtcreator_ninja'
 
   def GetVariables(self, configuration):
-    return super(LinuxX64X11MockConfiguration, self).GetVariables(
+    variables = super(LinuxX64X11MockConfiguration, self).GetVariables(
         configuration, use_clang=1)
+    variables.update({
+        'javascript_engine': 'mozjs-45',
+        'cobalt_enable_jit': 0,
+    })
+    return variables
 
   def GetGeneratorVariables(self, configuration):
     del configuration
@@ -52,14 +54,6 @@ class LinuxX64X11MockConfiguration(
         'CXX': self.host_compiler_environment['CXX_host'],
     })
     return env_variables
-
-  def GetTestFilters(self):
-    filters = super(LinuxX64X11MockConfiguration, self).GetTestFilters()
-    filters.extend([
-        test_filter.TestFilter('starboard_platform_tests',
-                               test_filter.FILTER_ALL),
-    ])
-    return filters
 
 
 def CreatePlatformConfig():

@@ -46,16 +46,15 @@ class CobaltLinuxConfiguration(cobalt_configuration.CobaltConfiguration):
 
   def GetTestFilters(self):
     filters = super(CobaltLinuxConfiguration, self).GetTestFilters()
-    filters.extend([
-        test_filter.TestFilter(
-            'net_unittests', 'HostResolverImplDnsTest.DnsTaskUnspec'),
-        test_filter.TestFilter(
-            'web_platform_tests', 'xhr/WebPlatformTest.Run/130', 'debug'),
-        test_filter.TestFilter(
-            'web_platform_tests', 'streams/WebPlatformTest.Run/11', 'debug'),
-        test_filter.TestFilter(
-            'web_platform_tests', 'cors/WebPlatformTest.Run/7')
-    ])
+    return filters
+
+  def GetWebPlatformTestFilters(self):
+    filters = super(CobaltLinuxConfiguration, self).GetWebPlatformTestFilters()
+    filters += [
+        'xhr/WebPlatformTest.Run/XMLHttpRequest_send_timeout_events_htm',
+        'streams/WebPlatformTest.Run/streams_readable_streams_templated_html',
+        'cors/WebPlatformTest.Run/cors_preflight_failure_htm',
+    ]
     return filters
 
   def GetTestEnvVariables(self):

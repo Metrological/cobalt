@@ -19,7 +19,7 @@
 
     'sysroot%': '/',
     'gl_type': 'system_gles2',
-
+    
     # This is to create cobalt shared library
     'final_executable_type': '<!(echo $COBALT_EXECUTABLE_TYPE)',
 
@@ -43,12 +43,18 @@
       # Suppress some warnings that will be hard to fix.
       '-Wno-unused-local-typedefs',
       '-Wno-unused-result',
+      '-Wno-unused-function',
       '-Wno-deprecated-declarations',
       '-Wno-missing-field-initializers',
+      '-Wno-extra',
       '-Wno-comment',  # Talk to my lawyer.
       '-Wno-narrowing',
       '-Wno-unknown-pragmas',
       '-Wno-type-limits',  # TODO: We should actually look into these.
+      # It's OK not to use some input parameters. Note that the order
+      # matters: Wall implies Wunused-parameter and Wno-unused-parameter
+      # has no effect if specified before Wall.
+      '-Wno-unused-parameter',
 
       # Specify the sysroot with all your include dependencies.
       '--sysroot=<(sysroot)',
@@ -97,15 +103,25 @@
       '-frtti',
     ],
     'compiler_flags_qa': [
-      '-O2',
       '-Wno-unused-but-set-variable',
+    ],
+    'compiler_flags_qa_size': [
+      '-Os',
+    ],
+    'compiler_flags_qa_speed': [
+      '-O2',
     ],
     'compiler_flags_cc_qa': [
       '-fno-rtti',
     ],
     'compiler_flags_gold': [
-      '-O2',
       '-Wno-unused-but-set-variable',
+    ],
+    'compiler_flags_gold_size': [
+      '-Os',
+    ],
+    'compiler_flags_gold_speed': [
+      '-O2',
     ],
     'compiler_flags_cc_gold': [
       '-fno-rtti',
@@ -121,11 +137,12 @@
       '-lGLESv2',
       '-lpthread',
       '-lrt',
+      '-locdm',
       '-lopenmaxil',
       '-lbcm_host',
       '-lvcos',
       '-lvchiq_arm',
-      '-lvchostif',
+      '-lvchostif'
     ],
     'conditions': [
       ['cobalt_fastbuild==0', {
@@ -138,6 +155,18 @@
         'compiler_flags_qa': [
         ],
         'compiler_flags_gold': [
+        ],
+      }],
+      ['"<!(echo $COBALT_USE_COMPOSITOR)"=="y"', {
+        'compiler_flags': [
+          '-DUSE_COMPOSITOR',
+          '-I<(sysroot)/usr/include/WPEFramework/compositor/',
+        ],
+        'platform_libraries': [
+          '-lWPEFrameworkCore',
+          '-lWPEFrameworkPlugins',
+          '-lWPEFrameworkProtocols',
+          '-lcompositorclient',
         ],
       }],
     ],
@@ -169,7 +198,7 @@
           # This decision should be revisited after raspi toolchain is upgraded.
           '-Wno-maybe-uninitialized',
           # Turn warnings into errors.
-          # '-Werror',
+          #'-Werror',
         ],
       },{
         'cflags': [

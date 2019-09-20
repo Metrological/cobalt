@@ -21,8 +21,24 @@
       'msvs_disabled_warnings': [4100, 4189, 4456],
       'target_name': 'nplb',
       'type': '<(gtest_target_type)',
+      # Enable exceptions to test nothrow delete operator.
+      'cflags_cc!': ['-fno-exceptions' ],
+      'cflags_cc': ['-fexceptions' ],
+      'msvs_settings': {
+          'VCCLCompilerTool': {
+              'AdditionalOptions': [
+                  '/EHsc',  # C++ exceptions
+              ],
+          },
+      },
+      'defines': [
+        # This allows the tests to include internal only header files.
+        'STARBOARD_IMPLEMENTATION',
+      ],
       'sources': [
         '<(DEPTH)/starboard/common/test_main.cc',
+        '<(DEPTH)/starboard/testing/fake_graphics_context_provider.cc',
+        '<(DEPTH)/starboard/testing/fake_graphics_context_provider.h',
         'accessibility_get_setting_test.cc',
         'align_test.cc',
         'atomic_base_test.cc',
@@ -30,6 +46,7 @@
         'audio_sink_create_test.cc',
         'audio_sink_destroy_test.cc',
         'audio_sink_get_max_channels_test.cc',
+        'audio_sink_get_min_buffer_size_in_frames_test.cc',
         'audio_sink_get_nearest_supported_sample_frequency_test.cc',
         'audio_sink_helpers.cc',
         'audio_sink_helpers.h',
@@ -84,6 +101,7 @@
         'condition_variable_wait_test.cc',
         'condition_variable_wait_timed_test.cc',
         'configuration_test.cc',
+        'cpu_features_get_test.cc',
         'cryptography_create_transformer_test.cc',
         'cryptography_helpers.cc',
         'cryptography_helpers.h',
@@ -104,6 +122,7 @@
         'drm_helpers.h',
         'drm_is_server_certificate_updatable_test.cc',
         'drm_update_server_certificate_test.cc',
+        'egl_test.cc',
         'extern_c_test.cc',
         'file_can_open_test.cc',
         'file_close_test.cc',
@@ -117,6 +136,8 @@
         'file_truncate_test.cc',
         'file_write_test.cc',
         'flat_map_test.cc',
+        'gles_test.cc',
+        'murmurhash2_test.cc',
         'include_all.c',
         'include_all_too.c',
         'key_test.cc',
@@ -129,6 +150,7 @@
         # TODO: Separate functions tested by media buffer test into multiple
         # files.
         'media_buffer_test.cc',
+        'media_set_audio_write_duration_test.cc',
         'memory_align_to_page_size_test.cc',
         'memory_allocate_aligned_test.cc',
         'memory_allocate_test.cc',
@@ -157,7 +179,10 @@
         'mutex_destroy_test.cc',
         'once_test.cc',
         'optional_test.cc',
+        'player_create_test.cc',
+        'player_output_mode_supported_test.cc',
         'random_helpers.cc',
+        'recursive_mutex_test.cc',
         'rwlock_test.cc',
         'semaphore_test.cc',
         'socket_accept_test.cc',
@@ -223,6 +248,7 @@
         'system_binary_search_test.cc',
         'system_clear_last_error_test.cc',
         'system_get_error_string_test.cc',
+        'system_get_extension_test.cc',
         'system_get_last_error_test.cc',
         'system_get_locale_id_test.cc',
         'system_get_number_of_processors_test.cc',
@@ -239,6 +265,7 @@
         'system_hide_splash_screen_test.cc',
         'system_is_debugger_attached_test.cc',
         'system_sort_test.cc',
+        'system_sign_with_certification_secret_key_test.cc',
         'system_symbolize_test.cc',
         'thread_create_test.cc',
         'thread_detach_test.cc',
@@ -249,6 +276,7 @@
         'thread_is_equal_test.cc',
         'thread_join_test.cc',
         'thread_local_value_test.cc',
+        'thread_sampler_test.cc',
         'thread_set_name_test.cc',
         'thread_sleep_test.cc',
         'thread_test.cc',
@@ -257,15 +285,16 @@
         'time_get_now_test.cc',
         'time_narrow_test.cc',
         'time_zone_get_current_test.cc',
-        'time_zone_get_dst_name_test.cc',
         'time_zone_get_name_test.cc',
         'undefined_behavior_test.cc',
         'unsafe_math_test.cc',
+        'url_player_create_test.cc',
         'user_get_current_test.cc',
         'user_get_property_test.cc',
         'user_get_signed_in_test.cc',
         'window_create_test.cc',
         'window_destroy_test.cc',
+        'window_get_diagonal_size_in_inches_test.cc',
         'window_get_platform_handle_test.cc',
         'window_get_size_test.cc',
         # Include private c headers, if present.
@@ -275,18 +304,18 @@
       ],
       'dependencies': [
         '<@(cobalt_platform_dependencies)',
+        '<(DEPTH)/starboard/shared/starboard/player/player.gyp:video_dmp',
+        '<(DEPTH)/starboard/shared/starboard/player/player.gyp:player_copy_test_data',
         '<(DEPTH)/starboard/starboard.gyp:starboard',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
       ],
       'conditions': [
-        ['sb_media_platform=="starboard"', {
-          'sources': [
-            '<(DEPTH)/starboard/testing/fake_graphics_context_provider.cc',
-            '<(DEPTH)/starboard/testing/fake_graphics_context_provider.h',
-            'player_create_test.cc',
-            'player_create_with_url_test.cc',
-            'player_output_mode_supported_test.cc',
+        ['gl_type != "none"', {
+          'dependencies': [
+             # This is needed because SbPlayerTest depends on
+             # FakeGraphicsContextProvider which depends on EGL and GLES.
+            '<(DEPTH)/starboard/egl_and_gles/egl_and_gles.gyp:egl_and_gles',
           ],
         }],
       ],

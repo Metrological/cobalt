@@ -15,9 +15,11 @@
 #ifndef COBALT_AUDIO_AUDIO_NODE_H_
 #define COBALT_AUDIO_AUDIO_NODE_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "base/threading/thread_checker.h"
 #include "cobalt/audio/audio_helpers.h"
 #include "cobalt/audio/audio_node_channel_count_mode.h"
 #include "cobalt/audio/audio_node_channel_interpretation.h"
@@ -25,11 +27,7 @@
 #include "cobalt/audio/audio_node_output.h"
 #include "cobalt/dom/dom_exception.h"
 #include "cobalt/dom/event_target.h"
-#if defined(COBALT_MEDIA_SOURCE_2016)
 #include "cobalt/media/base/shell_audio_bus.h"
-#else  // defined(COBALT_MEDIA_SOURCE_2016)
-#include "media/base/shell_audio_bus.h"
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
 
 namespace cobalt {
 namespace audio {
@@ -50,18 +48,15 @@ class AudioContext;
 // (if it has any).
 //   https://www.w3.org/TR/webaudio/#AudioNode-section
 class AudioNode : public dom::EventTarget {
-#if defined(COBALT_MEDIA_SOURCE_2016)
   typedef media::ShellAudioBus ShellAudioBus;
-#else   // defined(COBALT_MEDIA_SOURCE_2016)
-  typedef ::media::ShellAudioBus ShellAudioBus;
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
 
  public:
   explicit AudioNode(AudioContext* context);
 
   // Web API: AudioNode
   //
-  // The AudioContext which owns this AudioNode.
+  // The AudioContext which owns this AudioNode. This function may only be
+  // called on the MainWebModule thread.
   scoped_refptr<AudioContext> context() const;
 
   // The number of inputs feeding into the AudioNode. For source nodes, this
@@ -112,10 +107,12 @@ class AudioNode : public dom::EventTarget {
   // Called when a new input node has been connected.
   virtual void OnInputNodeConnected() {}
 
-  virtual scoped_ptr<ShellAudioBus> PassAudioBusFromSource(
+  virtual std::unique_ptr<ShellAudioBus> PassAudioBusFromSource(
       int32 number_of_frames, SampleType sample_type, bool* finished) = 0;
 
   AudioLock* audio_lock() const { return audio_lock_.get(); }
+
+  void TraceMembers(script::Tracer* tracer) override;
 
   DEFINE_WRAPPABLE_TYPE(AudioNode);
 
@@ -150,6 +147,7 @@ class AudioNode : public dom::EventTarget {
   AudioNodeChannelCountMode channel_count_mode_;
   AudioNodeChannelInterpretation channel_interpretation_;
 
+  THREAD_CHECKER(thread_checker_);
   DISALLOW_COPY_AND_ASSIGN(AudioNode);
 };
 

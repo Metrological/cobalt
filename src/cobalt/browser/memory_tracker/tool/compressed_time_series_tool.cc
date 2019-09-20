@@ -20,12 +20,12 @@
 #include <string>
 #include <vector>
 
-#include "base/time.h"
+#include "base/time/time.h"
 #include "cobalt/browser/memory_tracker/tool/params.h"
 #include "cobalt/browser/memory_tracker/tool/tool_impl.h"
 #include "cobalt/browser/memory_tracker/tool/util.h"
 #include "nb/analytics/memory_tracker.h"
-#include "starboard/log.h"
+#include "starboard/common/log.h"
 #include "starboard/types.h"
 
 namespace cobalt {

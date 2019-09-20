@@ -47,12 +47,6 @@ config("compiler_defaults") {
 
   include_dirs = [ "//" ]
 
-  if (cobalt_use_media_source_2016) {
-    defines += [ "COBALT_MEDIA_SOURCE_2016=1" ]
-  } else {
-    defines += [ "COBALT_MEDIA_SOURCE_2012=1" ]
-  }
-
   if (cobalt_media_buffer_storage_type == "memory") {
     defines += [ "COBALT_MEDIA_BUFFER_STORAGE_TYPE_MEMORY=1" ]
   } else {
@@ -103,7 +97,7 @@ config("compiler_defaults_debug") {
     "_DEBUG",
     "ENABLE_DEBUG_COMMAND_LINE_SWITCHES",
     "ENABLE_DEBUG_C_VAL",
-    "ENABLE_DEBUG_CONSOLE",
+    "ENABLE_DEBUGGER",
     "ENABLE_IGNORE_CERTIFICATE_ERRORS",
     "ENABLE_PARTIAL_LAYOUT_CONTROL",
     "ENABLE_TEST_DATA",
@@ -122,7 +116,7 @@ config("compiler_defaults_devel") {
     "COBALT_SECURITY_SCREEN_CLEAR_TO_UGLY_COLOR",
     "ENABLE_DEBUG_COMMAND_LINE_SWITCHES",
     "ENABLE_DEBUG_C_VAL",
-    "ENABLE_DEBUG_CONSOLE",
+    "ENABLE_DEBUGGER",
     "ENABLE_IGNORE_CERTIFICATE_ERRORS",
     "ENABLE_PARTIAL_LAYOUT_CONTROL",
     "ENABLE_TEST_DATA",
@@ -140,7 +134,7 @@ config("compiler_defaults_qa") {
     "COBALT_SECURITY_SCREEN_CLEAR_TO_UGLY_COLOR",
     "ENABLE_DEBUG_COMMAND_LINE_SWITCHES",
     "ENABLE_DEBUG_C_VAL",
-    "ENABLE_DEBUG_CONSOLE",
+    "ENABLE_DEBUGGER",
     "ENABLE_IGNORE_CERTIFICATE_ERRORS",
     "ENABLE_PARTIAL_LAYOUT_CONTROL",
     "ENABLE_TEST_DATA",

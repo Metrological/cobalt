@@ -38,23 +38,23 @@
 
 // The minimum API version allowed by this version of the Starboard headers,
 // inclusive.
-#define SB_MINIMUM_API_VERSION 4
+#define SB_MINIMUM_API_VERSION 6
 
 // The maximum API version allowed by this version of the Starboard headers,
 // inclusive.
-#define SB_MAXIMUM_API_VERSION 11
+#define SB_MAXIMUM_API_VERSION 12
 
 // The API version that is currently open for changes, and therefore is not
 // stable or frozen. Production-oriented ports should avoid declaring that they
 // implement the experimental Starboard API version.
-#define SB_EXPERIMENTAL_API_VERSION 11
+#define SB_EXPERIMENTAL_API_VERSION 12
 
 // The next API version to be frozen, but is still subject to emergency
 // changes. It is reasonable to base a port on the Release Candidate API
 // version, but be aware that small incompatible changes may still be made to
 // it.
 // The following will be uncommented when an API version is a release candidate.
-#define SB_RELEASE_CANDIDATE_API_VERSION 10
+#define SB_RELEASE_CANDIDATE_API_VERSION 11
 
 // --- Experimental Feature Defines ------------------------------------------
 
@@ -67,6 +67,14 @@
 //   //   Add a function, `SbMyNewFeature()` to `starboard/feature.h` which
 //   //   exposes functionality for my new feature.
 //   #define SB_MY_EXPERIMENTAL_FEATURE_VERSION SB_EXPERIMENTAL_API_VERSION
+
+// Add support for platform-based UI navigation.
+// The system can be disabled by implementing the function
+// `SbUiNavGetInterface()` to return `false`.  Platform-based UI navigation
+// allows the platform to receive feedback on where UI elements are located and
+// also lets the platform control what is selected and what the scroll
+// parameters are.
+#define SB_UI_NAVIGATION_VERSION SB_EXPERIMENTAL_API_VERSION
 
 // --- Release Candidate Feature Defines -------------------------------------
 
@@ -135,8 +143,8 @@ struct CompileAssert {};
 // A macro to disallow the copy constructor and operator= functions
 // This should be used in the private: declarations for a class
 #define SB_DISALLOW_COPY_AND_ASSIGN(TypeName) \
-  TypeName(const TypeName&);                  \
-  void operator=(const TypeName&)
+  TypeName(const TypeName&) = delete;         \
+  void operator=(const TypeName&) = delete
 
 // An enumeration of values for the SB_PREFERRED_RGBA_BYTE_ORDER configuration
 // variable.  Setting this up properly means avoiding slow color swizzles when
@@ -397,6 +405,30 @@ SB_COMPILE_ASSERT(sizeof(long) == 8,  // NOLINT(runtime/int)
 #error "Your platform must define SB_IMPORT_PLATFORM."
 #endif
 
+#if SB_API_VERSION >= 11
+#if !SB_HAS(STD_UNORDERED_HASH)
+
+#if !defined(SB_HASH_MAP_INCLUDE)
+#error \
+    "Your platform must define SB_HASH_MAP_INCLUDE or "\
+    "define SB_HAS_STD_UNORDERED_HASH 1."
+#endif
+
+#if !defined(SB_HASH_NAMESPACE)
+#error \
+    "Your platform must define SB_HASH_NAMESPACE or "\
+    "define SB_HAS_STD_UNORDERED_HASH 1."
+#endif
+
+#if !defined(SB_HASH_SET_INCLUDE)
+#error \
+    "Your platform must define SB_HASH_SET_INCLUDE or "\
+    "define SB_HAS_STD_UNORDERED_HASH 1."
+#endif
+
+#endif  // !SB_HAS(STD_UNORDERED_HASH)
+#else   // SB_API_VERSION >= 11
+
 #if !defined(SB_HASH_MAP_INCLUDE)
 #error "Your platform must define SB_HASH_MAP_INCLUDE."
 #endif
@@ -409,6 +441,7 @@ SB_COMPILE_ASSERT(sizeof(long) == 8,  // NOLINT(runtime/int)
 #error "Your platform must define SB_HASH_SET_INCLUDE."
 #endif
 
+#endif  // SB_API_VERSION >= 11
 #if !defined(SB_FILE_MAX_NAME) || SB_FILE_MAX_NAME < 2
 #error "Your platform must define SB_FILE_MAX_NAME > 1."
 #endif
@@ -464,10 +497,6 @@ SB_COMPILE_ASSERT(sizeof(long) == 8,  // NOLINT(runtime/int)
 #if defined(SB_IS_PLAYER_COMPOSITED) || defined(SB_IS_PLAYER_PUNCHED_OUT) || \
     defined(SB_IS_PLAYER_PRODUCING_TEXTURE)
 #error "New versions of Starboard specify player output mode at runtime."
-#endif
-
-#if SB_HAS(PLAYER_WITH_URL) && SB_API_VERSION < 8
-#error "SB_HAS_PLAYER_WITH_URL is not supported in this API version."
 #endif
 
 #if (SB_HAS(MANY_CORES) && (SB_HAS(1_CORE) || SB_HAS(2_CORES) ||    \
@@ -538,15 +567,17 @@ SB_COMPILE_ASSERT(sizeof(long) == 8,  // NOLINT(runtime/int)
 #error "SB_MEDIA_GPU_BUFFER_BUDGET is deprecated."
 #endif  // defined(SB_MEDIA_GPU_BUFFER_BUDGET)
 
-#if SB_API_VERSION >= 6
-#if defined(SB_HAS_DRM_KEY_STATUSES)
-#if !SB_HAS(DRM_KEY_STATUSES)
-#error "SB_HAS_DRM_KEY_STATUSES is required for Starboard 6 or later."
-#endif  // !SB_HAS(DRM_KEY_STATUSES)
-#else   // defined(SB_HAS_DRM_KEY_STATUSES)
-#define SB_HAS_DRM_KEY_STATUSES 1
-#endif  // defined(SB_HAS_DRM_KEY_STATUSES)
-#endif  // SB_API_VERSION >= 6
+#if SB_API_VERSION >= 11
+#if defined(SB_HAS_MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
+#if !SB_HAS(MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
+#error \
+    "SB_HAS_MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT is required in this API " \
+        "version."
+#endif  // !SB_HAS(MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
+#else   // defined(SB_HAS_MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
+#define SB_HAS_MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT 1
+#endif  // defined(SB_HAS_MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
+#endif  // SB_API_VERSION >= 11
 
 #if SB_API_VERSION >= 10
 #if defined(SB_HAS_DRM_SESSION_CLOSED)
@@ -568,9 +599,6 @@ SB_COMPILE_ASSERT(sizeof(long) == 8,  // NOLINT(runtime/int)
 #if !defined(SB_HAS_ON_SCREEN_KEYBOARD)
 #error "Your platform must define SB_HAS_ON_SCREEN_KEYBOARD."
 #endif  // !defined(SB_HAS_ON_SCREEN_KEYBOARD)
-#if !defined(SB_HAS_PLAYER_WITH_URL)
-#error "Your platform must define SB_HAS_PLAYER_WITH_URL."
-#endif  // !defined(SB_HAS_PLAYER_WITH_URL)
 #endif  // SB_API_VERSION >= 8
 
 #if SB_HAS(ON_SCREEN_KEYBOARD) && (SB_API_VERSION < 8)
@@ -601,11 +629,21 @@ SB_COMPILE_ASSERT(sizeof(long) == 8,  // NOLINT(runtime/int)
 
 #if SB_API_VERSION >= 10
 #if !defined(SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING)
-#error Your platform must define SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING in API \
-    version 10 or later.
+#error \
+    "Your platform must define SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING in API "\
+    "version 10 or later."
 #endif  // !defined(SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING)
 #endif  // SB_API_VERSION >= 10
 
+#if SB_API_VERSION >= 11
+#if defined(SB_HAS_AC3_AUDIO)
+#if !SB_HAS(AC3_AUDIO)
+#error "SB_HAS_AC3_AUDIO is required in this API version."
+#endif  // !SB_HAS(AC3_AUDIO)
+#else   // defined(SB_HAS_AC3_AUDIO)
+#define SB_HAS_AC3_AUDIO 1
+#endif  // defined(SB_HAS_AC3_AUDIO)
+#endif  // SB_API_VERSION >= 11
 // --- Derived Configuration -------------------------------------------------
 
 // Whether the current platform is little endian.
@@ -648,9 +686,28 @@ SB_COMPILE_ASSERT(sizeof(long) == 8,  // NOLINT(runtime/int)
 #endif
 #endif
 
-// Specifies whether the starboard media pipeline components (SbPlayerPipeline
-// and StarboardDecryptor) are used.  Set to 0 means they are not used.
-#define SB_CAN_MEDIA_USE_STARBOARD_PIPELINE \
-  SB_GYP_CAN_MEDIA_USE_STARBOARD_PIPELINE
+// Deprecated feature macros
+// These feature macros are deprecated in Starboard version 6 and later, and are
+// no longer referenced by application code.  They will be removed in a future
+// version.  Any Starboard implementation that supports Starboard version 6 or
+// later should be modified to no longer depend on these macros, with the
+// assumption that their values are always 1.
+#if defined(SB_HAS_AUDIO_SPECIFIC_CONFIG_AS_POINTER)
+#if !SB_HAS(AUDIO_SPECIFIC_CONFIG_AS_POINTER)
+#error \
+    "SB_HAS_AUDIO_SPECIFIC_CONFIG_AS_POINTER is required for Starboard 6 " \
+       "or later."
+#endif  // !SB_HAS(AUDIO_SPECIFIC_CONFIG_AS_POINTER)
+#else   // defined(SB_HAS_AUDIO_SPECIFIC_CONFIG_AS_POINTER)
+#define SB_HAS_AUDIO_SPECIFIC_CONFIG_AS_POINTER 1
+#endif  // defined(SB_HAS_AUDIO_SPECIFIC_CONFIG_AS_POINTER)
+
+#if defined(SB_HAS_DRM_KEY_STATUSES)
+#if !SB_HAS(DRM_KEY_STATUSES)
+#error "SB_HAS_DRM_KEY_STATUSES is required for Starboard 6 or later."
+#endif  // !SB_HAS(DRM_KEY_STATUSES)
+#else   // defined(SB_HAS_DRM_KEY_STATUSES)
+#define SB_HAS_DRM_KEY_STATUSES 1
+#endif  // defined(SB_HAS_DRM_KEY_STATUSES)
 
 #endif  // STARBOARD_CONFIGURATION_H_

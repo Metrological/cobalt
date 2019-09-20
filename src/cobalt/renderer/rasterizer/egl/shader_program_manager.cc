@@ -14,9 +14,8 @@
 
 #include "cobalt/renderer/rasterizer/egl/shader_program_manager.h"
 
-#include <GLES2/gl2.h>
-
 #include "cobalt/renderer/backend/egl/utils.h"
+#include "cobalt/renderer/egl_and_gles.h"
 #include "egl/generated_shader_impl.h"
 
 namespace cobalt {
@@ -53,7 +52,7 @@ ShaderProgramBase* ShaderProgramManager::FindProgram(
 }
 
 void ShaderProgramManager::AddProgram(base::TypeId program_type_id,
-    ShaderProgramBase* program) {
+                                      ShaderProgramBase* program) {
   program_map_[program_type_id] = program;
 }
 

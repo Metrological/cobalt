@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "cobalt/cssom/media_query.h"
 
 #include "base/memory/ref_counted.h"
 #include "cobalt/cssom/media_feature.h"
+#include "cobalt/cssom/viewport_size.h"
 
 namespace cobalt {
 namespace cssom {
@@ -29,7 +32,7 @@ MediaQuery::MediaQuery(bool evaluated_media_type)
     : evaluated_media_type_(evaluated_media_type) {}
 
 MediaQuery::MediaQuery(bool evaluated_media_type,
-                       scoped_ptr<MediaFeatures> media_features)
+                       std::unique_ptr<MediaFeatures> media_features)
     : evaluated_media_type_(evaluated_media_type),
       media_features_(media_features.release()) {}
 
@@ -39,7 +42,7 @@ std::string MediaQuery::media_query() {
   return "";
 }
 
-bool MediaQuery::EvaluateConditionValue(const math::Size& viewport_size) {
+bool MediaQuery::EvaluateConditionValue(const ViewportSize& viewport_size) {
   if (!evaluated_media_type_) {
     return false;
   }

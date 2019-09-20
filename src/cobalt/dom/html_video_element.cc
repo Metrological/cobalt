@@ -15,7 +15,7 @@
 #include "cobalt/dom/html_video_element.h"
 
 #include "base/logging.h"
-#include "base/string_number_conversions.h"
+#include "base/strings/string_number_conversions.h"
 #include "cobalt/dom/dom_settings.h"
 #include "cobalt/dom/performance.h"
 #include "cobalt/dom/window.h"
@@ -24,13 +24,8 @@
 namespace cobalt {
 namespace dom {
 
-#if defined(COBALT_MEDIA_SOURCE_2016)
 using media::VideoFrameProvider;
 using media::WebMediaPlayer;
-#else   // defined(COBALT_MEDIA_SOURCE_2016)
-using VideoFrameProvider = ::media::ShellVideoFrameProvider;
-using ::media::WebMediaPlayer;
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
 
 const char HTMLVideoElement::kTagName[] = "video";
 
@@ -56,11 +51,11 @@ uint32 HTMLVideoElement::height() const {
 }
 
 void HTMLVideoElement::set_width(uint32 width) {
-  SetAttribute("width", base::Uint32ToString(width));
+  SetAttribute("width", base::NumberToString(width));
 }
 
 void HTMLVideoElement::set_height(uint32 height) {
-  SetAttribute("height", base::Uint32ToString(height));
+  SetAttribute("height", base::NumberToString(height));
 }
 
 uint32 HTMLVideoElement::video_width() const {
@@ -87,14 +82,20 @@ scoped_refptr<VideoPlaybackQuality> HTMLVideoElement::GetVideoPlaybackQuality(
   DCHECK(dom_settings->window());
   DCHECK(dom_settings->window()->performance());
 
-  return new VideoPlaybackQuality(
-      dom_settings->window()->performance()->Now(),
-      player() ? static_cast<uint32>(player()->GetDecodedFrameCount()) : 0,
-      player() ? static_cast<uint32>(player()->GetDroppedFrameCount()) : 0);
+  if (player()) {
+    auto player_stats = player()->GetStatistics();
+    return new VideoPlaybackQuality(
+        dom_settings->window()->performance()->Now(),
+        static_cast<uint32>(player_stats.video_frames_decoded),
+        static_cast<uint32>(player_stats.video_frames_dropped));
+  } else {
+    return new VideoPlaybackQuality(
+        dom_settings->window()->performance()->Now(), 0, 0);
+  }
 }
 
 scoped_refptr<VideoFrameProvider> HTMLVideoElement::GetVideoFrameProvider() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   return player() ? player()->GetVideoFrameProvider() : NULL;
 }
 

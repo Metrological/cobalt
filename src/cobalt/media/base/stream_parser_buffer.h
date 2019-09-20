@@ -6,6 +6,7 @@
 #define COBALT_MEDIA_BASE_STREAM_PARSER_BUFFER_H_
 
 #include <deque>
+#include <memory>
 
 #include "base/basictypes.h"
 #include "cobalt/media/base/decoder_buffer.h"
@@ -112,6 +113,10 @@ class MEDIA_EXPORT StreamParserBuffer : public DecoderBuffer {
   static scoped_refptr<StreamParserBuffer> CopyFrom(
       Allocator* allocator, const uint8_t* data, int data_size,
       bool is_key_frame, Type type, TrackId track_id);
+  static scoped_refptr<StreamParserBuffer> CopyFrom(
+      Allocator* allocator, const uint8_t* data, int data_size,
+      const uint8_t* side_data, int side_data_size, bool is_key_frame,
+      Type type, TrackId track_id);
 
   // Decode timestamp. If not explicitly set, or set to kNoTimestamp, the
   // value will be taken from the normal timestamp.
@@ -143,7 +148,10 @@ class MEDIA_EXPORT StreamParserBuffer : public DecoderBuffer {
   // See the Audio Splice Frame Algorithm in the MSE specification for details.
   typedef StreamParser::BufferQueue BufferQueue;
   void ConvertToSpliceBuffer(const BufferQueue& pre_splice_buffers);
-  const BufferQueue& splice_buffers() const { return splice_buffers_; }
+  const BufferQueue& splice_buffers() const {
+    static BufferQueue empty;
+    return splice_buffers_ ? *splice_buffers_ : empty;
+  }
 
   // Specifies a buffer which must be decoded prior to this one to ensure this
   // buffer can be accurately decoded.  The given buffer must be of the same
@@ -172,8 +180,10 @@ class MEDIA_EXPORT StreamParserBuffer : public DecoderBuffer {
   // The default ctor creates an EOS buffer without specific stream type.
   StreamParserBuffer();
   StreamParserBuffer(Allocator* allocator, const uint8_t* data, int data_size,
+                     const uint8_t* side_data, int side_data_size,
                      bool is_key_frame, Type type, TrackId track_id);
   StreamParserBuffer(Allocator* allocator, Allocator::Allocations allocations,
+                     const uint8_t* side_data, int side_data_size,
                      bool is_key_frame, Type type, TrackId track_id);
   ~StreamParserBuffer() override;
 
@@ -182,7 +192,7 @@ class MEDIA_EXPORT StreamParserBuffer : public DecoderBuffer {
   DecodeTimestamp decode_timestamp_;
   int config_id_;
   TrackId track_id_;
-  BufferQueue splice_buffers_;
+  std::unique_ptr<BufferQueue> splice_buffers_;
   scoped_refptr<StreamParserBuffer> preroll_buffer_;
   bool is_duration_estimated_;
 

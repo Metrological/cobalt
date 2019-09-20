@@ -15,19 +15,21 @@
 #ifndef COBALT_DOM_WINDOW_H_
 #define COBALT_DOM_WINDOW_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "base/callback.h"
-#include "base/hash_tables.h"
+#include "base/containers/hash_tables.h"
 #include "base/memory/ref_counted.h"
-#include "base/memory/scoped_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/synchronization/waitable_event.h"
-#include "base/timer.h"
+#include "base/timer/timer.h"
 #include "cobalt/base/application_state.h"
+#include "cobalt/base/clock.h"
 #include "cobalt/cssom/css_parser.h"
 #include "cobalt/cssom/css_style_declaration.h"
+#include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/animation_frame_request_callback_list.h"
 #include "cobalt/dom/captions/system_caption_settings.h"
 #include "cobalt/dom/crypto.h"
@@ -68,8 +70,9 @@
 #include "cobalt/script/execution_state.h"
 #include "cobalt/script/script_runner.h"
 #include "cobalt/script/script_value_factory.h"
-#include "googleurl/src/gurl.h"
+#include "cobalt/ui_navigation/nav_item.h"
 #include "starboard/window.h"
+#include "url/gurl.h"
 
 namespace cobalt {
 namespace media_session {
@@ -120,12 +123,15 @@ class Window : public EventTarget,
   typedef base::Callback<void(base::TimeDelta)> CloseCallback;
   typedef UrlRegistry<MediaSource> MediaSourceRegistry;
   typedef base::Callback<bool(const GURL&, const std::string&)> CacheCallback;
-  typedef base::Callback<SbWindow()> GetSbWindowCallback;
 
-  enum ClockType { kClockTypeTestRunner, kClockTypeSystemTime };
+  enum ClockType {
+    kClockTypeTestRunner,
+    kClockTypeSystemTime,
+    kClockTypeResolutionLimitedSystemTime
+  };
 
   Window(
-      int width, int height, float device_pixel_ratio,
+      const cssom::ViewportSize& view_size, float device_pixel_ratio,
       base::ApplicationState initial_application_state,
       cssom::CSSParser* css_parser, Parser* dom_parser,
       loader::FetcherFactory* fetcher_factory,
@@ -148,7 +154,7 @@ class Window : public EventTarget,
       const std::string& user_agent, const std::string& language,
       const std::string& font_language_script,
       const base::Callback<void(const GURL&)> navigation_callback,
-      const base::Callback<void(const std::string&)>& error_callback,
+      const loader::Decoder::OnCompleteFunction& load_complete_callback,
       network_bridge::CookieJar* cookie_jar,
       const network_bridge::PostSender& post_sender,
       csp::CSPHeaderPolicy require_csp,
@@ -166,11 +172,13 @@ class Window : public EventTarget,
       const ScreenshotManager::ProvideScreenshotFunctionCallback&
           screenshot_function_callback,
       base::WaitableEvent* synchronous_loader_interrupt,
+      const scoped_refptr<ui_navigation::NavItem>& ui_nav_root = nullptr,
       int csp_insecure_allowed_token = 0, int dom_max_element_depth = 0,
       float video_playback_rate_multiplier = 1.f,
       ClockType clock_type = kClockTypeSystemTime,
       const CacheCallback& splash_screen_cache_callback = CacheCallback(),
-      const scoped_refptr<captions::SystemCaptionSettings>& captions = nullptr);
+      const scoped_refptr<captions::SystemCaptionSettings>& captions = nullptr,
+      bool log_tts = false);
 
   // Web API: Window
   //
@@ -209,6 +217,10 @@ class Window : public EventTarget,
       const AnimationFrameRequestCallbackList::FrameRequestCallbackArg&);
   void CancelAnimationFrame(int32 handle);
 
+  float viewport_diagonal_inches() const {
+    return viewport_size_.diagonal_inches();
+  }
+
   // Web API: CSSOM View Module (partial interface)
   //
 
@@ -223,11 +235,15 @@ class Window : public EventTarget,
   // The innerWidth attribute must return the viewport width including the size
   // of a rendered scroll bar (if any), or zero if there is no viewport.
   //   https://www.w3.org/TR/2013/WD-cssom-view-20131217/#dom-window-innerwidth
-  float inner_width() const { return static_cast<float>(width_); }
+  float inner_width() const {
+    return static_cast<float>(viewport_size_.width());
+  }
   // The innerHeight attribute must return the viewport height including the
   // size of a rendered scroll bar (if any), or zero if there is no viewport.
   //   https://www.w3.org/TR/2013/WD-cssom-view-20131217/#dom-window-innerheight
-  float inner_height() const { return static_cast<float>(height_); }
+  float inner_height() const {
+    return static_cast<float>(viewport_size_.height());
+  }
 
   // The screenX attribute must return the x-coordinate, relative to the origin
   // of the screen of the output device, of the left of the client window as
@@ -241,10 +257,10 @@ class Window : public EventTarget,
   float screen_y() const { return 0.0f; }
   // The outerWidth attribute must return the width of the client window.
   //   https://www.w3.org/TR/2013/WD-cssom-view-20131217/#dom-window-outerwidth
-  float outer_width() const { return static_cast<float>(width_); }
+  float outer_width() const { return inner_width(); }
   // The outerHeight attribute must return the height of the client window.
   //   https://www.w3.org/TR/2013/WD-cssom-view-20131217/#dom-window-outerheight
-  float outer_height() const { return static_cast<float>(height_); }
+  float outer_height() const { return inner_height(); }
   // The devicePixelRatio attribute returns the ratio of CSS pixels per device
   // pixel.
   //   https://www.w3.org/TR/2013/WD-cssom-view-20131217/#dom-window-devicepixelratio
@@ -329,7 +345,7 @@ class Window : public EventTarget,
       const SynchronousLayoutAndProduceRenderTreeCallback&
           synchronous_layout_callback);
 
-  void SetSize(int width, int height, float device_pixel_ratio);
+  void SetSize(cssom::ViewportSize size, float device_pixel_ratio);
 
   void SetCamera3D(const scoped_refptr<input::Camera3D>& camera_3d);
 
@@ -382,13 +398,20 @@ class Window : public EventTarget,
 
   void SetEnvironmentSettings(script::EnvironmentSettings* settings);
 
+  const scoped_refptr<ui_navigation::NavItem>& GetUiNavRoot() const {
+    return ui_nav_root_;
+  }
+
   DEFINE_WRAPPABLE_TYPE(Window);
 
  private:
   void StartDocumentLoad(
       loader::FetcherFactory* fetcher_factory, const GURL& url,
       Parser* dom_parser,
-      const base::Callback<void(const std::string&)>& error_callback);
+      const loader::Decoder::OnCompleteFunction& load_complete_callback);
+  scoped_refptr<base::BasicClock> MakePerformanceClock(
+      Window::ClockType clock_type);
+
   class RelayLoadEvent;
 
   ~Window() override;
@@ -398,8 +421,8 @@ class Window : public EventTarget,
 
   void FireHashChangeEvent();
 
-  int width_;
-  int height_;
+  cssom::ViewportSize viewport_size_;
+
   float device_pixel_ratio_;
 
   // A resize event can be pending if a resize occurs and the current visibility
@@ -416,17 +439,17 @@ class Window : public EventTarget,
   scoped_refptr<TestRunner> test_runner_;
 #endif  // ENABLE_TEST_RUNNER
 
-  const scoped_ptr<HTMLElementContext> html_element_context_;
+  const std::unique_ptr<HTMLElementContext> html_element_context_;
   scoped_refptr<Performance> performance_;
   scoped_refptr<Document> document_;
-  scoped_ptr<loader::Loader> document_loader_;
+  std::unique_ptr<loader::Loader> document_loader_;
   scoped_refptr<History> history_;
   scoped_refptr<Navigator> navigator_;
-  scoped_ptr<RelayLoadEvent> relay_on_load_event_;
+  std::unique_ptr<RelayLoadEvent> relay_on_load_event_;
   scoped_refptr<Console> console_;
   scoped_refptr<Camera3D> camera_3d_;
-  scoped_ptr<WindowTimers> window_timers_;
-  scoped_ptr<AnimationFrameRequestCallbackList>
+  std::unique_ptr<WindowTimers> window_timers_;
+  std::unique_ptr<AnimationFrameRequestCallbackList>
       animation_frame_request_callback_list_;
 
   scoped_refptr<Crypto> crypto_;
@@ -443,7 +466,6 @@ class Window : public EventTarget,
   const base::Closure ran_animation_frame_callbacks_callback_;
   const CloseCallback window_close_callback_;
   const base::Closure window_minimize_callback_;
-  const GetSbWindowCallback get_sb_window_callback_;
 
   scoped_refptr<OnScreenKeyboard> on_screen_keyboard_;
 
@@ -454,7 +476,9 @@ class Window : public EventTarget,
 
   ScreenshotManager screenshot_manager_;
 
-  script::EnvironmentSettings* environment_settings_ = nullptr;
+  // This UI navigation root container should contain all active UI navigation
+  // items for this window.
+  scoped_refptr<ui_navigation::NavItem> ui_nav_root_;
 
   DISALLOW_COPY_AND_ASSIGN(Window);
 };

@@ -159,6 +159,13 @@
   ],
   'target_defaults': {
     'conditions': [
+      ['clang==1', {
+        'ldflags_host': [
+          # mksnapshot can not be compiled on host machine with default clang
+          # linker.
+          '-fuse-ld=lld',
+        ],
+      }],
       ['v8_target_arch=="arm"', {
         'defines': [
           'V8_TARGET_ARCH_ARM',

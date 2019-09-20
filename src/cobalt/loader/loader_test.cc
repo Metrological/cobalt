@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "cobalt/loader/loader.h"
 
 #include "base/bind.h"
-#include "base/file_util.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/message_loop.h"
+#include "base/files/file_util.h"
+#include "base/message_loop/message_loop.h"
+#include "base/optional.h"
 #include "base/path_service.h"
 #include "base/run_loop.h"
 #include "cobalt/dom/url_utils.h"
@@ -42,9 +44,10 @@ class TextDecoderCallback {
  public:
   explicit TextDecoderCallback(base::RunLoop* run_loop) : run_loop_(run_loop) {}
 
-  void OnDone(const Origin&, scoped_ptr<std::string> text) {
+  void OnDone(const Origin&, std::unique_ptr<std::string> text) {
     text_ = *text;
-    MessageLoop::current()->PostTask(FROM_HERE, run_loop_->QuitClosure());
+    base::MessageLoop::current()->task_runner()->PostTask(
+        FROM_HERE, run_loop_->QuitClosure());
   }
 
   std::string text() { return text_; }
@@ -59,10 +62,13 @@ class LoaderCallback {
   LoaderCallback() : run_loop_(NULL) {}
   explicit LoaderCallback(base::RunLoop* run_loop) : run_loop_(run_loop) {}
 
-  void OnError(const std::string& text) {
-    DLOG(ERROR) << text;
+  void OnLoadComplete(const base::Optional<std::string>& text) {
+    if (!text) return;
+
+    DLOG(ERROR) << *text;
     if (run_loop_)
-      MessageLoop::current()->PostTask(FROM_HERE, run_loop_->QuitClosure());
+      base::MessageLoop::current()->task_runner()->PostTask(
+          FROM_HERE, run_loop_->QuitClosure());
   }
 
  private:
@@ -75,6 +81,14 @@ class LoaderCallback {
 
 class MockDecoder : public Decoder {
  public:
+  static std::unique_ptr<Decoder> Create(
+      MockDecoder* mock_decoder,
+      const loader::Loader::OnCompleteFunction& load_complete_callback =
+          loader::Loader::OnCompleteFunction()) {
+    SB_UNREFERENCED_PARAMETER(load_complete_callback);
+    return std::unique_ptr<Decoder>(mock_decoder);
+  }
+
   MOCK_METHOD2(DecodeChunk, void(const char*, size_t));
   MOCK_METHOD0(Finish, void());
   MOCK_METHOD0(Suspend, bool());
@@ -93,8 +107,8 @@ class MockFetcher : public Fetcher {
 
   void FireDone() { handler()->OnDone(this); }
 
-  static scoped_ptr<Fetcher> Create(Handler* handler) {
-    return scoped_ptr<Fetcher>(new MockFetcher(handler));
+  static std::unique_ptr<Fetcher> Create(Handler* handler) {
+    return std::unique_ptr<Fetcher>(new MockFetcher(handler));
   }
 };
 
@@ -105,10 +119,10 @@ struct MockFetcherFactory {
   MockFetcher* fetcher;
   int count;
 
-  scoped_ptr<Fetcher> Create(Fetcher::Handler* handler) {
+  std::unique_ptr<Fetcher> Create(Fetcher::Handler* handler) {
     fetcher = new MockFetcher(handler);
     ++count;
-    return scoped_ptr<Fetcher>(fetcher);
+    return std::unique_ptr<Fetcher>(fetcher);
   }
 
   Loader::FetcherCreator GetFetcherCreator() {
@@ -119,11 +133,11 @@ struct MockFetcherFactory {
 class MockLoaderCallback : public LoaderCallback {
  public:
   MockLoaderCallback() {
-    ON_CALL(*this, OnError(_))
-        .WillByDefault(Invoke(&real_, &LoaderCallback::OnError));
+    ON_CALL(*this, OnLoadComplete(_))
+        .WillByDefault(Invoke(&real_, &LoaderCallback::OnLoadComplete));
   }
 
-  MOCK_METHOD1(OnError, void(const std::string&));
+  MOCK_METHOD1(OnLoadComplete, void(const base::Optional<std::string>&));
 
  private:
   LoaderCallback real_;
@@ -140,11 +154,11 @@ class LoaderTest : public ::testing::Test {
   LoaderTest();
   ~LoaderTest() override {}
 
-  FilePath data_dir_;
-  MessageLoop message_loop_;
+  base::FilePath data_dir_;
+  base::MessageLoop message_loop_;
 };
 
-LoaderTest::LoaderTest() : message_loop_(MessageLoop::TYPE_DEFAULT) {
+LoaderTest::LoaderTest() : message_loop_(base::MessageLoop::TYPE_DEFAULT) {
   data_dir_ = data_dir_.Append(FILE_PATH_LITERAL("cobalt"))
                   .Append(FILE_PATH_LITERAL("loader"))
                   .Append(FILE_PATH_LITERAL("testdata"));
@@ -156,11 +170,11 @@ TEST_F(LoaderTest, FetcherError) {
   MockDecoder* mock_decoder = new MockDecoder();  // To be owned by loader.
   EXPECT_CALL(*mock_decoder, DecodeChunk(_, _)).Times(0);
   EXPECT_CALL(*mock_decoder, Finish()).Times(0);
-  EXPECT_CALL(mock_loader_callback, OnError(_));
+  EXPECT_CALL(mock_loader_callback, OnLoadComplete(_));
 
   Loader loader(mock_fetcher_factory.GetFetcherCreator(),
-                scoped_ptr<Decoder>(mock_decoder),
-                base::Bind(&MockLoaderCallback::OnError,
+                base::Bind(&MockDecoder::Create, mock_decoder),
+                base::Bind(&MockLoaderCallback::OnLoadComplete,
                            base::Unretained(&mock_loader_callback)));
   mock_fetcher_factory.fetcher->FireError("Fail");
 }
@@ -173,11 +187,11 @@ TEST_F(LoaderTest, FetcherSuspendAbort) {
   EXPECT_CALL(*mock_decoder, Finish()).Times(0);
   EXPECT_CALL(*mock_decoder, Suspend());
   EXPECT_CALL(*mock_decoder, Resume(_)).Times(0);
-  EXPECT_CALL(mock_loader_callback, OnError(_));
+  EXPECT_CALL(mock_loader_callback, OnLoadComplete(_));
 
   Loader loader(mock_fetcher_factory.GetFetcherCreator(),
-                scoped_ptr<Decoder>(mock_decoder),
-                base::Bind(&MockLoaderCallback::OnError,
+                base::Bind(&MockDecoder::Create, mock_decoder),
+                base::Bind(&MockLoaderCallback::OnLoadComplete,
                            base::Unretained(&mock_loader_callback)));
   loader.Suspend();
 }
@@ -192,12 +206,12 @@ TEST_F(LoaderTest, FetcherSuspendResumeDone) {
   EXPECT_CALL(*mock_decoder, Resume(_));
 
   EXPECT_CALL(*mock_decoder, DecodeChunk(_, _)).Times(0);
-  EXPECT_CALL(mock_loader_callback, OnError(_)).Times(0);
+  EXPECT_CALL(mock_loader_callback, OnLoadComplete(_)).Times(0);
   EXPECT_CALL(*mock_decoder, Finish());
 
   Loader loader(mock_fetcher_factory.GetFetcherCreator(),
-                scoped_ptr<Decoder>(mock_decoder),
-                base::Bind(&MockLoaderCallback::OnError,
+                base::Bind(&MockDecoder::Create, mock_decoder),
+                base::Bind(&MockLoaderCallback::OnLoadComplete,
                            base::Unretained(&mock_loader_callback)));
   loader.Suspend();
   loader.Resume(NULL);
@@ -213,13 +227,13 @@ TEST_F(LoaderTest, FetcherReceiveDone) {
   MockLoaderCallback mock_loader_callback;
   MockFetcherFactory mock_fetcher_factory;
   MockDecoder* mock_decoder = new MockDecoder();  // To be owned by loader.
-  EXPECT_CALL(mock_loader_callback, OnError(_)).Times(0);
+  EXPECT_CALL(mock_loader_callback, OnLoadComplete(_)).Times(0);
   EXPECT_CALL(*mock_decoder, DecodeChunk(_, _));
   EXPECT_CALL(*mock_decoder, Finish());
 
   Loader loader(mock_fetcher_factory.GetFetcherCreator(),
-                scoped_ptr<Decoder>(mock_decoder),
-                base::Bind(&MockLoaderCallback::OnError,
+                base::Bind(&MockDecoder::Create, mock_decoder),
+                base::Bind(&MockLoaderCallback::OnLoadComplete,
                            base::Unretained(&mock_loader_callback)));
   mock_fetcher_factory.fetcher->FireReceived(NULL, 0);
   mock_fetcher_factory.fetcher->FireDone();
@@ -227,22 +241,23 @@ TEST_F(LoaderTest, FetcherReceiveDone) {
 
 // Typical usage of Loader.
 TEST_F(LoaderTest, ValidFileEndToEndTest) {
-  // Create a RunLoop that helps us use the MessageLoop, which is in the test
-  // fixture object.
+  // Create a RunLoop that helps us use the base::MessageLoop, which is in the
+  // test fixture object.
   base::RunLoop run_loop;
 
   // Create a loader, using a FileFetcher that loads from disk, and a
   // TextDecoder that sees the received bytes as plain text.
-  const FilePath file_path = data_dir_.Append("performance-spike.html");
+  const base::FilePath file_path = data_dir_.Append("performance-spike.html");
   FileFetcher::Options fetcher_options;
   TextDecoderCallback text_decoder_callback(&run_loop);
   LoaderCallback loader_callback(&run_loop);
   Loader loader(
       base::Bind(&FileFetcher::Create, file_path, fetcher_options),
-      scoped_ptr<Decoder>(new TextDecoder(
-          base::Bind(&TextDecoderCallback::OnDone,
-                     base::Unretained(&text_decoder_callback)))),
-      base::Bind(&LoaderCallback::OnError, base::Unretained(&loader_callback)));
+      base::Bind(&loader::TextDecoder::Create,
+                 base::Bind(&TextDecoderCallback::OnDone,
+                            base::Unretained(&text_decoder_callback))),
+      base::Bind(&LoaderCallback::OnLoadComplete,
+                 base::Unretained(&loader_callback)));
 
   // When the message loop runs, the loader will start loading. It'll quit when
   // loading is finished.
@@ -253,10 +268,10 @@ TEST_F(LoaderTest, ValidFileEndToEndTest) {
 
   // Compare the result with that of other API's.
   std::string expected_text;
-  FilePath dir_test_data;
-  EXPECT_TRUE(PathService::Get(base::DIR_TEST_DATA, &dir_test_data));
-  EXPECT_TRUE(file_util::ReadFileToString(dir_test_data.Append(file_path),
-                                          &expected_text));
+  base::FilePath dir_test_data;
+  EXPECT_TRUE(base::PathService::Get(base::DIR_TEST_DATA, &dir_test_data));
+  EXPECT_TRUE(
+      base::ReadFileToString(dir_test_data.Append(file_path), &expected_text));
   EXPECT_EQ(expected_text, loaded_text);
 }
 

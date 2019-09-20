@@ -72,6 +72,14 @@
       '-Wno-narrowing',
       # Do not remove null this checks.
       '-fno-delete-null-pointer-checks',
+      # Do not warn about unused function params.
+      '-Wno-unused-parameter',
+      # Do not warn about multi-character character constant values.
+      '-Wno-multichar',
+      # Do not warn for ignoring return value declared with attribute warn_unused_result.
+      '-Wno-unused-result',
+      # Do now warn for unknown pragmas.
+      '-Wno-unknown-pragmas',
     ],
     'conditions': [
       ['cobalt_fastbuild==0', {
@@ -112,8 +120,6 @@
       },{
         'cflags': [
           '<@(common_compiler_flags)',
-          # Do not warn about unused function params.
-          '-Wno-unused-parameter',
         ],
       }],
     ],

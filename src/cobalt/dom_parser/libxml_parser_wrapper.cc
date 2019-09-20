@@ -12,13 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#if defined(STARBOARD)
+#include "starboard/client_porting/poem/string_leaks_poem.h"
+#endif  // defined(STARBOARD)
+
 #include "cobalt/dom_parser/libxml_parser_wrapper.h"
 
 #include "base/logging.h"
-#include "base/string_util.h"
-#include "base/stringprintf.h"
+#include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
+#include "base/strings/utf_string_conversion_utils.h"
 #include "base/third_party/icu/icu_utf.h"
-#include "base/utf_string_conversion_utils.h"
 #include "cobalt/base/tokens.h"
 #include "cobalt/dom/cdata_section.h"
 #include "cobalt/dom/comment.h"
@@ -95,8 +99,8 @@ class LibxmlParserWrapperLog {
   DISALLOW_COPY_AND_ASSIGN(LibxmlParserWrapperLog);
 };
 
-base::LazyInstance<LibxmlParserWrapperLog> libxml_parser_wrapper_log =
-    LAZY_INSTANCE_INITIALIZER;
+base::LazyInstance<LibxmlParserWrapperLog>::DestructorAtExit
+    libxml_parser_wrapper_log = LAZY_INSTANCE_INITIALIZER;
 
 #endif  // defined(HANDLE_CORE_DUMP)
 
@@ -117,7 +121,7 @@ std::string StringPrintVAndTrim(const char* message, va_list arguments) {
   const std::string formatted_message = base::StringPrintV(message, arguments);
 
   std::string trimmed_message;
-  TrimWhitespace(formatted_message, TRIM_ALL, &trimmed_message);
+  TrimWhitespaceASCII(formatted_message, base::TRIM_ALL, &trimmed_message);
 
   return trimmed_message;
 }
@@ -224,12 +228,14 @@ void LibxmlParserWrapper::OnEndDocument() {
     node_stack_.pop();
   }
 
-  if (!node_stack_.empty() && !error_callback_.is_null()) {
-    error_callback_.Run("Node stack not empty at end of document.");
+  if (!node_stack_.empty() && !load_complete_callback_.is_null()) {
+    load_complete_callback_.Run(
+        std::string("Node stack not empty at end of document."));
   }
 
   if (IsFullDocument()) {
-    document_->PostToDispatchEvent(FROM_HERE, base::Tokens::domcontentloaded());
+    document_->PostToDispatchEventName(FROM_HERE,
+                                       base::Tokens::domcontentloaded());
   }
 }
 
@@ -267,8 +273,9 @@ void LibxmlParserWrapper::OnEndElement(const std::string& name) {
       return;
     }
   }
-  if (node_stack_.empty() && !error_callback_.is_null()) {
-    error_callback_.Run("Node stack empty when encountering end tag.");
+  if (node_stack_.empty() && !load_complete_callback_.is_null()) {
+    load_complete_callback_.Run(
+        std::string("Node stack empty when encountering end tag."));
   }
 }
 
@@ -310,8 +317,8 @@ void LibxmlParserWrapper::OnParsingIssue(IssueSeverity severity,
                  << (severity == kWarning ? "Warning: " : "Error: ") << message;
   } else if (severity == LibxmlParserWrapper::kFatal) {
     LOG(ERROR) << "Libxml Fatal Error: " << message;
-    if (!error_callback_.is_null()) {
-      error_callback_.Run(message);
+    if (!load_complete_callback_.is_null()) {
+      load_complete_callback_.Run(message);
     }
   } else {
     NOTREACHED();
@@ -339,9 +346,9 @@ void LibxmlParserWrapper::PreprocessChunk(const char* data, size_t size,
 
   // Check the encoding of the input.
   std::string input = next_chunk_start_ + std::string(data, size);
-  TruncateUTF8ToByteSize(input, input.size(), current_chunk);
+  base::TruncateUTF8ToByteSize(input, input.size(), current_chunk);
   next_chunk_start_ = input.substr(current_chunk->size());
-  if (!IsStringUTF8(*current_chunk)) {
+  if (!base::IsStringUTF8(*current_chunk)) {
     current_chunk->clear();
     static const char kMessageInputNotUTF8[] =
         "Parser input contains non-UTF8 characters.";

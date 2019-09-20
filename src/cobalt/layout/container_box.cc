@@ -16,6 +16,7 @@
 
 #include <algorithm>
 
+#include "cobalt/cssom/computed_style_utils.h"
 #include "cobalt/cssom/keyword_value.h"
 #include "cobalt/cssom/number_value.h"
 #include "cobalt/layout/used_style.h"
@@ -152,8 +153,7 @@ void ContainerBox::MoveDirectChildrenToSplitSibling(
   //   2. Stacking context children contained within this overflow hidden
   //      container are potentially moving to the split sibling overflow hidden
   //      container.
-  if (HasStackingContextChildren() ||
-      computed_style()->overflow() == cssom::KeywordValue::GetHidden()) {
+  if (HasStackingContextChildren() || IsOverflowCropped(computed_style())) {
     // Walk up the tree until the nearest stacking context is found. If this box
     // is a stacking context, then it will be used.
     ContainerBox* nearest_stacking_context = this;
@@ -230,7 +230,7 @@ void ContainerBox::UpdateCrossReferences() {
 
     for (Boxes::const_iterator child_box_iterator = child_boxes_.begin();
          child_box_iterator != child_boxes_.end(); ++child_box_iterator) {
-      Box* child_box = *child_box_iterator;
+      Box* child_box = child_box_iterator->get();
       child_box->UpdateCrossReferencesOfContainerBox(
           this, kNearestContainingBlockOfChildren,
           nearest_absolute_containing_block, nearest_fixed_containing_block,
@@ -371,13 +371,13 @@ void ContainerBox::UpdateOffsetOfRelativelyPositionedChildBox(
   DCHECK_EQ(child_box->computed_style()->position(),
             cssom::KeywordValue::GetRelative());
 
-  base::optional<LayoutUnit> maybe_left = GetUsedLeftIfNotAuto(
+  base::Optional<LayoutUnit> maybe_left = GetUsedLeftIfNotAuto(
       child_box->computed_style(), child_layout_params.containing_block_size);
-  base::optional<LayoutUnit> maybe_right = GetUsedRightIfNotAuto(
+  base::Optional<LayoutUnit> maybe_right = GetUsedRightIfNotAuto(
       child_box->computed_style(), child_layout_params.containing_block_size);
-  base::optional<LayoutUnit> maybe_top = GetUsedTopIfNotAuto(
+  base::Optional<LayoutUnit> maybe_top = GetUsedTopIfNotAuto(
       child_box->computed_style(), child_layout_params.containing_block_size);
-  base::optional<LayoutUnit> maybe_bottom = GetUsedBottomIfNotAuto(
+  base::Optional<LayoutUnit> maybe_bottom = GetUsedBottomIfNotAuto(
       child_box->computed_style(), child_layout_params.containing_block_size);
 
   Vector2dLayoutUnit offset;
@@ -574,8 +574,7 @@ void RenderAndAnimateStackingContextChildrenCoordinator::
   OverflowHiddenInfo& overflow_hidden_info = overflow_hidden_stack_.back();
 
   ContainerBox* containing_block = overflow_hidden_info.containing_block;
-  DCHECK_EQ(containing_block->computed_style()->overflow(),
-            cssom::KeywordValue::GetHidden());
+  DCHECK(IsOverflowCropped(containing_block->computed_style()));
 
   // Determine the offset from the child container to this containing block's
   // border box.
@@ -589,7 +588,7 @@ void RenderAndAnimateStackingContextChildrenCoordinator::
   scoped_refptr<render_tree::Node> filter_node =
       containing_block->RenderAndAnimateOverflow(
           new render_tree::CompositionNode(
-              overflow_hidden_info.node_builder.Pass()),
+              std::move(overflow_hidden_info.node_builder)),
           math::Vector2dF(containing_block_border_offset.x().toFloat(),
                           containing_block_border_offset.y().toFloat()));
 
@@ -710,7 +709,7 @@ void ContainerBox::SplitBidiLevelRuns() {
 
     for (Boxes::const_iterator child_box_iterator = child_boxes_.begin();
          child_box_iterator != child_boxes_.end(); ++child_box_iterator) {
-      Box* child_box = *child_box_iterator;
+      Box* child_box = child_box_iterator->get();
       child_box->SplitBidiLevelRuns();
     }
   }
@@ -762,8 +761,7 @@ void ContainerBox::UpdateCrossReferencesOfContainerBox(
 
     bool has_absolute_position =
         computed_style()->position() == cssom::KeywordValue::GetAbsolute();
-    bool has_overflow_hidden =
-        computed_style()->overflow() == cssom::KeywordValue::GetHidden();
+    bool has_overflow_hidden = IsOverflowCropped(computed_style());
 
     stacking_context_container_box_stack->push_back(
         StackingContextContainerBoxInfo(
@@ -779,7 +777,7 @@ void ContainerBox::UpdateCrossReferencesOfContainerBox(
       nearest_stacking_context_of_children == kIsBox) {
     for (Boxes::const_iterator child_box_iterator = child_boxes_.begin();
          child_box_iterator != child_boxes_.end(); ++child_box_iterator) {
-      Box* child_box = *child_box_iterator;
+      Box* child_box = child_box_iterator->get();
       child_box->UpdateCrossReferencesOfContainerBox(
           source_box, kNearestContainingBlockOfChildren,
           nearest_absolute_containing_block_of_children,
@@ -850,7 +848,7 @@ void ContainerBox::RenderAndAnimateContent(
   //   https://www.w3.org/TR/CSS21/visuren.html#z-index
   for (Boxes::const_iterator child_box_iterator = child_boxes_.begin();
        child_box_iterator != child_boxes_.end(); ++child_box_iterator) {
-    Box* child_box = *child_box_iterator;
+    Box* child_box = child_box_iterator->get();
     if (!child_box->IsPositioned() && !child_box->IsStackingContext()) {
       child_box->RenderAndAnimate(content_node_builder, content_box_offset,
                                   this_as_stacking_context);
@@ -873,7 +871,7 @@ void ContainerBox::DumpChildrenWithIndent(std::ostream* stream,
 
   for (Boxes::const_iterator child_box_iterator = child_boxes_.begin();
        child_box_iterator != child_boxes_.end(); ++child_box_iterator) {
-    Box* child_box = *child_box_iterator;
+    Box* child_box = child_box_iterator->get();
     child_box->DumpWithIndent(stream, indent);
   }
 }

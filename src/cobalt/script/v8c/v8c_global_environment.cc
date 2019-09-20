@@ -12,14 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#if defined(STARBOARD)
+#include "starboard/client_porting/poem/string_leaks_poem.h"
+#endif  // defined(STARBOARD)
+
 #include "cobalt/script/v8c/v8c_global_environment.h"
 
 #include <algorithm>
 #include <utility>
 
-#include "base/debug/trace_event.h"
 #include "base/lazy_instance.h"
-#include "base/stringprintf.h"
+#include "base/strings/stringprintf.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/script/v8c/embedded_resources.h"
 #include "cobalt/script/v8c/entry_scope.h"
@@ -94,13 +98,14 @@ V8cGlobalEnvironment::V8cGlobalEnvironment(v8::Isolate* isolate)
 V8cGlobalEnvironment::~V8cGlobalEnvironment() {
   TRACE_EVENT0("cobalt::script",
                "V8cGlobalEnvironment::~V8cGlobalEnvironment()");
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  destructing_ = true;
 }
 
 void V8cGlobalEnvironment::CreateGlobalObject() {
   TRACE_EVENT0("cobalt::script", "V8cGlobalEnvironment::CreateGlobalObject()");
   TRACK_MEMORY_SCOPE("Javascript");
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   // Intentionally not an |EntryScope|, since the context doesn't exist yet.
   v8::Isolate::Scope isolate_scope(isolate_);
@@ -117,7 +122,7 @@ bool V8cGlobalEnvironment::EvaluateScript(
     std::string* out_result_utf8) {
   TRACK_MEMORY_SCOPE("Javascript");
   TRACE_EVENT0("cobalt::script", "V8cGlobalEnvironment::EvaluateScript()");
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   EntryScope entry_scope(isolate_);
   v8::Local<v8::Context> context = isolate_->GetCurrentContext();
@@ -151,10 +156,10 @@ bool V8cGlobalEnvironment::EvaluateScript(
 bool V8cGlobalEnvironment::EvaluateScript(
     const scoped_refptr<SourceCode>& source_code,
     const scoped_refptr<Wrappable>& owning_object,
-    base::optional<ValueHandleHolder::Reference>* out_value_handle) {
+    base::Optional<ValueHandleHolder::Reference>* out_value_handle) {
   TRACK_MEMORY_SCOPE("Javascript");
   TRACE_EVENT0("cobalt::script", "V8cGlobalEnvironment::EvaluateScript()");
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   EntryScope entry_scope(isolate_);
   v8::Local<v8::Context> context = isolate_->GetCurrentContext();
@@ -182,7 +187,7 @@ bool V8cGlobalEnvironment::EvaluateScript(
 
 std::vector<StackFrame> V8cGlobalEnvironment::GetStackTrace(int max_frames) {
   TRACE_EVENT0("cobalt::script", "V8cGlobalEnvironment::GetStackTrace()");
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   // cobalt::script treats |max_frames| being set to 0 as "the entire stack",
   // while V8 interprets the frame count being set to 0 as "give me 0 frames",
@@ -197,10 +202,18 @@ std::vector<StackFrame> V8cGlobalEnvironment::GetStackTrace(int max_frames) {
   std::vector<StackFrame> result;
   for (int i = 0; i < stack_trace->GetFrameCount(); i++) {
     v8::Local<v8::StackFrame> stack_frame = stack_trace->GetFrame(i);
-    result.emplace_back(
-        stack_frame->GetLineNumber(), stack_frame->GetColumn(),
-        *v8::String::Utf8Value(isolate_, stack_frame->GetFunctionName()),
-        *v8::String::Utf8Value(isolate_, stack_frame->GetScriptName()));
+    v8::String::Utf8Value function_name(isolate_,
+                                        stack_frame->GetFunctionName());
+    v8::String::Utf8Value script_name(isolate_, stack_frame->GetScriptName());
+    std::string function_name_str, script_name_str;
+    if (*function_name) {
+      function_name_str = std::string(*function_name);
+    }
+    if (*script_name) {
+      script_name_str = std::string(*script_name);
+    }
+    result.emplace_back(stack_frame->GetLineNumber(), stack_frame->GetColumn(),
+                        function_name_str, script_name_str);
   }
 
   return result;
@@ -216,17 +229,19 @@ void V8cGlobalEnvironment::RemoveRoot(Traceable* traceable) {
 
 void V8cGlobalEnvironment::PreventGarbageCollection(
     const scoped_refptr<Wrappable>& wrappable) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   v8::HandleScope handle_scope(isolate_);
   v8::Local<v8::Object> wrapper = wrapper_factory_->GetWrapper(wrappable);
   WrapperPrivate::GetFromWrapperObject(wrapper)->IncrementRefCount();
 }
 
-void V8cGlobalEnvironment::AllowGarbageCollection(
-    const scoped_refptr<Wrappable>& wrappable) {
+void V8cGlobalEnvironment::AllowGarbageCollection(Wrappable* wrappable) {
   TRACK_MEMORY_SCOPE("Javascript");
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+
+  // AllowGarbageCollection is unnecessary when the environment is destroyed.
+  if (destructing_) return;
 
   v8::HandleScope handle_scope(isolate_);
   v8::Local<v8::Object> wrapper = wrapper_factory_->GetWrapper(wrappable);
@@ -234,7 +249,7 @@ void V8cGlobalEnvironment::AllowGarbageCollection(
 }
 
 void V8cGlobalEnvironment::DisableEval(const std::string& message) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   EntryScope entry_scope(isolate_);
   v8::Local<v8::Context> context = isolate_->GetCurrentContext();
@@ -246,7 +261,7 @@ void V8cGlobalEnvironment::DisableEval(const std::string& message) {
 }
 
 void V8cGlobalEnvironment::EnableEval() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   EntryScope entry_scope(isolate_);
   v8::Local<v8::Context> context = isolate_->GetCurrentContext();
@@ -254,20 +269,20 @@ void V8cGlobalEnvironment::EnableEval() {
 }
 
 void V8cGlobalEnvironment::DisableJit() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   LOG(INFO) << "V8 version " << V8_MAJOR_VERSION << '.' << V8_MINOR_VERSION
             << "can only be run with JIT enabled, ignoring |DisableJit| call.";
 }
 
 void V8cGlobalEnvironment::SetReportEvalCallback(
     const base::Closure& report_eval) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   report_eval_ = report_eval;
 }
 
 void V8cGlobalEnvironment::SetReportErrorCallback(
     const ReportErrorCallback& report_error_callback) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   report_error_callback_ = report_error_callback;
 }
 
@@ -386,7 +401,7 @@ void V8cGlobalEnvironment::MessageHandler(v8::Local<v8::Message> message,
 v8::MaybeLocal<v8::Value> V8cGlobalEnvironment::EvaluateScriptInternal(
     const scoped_refptr<SourceCode>& source_code) {
   TRACK_MEMORY_SCOPE("Javascript");
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   // Note that we expect an |EntryScope| and |v8::TryCatch| to have been set
   // up by our caller.
@@ -418,7 +433,8 @@ v8::MaybeLocal<v8::Value> V8cGlobalEnvironment::EvaluateScriptInternal(
 
   v8::Local<v8::String> source;
   if (!v8::String::NewFromUtf8(isolate_, v8c_source_code->source_utf8().c_str(),
-                               v8::NewStringType::kNormal)
+                               v8::NewStringType::kNormal,
+                               v8c_source_code->source_utf8().length())
            .ToLocal(&source)) {
     LOG(WARNING) << "Failed to convert source code to V8 UTF-8 string.";
     return {};

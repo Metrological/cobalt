@@ -14,10 +14,10 @@
 
 #include "starboard/raspi/shared/window_internal.h"
 
-#include "starboard/log.h"
+#include "starboard/common/log.h"
 
 namespace {
-const int32_t kLayer = 1;
+const int32_t kLayer = 0;
 }  // namespace
 
 using starboard::raspi::shared::DispmanxDisplay;

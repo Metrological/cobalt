@@ -14,12 +14,15 @@
 
 #include "cobalt/dom/window.h"
 
+#include <memory>
 #include <string>
 
 #include "base/bind.h"
 #include "base/callback.h"
-#include "base/message_loop.h"
+#include "base/message_loop/message_loop.h"
+#include "base/optional.h"
 #include "cobalt/css_parser/parser.h"
+#include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/local_storage_database.h"
 #include "cobalt/dom/screen.h"
 #include "cobalt/dom_parser/parser.h"
@@ -28,22 +31,25 @@
 #include "cobalt/network_bridge/net_poster.h"
 #include "cobalt/script/global_environment.h"
 #include "cobalt/script/javascript_engine.h"
-#include "googleurl/src/gurl.h"
 #include "starboard/window.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "url/gurl.h"
+
+using cobalt::cssom::ViewportSize;
 
 namespace cobalt {
 namespace dom {
-class MockErrorCallback : public base::Callback<void(const std::string&)> {
+class MockErrorCallback
+    : public base::Callback<void(const base::Optional<std::string> &)> {
  public:
-  MOCK_METHOD1(Run, void(const std::string&));
+  MOCK_METHOD1(Run, void(const base::Optional<std::string> &));
 };
 
 class WindowTest : public ::testing::Test {
  protected:
   WindowTest()
-      : message_loop_(MessageLoop::TYPE_DEFAULT),
+      : message_loop_(base::MessageLoop::TYPE_DEFAULT),
         css_parser_(css_parser::Parser::Create()),
         dom_parser_(new dom_parser::Parser(mock_error_callback_)),
         fetcher_factory_(new loader::FetcherFactory(NULL)),
@@ -51,8 +57,10 @@ class WindowTest : public ::testing::Test {
         url_("about:blank") {
     engine_ = script::JavaScriptEngine::CreateEngine();
     global_environment_ = engine_->CreateGlobalEnvironment();
+
+    ViewportSize view_size(1920, 1080);
     window_ = new Window(
-        1920, 1080, 1.f, base::kApplicationStateStarted, css_parser_.get(),
+        view_size, 1.f, base::kApplicationStateStarted, css_parser_.get(),
         dom_parser_.get(), fetcher_factory_.get(), NULL, NULL, NULL, NULL, NULL,
         NULL, NULL, &local_storage_database_, NULL, NULL, NULL, NULL,
         global_environment_->script_value_factory(), NULL, NULL, url_, "",
@@ -71,13 +79,13 @@ class WindowTest : public ::testing::Test {
 
   ~WindowTest() override {}
 
-  MessageLoop message_loop_;
+  base::MessageLoop message_loop_;
   MockErrorCallback mock_error_callback_;
-  scoped_ptr<css_parser::Parser> css_parser_;
-  scoped_ptr<dom_parser::Parser> dom_parser_;
-  scoped_ptr<loader::FetcherFactory> fetcher_factory_;
+  std::unique_ptr<css_parser::Parser> css_parser_;
+  std::unique_ptr<dom_parser::Parser> dom_parser_;
+  std::unique_ptr<loader::FetcherFactory> fetcher_factory_;
   dom::LocalStorageDatabase local_storage_database_;
-  scoped_ptr<script::JavaScriptEngine> engine_;
+  std::unique_ptr<script::JavaScriptEngine> engine_;
   scoped_refptr<script::GlobalEnvironment> global_environment_;
   GURL url_;
   scoped_refptr<Window> window_;

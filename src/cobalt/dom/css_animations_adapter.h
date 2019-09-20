@@ -16,9 +16,11 @@
 #define COBALT_DOM_CSS_ANIMATIONS_ADAPTER_H_
 
 #include <map>
+#include <memory>
 #include <string>
 
 #include "base/memory/ref_counted.h"
+#include "cobalt/cssom/animation.h"
 #include "cobalt/cssom/animation_set.h"
 #include "cobalt/web_animations/animation.h"
 
@@ -40,8 +42,10 @@ class CSSAnimationsAdapter : public cssom::AnimationSet::EventHandler {
   virtual ~CSSAnimationsAdapter();
 
   // From cssom::AnimationSet::EventHandler.
-  void OnAnimationStarted(const cssom::Animation& css_animation) override;
-  void OnAnimationRemoved(const cssom::Animation& css_animation) override;
+  void OnAnimationStarted(const cssom::Animation& css_animation,
+                          cssom::AnimationSet* animation_set) override;
+  void OnAnimationRemoved(const cssom::Animation& css_animation,
+                          cssom::Animation::IsCanceled is_canceled) override;
 
  private:
   // The AnimationWithEventHandler struct maintains a reference to the Animation
@@ -50,18 +54,18 @@ class CSSAnimationsAdapter : public cssom::AnimationSet::EventHandler {
   struct AnimationWithEventHandler {
     AnimationWithEventHandler(
         const scoped_refptr<web_animations::Animation>& animation,
-        scoped_ptr<web_animations::Animation::EventHandler> event_handler)
-        : animation(animation), event_handler(event_handler.Pass()) {}
+        std::unique_ptr<web_animations::Animation::EventHandler> event_handler)
+        : animation(animation), event_handler(std::move(event_handler)) {}
     ~AnimationWithEventHandler() {}
 
     scoped_refptr<web_animations::Animation> animation;
-    scoped_ptr<web_animations::Animation::EventHandler> event_handler;
+    std::unique_ptr<web_animations::Animation::EventHandler> event_handler;
   };
   typedef std::map<std::string, AnimationWithEventHandler*> AnimationMap;
 
   // Called to handle Animation events.  When a CSS animation's corresponding
   // web animation enters the after phase, we fire the animationend event.
-  void HandleAnimationEnterAfterPhase(const cssom::Animation& css_animation);
+  void HandleAnimationEnterAfterPhase(cssom::AnimationSet* animation_set);
 
   scoped_refptr<dom::DOMAnimatable> animatable_;
 

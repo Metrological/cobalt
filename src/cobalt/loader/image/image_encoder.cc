@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "cobalt/loader/image/image_encoder.h"
 
-#include "base/debug/trace_event.h"
+#include "base/trace_event/trace_event.h"
+#include "cobalt/renderer/test/jpeg_utils/jpeg_encode.h"
 #include "cobalt/renderer/test/png_utils/png_encode.h"
 #include "third_party/libwebp/src/webp/encode.h"
 
@@ -22,50 +25,49 @@ namespace cobalt {
 namespace loader {
 namespace image {
 
-using cobalt::renderer::test::png_utils::EncodeRGBAToBuffer;
-
-scoped_array<uint8> WriteRGBAPixelsToPNG(const uint8* const pixel_data,
-                                         const math::Size& dimensions,
-                                         size_t* out_num_bytes) {
-  TRACE_EVENT0("cobalt::loader", "ImageEncoder::WriteRGBAPixelsToPNG()");
-  const int kRGBABytesPerPixel = 4;
-  const int kPitchSizeInBytes = dimensions.width() * kRGBABytesPerPixel;
-  return EncodeRGBAToBuffer(pixel_data, dimensions.width(), dimensions.height(),
-                            kPitchSizeInBytes, out_num_bytes);
-}
-
 scoped_refptr<loader::image::EncodedStaticImage> CompressRGBAImage(
     loader::image::EncodedStaticImage::ImageFormat desired_format,
     const uint8* const image_data, const math::Size& dimensions) {
   TRACE_EVENT0("cobalt::loader", "ImageEncoder::CompressRGBAImage()");
+
+  const int kRGBABytesPerPixel = 4;
+  const int kPitchSizeInBytes = dimensions.width() * kRGBABytesPerPixel;
+  size_t num_bytes = 0;
+  std::unique_ptr<uint8[]> compressed_data;
+
   using ImageFormat = loader::image::EncodedStaticImage::ImageFormat;
   switch (desired_format) {
     case ImageFormat::kPNG: {
-      size_t num_bytes;
-      scoped_array<uint8> png_data =
-          WriteRGBAPixelsToPNG(image_data, dimensions, &num_bytes);
-      DCHECK_LT(static_cast<int>(num_bytes), kint32max);
-
-      return scoped_refptr<loader::image::EncodedStaticImage>(
-          new loader::image::EncodedStaticImage(desired_format, png_data.Pass(),
-                                                static_cast<int>(num_bytes),
-                                                dimensions));
+      compressed_data = renderer::test::png_utils::EncodeRGBAToBuffer(
+          image_data, dimensions.width(), dimensions.height(),
+          kPitchSizeInBytes, &num_bytes);
+      break;
+    }
+    case ImageFormat::kJPEG: {
+      compressed_data = renderer::test::jpeg_utils::EncodeRGBAToBuffer(
+          image_data, dimensions.width(), dimensions.height(),
+          kPitchSizeInBytes, &num_bytes);
+      break;
     }
     case ImageFormat::kWEBP:
       NOTIMPLEMENTED();
+      return nullptr;
   }
 
-  return nullptr;
+  return scoped_refptr<loader::image::EncodedStaticImage>(
+      new loader::image::EncodedStaticImage(
+          desired_format, std::move(compressed_data),
+          static_cast<int>(num_bytes), dimensions));
 }
 
 EncodedStaticImage::EncodedStaticImage(
     image::EncodedStaticImage::ImageFormat image_format,
-    scoped_array<uint8> memory, uint32 size_in_bytes,
+    std::unique_ptr<uint8[]> memory, uint32 size_in_bytes,
     const math::Size& image_dimensions)
     : image_format_(image_format),
       size_in_bytes_(size_in_bytes),
       image_dimensions_(image_dimensions),
-      memory_(memory.Pass()) {}
+      memory_(std::move(memory)) {}
 
 }  // namespace image
 }  // namespace loader

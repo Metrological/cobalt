@@ -19,6 +19,7 @@
 
 #include "base/logging.h"
 #include "base/memory/singleton.h"
+#include "base/strings/string_piece.h"
 #include "base/synchronization/lock.h"
 
 namespace base {
@@ -33,12 +34,14 @@ namespace {
 //       std::string and manage the buffer by ourselves.
 class TokenStorage {
  public:
-  static TokenStorage* GetInstance() { return Singleton<TokenStorage>::get(); }
+  static TokenStorage* GetInstance() {
+    return base::Singleton<TokenStorage>::get();
+  }
 
   const char* GetStorage(const char* str);
 
  private:
-  friend struct DefaultSingletonTraits<TokenStorage>;
+  friend struct base::DefaultSingletonTraits<TokenStorage>;
 
   TokenStorage()
       : hash_table_(Token::kHashSlotCount * Token::kStringsPerSlot) {}
@@ -54,16 +57,22 @@ class TokenStorage {
 #if defined(BASE_HASH_USE_HASH_STRUCT)
 
 uint32 hash(const char* str) {
-  return BASE_HASH_NAMESPACE::hash<const char*>()(str);
+  return BASE_HASH_NAMESPACE::hash<std::string>()(std::string(str));
 }
 
 #else
 
-uint32 hash(const char* str) { return BASE_HASH_NAMESPACE::hash_value(str); }
+uint32 hash(const char* str) {
+  return BASE_HASH_NAMESPACE::hash_value(std::string(str));
+}
 
 #endif  // COMPILER
 
 }  // namespace
+
+#ifdef ENABLE_TOKEN_ALPHABETICAL_SORTING
+bool Token::sort_alphabetically_ = false;
+#endif  // ENABLE_TOKEN_TEXT_SORTING
 
 Token::Token() : str_(TokenStorage::GetInstance()->GetStorage("")) {}
 

@@ -17,7 +17,7 @@
 #include <limits>
 
 #include "base/lazy_instance.h"
-#include "base/string_util.h"
+#include "base/strings/string_util.h"
 #include "cobalt/cssom/css_computed_style_declaration.h"
 #include "cobalt/cssom/keyword_value.h"
 #include "cobalt/cssom/length_value.h"
@@ -60,9 +60,7 @@ bool CSSComputedStyleData::PropertySetMatcher::DoDeclaredPropertiesMatch(
   return true;
 }
 
-CSSComputedStyleData::CSSComputedStyleData()
-    : has_declared_inherited_properties_(false) {}
-
+CSSComputedStyleData::CSSComputedStyleData() {}
 CSSComputedStyleData::~CSSComputedStyleData() {}
 
 const scoped_refptr<PropertyValue>&
@@ -101,18 +99,16 @@ CSSComputedStyleData::GetDeclaredPropertyValueReference(PropertyKey key) {
 namespace {
 struct NonTrivialStaticFields {
   NonTrivialStaticFields()
-      : block_keyword_value(KeywordValue::GetBlock()),
-        zero_length_value(new LengthValue(0.0f, kPixelsUnit)) {}
+      : zero_length_value(new LengthValue(0.0f, kPixelsUnit)) {}
 
-  const scoped_refptr<PropertyValue> block_keyword_value;
   const scoped_refptr<PropertyValue> zero_length_value;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(NonTrivialStaticFields);
 };
 
-base::LazyInstance<NonTrivialStaticFields> non_trivial_static_fields =
-    LAZY_INSTANCE_INITIALIZER;
+base::LazyInstance<NonTrivialStaticFields>::DestructorAtExit
+    non_trivial_static_fields = LAZY_INSTANCE_INITIALIZER;
 }  // namespace
 
 const scoped_refptr<PropertyValue>&
@@ -142,17 +138,10 @@ CSSComputedStyleData::GetComputedInitialValue(PropertyKey key) const {
       }
       break;
 
-    case kDisplayProperty:
-      // The initial value of "display" (inline) become "block" if "position" is
-      // "absolute" or "fixed".
-      //    https://www.w3.org/TR/CSS21/visuren.html#dis-pos-flo
-      if (position() == KeywordValue::GetAbsolute() ||
-          position() == KeywordValue::GetFixed()) {
-        return non_trivial_static_fields.Get().block_keyword_value;
-      }
-      break;
-
     case kAllProperty:
+    case kAlignContentProperty:
+    case kAlignItemsProperty:
+    case kAlignSelfProperty:
     case kAnimationDelayProperty:
     case kAnimationDirectionProperty:
     case kAnimationDurationProperty:
@@ -188,13 +177,23 @@ CSSComputedStyleData::GetComputedInitialValue(PropertyKey key) const {
     case kBoxShadowProperty:
     case kColorProperty:
     case kContentProperty:
-    case kFontFamilyProperty:
+    case kDisplayProperty:
     case kFilterProperty:
+    case kFlexProperty:
+    case kFlexBasisProperty:
+    case kFlexDirectionProperty:
+    case kFlexFlowProperty:
+    case kFlexGrowProperty:
+    case kFlexShrinkProperty:
+    case kFlexWrapProperty:
     case kFontProperty:
+    case kFontFamilyProperty:
     case kFontStyleProperty:
     case kFontWeightProperty:
     case kFontSizeProperty:
     case kHeightProperty:
+    case kIntersectionObserverRootMarginProperty:
+    case kJustifyContentProperty:
     case kLeftProperty:
     case kLineHeightProperty:
     case kMarginBottomProperty:
@@ -208,6 +207,7 @@ CSSComputedStyleData::GetComputedInitialValue(PropertyKey key) const {
     case kMinWidthProperty:
     case kNoneProperty:
     case kOpacityProperty:
+    case kOrderProperty:
     case kOutlineProperty:
     case kOutlineStyleProperty:
     case kOverflowProperty:
@@ -312,6 +312,7 @@ void CSSComputedStyleData::AssignFrom(const CSSComputedStyleData& rhs) {
   declared_properties_inherited_from_parent_ =
       rhs.declared_properties_inherited_from_parent_;
   parent_computed_style_declaration_ = rhs.parent_computed_style_declaration_;
+  is_inline_before_blockification_ = rhs.is_inline_before_blockification_;
 }
 
 std::string CSSComputedStyleData::SerializeCSSDeclarationBlock() const {

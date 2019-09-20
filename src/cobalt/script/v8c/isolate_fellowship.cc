@@ -15,31 +15,66 @@
 #include "cobalt/script/v8c/isolate_fellowship.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
 
-#include "base/debug/trace_event.h"
 #include "base/logging.h"
-#include "base/memory/scoped_ptr.h"
+#include "base/trace_event/trace_event.h"
+#include "cobalt/script/v8c/v8c_tracing_controller.h"
 #include "starboard/file.h"
-#include "v8/include/libplatform/libplatform.h"
 
 namespace cobalt {
 namespace script {
 namespace v8c {
 
+namespace {
 // This file will also be touched and rebuilt every time V8 is re-built
 // according to the update_snapshot_time gyp target.
 const char kIsolateFellowshipBuildTime[] = __DATE__ " " __TIME__;
 
+const char* kV8CommandLineFlags[] = {"--optimize_for_size",
+                                     // Starboard disallow rwx memory access.
+                                     "--write_protect_code_memory",
+                                     // Cobalt's TraceMembers and
+                                     // ScriptValue::*Reference do not currently
+                                     // support incremental tracing.
+                                     "--noincremental_marking_wrappers",
+                                     "--noexpose_wasm",
+                                     "--novalidate_asm",
+#if defined(COBALT_GC_ZEAL)
+                                     "--gc_interval=1200"
+#endif
+};
+
+// Configure v8's global command line flag options for Cobalt.
+// It can be called more than once, but make sure it is called before any
+// v8 instance is created.
+void V8FlagsInit() {
+  for (auto flag_str : kV8CommandLineFlags) {
+    v8::V8::SetFlagsFromString(flag_str, SbStringGetLength(flag_str));
+  }
+}
+
+}  // namespace
+
 IsolateFellowship::IsolateFellowship() {
   TRACE_EVENT0("cobalt::script", "IsolateFellowship::IsolateFellowship");
   // TODO: Initialize V8 ICU stuff here as well.
-  platform = v8::platform::CreateDefaultPlatform();
-  v8::V8::InitializePlatform(platform);
+  platform.reset(new CobaltPlatform(v8::platform::NewDefaultPlatform(
+      0 /*thread_pool_size*/, v8::platform::IdleTaskSupport::kDisabled,
+      v8::platform::InProcessStackDumping::kEnabled,
+      std::unique_ptr<v8::TracingController>(new V8cTracingController()))));
+  v8::V8::InitializePlatform(platform.get());
   v8::V8::Initialize();
   array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
 
+  // If a new snapshot data is needed, a temporary v8 isolate will be created
+  // to write the snapshot data. We need to make sure all global command line
+  // flags are set before that.
+  V8FlagsInit();
+#if !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
   InitializeStartupData();
+#endif  // !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
 }
 
 IsolateFellowship::~IsolateFellowship() {
@@ -47,22 +82,21 @@ IsolateFellowship::~IsolateFellowship() {
   v8::V8::Dispose();
   v8::V8::ShutdownPlatform();
 
-  DCHECK(platform);
-  delete platform;
-  platform = nullptr;
-
   DCHECK(array_buffer_allocator);
   delete array_buffer_allocator;
   array_buffer_allocator = nullptr;
 
+#if !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
   // Note that both us and V8 will have created this with new[], see
   // "snapshot-common.cc".  Also note that both startup data creation failure
   // from V8 is possible, and deleting a null pointer is safe, so there is no
   // DCHECK here.
   delete[] startup_data.data;
   startup_data = {nullptr, 0};
+#endif
 }
 
+#if !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
 void IsolateFellowship::InitializeStartupData() {
   TRACE_EVENT0("cobalt::script", "IsolateFellowship::InitializeStartupData");
   DCHECK(startup_data.data == nullptr);
@@ -129,7 +163,7 @@ void IsolateFellowship::InitializeStartupData() {
       return false;
     }
 
-    scoped_array<char> data(new char[data_size]);
+    std::unique_ptr<char[]> data(new char[data_size]);
     read = scoped_file.ReadAll(data.get(), data_size);
     if (read == -1 || read != data_size) {
       LOG(ERROR) << "Reading V8 startup snapshot cache file failed for some "
@@ -198,6 +232,7 @@ void IsolateFellowship::InitializeStartupData() {
 
   maybe_remove_cache_file();
 }
+#endif  // !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
 
 }  // namespace v8c
 }  // namespace script

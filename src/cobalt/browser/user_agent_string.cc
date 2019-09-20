@@ -16,111 +16,17 @@
 
 #include <vector>
 
-#include "base/string_util.h"
-#include "base/stringprintf.h"
-#if defined(COBALT_ENABLE_LIB)
-#include "cobalt/browser/lib/exported/user_agent.h"
-#endif
+#include "base/command_line.h"
+#include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
+#include "cobalt/browser/switches.h"
 #include "cobalt/renderer/get_default_rasterizer_for_platform.h"
 #include "cobalt/script/javascript_engine.h"
 #include "cobalt/version.h"
 #include "cobalt_build_id.h"  // NOLINT(build/include)
-#include "starboard/log.h"
-#include "starboard/string.h"
+#include "starboard/common/log.h"
+#include "starboard/common/string.h"
 #include "starboard/system.h"
-
-// Setup CobaltLib overrides for some user agent components.
-#if defined(COBALT_ENABLE_LIB)
-
-namespace {
-
-// Max length including null terminator.
-const size_t kUserAgentPlatformSuffixMaxLength = 128;
-char g_user_agent_platform_suffix[kUserAgentPlatformSuffixMaxLength] = {0};
-
-bool g_device_type_override_set = false;
-SbSystemDeviceType g_device_type_override = kSbSystemDeviceTypeUnknown;
-
-// Max length including null terminator.
-const size_t kPropertyMaxLength = 512;
-bool g_brand_name_override_set = false;
-char g_brand_name_override[kPropertyMaxLength] = {0};
-bool g_model_name_override_set = false;
-char g_model_name_override[kPropertyMaxLength] = {0};
-
-bool CopyStringAndTestIfSuccess(char* out_value, size_t value_length,
-                                const char* from_value) {
-  if (strlen(from_value) + 1 > value_length) return false;
-  base::strlcpy(out_value, from_value, value_length);
-  return true;
-}
-
-}  // namespace
-
-// Allow host app to append a suffix to the reported platform name.
-bool CbLibUserAgentSetPlatformNameSuffix(const char* suffix) {
-  if (!CopyStringAndTestIfSuccess(g_user_agent_platform_suffix,
-                                  kPropertyMaxLength, suffix)) {
-    // If the suffix is too large then nothing is appended to the platform.
-    g_user_agent_platform_suffix[0] = '\0';
-    return false;
-  }
-
-  return true;
-}
-
-bool CbLibUserAgentSetBrandNameOverride(const char* value) {
-  if (!value) {
-    g_brand_name_override_set = false;
-    return true;
-  }
-
-  if (CopyStringAndTestIfSuccess(g_brand_name_override, kPropertyMaxLength,
-                                 value)) {
-    g_brand_name_override_set = true;
-    return true;
-  }
-
-  // Failed to reset/set value.
-  return false;
-}
-
-bool CbLibUserAgentSetModelNameOverride(const char* value) {
-  if (!value) {
-    g_model_name_override_set = false;
-    return true;
-  }
-
-  if (CopyStringAndTestIfSuccess(g_model_name_override, kPropertyMaxLength,
-                                 value)) {
-    g_model_name_override_set = true;
-    return true;
-  }
-
-  // Failed to reset/set value.
-  return false;
-}
-
-bool CbLibUserAgentSetDeviceTypeOverride(SbSystemDeviceType device_type) {
-  switch (device_type) {
-    case kSbSystemDeviceTypeBlueRayDiskPlayer:
-    case kSbSystemDeviceTypeGameConsole:
-    case kSbSystemDeviceTypeOverTheTopBox:
-    case kSbSystemDeviceTypeSetTopBox:
-    case kSbSystemDeviceTypeTV:
-    case kSbSystemDeviceTypeDesktopPC:
-    case kSbSystemDeviceTypeAndroidTV:
-    case kSbSystemDeviceTypeUnknown:
-      g_device_type_override_set = true;
-      g_device_type_override = device_type;
-      return true;
-    default:
-      g_device_type_override_set = false;
-      return false;
-  }
-}
-
-#endif  // defined(COBALT_ENABLE_LIB)
 
 namespace cobalt {
 namespace browser {
@@ -143,8 +49,8 @@ std::string Sanitize(const std::string& str) {
   std::string clean(str);
   for (size_t i = 0; i < arraysize(kSanitizeReplacements); i++) {
     const SanitizeReplacements* replacement = kSanitizeReplacements + i;
-    ReplaceChars(clean, replacement->replace_chars, replacement->replace_with,
-                 &clean);
+    base::ReplaceChars(clean, replacement->replace_chars,
+                       replacement->replace_with, &clean);
   }
   return clean;
 }
@@ -174,7 +80,7 @@ std::string CreateDeviceTypeString(SbSystemDeviceType device_type) {
 }
 
 std::string CreateConnectionTypeString(
-    const base::optional<SbSystemConnectionType>& connection_type) {
+    const base::Optional<SbSystemConnectionType>& connection_type) {
   if (connection_type) {
     switch (*connection_type) {
       case kSbSystemConnectionTypeWired:
@@ -194,8 +100,8 @@ std::string CreateConnectionTypeString(
 UserAgentPlatformInfo GetUserAgentPlatformInfoFromSystem() {
   UserAgentPlatformInfo platform_info;
 
-  platform_info.starboard_version = base::StringPrintf(
-      "Starboard/%d", SB_API_VERSION);
+  platform_info.starboard_version =
+      base::StringPrintf("Starboard/%d", SB_API_VERSION);
 
   const size_t kSystemPropertyMaxLength = 1024;
   char value[kSystemPropertyMaxLength];
@@ -209,11 +115,16 @@ UserAgentPlatformInfo GetUserAgentPlatformInfoFromSystem() {
   // Fill platform info if it is a hardware TV device.
   SbSystemDeviceType device_type = SbSystemGetDeviceType();
 
-  // Network operator
-  result = SbSystemGetProperty(kSbSystemPropertyNetworkOperatorName, value,
-                               kSystemPropertyMaxLength);
+  // Original Design Manufacturer (ODM)
+#if SB_API_VERSION >= 11
+  result = SbSystemGetProperty(kSbSystemPropertyOriginalDesignManufacturerName,
+                               value, kSystemPropertyMaxLength);
+#else
+  result = SbSystemGetProperty(kSbSystemPropertyNetworkOperatorName,
+                               value, kSystemPropertyMaxLength);
+#endif
   if (result) {
-    platform_info.network_operator = value;
+    platform_info.original_design_manufacturer = value;
   }
 
   platform_info.javascript_engine_version =
@@ -270,7 +181,7 @@ UserAgentPlatformInfo GetUserAgentPlatformInfoFromSystem() {
   }
 
   // Brand
-  result = SbSystemGetProperty(kSbSystemPropertyManufacturerName, value,
+  result = SbSystemGetProperty(kSbSystemPropertyBrandName, value,
                                kSystemPropertyMaxLength);
   if (result) {
     platform_info.brand = value;
@@ -289,25 +200,6 @@ UserAgentPlatformInfo GetUserAgentPlatformInfoFromSystem() {
     platform_info.connection_type = connection_type;
   }
 
-#if defined(COBALT_ENABLE_LIB)
-  if (g_user_agent_platform_suffix[0] != '\0') {
-    platform_info.os_name_and_version += "; ";
-    platform_info.os_name_and_version += g_user_agent_platform_suffix;
-  }
-
-  // Check for overrided values, to see if a client of CobaltLib has explicitly
-  // requested that some values be overridden.
-  if (g_device_type_override_set) {
-    platform_info.device_type = g_device_type_override;
-  }
-  if (g_brand_name_override_set) {
-    platform_info.brand = g_brand_name_override;
-  }
-  if (g_model_name_override_set) {
-    platform_info.model = g_model_name_override;
-  }
-#endif  // defined(COBALT_ENABLE_LIB)
-
   return platform_info;
 }
 
@@ -322,9 +214,19 @@ std::string CreateUserAgentString(const UserAgentPlatformInfo& platform_info) {
   //   Starboard/APIVersion,
   //   Device/FirmwareVersion (Brand, Model, ConnectionType)
 
+  std::string os_name_and_version = platform_info.os_name_and_version;
+
+#if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+  if (command_line->HasSwitch(switches::kUserAgentOsNameVersion)) {
+    os_name_and_version =
+        command_line->GetSwitchValueASCII(switches::kUserAgentOsNameVersion);
+  }
+#endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
+
   //   Mozilla/5.0 (ChromiumStylePlatform)
-  std::string user_agent = base::StringPrintf(
-      "Mozilla/5.0 (%s)", platform_info.os_name_and_version.c_str());
+  std::string user_agent =
+      base::StringPrintf("Mozilla/5.0 (%s)", os_name_and_version.c_str());
 
   //   Cobalt/Version.BuildNumber-BuildConfiguration (unlike Gecko)
   base::StringAppendF(&user_agent, " Cobalt/%s.%s-%s (unlike Gecko)",
@@ -353,7 +255,7 @@ std::string CreateUserAgentString(const UserAgentPlatformInfo& platform_info) {
   // Device/FirmwareVersion (Brand, Model, ConnectionType)
   base::StringAppendF(
       &user_agent, ", %s_%s_%s_%s/%s (%s, %s, %s)",
-      Sanitize(platform_info.network_operator.value_or("")).c_str(),
+      Sanitize(platform_info.original_design_manufacturer.value_or("")).c_str(),
       CreateDeviceTypeString(platform_info.device_type).c_str(),
       Sanitize(platform_info.chipset_model_number.value_or("")).c_str(),
       Sanitize(platform_info.model_year.value_or("")).c_str(),

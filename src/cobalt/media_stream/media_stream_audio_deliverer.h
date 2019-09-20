@@ -22,17 +22,13 @@
 #include <algorithm>
 #include <vector>
 
-#include "base/debug/trace_event.h"
 #include "base/synchronization/lock.h"
 #include "base/threading/thread_checker.h"
-#include "base/time.h"
+#include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/media_stream/audio_parameters.h"
 
-#if defined(COBALT_MEDIA_SOURCE_2016)
 #include "cobalt/media/base/shell_audio_bus.h"
-#else  // defined(COBALT_MEDIA_SOURCE_2016)
-#include "media/base/shell_audio_bus.h"
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
 
 namespace cobalt {
 namespace media_stream {
@@ -64,7 +60,7 @@ class MediaStreamAudioDeliverer {
   // is not destroyed until after calling RemoveConsumer(consumer). This method
   // must be called on the main thread.
   void AddConsumer(Consumer* consumer) {
-    DCHECK(thread_checker_.CalledOnValidThread());
+    DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
     DCHECK(consumer);
     base::AutoLock auto_lock(consumers_lock_);
     DCHECK(std::find(consumers_.begin(), consumers_.end(), consumer) ==
@@ -79,7 +75,7 @@ class MediaStreamAudioDeliverer {
   // further calls will be made to OnSetFormat() or OnData() on any thread.
   // This method must be called on the main thread.
   bool RemoveConsumer(Consumer* consumer) {
-    DCHECK(thread_checker_.CalledOnValidThread());
+    DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
     base::AutoLock auto_lock(consumers_lock_);
     const bool had_consumers =
         !consumers_.empty() || !pending_consumers_.empty();
@@ -98,7 +94,7 @@ class MediaStreamAudioDeliverer {
   // send a notification to all consumers. This method must be called on the
   // main thread.
   void GetConsumerList(std::vector<Consumer*>* consumer_list) const {
-    DCHECK(thread_checker_.CalledOnValidThread());
+    DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
     base::AutoLock auto_lock(consumers_lock_);
     *consumer_list = consumers_;
     consumer_list->insert(consumer_list->end(), pending_consumers_.begin(),
@@ -121,13 +117,9 @@ class MediaStreamAudioDeliverer {
     consumers_.clear();
   }
 
-  // Deliver data to all consumers. This method may be called on any thread.
+// Deliver data to all consumers. This method may be called on any thread.
 
-#if defined(COBALT_MEDIA_SOURCE_2016)
   void OnData(const media::ShellAudioBus& audio_bus,
-#else   // defined(COBALT_MEDIA_SOURCE_2016)
-  void OnData(const ::media::ShellAudioBus& audio_bus,
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
               base::TimeTicks reference_time) {
     TRACE_EVENT1("media_stream", "MediaStreamAudioDeliverer::OnData",
                  "reference time (ms)",
@@ -154,7 +146,7 @@ class MediaStreamAudioDeliverer {
  private:
   // In debug builds, check that all methods that could cause object graph or
   // data flow changes are being called on the main thread.
-  base::ThreadChecker thread_checker_;
+  THREAD_CHECKER(thread_checker_);
 
   // Protects concurrent access to |pending_consumers_| and |consumers_|.
   mutable base::Lock consumers_lock_;

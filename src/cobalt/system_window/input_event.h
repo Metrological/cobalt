@@ -38,6 +38,9 @@ class InputEvent : public base::Event {
     kTouchpadDown,
     kTouchpadUp,
     kTouchpadMove,
+    kTouchscreenDown,
+    kTouchscreenUp,
+    kTouchscreenMove,
     kWheel,
   };
 
@@ -56,18 +59,15 @@ class InputEvent : public base::Event {
     kForwardButton = 1 << 8,
   };
 
-  InputEvent(SbTimeMonotonic timestamp, Type type, int device_id,
-             int key_code, uint32 modifiers, bool is_repeat,
+  InputEvent(SbTimeMonotonic timestamp, Type type, int device_id, int key_code,
+             uint32 modifiers, bool is_repeat,
              const math::PointF& position = math::PointF(),
-             const math::PointF& delta = math::PointF()
-#if SB_API_VERSION >= 6
-             ,
+             const math::PointF& delta = math::PointF(),
              float pressure = 0, const math::PointF& size = math::PointF(),
              const math::PointF& tilt = math::PointF()
-#endif
 #if SB_HAS(ON_SCREEN_KEYBOARD)
-             ,
-             const std::string& input_text = ""
+                 ,
+             const std::string& input_text = "", bool is_composing = false
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
              )
       : timestamp_(timestamp),
@@ -77,16 +77,14 @@ class InputEvent : public base::Event {
         modifiers_(modifiers),
         is_repeat_(is_repeat),
         position_(position),
-        delta_(delta)
-#if SB_API_VERSION >= 6
-        ,
+        delta_(delta),
         pressure_(pressure),
         size_(size),
         tilt_(tilt)
-#endif
 #if SB_HAS(ON_SCREEN_KEYBOARD)
         ,
-        input_text_(input_text)
+        input_text_(input_text),
+        is_composing_(is_composing)
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
   {
   }
@@ -101,13 +99,12 @@ class InputEvent : public base::Event {
   bool is_repeat() const { return is_repeat_; }
   const math::PointF& position() const { return position_; }
   const math::PointF& delta() const { return delta_; }
-#if SB_API_VERSION >= 6
   float pressure() const { return pressure_; }
   const math::PointF& size() const { return size_; }
   const math::PointF& tilt() const { return tilt_; }
-#endif
 #if SB_HAS(ON_SCREEN_KEYBOARD)
   const std::string& input_text() const { return input_text_; }
+  bool is_composing() const { return is_composing_; }
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
   BASE_EVENT_SUBCLASS(InputEvent);
@@ -121,13 +118,12 @@ class InputEvent : public base::Event {
   bool is_repeat_;
   math::PointF position_;
   math::PointF delta_;
-#if SB_API_VERSION >= 6
   float pressure_;
   math::PointF size_;
   math::PointF tilt_;
-#endif
 #if SB_HAS(ON_SCREEN_KEYBOARD)
   std::string input_text_;
+  bool is_composing_;
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 };
 

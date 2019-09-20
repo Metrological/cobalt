@@ -21,7 +21,7 @@
 #include "cobalt/browser/memory_settings/constants.h"
 #include "cobalt/browser/memory_settings/test_common.h"
 #include "cobalt/browser/switches.h"
-#include "starboard/log.h"
+#include "starboard/common/log.h"
 #include "starboard/memory.h"
 #include "starboard/system.h"
 
@@ -88,20 +88,47 @@ math::Size GetDimensions(StandardDisplaySettings enum_value) {
 }
 
 // Tests the expectation that CalculateImageCacheSize() is a pure function
-// (side effect free) and will produce the expected results.
-TEST(MemoryCalculations, CalculateImageCacheSize) {
-  EXPECT_EQ(kMinImageCacheSize, CalculateImageCacheSize(GetDimensions(k720p)));
-  EXPECT_EQ(32 * 1024 * 1024,  // 32MB.
-            CalculateImageCacheSize(GetDimensions(k1080p)));
-  EXPECT_EQ(kMaxImageCacheSize, CalculateImageCacheSize(GetDimensions(kUHD4k)));
+// (side effect free) and will produce the expected results when decoding to
+// multi-plane image is enabled.
+TEST(MemoryCalculations, CalculateImageCacheSizeWithDecodingToMultiPlane) {
+  EXPECT_EQ(kMinImageCacheSizeWithDecodingToMultiPlane,
+            CalculateImageCacheSize(GetDimensions(k720p), true));
+  EXPECT_EQ(kImageCacheSize1080pWithDecodingToMultiPlane,
+            CalculateImageCacheSize(GetDimensions(k1080p), true));
+  EXPECT_EQ(kMaxImageCacheSize,
+            CalculateImageCacheSize(GetDimensions(kUHD4k), true));
 
   // Expect that the floor is hit for smaller values.
-  EXPECT_EQ(kMinImageCacheSize, CalculateImageCacheSize(GetDimensions(k480p)));
+  EXPECT_EQ(kMinImageCacheSizeWithDecodingToMultiPlane,
+            CalculateImageCacheSize(GetDimensions(k480p), true));
 
   // Expect that the ceiling is hit for larger values.
   EXPECT_EQ(kMaxImageCacheSize,
-            CalculateImageCacheSize(GetDimensions(kCinema4k)));
-  EXPECT_EQ(kMaxImageCacheSize, CalculateImageCacheSize(GetDimensions(k8k)));
+            CalculateImageCacheSize(GetDimensions(kCinema4k), true));
+  EXPECT_EQ(kMaxImageCacheSize,
+            CalculateImageCacheSize(GetDimensions(k8k), true));
+}
+
+// Tests the expectation that CalculateImageCacheSize() is a pure function
+// (side effect free) and will produce the expected results when decoding to
+// multi-plane image is disabled.
+TEST(MemoryCalculations, CalculateImageCacheSizeWithoutDecodingToMultiPlane) {
+  EXPECT_EQ(kMinImageCacheSizeWithoutDecodingToMultiPlane,
+            CalculateImageCacheSize(GetDimensions(k720p), false));
+  EXPECT_EQ(kImageCacheSize1080pWithoutDecodingToMultiPlane,
+            CalculateImageCacheSize(GetDimensions(k1080p), false));
+  EXPECT_EQ(kMaxImageCacheSize,
+            CalculateImageCacheSize(GetDimensions(kUHD4k), false));
+
+  // Expect that the floor is hit for smaller values.
+  EXPECT_EQ(kMinImageCacheSizeWithoutDecodingToMultiPlane,
+            CalculateImageCacheSize(GetDimensions(k480p), false));
+
+  // Expect that the ceiling is hit for larger values.
+  EXPECT_EQ(kMaxImageCacheSize,
+            CalculateImageCacheSize(GetDimensions(kCinema4k), false));
+  EXPECT_EQ(kMaxImageCacheSize,
+            CalculateImageCacheSize(GetDimensions(k8k), false));
 }
 
 // Tests the expectation that CalculateSkiaGlyphAtlasTextureSize() is a pure
@@ -152,8 +179,7 @@ TEST(MemoryCalculations, CalculateSoftwareSurfaceCacheSizeInBytes) {
 
 TEST(MemoryCalculations, CalculateMiscCobaltGpuSize) {
   math::Size ui_resolution = GetDimensions(k1080p);
-  EXPECT_EQ(24 * 1024 * 1024,
-            CalculateMiscCobaltGpuSize(ui_resolution));
+  EXPECT_EQ(24 * 1024 * 1024, CalculateMiscCobaltGpuSize(ui_resolution));
 }
 
 }  // namespace memory_settings

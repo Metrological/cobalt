@@ -12,21 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
 #include <ostream>
 #include <vector>
 
 #include "base/command_line.h"
-#include "base/message_loop.h"
+#include "base/message_loop/message_loop.h"
 #include "base/path_service.h"
+#include "base/test/scoped_task_environment.h"
 #include "cobalt/base/cobalt_paths.h"
+#include "cobalt/cssom/viewport_size.h"
 #include "cobalt/layout_tests/layout_snapshot.h"
 #include "cobalt/layout_tests/test_parser.h"
 #include "cobalt/layout_tests/test_utils.h"
 #include "cobalt/math/size.h"
 #include "cobalt/render_tree/animations/animate_node.h"
 #include "cobalt/renderer/render_tree_pixel_tester.h"
-#include "googleurl/src/gurl.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "url/gurl.h"
+
+using cobalt::cssom::ViewportSize;
 
 namespace cobalt {
 namespace layout_tests {
@@ -53,25 +58,50 @@ const char kOutputAllTestDetails[] = "output-all-test-details";
 namespace {
 
 void ScreenshotFunction(
-    scoped_refptr<base::MessageLoopProxy> expected_message_loop,
+    scoped_refptr<base::SingleThreadTaskRunner> expected_message_loop,
     renderer::RenderTreePixelTester* pixel_tester,
     const scoped_refptr<render_tree::Node>& node,
+    const base::Optional<math::Rect>& clip_rect,
     const dom::ScreenshotManager::OnUnencodedImageCallback& callback) {
-  if (base::MessageLoopProxy::current() != expected_message_loop) {
+  if (expected_message_loop &&
+      !expected_message_loop->BelongsToCurrentThread()) {
     expected_message_loop->PostTask(
         FROM_HERE, base::Bind(&ScreenshotFunction, expected_message_loop,
-                              pixel_tester, node, callback));
+                              pixel_tester, node, clip_rect, callback));
     return;
   }
-  scoped_array<uint8_t> image_data = pixel_tester->RasterizeRenderTree(node);
+  // The tests only take full-screen screenshots, so |clip_rect| is ignored.
+  std::unique_ptr<uint8_t[]> image_data =
+      pixel_tester->RasterizeRenderTree(node);
   const math::Size& image_dimensions = pixel_tester->GetTargetSize();
-  callback.Run(image_data.Pass(), image_dimensions);
+  callback.Run(std::move(image_data), image_dimensions);
 }
+
+struct GetTestName {
+  std::string operator()(const ::testing::TestParamInfo<TestInfo>& info) const {
+    // Only alphanumeric characters and '_' are valid.
+    std::string name = info.param.base_file_path.BaseName().value();
+    for (size_t i = 0; i < name.size(); ++i) {
+      char ch = name[i];
+      if (ch >= 'A' && ch <= 'Z') {
+        continue;
+      }
+      if (ch >= 'a' && ch <= 'z') {
+        continue;
+      }
+      if (ch >= '0' && ch <= '9') {
+        continue;
+      }
+      name[i] = '_';
+    }
+    return name;
+  }
+};
 
 }  // namespace
 
-class LayoutTest : public ::testing::TestWithParam<TestInfo> {};
-TEST_P(LayoutTest, LayoutTest) {
+class Layout : public ::testing::TestWithParam<TestInfo> {};
+TEST_P(Layout, Test) {
   // Output the name of the current input file so that it is visible in test
   // output.
   std::cout << "(" << GetParam() << ")" << std::endl;
@@ -79,16 +109,16 @@ TEST_P(LayoutTest, LayoutTest) {
   // Setup a message loop for the current thread since we will be constructing
   // a WebModule, which requires a message loop to exist for the current
   // thread.
-  MessageLoop message_loop(MessageLoop::TYPE_DEFAULT);
+  base::test::ScopedTaskEnvironment scoped_environment;
 
   // Setup the pixel tester we will use to perform pixel tests on the render
   // trees output by the web module.
   renderer::RenderTreePixelTester::Options pixel_tester_options;
   pixel_tester_options.output_failed_test_details =
-      CommandLine::ForCurrentProcess()->HasSwitch(
+      base::CommandLine::ForCurrentProcess()->HasSwitch(
           switches::kOutputFailedTestDetails);
   pixel_tester_options.output_all_test_details =
-      CommandLine::ForCurrentProcess()->HasSwitch(
+      base::CommandLine::ForCurrentProcess()->HasSwitch(
           switches::kOutputAllTestDetails);
 
   // Resolve the viewport size to a default if the test did not explicitly
@@ -96,18 +126,19 @@ TEST_P(LayoutTest, LayoutTest) {
   // layout tests will have available to them.  We must make a trade-off between
   // room for tests to maneuver within and speed at which pixel tests can be
   // done.
-  const math::Size kDefaultViewportSize(640, 360);
-  math::Size viewport_size = GetParam().viewport_size
-                                 ? *GetParam().viewport_size
-                                 : kDefaultViewportSize;
+  const ViewportSize kDefaultViewportSize(640, 360);
+  ViewportSize viewport_size = GetParam().viewport_size
+                                   ? *GetParam().viewport_size
+                                   : kDefaultViewportSize;
 
   renderer::RenderTreePixelTester pixel_tester(
-      viewport_size, GetTestInputRootDirectory(), GetTestOutputRootDirectory(),
-      pixel_tester_options);
+      viewport_size.width_height(), GetTestInputRootDirectory(),
+      GetTestOutputRootDirectory(), pixel_tester_options);
 
   browser::WebModule::LayoutResults layout_results = SnapshotURL(
       GetParam().url, viewport_size, pixel_tester.GetResourceProvider(),
-      base::Bind(&ScreenshotFunction, base::MessageLoopProxy::current(),
+      base::Bind(&ScreenshotFunction,
+                 base::MessageLoop::current()->task_runner(),
                  base::Unretained(&pixel_tester)));
 
   scoped_refptr<render_tree::animations::AnimateNode> animate_node =
@@ -129,10 +160,10 @@ TEST_P(LayoutTest, LayoutTest) {
   bool results =
       pixel_tester.TestTree(static_render_tree, GetParam().base_file_path);
 
-  if (CommandLine::ForCurrentProcess()->HasSwitch(switches::kRebaseline) ||
-      (!results &&
-       CommandLine::ForCurrentProcess()->HasSwitch(
-           switches::kRebaselineFailedTests))) {
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kRebaseline) ||
+      (!results && base::CommandLine::ForCurrentProcess()->HasSwitch(
+                       switches::kRebaselineFailedTests))) {
     pixel_tester.Rebaseline(static_render_tree, GetParam().base_file_path);
   }
 
@@ -140,105 +171,146 @@ TEST_P(LayoutTest, LayoutTest) {
 }
 
 // Cobalt-specific test cases.
-INSTANTIATE_TEST_CASE_P(CobaltSpecificLayoutTests, LayoutTest,
-                        ::testing::ValuesIn(EnumerateLayoutTests("cobalt")));
+INSTANTIATE_TEST_CASE_P(
+    CobaltSpecificLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("cobalt")),
+    GetTestName());
 // Custom CSS 2.1 (https://www.w3.org/TR/CSS21/) test cases.
-INSTANTIATE_TEST_CASE_P(CSS21LayoutTests, LayoutTest,
-                        ::testing::ValuesIn(EnumerateLayoutTests("css-2-1")));
+INSTANTIATE_TEST_CASE_P(
+    CSS21LayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("css-2-1")),
+    GetTestName());
 // Custom CSS Background (https://www.w3.org/TR/css3-background/) test cases.
 INSTANTIATE_TEST_CASE_P(
-    CSSBackground3LayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("css3-background")));
+    CSSBackground3LayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("css3-background")),
+    GetTestName());
 // Custom CSS Color (https://www.w3.org/TR/css3-color/) test cases.
 INSTANTIATE_TEST_CASE_P(
-    CSSColor3LayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("css3-color")));
+    CSSColor3LayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("css3-color")),
+    GetTestName());
 // Custom CSS Images (https://www.w3.org/TR/css3-images/) test cases.
 INSTANTIATE_TEST_CASE_P(
-    CSSImages3LayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("css3-images")));
+    CSSImages3LayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("css3-images")),
+    GetTestName());
+// Custom CSS Media Queries (https://www.w3.org/TR/css3-mediaqueries/) test
+// cases.
+INSTANTIATE_TEST_CASE_P(
+    CSSMediaQueriesLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("css3-mediaqueries")),
+    GetTestName());
 // Custom CSS Text (https://www.w3.org/TR/css-text-3/) test cases.
 INSTANTIATE_TEST_CASE_P(
-    CSSText3LayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("css-text-3")));
+    CSSText3LayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("css-text-3")),
+    GetTestName());
 // Custom CSS Transform (http://https://www.w3.org/TR/css-transforms/)
 // test cases.
 INSTANTIATE_TEST_CASE_P(
-    CSSTransformsLayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("css-transforms")));
+    CSSTransformsLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("css-transforms")),
+    GetTestName());
 // Custom CSS Transition
 // (https://www.w3.org/TR/2013/WD-css3-transitions-20131119/)
 // test cases.
 INSTANTIATE_TEST_CASE_P(
-    CSSTransitionLayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("css3-transitions")));
+    CSSTransitionLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("css3-transitions")),
+    GetTestName());
 // Custom CSS Animation
 // (https://www.w3.org/TR/2013/WD-css3-animations-20130219/#animations)
 // test cases.
 INSTANTIATE_TEST_CASE_P(
-    CSSAnimationLayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("css3-animations")));
+    CSSAnimationLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("css3-animations")),
+    GetTestName());
 // Custom bidi text (http://www.unicode.org/reports/tr9/)
 // (https://www.w3.org/TR/CSS21/visuren.html#direction) test cases.
 INSTANTIATE_TEST_CASE_P(
-    BidiLayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("bidi")));
+    BidiLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("bidi")),
+    GetTestName());
 // Custom text shaping test cases.
 INSTANTIATE_TEST_CASE_P(
-    TextShapingLayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("text-shaping")));
+    TextShapingLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("text-shaping")),
+    GetTestName());
 // Custom CSS Conditional (https://www.w3.org/TR/css3-conditional/) test cases.
 INSTANTIATE_TEST_CASE_P(
-    CSSConditional3LayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("css3-conditional")));
+    CSSConditional3LayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("css3-conditional")),
+    GetTestName());
+// Custom CSS Flexible Box (https://www.w3.org/TR/css-flexbox-1) test cases.
+INSTANTIATE_TEST_CASE_P(
+    CSSFlexbox3LayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("css3-flexbox")), GetTestName());
 // Custom CSS Font (https://www.w3.org/TR/css3-fonts/) test cases.
 INSTANTIATE_TEST_CASE_P(
-    CSS3FontsLayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("css3-fonts")));
+    CSS3FontsLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("css3-fonts")),
+    GetTestName());
 // Custom CSS Text Decor (https://www.w3.org/TR/css-text-decor-3/) test cases.
 INSTANTIATE_TEST_CASE_P(
-    CSS3TextDecorLayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("css3-text-decor")));
+    CSS3TextDecorLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("css3-text-decor")),
+    GetTestName());
 // Custom CSS UI (https://www.w3.org/TR/css3-ui/) test cases.
-INSTANTIATE_TEST_CASE_P(CSS3UILayoutTests, LayoutTest,
-                        ::testing::ValuesIn(EnumerateLayoutTests("css3-ui")));
+INSTANTIATE_TEST_CASE_P(
+    CSS3UILayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("css3-ui")),
+    GetTestName());
 // Custom CSS Value (https://www.w3.org/TR/css3-values/) test cases.
 INSTANTIATE_TEST_CASE_P(
-    CSS3ValuesLayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("css3-values")));
+    CSS3ValuesLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("css3-values")),
+    GetTestName());
 // Custom incremental layout test cases.
 INSTANTIATE_TEST_CASE_P(
-    IncrementalLayoutLayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("incremental-layout")));
+    IncrementalLayoutLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("incremental-layout")),
+    GetTestName());
 // Custom CSSOM view (https://www.w3.org/TR/2013/WD-cssom-view-20131217/)
 // test cases.
 INSTANTIATE_TEST_CASE_P(
-    CSSOMViewLayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("cssom-view")));
+    CSSOMViewLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("cssom-view")),
+    GetTestName());
 
 // JavaScript HTML5 WebAPIs (https://www.w3.org/TR/html5/webappapis.html) test
 // cases.
 INSTANTIATE_TEST_CASE_P(
-    WebAppAPIsLayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("webappapis")));
+    WebAppAPIsLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("webappapis")),
+    GetTestName());
 
 // JavaScript HTML5 APIs that describe requestAnimationFrame().
 //   https://www.w3.org/TR/animation-timing/
 INSTANTIATE_TEST_CASE_P(
-    AnimationTimingAPILayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("animation-timing")));
+    AnimationTimingAPILayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("animation-timing")),
+    GetTestName());
 
 // Problematic test cases found through cluster-fuzz.
 INSTANTIATE_TEST_CASE_P(
-    ClusterFuzzLayoutTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("cluster-fuzz")));
+    ClusterFuzzLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("cluster-fuzz")),
+    GetTestName());
+
+// Intersection Observer API (https://www.w3.org/TR/intersection-observer/) test
+// cases
+INSTANTIATE_TEST_CASE_P(
+    IntersectionObserverLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("intersection-observer")));
 
 // Disable on Windows until network stack is implemented.
 #if !defined(COBALT_WIN)
 // Content Security Policy test cases.
 INSTANTIATE_TEST_CASE_P(
-    ContentSecurityPolicyTests, LayoutTest,
-    ::testing::ValuesIn(EnumerateLayoutTests("csp")));
+    ContentSecurityPolicyTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("csp")),
+    GetTestName());
 #endif  // !defined(COBALT_WIN)
 
 }  // namespace layout_tests

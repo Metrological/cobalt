@@ -21,7 +21,42 @@ the Cobalt source tree, and then packages them into a user-specified location so
 that the app launcher can be run independent of the Cobalt source tree.
 """
 
+
+################################################################################
+#                                   API                                        #
+################################################################################
+
+
+def CopyAppLauncherTools(repo_root, dest_root,
+                         additional_glob_patterns=None,
+                         include_black_box_tests=True):
+  """Copies app launcher related files to the destination root.
+  repo_root: The 'src' path that will be used for packaging.
+  dest_root: The directory where the src files will be stored.
+  additional_glob_patterns: Some platforms may need to include certain
+    dependencies beyond the default include file patterns. The results here will
+    be merged in with _INCLUDE_FILE_PATTERNS.
+  include_black_box_tests: If True then the resources for the black box tests
+    are included."""
+  _CopyAppLauncherTools(repo_root, dest_root,
+                        additional_glob_patterns,
+                        include_black_box_tests=include_black_box_tests)
+
+
+def MakeZipArchive(src, output_zip):
+  """Convenience function to zip up all files in the src directory (produced
+  as dest_root argument in CopyAppLauncherTools()) which will create a zip
+  file with the relative root being the src directory."""
+  _MakeZipArchive(src, output_zip)
+
+
+################################################################################
+#                                  IMPL                                        #
+################################################################################
+
+
 import argparse
+import fnmatch
 import logging
 import os
 import shutil
@@ -31,8 +66,34 @@ import _env  # pylint: disable=unused-import
 from paths import REPOSITORY_ROOT
 from paths import THIRD_PARTY_ROOT
 sys.path.append(THIRD_PARTY_ROOT)
-import jinja2
 import starboard.tools.platform
+import jinja2
+
+
+# Default python directories to app launcher resources.
+_INCLUDE_FILE_PATTERNS = [
+    ('buildbot', '*.py'),
+    ('buildbot/device_server/shared/ssl_certs', '*'),
+    ('cobalt', '*.py'),
+    # TODO: Test and possibly prune.
+    ('lbshell', '*.py'),
+    ('starboard', '*.py'),
+    # jinja2 required by this app_launcher_packager.py script.
+    ('third_party/jinja2',  '*.py'),
+    ('third_party/markupsafe', '*.py'), # Required by third_party/jinja2
+]
+
+
+_INCLUDE_BLACK_BOX_TESTS_PATTERNS = [
+    # Black box and web platform tests have non-py assets, so everything
+    # is picked up.
+    ('cobalt/black_box_tests', '*'),
+    ('third_party/web_platform_tests', '*'),
+    ('third_party/proxy_py', '*'),
+]
+
+# Do not allow .git directories to make it into the build.
+_EXCLUDE_DIRECTORY_PATTERNS = ['.git']
 
 
 def _MakeDir(d):
@@ -58,35 +119,23 @@ def _IsOutDir(source_root, d):
   return out_dir in d
 
 
-def CopyPythonFiles(source_root, dest_root):
-  """Copy all python files to the destination folder.
-
-  Copy from source to destination while maintaining the directory structure.
-
-  Args:
-    source_root: Absolute path to the root of files to be copied.
-    dest_root: Destination into which files will be copied.
-  """
-  logging.info('Searching in ' + source_root + ' for python files.')
+def _FindFilesRecursive(src_root, glob_pattern):
+  src_root = os.path.normpath(src_root)
+  logging.info('Searching in %s for %s type files.', src_root, glob_pattern)
   file_list = []
-  for root, _, files in os.walk(source_root):
+  for root, dirs, files in os.walk(src_root, topdown=True):
+    # Prunes when using os.walk with topdown=True
+    [dirs.remove(d) for d in list(dirs) if d in _EXCLUDE_DIRECTORY_PATTERNS]
     # Eliminate any locally built files under the out directory.
-    if _IsOutDir(source_root, root):
+    if _IsOutDir(src_root, root):
       continue
+    files = fnmatch.filter(files, glob_pattern)
     for f in files:
-      if f.endswith('.py'):
-        source_file = os.path.join(root, f)
-        dest_file = source_file.replace(source_root, dest_root)
-        file_list.append((source_file, dest_file))
-
-  logging.info('Starting copy of ' + str(len(file_list)) + ' python files.')
-  for (source, dest) in file_list:
-    _MakeDir(os.path.dirname(dest))
-    shutil.copy2(source, dest)
-  logging.info('Copy of python files finished.')
+      file_list.append(os.path.join(root, f))
+  return file_list
 
 
-def WritePlatformsInfo(repo_root, dest_root):
+def _WritePlatformsInfo(repo_root, dest_root):
   """Get platforms' information and write the platform.py based on a template.
 
   Platform.py is responsible for enumerating all supported platforms in the
@@ -105,13 +154,11 @@ def WritePlatformsInfo(repo_root, dest_root):
   current_file = os.path.abspath(__file__)
   current_dir = os.path.dirname(current_file)
   dest_dir = current_dir.replace(repo_root, dest_root)
-
   platforms_map = {}
   for p in starboard.tools.platform.GetAll():
     platform_path = os.path.relpath(
         starboard.tools.platform.Get(p).path, repo_root)
     platforms_map[p] = platform_path
-
   template = jinja2.Template(
       open(os.path.join(current_dir, 'platform.py.template')).read())
   with open(os.path.join(dest_dir, 'platform.py'), 'w+') as f:
@@ -119,26 +166,53 @@ def WritePlatformsInfo(repo_root, dest_root):
   logging.info('Finished baking in platform info files.')
 
 
-def CopyAppLauncherTools(repo_root, dest_root):
+def _CopyAppLauncherTools(repo_root, dest_root, additional_glob_patterns,
+                          include_black_box_tests):
+  # Step 1: Remove previous output directory if it exists
   if os.path.isdir(dest_root):
     shutil.rmtree(dest_root)
+  # Step 2: Find all glob files from specified search directories.
+  include_glob_patterns = _INCLUDE_FILE_PATTERNS
+  if additional_glob_patterns:
+    include_glob_patterns += additional_glob_patterns
+  if include_black_box_tests:
+    include_glob_patterns += _INCLUDE_BLACK_BOX_TESTS_PATTERNS
+  copy_list = []
+  for d, glob_pattern in include_glob_patterns:
+    flist = _FindFilesRecursive(os.path.join(repo_root, d), glob_pattern)
+    copy_list.extend(flist)
+  # Copy all src/*.py from repo_root without recursing down.
+  for f in os.listdir(repo_root):
+    src = os.path.join(repo_root, f)
+    if os.path.isfile(src) and src.endswith('.py'):
+      copy_list.append(src)
+  # Order by file path string and remove any duplicate paths.
+  copy_list = list(set(copy_list))
+  copy_list.sort()
+  folders_logged = set()
+  # Step 3: Copy the src files to the destination directory.
+  for src in copy_list:
+    tail_path = os.path.relpath(src, repo_root)
+    dst = os.path.join(dest_root, tail_path)
+    d = os.path.dirname(dst)
+    if not os.path.isdir(d):
+      os.makedirs(d)
+    src_folder = os.path.dirname(src)
+    if not src_folder in folders_logged:
+      folders_logged.add(src_folder)
+      logging.info(src_folder + ' -> ' + os.path.dirname(dst))
+    shutil.copy2(src, dst)
+  # Step 4: Re-write the platform infos file in the new repo copy.
+  _WritePlatformsInfo(repo_root, dest_root)
 
-  CopyPythonFiles(repo_root, dest_root)
-  WritePlatformsInfo(repo_root, dest_root)
 
-  # Create an extra zip file of the app launcher package so that users have
-  # the option of downloading a single file which is much faster, especially
-  # on x20.
-  logging.info('Creating a zip file of the app launcher package.')
-
-  # Make a zip that has the same name as the dest_root. Then the zip file
-  # and dest_root are guaranteed to be on the same file system under the
-  # same parent, so that moving the zip file to dest_root is optimized.
-  app_launcher_zip_file = shutil.make_archive(dest_root, 'zip', dest_root)
-  dest_zip = os.path.join(dest_root, 'app_launcher.zip')
-  if os.path.isfile(dest_zip):
-    os.unlink(dest_zip)
-  shutil.move(app_launcher_zip_file, dest_zip)
+def _MakeZipArchive(src, output_zip):
+  if os.path.isfile(output_zip):
+    os.unlink(output_zip)
+  logging.info('Creating a zip file of the app launcher package')
+  logging.info(src + ' -> ' + output_zip)
+  tmp_file = shutil.make_archive(src, 'zip', src)
+  shutil.move(tmp_file, output_zip)
 
 
 def main(command_args):
@@ -149,7 +223,7 @@ def main(command_args):
       '--destination_root',
       required=True,
       help='The path to the root of the destination folder into which the '
-      'python scripts are packaged.')
+           'application resources are packaged.')
   args = parser.parse_args(command_args)
   CopyAppLauncherTools(REPOSITORY_ROOT, args.destination_root)
   return 0

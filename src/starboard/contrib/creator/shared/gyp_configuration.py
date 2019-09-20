@@ -52,6 +52,12 @@ class CreatorConfiguration(platform_configuration.PlatformConfiguration):
         config_name, use_clang=1)
     variables.update({
         'sysroot': sysroot,
+        'javascript_engine': 'v8',
+        'cobalt_enable_jit': 1,
+        'v8_target_arch': 'mipsel',
+        'mips_arch_variant': 'r2',
+        'mips_fpu_mode': 'fp32',
+        'mips_float_abi': 'hard',
     })
 
     return variables
@@ -72,8 +78,9 @@ class CreatorConfiguration(platform_configuration.PlatformConfiguration):
 
   def GetEnvironmentVariables(self):
     self.ci20_home = self._GetCi20Home()
-    self.host_compiler_environment = build.GetHostCompilerEnvironment(
-        clang.GetClangSpecification(), False)
+    if not hasattr(self, 'host_compiler_environment'):
+      self.host_compiler_environment = build.GetHostCompilerEnvironment(
+          clang.GetClangSpecification(), False)
     env_variables = self.host_compiler_environment
     env_variables = {
         'CC': self.host_compiler_environment['CC_host'],
@@ -133,7 +140,5 @@ class CreatorConfiguration(platform_configuration.PlatformConfiguration):
         # test fails on x64 also
         test_filter.TestFilter('net_unittests',
                                'HostResolverImplDnsTest.DnsTaskUnspec'),
-        # we don't have proper procedure for running this test
-        test_filter.TestFilter('web_platform_tests', test_filter.FILTER_ALL),
     ])
     return filters

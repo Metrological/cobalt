@@ -16,6 +16,7 @@
 
 #include "cobalt/browser/memory_settings/auto_mem.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,7 @@
 #include "cobalt/browser/memory_settings/calculations.h"
 #include "cobalt/browser/memory_settings/test_common.h"
 #include "cobalt/browser/switches.h"
+#include "cobalt/loader/image/image_decoder.h"
 #include "cobalt/math/size.h"
 #include "starboard/system.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -43,20 +45,20 @@ const int64_t kSmallEngineGpuMemorySize = 68 * 1024 * 1024;
 
 #define EXPECT_MEMORY_SETTING(SETTING, SOURCE, MEMORY_TYPE, VALUE)          \
   EXPECT_EQ(VALUE, SETTING->value()) << " failure for " << SETTING->name(); \
-  EXPECT_EQ(MEMORY_TYPE, SETTING->memory_type()) << "failure for "          \
-                                                 << SETTING->memory_type(); \
-  EXPECT_EQ(SOURCE, SETTING->source_type()) << " failure for "              \
-                                            << SETTING->name();
+  EXPECT_EQ(MEMORY_TYPE, SETTING->memory_type())                            \
+      << "failure for " << SETTING->memory_type();                          \
+  EXPECT_EQ(SOURCE, SETTING->source_type())                                 \
+      << " failure for " << SETTING->name();
 
 AutoMemSettings EmptyCommandLine() {
   return AutoMemSettings(AutoMemSettings::kTypeCommandLine);
 }
 
-scoped_ptr<AutoMem> CreateDefaultAutoMem() {
+std::unique_ptr<AutoMem> CreateDefaultAutoMem() {
   AutoMemSettings build_settings(AutoMemSettings::kTypeBuild);
-  scoped_ptr<AutoMem> auto_mem(
+  std::unique_ptr<AutoMem> auto_mem(
       new AutoMem(kResolution1080p, EmptyCommandLine(), build_settings));
-  return auto_mem.Pass();
+  return auto_mem;
 }
 
 }  // namespace.
@@ -130,7 +132,7 @@ TEST(AutoMem, CommandLineOverrides) {
 }
 
 // Tests the expectation that if the command line specifies that the variable
-// is "autoset" that the builtin setting is overriden.
+// is "autoset" that the builtin setting is overridden.
 TEST(AutoMem, CommandLineSpecifiesAutoset) {
   AutoMemSettings command_line_settings(AutoMemSettings::kTypeCommandLine);
   command_line_settings.cobalt_image_cache_size_in_bytes = -1;
@@ -139,9 +141,12 @@ TEST(AutoMem, CommandLineSpecifiesAutoset) {
 
   AutoMem auto_mem(kResolution1080p, command_line_settings, build_settings);
 
-  EXPECT_MEMORY_SETTING(auto_mem.image_cache_size_in_bytes(),
-                        MemorySetting::kAutoSet, MemorySetting::kGPU,
-                        CalculateImageCacheSize(kResolution1080p));
+  EXPECT_MEMORY_SETTING(
+      auto_mem.image_cache_size_in_bytes(), MemorySetting::kAutoSet,
+      MemorySetting::kGPU,
+      CalculateImageCacheSize(
+          kResolution1080p,
+          loader::image::ImageDecoder::AllowDecodingToMultiPlane()));
 }
 
 // Tests that skia atlas texture will be bind to the built in value, iff it has
@@ -226,7 +231,7 @@ TEST(AutoMem, AllMemorySettingsAreOrderedByName) {
   std::vector<const MemorySetting*> settings = auto_mem.AllMemorySettings();
 
   for (size_t i = 1; i < settings.size(); ++i) {
-    ASSERT_LT(settings[i-1]->name(), settings[i]->name());
+    ASSERT_LT(settings[i - 1]->name(), settings[i]->name());
   }
 }
 
@@ -261,7 +266,7 @@ TEST(AutoMem, ConstrainedGPUEnvironment) {
 TEST(AutoMem, ExplicitReducedCPUMemoryConsumption) {
   // STEP ONE: Get the "natural" size of the engine at the default test
   // settings.
-  scoped_ptr<AutoMem> default_auto_mem = CreateDefaultAutoMem();
+  std::unique_ptr<AutoMem> default_auto_mem = CreateDefaultAutoMem();
 
   AutoMemSettings command_line_settings(AutoMemSettings::kTypeCommandLine);
   command_line_settings.reduce_cpu_memory_by = 5 * 1024 * 1024;
@@ -286,7 +291,7 @@ TEST(AutoMem, ExplicitReducedCPUMemoryConsumption) {
 TEST(AutoMem, ExplicitReducedGPUMemoryConsumption) {
   // STEP ONE: Get the "natural" size of the engine at the default test
   // settings.
-  scoped_ptr<AutoMem> default_auto_mem = CreateDefaultAutoMem();
+  std::unique_ptr<AutoMem> default_auto_mem = CreateDefaultAutoMem();
 
   AutoMemSettings command_line_settings(AutoMemSettings::kTypeCommandLine);
   command_line_settings.reduce_gpu_memory_by = 5 * 1024 * 1024;
@@ -310,7 +315,7 @@ TEST(AutoMem, ExplicitReducedGPUMemoryConsumption) {
 TEST(AutoMem, MaxCpuIsIgnoredDuringExplicitMemoryReduction) {
   // STEP ONE: Get the "natural" size of the engine at the default test
   // settings.
-  scoped_ptr<AutoMem> default_auto_mem = CreateDefaultAutoMem();
+  std::unique_ptr<AutoMem> default_auto_mem = CreateDefaultAutoMem();
 
   AutoMemSettings command_line_settings(AutoMemSettings::kTypeCommandLine);
   command_line_settings.reduce_cpu_memory_by = 5 * 1024 * 1024;
@@ -338,7 +343,7 @@ TEST(AutoMem, MaxCpuIsIgnoredDuringExplicitMemoryReduction) {
 TEST(AutoMem, MaxCpuIsIgnoredWithZeroValueReduceCPUCommand) {
   // STEP ONE: Get the "natural" size of the engine at the default test
   // settings.
-  scoped_ptr<AutoMem> default_auto_mem = CreateDefaultAutoMem();
+  std::unique_ptr<AutoMem> default_auto_mem = CreateDefaultAutoMem();
 
   AutoMemSettings command_line_settings(AutoMemSettings::kTypeCommandLine);
   AutoMemSettings build_settings(AutoMemSettings::kTypeBuild);
@@ -366,7 +371,7 @@ TEST(AutoMem, MaxCpuIsIgnoredWithZeroValueReduceCPUCommand) {
 TEST(AutoMem, MaxCpuIsIgnoredWithZeroValueReduceGPUCommand) {
   // STEP ONE: Get the "natural" size of the engine at the default test
   // settings.
-  scoped_ptr<AutoMem> default_auto_mem = CreateDefaultAutoMem();
+  std::unique_ptr<AutoMem> default_auto_mem = CreateDefaultAutoMem();
 
   AutoMemSettings command_line_settings(AutoMemSettings::kTypeCommandLine);
   AutoMemSettings build_settings(AutoMemSettings::kTypeBuild);
@@ -439,8 +444,7 @@ TEST(AutoMem, NoDefaultGpuMemory) {
   AutoMemSettings command_line_settings(AutoMemSettings::kTypeCommandLine);
   AutoMemSettings build_settings(AutoMemSettings::kTypeBuild);
 
-  AutoMem auto_mem(kResolution1080p, command_line_settings,
-                   build_settings);
+  AutoMem auto_mem(kResolution1080p, command_line_settings, build_settings);
 
   EXPECT_EQ(SbSystemHasCapability(kSbSystemCapabilityCanQueryGPUMemoryStats),
             auto_mem.max_gpu_bytes()->valid());

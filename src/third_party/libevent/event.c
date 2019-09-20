@@ -37,6 +37,7 @@
 #include "starboard/client_porting/poem/assert_poem.h"
 #include "starboard/client_porting/poem/stdio_poem.h"
 #include "starboard/client_porting/poem/stdlib_poem.h"
+#include "starboard/time.h"
 #else  // STARBOARD
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -122,7 +123,7 @@ struct event_base *current_base = NULL;
 #ifndef STARBOARD
 extern struct event_base *evsignal_base;
 #endif
-static int use_monotonic;
+static int use_monotonic = 1;
 
 /* Prototypes */
 static void	event_queue_insert(struct event_base *, struct event *, int);
@@ -139,10 +140,14 @@ static void
 detect_monotonic(void)
 {
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
+#if defined(STARBOARD)
+	if (SbTimeGetMonotonicNow() != 0)
+		use_monotonic = 1;
+#else
 	struct timespec	ts;
-
 	if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
 		use_monotonic = 1;
+#endif
 #endif
 }
 
@@ -156,16 +161,27 @@ gettime(struct event_base *base, struct timeval *tp)
 
 #if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
 	if (use_monotonic) {
-		struct timespec	ts;
+#if defined(STARBOARD)
+		SbTimeMonotonic t = SbTimeGetMonotonicNow(); 
+		if (t == 0)
+			return (-1);
 
+		tp->tv_sec = t / kSbTimeSecond;
+		tp->tv_usec = t % kSbTimeSecond;
+#else
+		struct timespec ts;
 		if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
 			return (-1);
 
 		tp->tv_sec = ts.tv_sec;
 		tp->tv_usec = ts.tv_nsec / 1000;
+#endif
+
 		return (0);
 	}
 #endif
+
+	use_monotonic = 0;
 
 	return (evutil_gettimeofday(tp, NULL));
 }
@@ -288,9 +304,14 @@ event_reinit(struct event_base *base)
 	int res = 0;
 	struct event *ev;
 
+#if 0
+	/* Right now, reinit always takes effect, since even if the
+	   backend doesn't require it, the signal socketpair code does.
+	 */
 	/* check if this event mechanism requires reinit */
 	if (!evsel->need_reinit)
 		return (0);
+#endif
 
 #ifndef STARBOARD
 	/* prevent internal delete */
@@ -334,7 +355,10 @@ event_base_priority_init(struct event_base *base, int npriorities)
 	if (base->event_count_active)
 		return (-1);
 
-	if (base->nactivequeues && npriorities != base->nactivequeues) {
+	if (npriorities == base->nactivequeues)
+		return (0);
+
+	if (base->nactivequeues) {
 		for (i = 0; i < base->nactivequeues; ++i) {
 			free(base->activequeues[i]);
 		}

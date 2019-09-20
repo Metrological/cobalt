@@ -19,7 +19,7 @@
 
 #include "base/memory/ref_counted.h"
 #include "base/threading/thread_checker.h"
-#include "base/time.h"
+#include "base/time/time.h"
 #include "cobalt/media/base/decoder_buffer.h"
 #include "cobalt/media/base/demuxer_stream.h"
 
@@ -53,7 +53,7 @@ class DecoderBufferCache {
       base::TimeDelta media_time, Buffers* buffers,
       KeyFrameTimestamps* key_frame_timestamps);
 
-  base::ThreadChecker thread_checker_;
+  THREAD_CHECKER(thread_checker_);
 
   Buffers audio_buffers_;
   KeyFrameTimestamps audio_key_frame_timestamps_;

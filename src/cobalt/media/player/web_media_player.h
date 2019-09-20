@@ -8,6 +8,7 @@
 // The temporary home for WebMediaPlayer and WebMediaPlayerClient. They are the
 // interface between the HTMLMediaElement and the media stack.
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -15,16 +16,15 @@
 #include "base/compiler_specific.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
-#include "base/memory/scoped_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/time.h"
+#include "base/time/time.h"
 #include "cobalt/media/base/ranges.h"
 #include "cobalt/media/base/video_frame_provider.h"
 #include "cobalt/media/filters/chunk_demuxer.h"
 #include "cobalt/media/player/buffered_data_source.h"
-#include "googleurl/src/gurl.h"
 #include "ui/gfx/rect.h"
 #include "ui/gfx/size.h"
+#include "url/gurl.h"
 
 namespace cobalt {
 namespace media {
@@ -45,6 +45,7 @@ class WebMediaPlayer {
     kNetworkStateFormatError,
     kNetworkStateNetworkError,
     kNetworkStateDecodeError,
+    kNetworkStateCapabilityChangedError,
   };
 
   enum ReadyState {
@@ -81,15 +82,21 @@ class WebMediaPlayer {
     kCORSModeUseCredentials,
   };
 
+  struct PlayerStatistics {
+    uint64_t audio_bytes_decoded = 0;
+    uint64_t video_bytes_decoded = 0;
+    uint32_t video_frames_decoded = 0;
+    uint32_t video_frames_dropped = 0;
+  };
+
   virtual ~WebMediaPlayer() {}
 
 #if SB_HAS(PLAYER_WITH_URL)
   virtual void LoadUrl(const GURL& url) = 0;
-#else   // SB_HAS(PLAYER_WITH_URL)
-  virtual void LoadMediaSource() = 0;
-  virtual void LoadProgressive(const GURL& url,
-                               scoped_ptr<BufferedDataSource> data_source) = 0;
 #endif  // SB_HAS(PLAYER_WITH_URL)
+  virtual void LoadMediaSource() = 0;
+  virtual void LoadProgressive(
+      const GURL& url, std::unique_ptr<BufferedDataSource> data_source) = 0;
 
   virtual void CancelLoad() = 0;
 
@@ -125,6 +132,7 @@ class WebMediaPlayer {
   virtual base::Time GetStartDate() const = 0;
 #endif  // SB_HAS(PLAYER_WITH_URL)
   virtual float GetCurrentTime() const = 0;
+  virtual float GetPlaybackRate() const = 0;
 
   // Get rate of loading the resource.
   virtual int GetDataRate() const = 0;
@@ -140,10 +148,7 @@ class WebMediaPlayer {
 
   virtual float MediaTimeForTimeValue(float timeValue) const = 0;
 
-  virtual unsigned GetDecodedFrameCount() const = 0;
-  virtual unsigned GetDroppedFrameCount() const = 0;
-  virtual unsigned GetAudioDecodedByteCount() const = 0;
-  virtual unsigned GetVideoDecodedByteCount() const = 0;
+  virtual PlayerStatistics GetStatistics() const = 0;
 
   virtual scoped_refptr<VideoFrameProvider> GetVideoFrameProvider() {
     return NULL;
@@ -192,7 +197,8 @@ class WebMediaPlayer {
   // in |WebMediaPlayerClient::EncryptedMediaInitData|.
   //
   // |drm_system| must not be NULL. The method can only be called once.
-  virtual void SetDrmSystem(DrmSystem* drm_system) = 0;
+  virtual void SetDrmSystem(
+      const scoped_refptr<media::DrmSystem>& drm_system) = 0;
 };
 
 // TODO: Add prefix "On" to all methods that handle events, such
@@ -213,6 +219,8 @@ class WebMediaPlayerClient {
   virtual float Volume() const = 0;
   virtual void SourceOpened(ChunkDemuxer* chunk_demuxer) = 0;
   virtual std::string SourceURL() const = 0;
+  virtual std::string MaxVideoCapabilities() const = 0;
+
   // Clients should implement this in order to indicate a preference for whether
   // a video should be decoded to a texture or through a punch out system.  If
   // the preferred output mode is not supported, the player will fallback to

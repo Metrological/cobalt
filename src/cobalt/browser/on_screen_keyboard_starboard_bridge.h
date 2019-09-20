@@ -15,6 +15,8 @@
 #ifndef COBALT_BROWSER_ON_SCREEN_KEYBOARD_STARBOARD_BRIDGE_H_
 #define COBALT_BROWSER_ON_SCREEN_KEYBOARD_STARBOARD_BRIDGE_H_
 
+#include <string>
+
 #include "base/callback.h"
 #include "cobalt/dom/on_screen_keyboard_bridge.h"
 #include "starboard/window.h"
@@ -42,7 +44,12 @@ class OnScreenKeyboardStarboardBridge : public dom::OnScreenKeyboardBridge {
 
   void Blur(int ticket) override;
 
+  void UpdateSuggestions(const script::Sequence<std::string>& suggestions,
+                         int ticket) override;
+
   bool IsShown() const override;
+
+  bool SuggestionsSupported() const override;
 
   scoped_refptr<dom::DOMRect> BoundingRect() const override;
 

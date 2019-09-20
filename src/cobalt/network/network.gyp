@@ -27,6 +27,7 @@
         'socket_address_parser.h',
         'cookie_jar_impl.cc',
         'cookie_jar_impl.h',
+        'job_factory_config.h',
         'net_poster.cc',
         'net_poster.h',
         'local_network.cc',
@@ -69,12 +70,23 @@
             'cobalt_net_log.h',
             'net_log_constants.cc',
             'net_log_constants.h',
-            'net_log_logger.cc',
-            'net_log_logger.h',
           ],
           'defines': [
             'ENABLE_NETWORK_LOGGING',
           ],
+        }],
+        ['enable_configure_request_job_factory == 1', {
+          'dependencies': [
+            '<@(cobalt_platform_dependencies)',
+          ],
+          'defines': [
+            'ENABLE_CONFIGURE_REQUEST_JOB_FACTORY',
+          ],
+          'direct_dependent_settings': {
+            'defines': [
+              'ENABLE_CONFIGURE_REQUEST_JOB_FACTORY',
+            ],
+          },
         }],
       ],
       'export_dependent_settings': [

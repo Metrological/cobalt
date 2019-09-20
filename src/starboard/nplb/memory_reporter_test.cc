@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "starboard/memory_reporter.h"
+#include "starboard/common/mutex.h"
 #include "starboard/configuration.h"
 #include "starboard/memory.h"
-#include "starboard/memory_reporter.h"
-#include "starboard/mutex.h"
 #include "starboard/thread.h"
 #include "starboard/time.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -88,6 +88,16 @@ struct NoMemTracking {
   ASSERT_FALSE(A);                                 \
 }
 
+// A structure that cannot be allocated because it throws an exception in its
+// constructor. This is needed to test the std::nothrow version of delete since
+// it is only called when the std::nothrow version of new fails.
+struct ThrowConstructor {
+  // ThrowConstructor() throw(std::exception) { throw std::exception(); }
+  ThrowConstructor() : foo_(1) { throw std::exception(); }
+  // Required to prevent the constructor from being inlined and optimized away.
+  volatile int foo_;
+};
+
 ///////////////////////////////////////////////////////////////////////////////
 // A memory reporter that is used to watch allocations from the system.
 class TestMemReporter {
@@ -108,9 +118,13 @@ class TestMemReporter {
   // Total number allocations outstanding.
   int number_allocs() const { return number_allocs_; }
 
+  // Total number memory map outstanding.
+  int number_map_mem() const { return number_map_mem_; }
+
   void Clear() {
     starboard::ScopedLock lock(mutex_);
     number_allocs_ = 0;
+    number_map_mem_ = 0;
     last_allocation_ = NULL;
     last_deallocation_ = NULL;
     last_mem_map_ = NULL;
@@ -174,7 +188,7 @@ class TestMemReporter {
     }
     starboard::ScopedLock lock(mutex_);
     last_mem_map_ = memory;
-    number_allocs_++;
+    number_map_mem_++;
   }
 
   void ReportDealloc(const void* memory) {
@@ -192,7 +206,7 @@ class TestMemReporter {
     }
     starboard::ScopedLock lock(mutex_);
     last_mem_unmap_ = memory;
-    number_allocs_--;
+    number_map_mem_--;
   }
 
   void Construct() {
@@ -207,6 +221,7 @@ class TestMemReporter {
   const void* last_mem_map_;
   const void* last_mem_unmap_;
   int number_allocs_;
+  int number_map_mem_;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -249,7 +264,8 @@ class MemoryReportingTest : public ::testing::Test {
   // Per test teardown.
   virtual void TearDown() {
     SetMemoryTrackingEnabled_ThreadLocal(false);
-    if (mem_reporter()->number_allocs() != 0) {
+    if ((mem_reporter()->number_allocs() != 0) ||
+        (mem_reporter()->number_map_mem() != 0)) {
       ADD_FAILURE_AT(__FILE__, __LINE__) << "Memory Leak detected.";
     }
     mem_reporter()->Clear();
@@ -285,7 +301,7 @@ bool MemoryReportingTest::s_memory_reporter_error_enabled_ = false;
 // will report memory allocations.
 TEST_F(MemoryReportingTest, CapturesAllocDealloc) {
   if (!MemoryReportingEnabled()) {
-    SB_DLOG(INFO) << "Memory reporting is disabled.";
+    SbLog(kSbLogPriorityInfo, "Memory reporting is disabled.\n");
     return;
   }
   EXPECT_EQ_NO_TRACKING(0, mem_reporter()->number_allocs());
@@ -305,7 +321,7 @@ TEST_F(MemoryReportingTest, CapturesAllocDealloc) {
 // deallocation and an allocation to the memory tracker.
 TEST_F(MemoryReportingTest, CapturesRealloc) {
   if (!MemoryReportingEnabled()) {
-    SB_DLOG(INFO) << "Memory reporting is disabled.";
+    SbLog(kSbLogPriorityInfo, "Memory reporting is disabled.\n");
     return;
   }
   void* prev_memory = SbMemoryAllocate(4);
@@ -325,28 +341,28 @@ TEST_F(MemoryReportingTest, CapturesRealloc) {
 // will report memory allocations.
 TEST_F(MemoryReportingTest, CapturesMemMapUnmap) {
   if (!MemoryReportingEnabled()) {
-    SB_DLOG(INFO) << "Memory reporting is disabled.";
+    SbLog(kSbLogPriorityInfo, "Memory reporting is disabled.\n");
     return;
   }
   const int64_t kMemSize = 4096;
   const int kFlags = kSbMemoryMapProtectReadWrite;
-  EXPECT_EQ_NO_TRACKING(0, mem_reporter()->number_allocs());
+  EXPECT_EQ_NO_TRACKING(0, mem_reporter()->number_map_mem());
   void* mem_chunk = SbMemoryMap(kMemSize, kFlags, "TestMemMap");
-  EXPECT_EQ_NO_TRACKING(1, mem_reporter()->number_allocs());
+  EXPECT_EQ_NO_TRACKING(1, mem_reporter()->number_map_mem());
 
   // Now unmap the memory and confirm that this memory was reported as free.
   EXPECT_EQ_NO_TRACKING(mem_chunk, mem_reporter()->last_mem_map());
   SbMemoryUnmap(mem_chunk, kMemSize);
   EXPECT_EQ_NO_TRACKING(mem_chunk, mem_reporter()->last_mem_unmap());
-  EXPECT_EQ_NO_TRACKING(0, mem_reporter()->number_allocs());
+  EXPECT_EQ_NO_TRACKING(0, mem_reporter()->number_map_mem());
 }
 #endif  // SB_HAS(MMAP)
 
-// Tests the assumption that the operator/delete will report
+// Tests the assumption that the operator new/delete will report
 // memory allocations.
 TEST_F(MemoryReportingTest, CapturesOperatorNewDelete) {
   if (!MemoryReportingEnabled()) {
-    SB_DLOG(INFO) << "Memory reporting is disabled.";
+    SbLog(kSbLogPriorityInfo, "Memory reporting is disabled.\n");
     return;
   }
   EXPECT_TRUE_NO_TRACKING(mem_reporter()->number_allocs() == 0);
@@ -363,6 +379,59 @@ TEST_F(MemoryReportingTest, CapturesOperatorNewDelete) {
 
   // Expect last deallocation to be the expected pointer.
   EXPECT_EQ_NO_TRACKING(my_int, mem_reporter()->last_deallocation());
+}
+
+// Tests the assumption that the nothrow version of operator new will report
+// memory allocations.
+TEST_F(MemoryReportingTest, CapturesOperatorNewNothrow) {
+  if (!MemoryReportingEnabled()) {
+    SbLog(kSbLogPriorityInfo, "Memory reporting is disabled.\n");
+    return;
+  }
+  EXPECT_EQ_NO_TRACKING(0, mem_reporter()->number_allocs());
+  int* my_int = new (std::nothrow) int();
+  EXPECT_EQ_NO_TRACKING(1, mem_reporter()->number_allocs());
+
+  bool is_last_allocation =
+      my_int == mem_reporter()->last_allocation();
+
+  EXPECT_TRUE_NO_TRACKING(is_last_allocation);
+
+  delete my_int;
+  EXPECT_EQ_NO_TRACKING(0, mem_reporter()->number_allocs());
+
+  // Expect last deallocation to be the expected pointer.
+  EXPECT_EQ_NO_TRACKING(my_int, mem_reporter()->last_deallocation());
+}
+
+// Tests the assumption that the nothrow version of operator delete will report
+// memory deallocations.
+TEST_F(MemoryReportingTest, CapturesOperatorDeleteNothrow) {
+  if (!MemoryReportingEnabled()) {
+    SbLog(kSbLogPriorityInfo, "Memory reporting is disabled.\n");
+    return;
+  }
+  const void* init_alloc = mem_reporter()->last_allocation();
+
+  EXPECT_EQ_NO_TRACKING(0, mem_reporter()->number_allocs());
+  void* my_obj = nullptr;
+  bool caught_exception = false;
+  try {
+    my_obj = new (std::nothrow) ThrowConstructor();
+  } catch (std::exception e) {
+    caught_exception = true;
+  }
+  EXPECT_TRUE(caught_exception);
+  EXPECT_EQ_NO_TRACKING(0, mem_reporter()->number_allocs());
+
+  // Expect that an allocation occurred, even though we never got a pointer.
+  EXPECT_EQ_NO_TRACKING(nullptr, my_obj);
+  EXPECT_NE_NO_TRACKING(nullptr, mem_reporter()->last_allocation());
+  EXPECT_NE_NO_TRACKING(init_alloc, mem_reporter()->last_allocation());
+
+  // Expect last deallocation to be the allocation we never got.
+  EXPECT_EQ_NO_TRACKING(mem_reporter()->last_allocation(),
+                        mem_reporter()->last_deallocation());
 }
 
 #else  // !defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
@@ -413,13 +482,13 @@ TEST_F(MemoryReportingTest, NoCapturesMemMapUnmap) {
 
 TEST_F(MemoryReportingTest, NoCapturesOperatorNewDelete) {
   EXPECT_FALSE_NO_TRACKING(MemoryReportingEnabled());
-  EXPECT_EQ_NO_TRACKING(0, mem_reporter()->number_allocs());
+  EXPECT_EQ_NO_TRACKING(0, mem_reporter()->number_map_mem());
   int* my_int = new int();
-  EXPECT_EQ_NO_TRACKING(0, mem_reporter()->number_allocs());
+  EXPECT_EQ_NO_TRACKING(0, mem_reporter()->number_map_mem());
   EXPECT_EQ_NO_TRACKING(NULL, mem_reporter()->last_allocation());
 
   delete my_int;
-  EXPECT_EQ_NO_TRACKING(0, mem_reporter()->number_allocs());
+  EXPECT_EQ_NO_TRACKING(0, mem_reporter()->number_map_mem());
   EXPECT_EQ_NO_TRACKING(NULL, mem_reporter()->last_deallocation());
 }
 

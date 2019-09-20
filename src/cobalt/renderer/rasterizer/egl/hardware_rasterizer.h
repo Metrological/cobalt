@@ -15,7 +15,8 @@
 #ifndef COBALT_RENDERER_RASTERIZER_EGL_HARDWARE_RASTERIZER_H_
 #define COBALT_RENDERER_RASTERIZER_EGL_HARDWARE_RASTERIZER_H_
 
-#include "base/memory/scoped_ptr.h"
+#include <memory>
+
 #include "cobalt/render_tree/resource_provider.h"
 #include "cobalt/renderer/backend/graphics_context.h"
 #include "cobalt/renderer/backend/render_target.h"
@@ -49,13 +50,13 @@ class HardwareRasterizer : public Rasterizer {
   // |force_deterministic_rendering| disables caching of render tree node
   // outputs. This significantly degrades performance but provides sub-pixel
   // correctness. This should only be done for testing purposes.
-  explicit HardwareRasterizer(backend::GraphicsContext* graphics_context,
-                              int skia_atlas_width, int skia_atlas_height,
-                              int skia_cache_size_in_bytes,
-                              int scratch_surface_cache_size_in_bytes,
-                              int offscreen_target_cache_size_in_bytes,
-                              bool purge_skia_font_caches_on_destruction,
-                              bool force_deterministic_rendering);
+  HardwareRasterizer(backend::GraphicsContext* graphics_context,
+                     int skia_atlas_width, int skia_atlas_height,
+                     int skia_cache_size_in_bytes,
+                     int scratch_surface_cache_size_in_bytes,
+                     int offscreen_target_cache_size_in_bytes,
+                     bool purge_skia_font_caches_on_destruction,
+                     bool force_deterministic_rendering);
   virtual ~HardwareRasterizer();
 
   void Submit(const scoped_refptr<render_tree::Node>& render_tree,
@@ -65,10 +66,11 @@ class HardwareRasterizer : public Rasterizer {
   render_tree::ResourceProvider* GetResourceProvider() override;
 
   void MakeCurrent() override;
+  void ReleaseContext() override;
 
  private:
   class Impl;
-  scoped_ptr<Impl> impl_;
+  std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace egl

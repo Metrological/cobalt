@@ -13,6 +13,9 @@
 # limitations under the License.
 
 {
+  'variables': {
+    'optimize_target_for_speed': 1,
+  },
   'targets': [
     {
       # This target conveniently aggregates all sub-modules required to declare
@@ -22,8 +25,10 @@
       'target_name': 'renderer',
       'type': 'static_library',
       'sources': [
+        'egl_and_gles.h',
         'fps_overlay.cc',
         'fps_overlay.h',
+        'gles_ext.h',
         'pipeline.cc',
         'pipeline.h',
         'renderer_module.cc',
@@ -39,11 +44,12 @@
         'COBALT_MINIMUM_FRAME_TIME_IN_MILLISECONDS=<(cobalt_minimum_frame_time_in_milliseconds)',
       ],
       'includes': [
-        'copy_font_data.gypi',
         'renderer_parameters_setup.gypi',
       ],
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
+        '<(DEPTH)/cobalt/content/fonts/fonts.gyp:copy_font_data',
+        '<(DEPTH)/cobalt/debug/debug.gyp:console_command_manager',
         '<(DEPTH)/cobalt/math/math.gyp:math',
         '<(DEPTH)/cobalt/render_tree/render_tree.gyp:animations',
         '<(DEPTH)/cobalt/render_tree/render_tree.gyp:render_tree',
@@ -130,30 +136,5 @@
       'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
 
-    {
-      'target_name': 'renderer_benchmark',
-      'type': '<(final_executable_type)',
-      'sources': [
-        'rasterizer/benchmark.cc',
-      ],
-      'dependencies': [
-        '<(DEPTH)/base/base.gyp:base',
-        '<(DEPTH)/cobalt/renderer/test/scenes/scenes.gyp:scenes',
-        '<(DEPTH)/cobalt/system_window/system_window.gyp:system_window',
-        '<(DEPTH)/cobalt/trace_event/trace_event.gyp:run_all_benchmarks',
-        'renderer',
-      ],
-    },
-    {
-      'target_name': 'renderer_benchmark_deploy',
-      'type': 'none',
-      'dependencies': [
-        'renderer_benchmark',
-      ],
-      'variables': {
-        'executable_name': 'renderer_benchmark',
-      },
-      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
-    },
   ],
 }

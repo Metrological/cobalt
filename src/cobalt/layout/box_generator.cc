@@ -14,11 +14,11 @@
 
 #include "cobalt/layout/box_generator.h"
 
+#include <memory>
 #include <string>
 
 #include "base/bind.h"
-#include "base/debug/trace_event.h"
-#include "base/memory/scoped_ptr.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/cssom/computed_style.h"
 #include "cobalt/cssom/css_computed_style_declaration.h"
 #include "cobalt/cssom/css_transition_set.h"
@@ -33,6 +33,7 @@
 #include "cobalt/layout/base_direction.h"
 #include "cobalt/layout/block_formatting_block_container_box.h"
 #include "cobalt/layout/block_level_replaced_box.h"
+#include "cobalt/layout/flex_container_box.h"
 #include "cobalt/layout/inline_container_box.h"
 #include "cobalt/layout/inline_level_replaced_box.h"
 #include "cobalt/layout/layout_boxes.h"
@@ -40,24 +41,15 @@
 #include "cobalt/layout/text_box.h"
 #include "cobalt/layout/used_style.h"
 #include "cobalt/layout/white_space_processing.h"
+#include "cobalt/media/base/video_frame_provider.h"
 #include "cobalt/render_tree/image.h"
 #include "cobalt/web_animations/keyframe_effect_read_only.h"
-#if defined(COBALT_MEDIA_SOURCE_2016)
-#include "cobalt/media/base/video_frame_provider.h"
-#else  // defined(COBALT_MEDIA_SOURCE_2016)
-#include "media/base/shell_video_frame_provider.h"
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
 #include "starboard/decode_target.h"
 
 namespace cobalt {
 namespace layout {
 
-#if defined(COBALT_MEDIA_SOURCE_2016)
 using media::VideoFrameProvider;
-#else   // defined(COBALT_MEDIA_SOURCE_2016)
-using VideoFrameProvider = ::media::ShellVideoFrameProvider;
-using ::media::VideoFrame;
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
 
 namespace {
 
@@ -69,20 +61,12 @@ scoped_refptr<render_tree::Image> GetVideoFrame(
   if (SbDecodeTargetIsValid(decode_target)) {
 #if SB_HAS(GRAPHICS)
     return resource_provider->CreateImageFromSbDecodeTarget(decode_target);
-#else  // SB_HAS(GRAPHICS)
-    UNREFERENCED_PARAMETER(resource_provider);
+#else   // SB_HAS(GRAPHICS)
+    SB_UNREFERENCED_PARAMETER(resource_provider);
     return NULL;
 #endif  // SB_HAS(GRAPHICS)
   } else {
     DCHECK(frame_provider);
-#if !defined(COBALT_MEDIA_SOURCE_2016)
-    scoped_refptr<VideoFrame> video_frame = frame_provider->GetCurrentFrame();
-    if (video_frame && video_frame->texture_id()) {
-      scoped_refptr<render_tree::Image> image =
-          reinterpret_cast<render_tree::Image*>(video_frame->texture_id());
-      return image;
-    }
-#endif  // !defined(COBALT_MEDIA_SOURCE_2016)
     return NULL;
   }
 }
@@ -110,7 +94,7 @@ BoxGenerator::~BoxGenerator() {
   // boxes become invalidated.
   if (generating_html_element_ && !boxes_.empty()) {
     generating_html_element_->set_layout_boxes(
-        scoped_ptr<dom::LayoutBoxes>(new LayoutBoxes(std::move(boxes_))));
+        std::unique_ptr<dom::LayoutBoxes>(new LayoutBoxes(std::move(boxes_))));
   }
 }
 
@@ -179,11 +163,11 @@ class ReplacedBoxGenerator : public cssom::NotReachedPropertyValueVisitor {
                        const ReplacedBox::SetBoundsCB& set_bounds_cb,
                        const scoped_refptr<Paragraph>& paragraph,
                        int32 text_position,
-                       const base::optional<LayoutUnit>& maybe_intrinsic_width,
-                       const base::optional<LayoutUnit>& maybe_intrinsic_height,
-                       const base::optional<float>& maybe_intrinsic_ratio,
+                       const base::Optional<LayoutUnit>& maybe_intrinsic_width,
+                       const base::Optional<LayoutUnit>& maybe_intrinsic_height,
+                       const base::Optional<float>& maybe_intrinsic_ratio,
                        const BoxGenerator::Context* context,
-                       base::optional<bool> is_video_punched_out,
+                       base::Optional<bool> is_video_punched_out,
                        math::SizeF content_size)
       : css_computed_style_declaration_(css_computed_style_declaration),
         replace_image_cb_(replace_image_cb),
@@ -208,11 +192,11 @@ class ReplacedBoxGenerator : public cssom::NotReachedPropertyValueVisitor {
   const ReplacedBox::SetBoundsCB set_bounds_cb_;
   const scoped_refptr<Paragraph> paragraph_;
   const int32 text_position_;
-  const base::optional<LayoutUnit> maybe_intrinsic_width_;
-  const base::optional<LayoutUnit> maybe_intrinsic_height_;
-  const base::optional<float> maybe_intrinsic_ratio_;
+  const base::Optional<LayoutUnit> maybe_intrinsic_width_;
+  const base::Optional<LayoutUnit> maybe_intrinsic_height_;
+  const base::Optional<float> maybe_intrinsic_ratio_;
   const BoxGenerator::Context* context_;
-  base::optional<bool> is_video_punched_out_;
+  base::Optional<bool> is_video_punched_out_;
   math::SizeF content_size_;
 
   scoped_refptr<ReplacedBox> replaced_box_;
@@ -223,7 +207,8 @@ void ReplacedBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
   switch (keyword->value()) {
     // Generate a block-level replaced box.
     case cssom::KeywordValue::kBlock:
-      replaced_box_ = make_scoped_refptr(new BlockLevelReplacedBox(
+    case cssom::KeywordValue::kFlex:
+      replaced_box_ = WrapRefCounted(new BlockLevelReplacedBox(
           css_computed_style_declaration_, replace_image_cb_, set_bounds_cb_,
           paragraph_, text_position_, maybe_intrinsic_width_,
           maybe_intrinsic_height_, maybe_intrinsic_ratio_,
@@ -236,7 +221,8 @@ void ReplacedBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
     // way.
     case cssom::KeywordValue::kInline:
     case cssom::KeywordValue::kInlineBlock:
-      replaced_box_ = make_scoped_refptr(new InlineLevelReplacedBox(
+    case cssom::KeywordValue::kInlineFlex:
+      replaced_box_ = WrapRefCounted(new InlineLevelReplacedBox(
           css_computed_style_declaration_, replace_image_cb_, set_bounds_cb_,
           paragraph_, text_position_, maybe_intrinsic_width_,
           maybe_intrinsic_height_, maybe_intrinsic_ratio_,
@@ -258,7 +244,11 @@ void ReplacedBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kBreakWord:
     case cssom::KeywordValue::kCenter:
     case cssom::KeywordValue::kClip:
+    case cssom::KeywordValue::kCollapse:
+    case cssom::KeywordValue::kColumn:
+    case cssom::KeywordValue::kColumnReverse:
     case cssom::KeywordValue::kContain:
+    case cssom::KeywordValue::kContent:
     case cssom::KeywordValue::kCover:
     case cssom::KeywordValue::kCurrentColor:
     case cssom::KeywordValue::kCursive:
@@ -266,8 +256,10 @@ void ReplacedBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kEnd:
     case cssom::KeywordValue::kEquirectangular:
     case cssom::KeywordValue::kFantasy:
-    case cssom::KeywordValue::kForwards:
     case cssom::KeywordValue::kFixed:
+    case cssom::KeywordValue::kFlexEnd:
+    case cssom::KeywordValue::kFlexStart:
+    case cssom::KeywordValue::kForwards:
     case cssom::KeywordValue::kHidden:
     case cssom::KeywordValue::kInfinite:
     case cssom::KeywordValue::kInherit:
@@ -279,7 +271,7 @@ void ReplacedBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kMonospace:
     case cssom::KeywordValue::kNoRepeat:
     case cssom::KeywordValue::kNormal:
-    case cssom::KeywordValue::kNoWrap:
+    case cssom::KeywordValue::kNowrap:
     case cssom::KeywordValue::kPre:
     case cssom::KeywordValue::kPreLine:
     case cssom::KeywordValue::kPreWrap:
@@ -287,16 +279,24 @@ void ReplacedBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kRepeat:
     case cssom::KeywordValue::kReverse:
     case cssom::KeywordValue::kRight:
+    case cssom::KeywordValue::kRow:
+    case cssom::KeywordValue::kRowReverse:
     case cssom::KeywordValue::kSansSerif:
+    case cssom::KeywordValue::kScroll:
     case cssom::KeywordValue::kSerif:
     case cssom::KeywordValue::kSolid:
+    case cssom::KeywordValue::kSpaceAround:
+    case cssom::KeywordValue::kSpaceBetween:
     case cssom::KeywordValue::kStart:
     case cssom::KeywordValue::kStatic:
     case cssom::KeywordValue::kStereoscopicLeftRight:
     case cssom::KeywordValue::kStereoscopicTopBottom:
+    case cssom::KeywordValue::kStretch:
     case cssom::KeywordValue::kTop:
     case cssom::KeywordValue::kUppercase:
     case cssom::KeywordValue::kVisible:
+    case cssom::KeywordValue::kWrap:
+    case cssom::KeywordValue::kWrapReverse:
       NOTREACHED();
       break;
   }
@@ -324,7 +324,7 @@ void BoxGenerator::VisitVideoElement(dom::HTMLVideoElement* video_element) {
 
   // If the optional is disengaged, then we don't know if punch out is enabled
   // or not.
-  base::optional<bool> is_punch_out;
+  base::Optional<bool> is_punch_out;
   if (video_element->GetVideoFrameProvider()) {
     VideoFrameProvider::OutputMode output_mode =
         video_element->GetVideoFrameProvider()->GetOutputMode();
@@ -346,7 +346,7 @@ void BoxGenerator::VisitVideoElement(dom::HTMLVideoElement* video_element) {
 
   scoped_refptr<ReplacedBox> replaced_box =
       replaced_box_generator.replaced_box();
-  if (replaced_box == NULL) {
+  if (replaced_box.get() == NULL) {
     // The element with "display: none" generates no boxes and has no effect
     // on layout. Descendant elements do not generate any boxes either.
     // This behavior cannot be overridden by setting the "display" property on
@@ -359,6 +359,7 @@ void BoxGenerator::VisitVideoElement(dom::HTMLVideoElement* video_element) {
   replaced_box->SetGeneratingNode(video_element);
 #endif  // COBALT_BOX_DUMP_ENABLED
 
+  replaced_box->SetUiNavItem(video_element->GetUiNavItem());
   boxes_.push_back(replaced_box);
 
   // The content of replaced elements is not considered in the CSS rendering
@@ -399,6 +400,7 @@ void BoxGenerator::VisitBrElement(dom::HTMLBRElement* br_element) {
   br_text_box->SetGeneratingNode(br_element);
 #endif  // COBALT_BOX_DUMP_ENABLED
 
+  br_text_box->SetUiNavItem(br_element->GetUiNavItem());
   boxes_.push_back(br_text_box);
 }
 
@@ -467,7 +469,7 @@ ContainerBoxGenerator::~ContainerBoxGenerator() {
     // prior one.
     if (prior_paragraph_->IsClosed()) {
       *paragraph_ = new Paragraph(
-          prior_paragraph_->GetLocale(), prior_paragraph_->GetBaseDirection(),
+          prior_paragraph_->GetLocale(), prior_paragraph_->base_direction(),
           prior_paragraph_->GetDirectionalEmbeddingStack(),
           context_->line_break_iterator, context_->character_break_iterator);
     } else {
@@ -487,10 +489,40 @@ void ContainerBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
       // destroyed.
       CreateScopedParagraph(kCloseParagraph);
 
-      container_box_ = make_scoped_refptr(new BlockLevelBlockContainerBox(
-          css_computed_style_declaration_, (*paragraph_)->GetBaseDirection(),
+      container_box_ = base::WrapRefCounted(new BlockLevelBlockContainerBox(
+          css_computed_style_declaration_, (*paragraph_)->base_direction(),
           context_->used_style_provider, context_->layout_stat_tracker));
       break;
+    case cssom::KeywordValue::kFlex:
+      container_box_ = base::WrapRefCounted(new BlockLevelFlexContainerBox(
+          css_computed_style_declaration_, (*paragraph_)->base_direction(),
+          context_->used_style_provider, context_->layout_stat_tracker));
+      break;
+    case cssom::KeywordValue::kInlineFlex: {
+      // An inline flex container is an atomic inline and therefore is treated
+      // directionally as a neutral character and its line breaking behavior is
+      // equivalent to that of the Object Replacement Character.
+      //   https://www.w3.org/TR/css-display-3/#atomic-inline
+      //   https://www.w3.org/TR/CSS21/visuren.html#propdef-unicode-bidi
+      //   https://www.w3.org/TR/css3-text/#line-break-details
+      int32 text_position =
+          (*paragraph_)
+              ->AppendCodePoint(
+                  Paragraph::kObjectReplacementCharacterCodePoint);
+      scoped_refptr<Paragraph> prior_paragraph = *paragraph_;
+
+      // The inline flex container creates a new paragraph, which the old
+      // paragraph flows around. Create a new paragraph, which will close with
+      // the end of the flex container. However, do not close the old
+      // paragraph, because it will continue once the scope of the inline block
+      // ends.
+      CreateScopedParagraph(kDoNotCloseParagraph);
+
+      container_box_ = base::WrapRefCounted(new InlineLevelFlexContainerBox(
+          css_computed_style_declaration_, (*paragraph_)->base_direction(),
+          prior_paragraph, text_position, context_->used_style_provider,
+          context_->layout_stat_tracker));
+    } break;
     // Generate one or more inline boxes. Note that more inline boxes may be
     // generated when the original inline box is split due to participation
     // in the formatting context.
@@ -525,7 +557,7 @@ void ContainerBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
         (*paragraph_)->AppendCodePoint(Paragraph::kNoBreakSpaceCodePoint);
       }
 
-      container_box_ = make_scoped_refptr(new InlineContainerBox(
+      container_box_ = base::WrapRefCounted(new InlineContainerBox(
           css_computed_style_declaration_, context_->used_style_provider,
           context_->layout_stat_tracker));
       break;
@@ -534,9 +566,10 @@ void ContainerBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
     // is formatted as an atomic inline-level box.
     //   https://www.w3.org/TR/CSS21/visuren.html#inline-boxes
     case cssom::KeywordValue::kInlineBlock: {
-      // An inline block is is treated directionally as a neutral character and
-      // its line breaking behavior is equivalent to that of the Object
-      // Replacement Character.
+      // An inline block is an atomic inline and therefore is treated
+      // directionally as a neutral character and its line breaking behavior is
+      // equivalent to that of the Object Replacement Character.
+      //   https://www.w3.org/TR/css-display-3/#atomic-inline
       //   https://www.w3.org/TR/CSS21/visuren.html#propdef-unicode-bidi
       //   https://www.w3.org/TR/css3-text/#line-break-details
       int32 text_position =
@@ -551,8 +584,8 @@ void ContainerBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
       // it will continue once the scope of the inline block ends.
       CreateScopedParagraph(kDoNotCloseParagraph);
 
-      container_box_ = make_scoped_refptr(new InlineLevelBlockContainerBox(
-          css_computed_style_declaration_, (*paragraph_)->GetBaseDirection(),
+      container_box_ = base::WrapRefCounted(new InlineLevelBlockContainerBox(
+          css_computed_style_declaration_, (*paragraph_)->base_direction(),
           prior_paragraph, text_position, context_->used_style_provider,
           context_->layout_stat_tracker));
     } break;
@@ -570,16 +603,22 @@ void ContainerBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kBottom:
     case cssom::KeywordValue::kBreakWord:
     case cssom::KeywordValue::kCenter:
+    case cssom::KeywordValue::kClip:
+    case cssom::KeywordValue::kCollapse:
+    case cssom::KeywordValue::kColumn:
+    case cssom::KeywordValue::kColumnReverse:
     case cssom::KeywordValue::kContain:
+    case cssom::KeywordValue::kContent:
     case cssom::KeywordValue::kCover:
     case cssom::KeywordValue::kCurrentColor:
     case cssom::KeywordValue::kCursive:
-    case cssom::KeywordValue::kClip:
     case cssom::KeywordValue::kEllipsis:
     case cssom::KeywordValue::kEnd:
     case cssom::KeywordValue::kEquirectangular:
     case cssom::KeywordValue::kFantasy:
     case cssom::KeywordValue::kFixed:
+    case cssom::KeywordValue::kFlexEnd:
+    case cssom::KeywordValue::kFlexStart:
     case cssom::KeywordValue::kForwards:
     case cssom::KeywordValue::kHidden:
     case cssom::KeywordValue::kInfinite:
@@ -592,7 +631,7 @@ void ContainerBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kMonospace:
     case cssom::KeywordValue::kNoRepeat:
     case cssom::KeywordValue::kNormal:
-    case cssom::KeywordValue::kNoWrap:
+    case cssom::KeywordValue::kNowrap:
     case cssom::KeywordValue::kPre:
     case cssom::KeywordValue::kPreLine:
     case cssom::KeywordValue::kPreWrap:
@@ -600,16 +639,24 @@ void ContainerBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
     case cssom::KeywordValue::kRepeat:
     case cssom::KeywordValue::kReverse:
     case cssom::KeywordValue::kRight:
+    case cssom::KeywordValue::kRow:
+    case cssom::KeywordValue::kRowReverse:
     case cssom::KeywordValue::kSansSerif:
+    case cssom::KeywordValue::kScroll:
     case cssom::KeywordValue::kSerif:
     case cssom::KeywordValue::kSolid:
+    case cssom::KeywordValue::kSpaceAround:
+    case cssom::KeywordValue::kSpaceBetween:
     case cssom::KeywordValue::kStart:
     case cssom::KeywordValue::kStatic:
     case cssom::KeywordValue::kStereoscopicLeftRight:
     case cssom::KeywordValue::kStereoscopicTopBottom:
+    case cssom::KeywordValue::kStretch:
     case cssom::KeywordValue::kTop:
     case cssom::KeywordValue::kUppercase:
     case cssom::KeywordValue::kVisible:
+    case cssom::KeywordValue::kWrap:
+    case cssom::KeywordValue::kWrapReverse:
       NOTREACHED();
       break;
   }
@@ -719,7 +766,11 @@ class ContentProvider : public cssom::NotReachedPropertyValueVisitor {
       case cssom::KeywordValue::kBreakWord:
       case cssom::KeywordValue::kCenter:
       case cssom::KeywordValue::kClip:
+      case cssom::KeywordValue::kCollapse:
+      case cssom::KeywordValue::kColumn:
+      case cssom::KeywordValue::kColumnReverse:
       case cssom::KeywordValue::kContain:
+      case cssom::KeywordValue::kContent:
       case cssom::KeywordValue::kCover:
       case cssom::KeywordValue::kCurrentColor:
       case cssom::KeywordValue::kCursive:
@@ -728,6 +779,9 @@ class ContentProvider : public cssom::NotReachedPropertyValueVisitor {
       case cssom::KeywordValue::kEquirectangular:
       case cssom::KeywordValue::kFantasy:
       case cssom::KeywordValue::kFixed:
+      case cssom::KeywordValue::kFlex:
+      case cssom::KeywordValue::kFlexEnd:
+      case cssom::KeywordValue::kFlexStart:
       case cssom::KeywordValue::kForwards:
       case cssom::KeywordValue::kHidden:
       case cssom::KeywordValue::kInfinite:
@@ -735,13 +789,14 @@ class ContentProvider : public cssom::NotReachedPropertyValueVisitor {
       case cssom::KeywordValue::kInitial:
       case cssom::KeywordValue::kInline:
       case cssom::KeywordValue::kInlineBlock:
+      case cssom::KeywordValue::kInlineFlex:
       case cssom::KeywordValue::kLeft:
       case cssom::KeywordValue::kLineThrough:
       case cssom::KeywordValue::kMiddle:
       case cssom::KeywordValue::kMonoscopic:
       case cssom::KeywordValue::kMonospace:
       case cssom::KeywordValue::kNoRepeat:
-      case cssom::KeywordValue::kNoWrap:
+      case cssom::KeywordValue::kNowrap:
       case cssom::KeywordValue::kPre:
       case cssom::KeywordValue::kPreLine:
       case cssom::KeywordValue::kPreWrap:
@@ -749,16 +804,24 @@ class ContentProvider : public cssom::NotReachedPropertyValueVisitor {
       case cssom::KeywordValue::kRepeat:
       case cssom::KeywordValue::kReverse:
       case cssom::KeywordValue::kRight:
+      case cssom::KeywordValue::kRow:
+      case cssom::KeywordValue::kRowReverse:
       case cssom::KeywordValue::kSansSerif:
+      case cssom::KeywordValue::kScroll:
       case cssom::KeywordValue::kSerif:
       case cssom::KeywordValue::kSolid:
+      case cssom::KeywordValue::kSpaceAround:
+      case cssom::KeywordValue::kSpaceBetween:
       case cssom::KeywordValue::kStart:
       case cssom::KeywordValue::kStatic:
       case cssom::KeywordValue::kStereoscopicLeftRight:
       case cssom::KeywordValue::kStereoscopicTopBottom:
+      case cssom::KeywordValue::kStretch:
       case cssom::KeywordValue::kTop:
       case cssom::KeywordValue::kUppercase:
       case cssom::KeywordValue::kVisible:
+      case cssom::KeywordValue::kWrap:
+      case cssom::KeywordValue::kWrapReverse:
         NOTREACHED();
     }
   }
@@ -825,7 +888,7 @@ void BoxGenerator::AppendPseudoElementToLine(
       pseudo_element_box_generator.container_box();
   // A pseudo element with "display: none" generates no boxes and has no
   // effect on layout.
-  if (pseudo_element_box == NULL) {
+  if (pseudo_element_box.get() == NULL) {
     return;
   }
 
@@ -874,7 +937,7 @@ void BoxGenerator::AppendPseudoElementToLine(
   }
 
   pseudo_element->set_layout_boxes(
-      scoped_ptr<dom::LayoutBoxes>(new LayoutBoxes({pseudo_element_box})));
+      std::unique_ptr<dom::LayoutBoxes>(new LayoutBoxes({pseudo_element_box})));
 
   // Add the box(es) from the pseudo element to the associated element.
   AppendChildBoxToLine(pseudo_element_box);
@@ -887,8 +950,8 @@ scoped_refptr<cssom::CSSComputedStyleDeclaration> StripBackground(
       new cssom::CSSComputedStyleDeclaration());
   new_style->set_animations(style->animations());
 
-  scoped_refptr<cssom::CSSComputedStyleData> new_data(
-      new cssom::CSSComputedStyleData());
+  scoped_refptr<cssom::MutableCSSComputedStyleData> new_data(
+      new cssom::MutableCSSComputedStyleData());
   new_data->AssignFrom(*style->data());
   new_data->SetPropertyValue(cssom::kBackgroundColorProperty, NULL);
   new_data->SetPropertyValue(cssom::kBackgroundImageProperty, NULL);
@@ -911,7 +974,7 @@ void BoxGenerator::VisitNonReplacedElement(dom::HTMLElement* html_element) {
   html_element->computed_style()->display()->Accept(&container_box_generator);
   scoped_refptr<ContainerBox> container_box_before_split =
       container_box_generator.container_box();
-  if (container_box_before_split == NULL) {
+  if (container_box_before_split.get() == NULL) {
     // The element with "display: none" generates no boxes and has no effect
     // on layout. Descendant elements do not generate any boxes either.
     // This behavior cannot be overridden by setting the "display" property on
@@ -924,7 +987,15 @@ void BoxGenerator::VisitNonReplacedElement(dom::HTMLElement* html_element) {
   container_box_before_split->SetGeneratingNode(html_element);
 #endif  // COBALT_BOX_DUMP_ENABLED
 
+  container_box_before_split->SetUiNavItem(html_element->GetUiNavItem());
   boxes_.push_back(container_box_before_split);
+
+  BoxIntersectionObserverModule::IntersectionObserverRootVector roots =
+      html_element->GetLayoutIntersectionObserverRoots();
+  BoxIntersectionObserverModule::IntersectionObserverTargetVector targets =
+      html_element->GetLayoutIntersectionObserverTargets();
+  container_box_before_split->AddIntersectionObserverRootsAndTargets(
+      std::move(roots), std::move(targets));
 
   AppendPseudoElementToLine(html_element, dom::kBeforePseudoElementType);
 
@@ -954,6 +1025,37 @@ void BoxGenerator::Visit(dom::Document* /*document*/) { NOTREACHED(); }
 
 void BoxGenerator::Visit(dom::DocumentType* /*document_type*/) { NOTREACHED(); }
 
+namespace {
+scoped_refptr<web_animations::AnimationSet> GetAnimationsForAnonymousBox(
+    const scoped_refptr<const web_animations::AnimationSet>&
+        parent_animations) {
+  scoped_refptr<web_animations::AnimationSet> animations(
+      new web_animations::AnimationSet);
+  const web_animations::AnimationSet::InternalSet& animation_set =
+      parent_animations->animations();
+  const cssom::PropertyKeyVector& properties_set =
+    cssom::GetInheritedAnimatableProperties();
+
+  // Go through all the parent animations and only add those pertaining to
+  // inheritable properties.
+  for (const auto& animation : animation_set) {
+    const web_animations::KeyframeEffectReadOnly* keyframe_effect =
+        base::polymorphic_downcast<
+            const web_animations::KeyframeEffectReadOnly*>(
+            animation->effect().get());
+
+    for (const auto& property : properties_set) {
+      if (keyframe_effect->data().IsPropertyAnimated(property)) {
+        animations->AddAnimation(animation);
+        break;
+      }
+    }
+  }
+
+  return animations;
+}
+}  // namespace
+
 // Append the text from the text node to the text paragraph and create the
 // node's initial text box. The text box has indices that map to the paragraph,
 // which allows it to retrieve its underlying text. Initially, a single text box
@@ -973,8 +1075,9 @@ void BoxGenerator::Visit(dom::Text* text) {
   css_computed_style_declaration->SetData(
       GetComputedStyleOfAnonymousBox(parent_css_computed_style_declaration_));
 
-  // Copy the animations from the parent.
-  css_computed_style_declaration->set_animations(parent_animations_);
+  // Copy inheritable animatable properties from the parent.
+  css_computed_style_declaration->set_animations(
+      GetAnimationsForAnonymousBox(parent_animations_));
 
   DCHECK(text);
   DCHECK(css_computed_style_declaration->data());

@@ -12,43 +12,76 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "cobalt/script/script_debugger.h"
+#include <memory>
 
 #include "base/logging.h"
+#include "cobalt/script/global_environment.h"
+#include "cobalt/script/script_debugger.h"
+#include "cobalt/script/source_code.h"
 
 namespace cobalt {
 namespace script {
 
 class StubScriptDebugger : public ScriptDebugger {
  public:
-  StubScriptDebugger(GlobalEnvironment* global_environment,
-                     Delegate* delegate) {
-    NOTIMPLEMENTED();
-  }
-  ~StubScriptDebugger() override { NOTIMPLEMENTED(); }
+  StubScriptDebugger(GlobalEnvironment* global_environment, Delegate* delegate)
+      : global_environment_(global_environment), delegate_(delegate) {}
+  ~StubScriptDebugger() override {}
 
-  void Attach() override { NOTIMPLEMENTED(); }
-  void Detach() override { NOTIMPLEMENTED(); }
-  void Pause() override { NOTIMPLEMENTED(); }
-  void Resume() override { NOTIMPLEMENTED(); }
-  void SetBreakpoint(const std::string& script_id, int line_number,
-                     int column_number) override {
+  void Attach(const std::string& state) override {}
+  std::string Detach() override { return std::string(); }
+
+  bool EvaluateDebuggerScript(const std::string& js_code,
+                              std::string* out_result_utf8) override {
+    // The stub just evaluates debugger scripts as if they are part of the page.
+    scoped_refptr<script::SourceCode> source_code =
+        script::SourceCode::CreateSourceCode(
+            js_code, base::SourceLocation("[object StubScriptDebugger]", 1, 1));
+    return global_environment_->EvaluateScript(source_code, out_result_utf8);
+  }
+
+  std::set<std::string> SupportedProtocolDomains() override {
+    return std::set<std::string>();
+  }
+
+  bool DispatchProtocolMessage(const std::string& method,
+                               const std::string& message) override {
+    NOTIMPLEMENTED();
+    return false;
+  }
+
+  std::string CreateRemoteObject(const ValueHandleHolder& object,
+                                 const std::string& group) override {
+    NOTIMPLEMENTED();
+    return "{}";
+  }
+
+  const script::ValueHandleHolder* LookupRemoteObjectId(
+      const std::string& object_id) override {
+    NOTIMPLEMENTED();
+    return nullptr;
+  }
+
+  void StartTracing(const std::vector<std::string>& categories,
+                    TraceDelegate* trace_delegate) {
     NOTIMPLEMENTED();
   }
+  void StopTracing() override { NOTIMPLEMENTED(); }
+
   PauseOnExceptionsState SetPauseOnExceptions(
       PauseOnExceptionsState state) override {
-    NOTIMPLEMENTED();
     return kNone;
   }
-  void StepInto() override { NOTIMPLEMENTED(); }
-  void StepOut() override { NOTIMPLEMENTED(); }
-  void StepOver() override { NOTIMPLEMENTED(); }
+
+ private:
+  GlobalEnvironment* global_environment_;
+  Delegate* delegate_;
 };
 
 // Static factory method declared in public interface.
-scoped_ptr<ScriptDebugger> ScriptDebugger::CreateDebugger(
+std::unique_ptr<ScriptDebugger> ScriptDebugger::CreateDebugger(
     GlobalEnvironment* global_environment, Delegate* delegate) {
-  return scoped_ptr<ScriptDebugger>(
+  return std::unique_ptr<ScriptDebugger>(
       new StubScriptDebugger(global_environment, delegate));
 }
 

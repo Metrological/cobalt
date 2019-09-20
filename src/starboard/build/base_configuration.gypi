@@ -31,10 +31,16 @@
     # allows for the specification of default values that get referenced by
     # a top level scope.
     'variables': {
-      # 'sb_enable_lib' is initially defined inside this inner 'variables' dict
-      # so that it can be accessed by 'sb_enable_lib' below.
       'sb_enable_lib%': 0,
+      'sb_static_contents_output_base_dir%': '<(PRODUCT_DIR)/content',
+      'sb_static_contents_output_data_dir%': '<(PRODUCT_DIR)/content/data',
     },
+
+    # Enables the yasm compiler to be used to compile .asm files.
+    'yasm_exists%': 0,
+
+    # Where yasm can be found on the target device.
+    'path_to_yasm%': "yasm",
 
     # Enabling this variable enables pedantic levels of warnings for the current
     # toolchain.
@@ -49,10 +55,10 @@
     'sb_disable_microphone_idl%': 0,
 
     # Directory path to static contents.
-    'sb_static_contents_output_base_dir%': '<(PRODUCT_DIR)/content',
+    'sb_static_contents_output_base_dir%': '<(sb_static_contents_output_base_dir)',
 
     # Directory path to static contents' data.
-    'sb_static_contents_output_data_dir%': '<(PRODUCT_DIR)/content/data',
+    'sb_static_contents_output_data_dir%': '<(sb_static_contents_output_data_dir)',
 
     # Contains the name of the hosting OS. The value is defined by the gyp
     # wrapper script.
@@ -60,6 +66,9 @@
 
     # The target platform id as a string, like 'linux-x64x11', 'win32', etc..
     'sb_target_platform': '',
+
+    # Whether this is an evergreen build.
+    'sb_evergreen': 0,
 
     # The operating system of the target, separate from the target_arch. In many
     # cases, an 'unknown' value is fine, but, if set to 'linux', then we can
@@ -106,11 +115,12 @@
     # Other mechanisms, e.g. devpoll, kqueue, select, are not yet supported.
     'sb_libevent_method%': 'epoll',
 
-    # Used to pick a proper media platform.
-    'sb_media_platform%': 'starboard',
-
     # Used to indicate that the player is filter based.
     'sb_filter_based_player%': 1,
+
+    # This variable dictates whether a given gyp target should be compiled with
+    # optimization flags for size vs. speed.
+    'optimize_target_for_speed%': 0,
 
     # Compiler configuration.
 
@@ -121,6 +131,9 @@
     'compiler_flags%': [],
     'linker_flags%': [],
 
+    # TODO: Replace linker_flags_(config) with linker_shared_flags_(config)
+    # and linker_executable_flags_(config) to distinguish the flags for
+    # SharedLibraryLinker and ExecutableLinker.
     'compiler_flags_debug%': [],
     'compiler_flags_c_debug%': [],
     'compiler_flags_cc_debug%': [],
@@ -133,22 +146,40 @@
     'linker_flags_devel%': [],
     'defines_devel%': [],
 
+    # For qa and gold configs, different compiler flags may be specified for
+    # gyp targets that should be built for size than for speed. Targets which
+    # specify 'optimize_target_for_speed == 1', will compile with flags:
+    #   ['compiler_flags_*<config>', 'compiler_flags_*<config>_speed'].
+    # Otherwise, targets will use compiler flags:
+    #   ['compiler_flags_*<config>', 'compiler_flags_*<config>_size'].
+    # Platforms may decide to use the same optimization flags for both
+    # target types by leaving the '*_size' and '*_speed' variables empty.
     'compiler_flags_qa%': [],
+    'compiler_flags_qa_size%': [],
+    'compiler_flags_qa_speed%': [],
     'compiler_flags_c_qa%': [],
+    'compiler_flags_c_qa_size%': [],
+    'compiler_flags_c_qa_speed%': [],
     'compiler_flags_cc_qa%': [],
+    'compiler_flags_cc_qa_size%': [],
+    'compiler_flags_cc_qa_speed%': [],
     'linker_flags_qa%': [],
     'defines_qa%': [],
 
     'compiler_flags_gold%': [],
+    'compiler_flags_gold_size%': [],
+    'compiler_flags_gold_speed%': [],
     'compiler_flags_c_gold%': [],
+    'compiler_flags_c_gold_size%': [],
+    'compiler_flags_c_gold_speed%': [],
     'compiler_flags_cc_gold%': [],
+    'compiler_flags_cc_gold_size%': [],
+    'compiler_flags_cc_gold_speed%': [],
     'linker_flags_gold%': [],
     'defines_gold%': [],
 
     'compiler_flags_host%': [],
     'compiler_flags_c_host%': [],
-    'compiler_flags_cc_host%': [],
-    'linker_flags_host%': [],
     'defines_host%': [],
 
     'platform_libraries%': [],
@@ -157,6 +188,35 @@
 
     # List of platform-specific targets that get compiled into cobalt.
     'cobalt_platform_dependencies%': [],
+
+    'conditions': [
+      ['host_os=="linux"', {
+        'conditions': [
+          ['target_arch=="arm" or target_arch=="ia32" or target_arch=="x32"\
+           or target_arch=="mips" or target_arch=="mipsel" or\
+           target_arch=="ppc"', {
+            # All the 32 bit CPU architectures v8 supports.
+            'compiler_flags_cc_host%': [
+              '-m32',
+              '--std=gnu++11',
+            ],
+            'linker_flags_host%': [
+              '-pthread',
+            ],
+          }, {
+            'compiler_flags_cc_host%': [
+              '--std=gnu++11',
+            ],
+            'linker_flags_host%': [
+            '-pthread',
+            ],
+          }],
+        ],
+      }, {
+        'compiler_flags_cc_host%': [],
+        'linker_flags_host%': [],
+      }],
+    ],
   },
 
   'target_defaults': {
@@ -171,6 +231,11 @@
       # value it has during early variable expansion. That's enough to make
       # it available during target conditional processing.
       'sb_pedantic_warnings%': '<(sb_pedantic_warnings)',
+
+      # This workaround is used to surface the default setting for the variable
+      # 'optimize_target_for_speed' if the gyp target does not explicitly set
+      # it.
+      'optimize_target_for_speed%': '<(optimize_target_for_speed)',
     },
     'cflags': [ '<@(compiler_flags)' ],
     'ldflags': [ '<@(linker_flags)' ],
@@ -249,9 +314,35 @@
       'qa_base': {
         'abstract': 1,
         # optimize:
-        'cflags': [ '<@(compiler_flags_qa)' ],
-        'cflags_c': [ '<@(compiler_flags_c_qa)' ],
-        'cflags_cc': [ '<@(compiler_flags_cc_qa)' ],
+        'target_conditions': [
+          ['optimize_target_for_speed==1', {
+            'cflags': [
+              '<@(compiler_flags_qa)',
+              '<@(compiler_flags_qa_speed)',
+            ],
+            'cflags_c': [
+              '<@(compiler_flags_c_qa)',
+              '<@(compiler_flags_c_qa_speed)',
+            ],
+            'cflags_cc': [
+              '<@(compiler_flags_cc_qa)',
+              '<@(compiler_flags_cc_qa_speed)',
+            ],
+          }, {
+            'cflags': [
+              '<@(compiler_flags_qa)',
+              '<@(compiler_flags_qa_size)',
+            ],
+            'cflags_c': [
+              '<@(compiler_flags_c_qa)',
+              '<@(compiler_flags_c_qa_size)',
+            ],
+            'cflags_cc': [
+              '<@(compiler_flags_cc_qa)',
+              '<@(compiler_flags_cc_qa_size)',
+            ],
+          }]
+        ],
         'ldflags': [ '<@(linker_flags_qa)' ],
         'defines': [
           '<@(defines_qa)',
@@ -262,9 +353,35 @@
       'gold_base': {
         'abstract': 1,
         # optimize:
-        'cflags': [ '<@(compiler_flags_gold)' ],
-        'cflags_c': [ '<@(compiler_flags_c_gold)' ],
-        'cflags_cc': [ '<@(compiler_flags_cc_gold)' ],
+        'target_conditions': [
+          ['optimize_target_for_speed==1', {
+            'cflags': [
+              '<@(compiler_flags_gold)',
+              '<@(compiler_flags_gold_speed)',
+            ],
+            'cflags_c': [
+              '<@(compiler_flags_c_gold)',
+              '<@(compiler_flags_c_gold_speed)',
+            ],
+            'cflags_cc': [
+              '<@(compiler_flags_cc_gold)',
+              '<@(compiler_flags_cc_gold_speed)',
+            ],
+          }, {
+            'cflags': [
+              '<@(compiler_flags_gold)',
+              '<@(compiler_flags_gold_size)',
+            ],
+            'cflags_c': [
+              '<@(compiler_flags_c_gold)',
+              '<@(compiler_flags_c_gold_size)',
+            ],
+            'cflags_cc': [
+              '<@(compiler_flags_cc_gold)',
+              '<@(compiler_flags_cc_gold_size)',
+            ],
+          }]
+        ],
         'ldflags': [ '<@(linker_flags_gold)' ],
         'defines': [
           '<@(defines_gold)',

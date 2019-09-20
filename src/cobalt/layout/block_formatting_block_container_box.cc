@@ -15,6 +15,7 @@
 #include "cobalt/layout/block_formatting_block_container_box.h"
 
 #include <algorithm>
+#include <memory>
 
 #include "cobalt/cssom/computed_style.h"
 #include "cobalt/cssom/keyword_value.h"
@@ -58,12 +59,12 @@ void BlockFormattingBlockContainerBox::AddChild(
   }
 }
 
-scoped_ptr<FormattingContext>
+std::unique_ptr<FormattingContext>
 BlockFormattingBlockContainerBox::UpdateRectOfInFlowChildBoxes(
     const LayoutParams& child_layout_params) {
   // Lay out child boxes in the normal flow.
   //   https://www.w3.org/TR/CSS21/visuren.html#normal-flow
-  scoped_ptr<BlockFormattingContext> block_formatting_context(
+  std::unique_ptr<BlockFormattingContext> block_formatting_context(
       new BlockFormattingContext(child_layout_params));
   for (Boxes::const_iterator child_box_iterator = child_boxes().begin();
        child_box_iterator != child_boxes().end(); ++child_box_iterator) {
@@ -74,7 +75,7 @@ BlockFormattingBlockContainerBox::UpdateRectOfInFlowChildBoxes(
       block_formatting_context->UpdateRect(child_box);
     }
   }
-  return block_formatting_context.PassAs<FormattingContext>();
+  return std::unique_ptr<FormattingContext>(block_formatting_context.release());
 }
 
 AnonymousBlockBox*
@@ -101,9 +102,8 @@ BlockFormattingBlockContainerBox::GetOrAddAnonymousBlockBox() {
     new_computed_style_declaration->set_animations(
         new web_animations::AnimationSet());
     scoped_refptr<AnonymousBlockBox> new_anonymous_block_box(
-        new AnonymousBlockBox(new_computed_style_declaration,
-                              GetBaseDirection(), used_style_provider(),
-                              layout_stat_tracker()));
+        new AnonymousBlockBox(new_computed_style_declaration, base_direction(),
+                              used_style_provider(), layout_stat_tracker()));
     anonymous_block_box = new_anonymous_block_box.get();
     PushBackDirectChild(new_anonymous_block_box);
   }
@@ -203,7 +203,7 @@ WrapResult InlineLevelBlockContainerBox::TryWrapAt(
              : kWrapResultNoWrap;
 }
 
-base::optional<int> InlineLevelBlockContainerBox::GetBidiLevel() const {
+base::Optional<int> InlineLevelBlockContainerBox::GetBidiLevel() const {
   return paragraph_->GetBidiLevel(text_position_);
 }
 

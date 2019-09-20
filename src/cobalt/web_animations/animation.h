@@ -15,19 +15,22 @@
 #ifndef COBALT_WEB_ANIMATIONS_ANIMATION_H_
 #define COBALT_WEB_ANIMATIONS_ANIMATION_H_
 
+#include <memory>
 #include <set>
 
 #include "base/basictypes.h"
 #include "base/compiler_specific.h"
 #include "base/memory/ref_counted.h"
 #include "base/optional.h"
-#include "base/time.h"
+#include "base/time/time.h"
 #include "cobalt/script/wrappable.h"
 #include "cobalt/web_animations/animation_effect_read_only.h"
 #include "cobalt/web_animations/animation_timeline.h"
 
 namespace cobalt {
 namespace web_animations {
+
+class AnimationSet;
 
 // Animations are represented in the Web Animations API by the Animation
 // interface.
@@ -52,10 +55,10 @@ class Animation : public script::Wrappable {
    public:
     Data() : playback_rate_(1.0) {}
 
-    const base::optional<base::TimeDelta>& start_time() const {
+    const base::Optional<base::TimeDelta>& start_time() const {
       return start_time_;
     }
-    void set_start_time(const base::optional<base::TimeDelta>& start_time) {
+    void set_start_time(const base::Optional<base::TimeDelta>& start_time) {
       start_time_ = start_time;
     }
 
@@ -66,13 +69,13 @@ class Animation : public script::Wrappable {
 
     // Converts the animation's timeline's time into the animation's local
     // time, which takes into account this animation's start_time().
-    base::optional<base::TimeDelta> ComputeLocalTimeFromTimelineTime(
-        const base::optional<base::TimeDelta>& timeline_time) const;
-    base::optional<base::TimeDelta> ComputeTimelineTimeFromLocalTime(
-        const base::optional<base::TimeDelta>& local_time) const;
+    base::Optional<base::TimeDelta> ComputeLocalTimeFromTimelineTime(
+        const base::Optional<base::TimeDelta>& timeline_time) const;
+    base::Optional<base::TimeDelta> ComputeTimelineTimeFromLocalTime(
+        const base::Optional<base::TimeDelta>& local_time) const;
 
    private:
-    base::optional<base::TimeDelta> start_time_;
+    base::Optional<base::TimeDelta> start_time_;
     double playback_rate_;
   };
 
@@ -114,12 +117,12 @@ class Animation : public script::Wrappable {
   const scoped_refptr<AnimationTimeline>& timeline() const { return timeline_; }
   void set_timeline(const scoped_refptr<AnimationTimeline>& timeline);
 
-  base::optional<double> start_time() const {
+  base::Optional<double> start_time() const {
     return data_.start_time()
-               ? base::optional<double>(data_.start_time()->InMillisecondsF())
+               ? base::Optional<double>(data_.start_time()->InMillisecondsF())
                : base::nullopt;
   }
-  void set_start_time(const base::optional<double>& start_time) {
+  void set_start_time(const base::Optional<double>& start_time) {
     if (!start_time) {
       data_.set_start_time(base::nullopt);
     } else {
@@ -127,10 +130,10 @@ class Animation : public script::Wrappable {
     }
   }
 
-  base::optional<double> current_time() const;
-  base::optional<base::TimeDelta> current_time_as_time_delta() const;
+  base::Optional<double> current_time() const;
+  base::Optional<base::TimeDelta> current_time_as_time_delta() const;
 
-  void set_current_time(const base::optional<double>& current_time);
+  void set_current_time(const base::Optional<double>& current_time);
 
   double playback_rate() const { return data_.playback_rate(); }
   void set_playback_rate(double playback_rate) {
@@ -149,7 +152,7 @@ class Animation : public script::Wrappable {
   // Connects a set of events (currently only the event where the Animation's
   // effect enters its "after phase") to the provided callbacks, and returns
   // an object that represents the connection.
-  scoped_ptr<EventHandler> AttachEventHandler(
+  std::unique_ptr<EventHandler> AttachEventHandler(
       const base::Closure& on_enter_after_phase);
 
   DEFINE_WRAPPABLE_TYPE(Animation);
@@ -169,8 +172,21 @@ class Animation : public script::Wrappable {
   // Called when the animation's effect enters its after phase.
   void OnEnterAfterPhase();
 
+  // It is possible for an Animation to be inserted into a AnimationSet, such
+  // that is not discoverable by Web APIs, so we track all our references from
+  // all AnimationSets so that we can remove ourselves from them when the
+  // animation is ready to destroy itself.
+  void OnAddedToAnimationSet(const scoped_refptr<AnimationSet>& set);
+
+  // Called by AnimationSet when removed from an AnimationSet.
+  void OnRemovedFromAnimationSet(const scoped_refptr<AnimationSet>& set);
+
   scoped_refptr<AnimationEffectReadOnly> effect_;
   scoped_refptr<AnimationTimeline> timeline_;
+
+  // A list of animation sets that contain this animation.
+  std::set<scoped_refptr<AnimationSet>> contained_in_animation_sets_;
+
   Data data_;
 
   // A list of event handlers that are interested in receiving callbacks when
@@ -183,9 +199,12 @@ class Animation : public script::Wrappable {
 
   // When active, this task will be setup to fire after we enter the after
   // phase.
-  scoped_ptr<TimedTaskQueue::Task> on_enter_after_phase_;
+  std::unique_ptr<TimedTaskQueue::Task> on_enter_after_phase_;
 
   friend class EventHandler;
+
+  // So that we can track which AnimationSets this animation is added to.
+  friend class AnimationSet;
 
   DISALLOW_COPY_AND_ASSIGN(Animation);
 };

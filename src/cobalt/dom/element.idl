@@ -27,6 +27,9 @@ interface Element : Node {
   void setAttribute(DOMString name, DOMString value);
   void removeAttribute(DOMString name);
   boolean hasAttribute(DOMString name);
+  boolean hasAttributeNS(DOMString namespace_uri, DOMString localName);
+  DOMString? getAttributeNS(DOMString namespace_uri, DOMString name);
+  [RaisesException] boolean matches(DOMString selectors);
   HTMLCollection getElementsByTagName(DOMString localName);
   HTMLCollection getElementsByClassName(DOMString classNames);
 };

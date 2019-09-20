@@ -19,6 +19,8 @@
   'variables': {
     'target_arch%': 'x64',
     'target_os': 'linux',
+    'yasm_exists': 1,
+    'sb_widevine_platform' : 'linux',
 
     'platform_libraries': [
       '-lasound',
@@ -38,32 +40,15 @@
     'variables': {
       'use_dlmalloc_allocator%': 0,
     },
-    'linker_flags': [
-      '-static-libstdc++'
-    ],
-
     'conditions': [
-      ['use_dlmalloc_allocator==1 and use_asan==0', {
-        'linker_flags': [
-          # If we're not using the system allocator (e.g. we are using dlmalloc
-          # and ASAN is inactive) then we should never be making any calls to
-          # malloc() or free().  The following linker flags ensure that they
-          # are not linked in because we don't actually implement the wrapped
-          # version of them. We do link them in when using ASAN, as it needs to
-          # use its own version of these allocators in the Starboard
-          # implementation.
-          '-Wl,--wrap=malloc',
-          '-Wl,--wrap=calloc',
-          '-Wl,--wrap=realloc',
-          '-Wl,--wrap=memalign',
-          '-Wl,--wrap=reallocalign',
-          '-Wl,--wrap=free',
-          '-Wl,--wrap=strdup',
-          '-Wl,--wrap=malloc_usable_size',
-          '-Wl,--wrap=malloc_stats_fast',
-          '-Wl,--wrap=__cxa_demangle',
-        ],
-      }],
+        ['sb_evergreen != 1', {
+          # TODO: allow starboard_platform to use system libc/libc++ in the
+          # future. For now, if this flags is enabled, a warning emerge saying
+          # it's unused anyway.
+          'linker_flags': [
+            '-static-libstdc++',
+          ],
+        }],
     ],
   },
 

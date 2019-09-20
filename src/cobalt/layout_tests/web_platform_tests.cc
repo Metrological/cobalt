@@ -12,18 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
 #include <ostream>
 #include <sstream>
 #include <vector>
 
 #include "base/command_line.h"
-#include "base/file_util.h"
+#include "base/files/file_util.h"
 #include "base/json/json_reader.h"
-#include "base/message_loop.h"
+#include "base/message_loop/message_loop.h"
 #include "base/run_loop.h"
-#include "base/string_util.h"
+#include "base/strings/string_util.h"
+#include "base/test/scoped_task_environment.h"
 #include "base/values.h"
 #include "cobalt/browser/web_module.h"
+#include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/csp_delegate_factory.h"
 #include "cobalt/layout_tests/test_utils.h"
 #include "cobalt/layout_tests/web_platform_test_parser.h"
@@ -31,9 +34,11 @@
 #include "cobalt/media/media_module.h"
 #include "cobalt/network/network_module.h"
 #include "cobalt/render_tree/resource_provider_stub.h"
-#include "googleurl/src/gurl.h"
 #include "starboard/window.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "url/gurl.h"
+
+using cobalt::cssom::ViewportSize;
 
 namespace cobalt {
 namespace layout_tests {
@@ -46,22 +51,22 @@ namespace {
 class CspDelegatePermissive : public dom::CspDelegateSecure {
  public:
   CspDelegatePermissive(
-      scoped_ptr<dom::CspViolationReporter> violation_reporter, const GURL& url,
-      csp::CSPHeaderPolicy require_csp,
+      std::unique_ptr<dom::CspViolationReporter> violation_reporter,
+      const GURL& url, csp::CSPHeaderPolicy require_csp,
       const base::Closure& policy_changed_callback)
-      : dom::CspDelegateSecure(violation_reporter.Pass(), url, require_csp,
+      : dom::CspDelegateSecure(std::move(violation_reporter), url, require_csp,
                                policy_changed_callback) {
     // Lies, but some checks in our parent require this.
     was_header_received_ = true;
   }
 
   static CspDelegate* Create(
-      scoped_ptr<dom::CspViolationReporter> violation_reporter, const GURL& url,
-      csp::CSPHeaderPolicy require_csp,
+      std::unique_ptr<dom::CspViolationReporter> violation_reporter,
+      const GURL& url, csp::CSPHeaderPolicy require_csp,
       const base::Closure& policy_changed_callback,
       int insecure_allowed_token) {
-    UNREFERENCED_PARAMETER(insecure_allowed_token);
-    return new CspDelegatePermissive(violation_reporter.Pass(), url,
+    SB_UNREFERENCED_PARAMETER(insecure_allowed_token);
+    return new CspDelegatePermissive(std::move(violation_reporter), url,
                                      require_csp, policy_changed_callback);
   }
 
@@ -83,6 +88,12 @@ enum TestStatus {
   kNotrun,
 };
 
+enum TestsStatus {
+  kTestsOk = 0,
+  kTestsError,
+  kTestsTimeout
+};
+
 std::string TestStatusToString(int status) {
   switch (status) {
     case kPass:
@@ -98,11 +109,30 @@ std::string TestStatusToString(int status) {
   return "FAIL";
 }
 
+std::string TestsStatusToString(int status) {
+  switch (status) {
+    case kTestsOk:
+      return "OK";
+    case kTestsError:
+      return "ERROR";
+    case kTestsTimeout:
+      return "TIMEOUT";
+  }
+  NOTREACHED();
+  return "FAIL";
+}
+
 struct TestResult {
   std::string name;
   int status;
   std::string message;
   std::string stack;
+};
+
+struct HarnessResult {
+  std::vector<TestResult> test_results;
+  int status;
+  std::string message;
 };
 
 const char* kLogSuppressions[] = {
@@ -112,26 +142,28 @@ const char* kLogSuppressions[] = {
 };
 
 void Quit(base::RunLoop* run_loop) {
-  MessageLoop::current()->PostTask(FROM_HERE, run_loop->QuitClosure());
+  base::MessageLoop::current()->task_runner()->PostTask(
+      FROM_HERE, run_loop->QuitClosure());
 }
 
 // Called when layout completes and results have been produced.  We use this
 // signal to stop the WebModule's message loop since our work is done after a
 // layout has been performed.
 void WebModuleOnRenderTreeProducedCallback(
-    base::optional<browser::WebModule::LayoutResults>* out_results,
-    base::RunLoop* run_loop, MessageLoop* message_loop,
+    base::Optional<browser::WebModule::LayoutResults>* out_results,
+    base::RunLoop* run_loop, base::MessageLoop* message_loop,
     const browser::WebModule::LayoutResults& results) {
   out_results->emplace(results.render_tree, results.layout_time);
-  message_loop->PostTask(FROM_HERE, base::Bind(Quit, run_loop));
+  message_loop->task_runner()->PostTask(FROM_HERE, base::Bind(Quit, run_loop));
 }
 
 // This callback, when called, quits a message loop, outputs the error message
 // and sets the success flag to false.
-void WebModuleErrorCallback(base::RunLoop* run_loop, MessageLoop* message_loop,
-                            const GURL& url, const std::string& error) {
+void WebModuleErrorCallback(base::RunLoop* run_loop,
+                            base::MessageLoop* message_loop, const GURL& url,
+                            const std::string& error) {
   LOG(FATAL) << "Error loading document: " << error << ". URL: " << url;
-  message_loop->PostTask(FROM_HERE, base::Bind(Quit, run_loop));
+  message_loop->task_runner()->PostTask(FROM_HERE, base::Bind(Quit, run_loop));
 }
 
 std::string RunWebPlatformTest(const GURL& url, bool* got_results) {
@@ -143,24 +175,25 @@ std::string RunWebPlatformTest(const GURL& url, bool* got_results) {
   // Setup a message loop for the current thread since we will be constructing
   // a WebModule, which requires a message loop to exist for the current
   // thread.
-  MessageLoop message_loop(MessageLoop::TYPE_DEFAULT);
+  base::test::ScopedTaskEnvironment scoped_task_environment;
 
-  const math::Size kDefaultViewportSize(640, 360);
+  const ViewportSize kDefaultViewportSize(640, 360);
 
   // Setup WebModule's auxiliary components.
 
   // Network module
   network::NetworkModule::Options net_options;
   net_options.https_requirement = network::kHTTPSOptional;
+  std::string custom_proxy =
+      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII("proxy");
+  if (!custom_proxy.empty()) net_options.custom_proxy = custom_proxy;
   network::NetworkModule network_module(net_options);
 
   // Media module
   render_tree::ResourceProviderStub resource_provider;
-  media::MediaModule::Options options;
-  options.output_resolution_override = kDefaultViewportSize;
-  scoped_ptr<media::MediaModule> media_module(
-      media::MediaModule::Create(NULL, &resource_provider, options));
-  scoped_ptr<media::CanPlayTypeHandler> can_play_type_handler(
+  std::unique_ptr<media::MediaModule> media_module(
+      new media::MediaModule(NULL, &resource_provider));
+  std::unique_ptr<media::CanPlayTypeHandler> can_play_type_handler(
       media::MediaModule::CreateCanPlayTypeHandler());
 
   dom::CspDelegateFactory::GetInstance()->OverrideCreator(
@@ -171,15 +204,16 @@ std::string RunWebPlatformTest(const GURL& url, bool* got_results) {
   web_module_options.layout_trigger = layout::LayoutManager::kTestRunnerMode;
 
   // Prepare a slot for our results to be placed when ready.
-  base::optional<browser::WebModule::LayoutResults> results;
+  base::Optional<browser::WebModule::LayoutResults> results;
   base::RunLoop run_loop;
 
   // Create the WebModule and wait for a layout to occur.
   browser::WebModule web_module(
       url, base::kApplicationStateStarted,
       base::Bind(&WebModuleOnRenderTreeProducedCallback, &results, &run_loop,
-                 MessageLoop::current()),
-      base::Bind(&WebModuleErrorCallback, &run_loop, MessageLoop::current()),
+                 base::MessageLoop::current()),
+      base::Bind(&WebModuleErrorCallback, &run_loop,
+                 base::MessageLoop::current()),
       browser::WebModule::CloseCallback() /* window_close_callback */,
       base::Closure() /* window_minimize_callback */,
       can_play_type_handler.get(), media_module.get(), &network_module,
@@ -193,23 +227,28 @@ std::string RunWebPlatformTest(const GURL& url, bool* got_results) {
   return output;
 }
 
-std::vector<TestResult> ParseResults(const std::string& json_results) {
-  std::vector<TestResult> test_results;
+HarnessResult ParseResults(const std::string& json_results) {
+  HarnessResult harness_result;
+  std::vector<TestResult>& test_results = harness_result.test_results;
 
-  scoped_ptr<base::Value> root;
+  std::unique_ptr<base::Value> root;
   base::JSONReader reader(
       base::JSONParserOptions::JSON_REPLACE_INVALID_CHARACTERS);
-  root.reset(reader.ReadToValue(json_results));
+  root = reader.ReadToValue(json_results);
   // Expect that parsing test result succeeded.
   EXPECT_EQ(base::JSONReader::JSON_NO_ERROR, reader.error_code());
   if (!root) {
     // Unparseable JSON, or empty string.
     LOG(ERROR) << "Web Platform Tests returned unparseable JSON test result!";
-    return test_results;
+    return harness_result;
   }
 
   base::DictionaryValue* root_as_dict;
   EXPECT_EQ(true, root->GetAsDictionary(&root_as_dict));
+
+  EXPECT_EQ(true, root_as_dict->GetInteger("status", &harness_result.status));
+  // "message" field might not be set
+  root_as_dict->GetString("message", &harness_result.message);
 
   base::ListValue* test_list;
   EXPECT_EQ(true, root_as_dict->GetList("tests", &test_list));
@@ -226,7 +265,7 @@ std::vector<TestResult> ParseResults(const std::string& json_results) {
     test_dict->GetString("stack", &result.stack);
     test_results.push_back(result);
   }
-  return test_results;
+  return harness_result;
 }
 
 ::testing::AssertionResult CheckResult(const char* /* expectation_str */,
@@ -257,6 +296,43 @@ std::vector<TestResult> ParseResults(const std::string& json_results) {
   }
 }
 
+::testing::AssertionResult CheckHarnessResult(const char* /* expectation_str */,
+                                              const char* /* results_str */,
+                                              WebPlatformTestInfo::State expect_status,
+                                              const HarnessResult& result) {
+  if ((expect_status == WebPlatformTestInfo::State::kPass) &&
+      (result.status != kTestsOk)) {
+    return ::testing::AssertionFailure()
+           << " Harness status :" << TestsStatusToString(result.status)
+           << std::endl
+           << result.message;
+  } else {
+    return ::testing::AssertionSuccess();
+  }
+}
+
+struct GetTestName {
+  std::string operator()(
+      const ::testing::TestParamInfo<WebPlatformTestInfo>& info) const {
+    // Only alphanumeric characters and '_' are valid.
+    std::string name = info.param.url;
+    for (size_t i = 0; i < name.size(); ++i) {
+      char ch = name[i];
+      if (ch >= 'A' && ch <= 'Z') {
+        continue;
+      }
+      if (ch >= 'a' && ch <= 'z') {
+        continue;
+      }
+      if (ch >= '0' && ch <= '9') {
+        continue;
+      }
+      name[i] = '_';
+    }
+    return name;
+  }
+};
+
 }  // namespace
 
 class WebPlatformTest : public ::testing::TestWithParam<WebPlatformTestInfo> {};
@@ -264,22 +340,10 @@ TEST_P(WebPlatformTest, Run) {
   // Output the name of the current input file so that it is visible in test
   // output.
   std::string test_server =
-      CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
           "web-platform-test-server");
-  if (test_server.empty()) {
-    FilePath url_path = GetTestInputRootDirectory()
-                        .Append(FILE_PATH_LITERAL("web-platform-tests"));
-#if defined(COBALT_LINUX) || defined(COBALT_WIN)
-    // Get corp configuration.
-    url_path = url_path.Append(FILE_PATH_LITERAL("corp.url"));
-#else
-    // Get lab configuration.
-    url_path = url_path.Append(FILE_PATH_LITERAL("lab.url"));
-#endif
-    file_util::ReadFileToString(url_path, &test_server);
-    TrimWhitespaceASCII(test_server, TRIM_ALL, &test_server);
-    ASSERT_FALSE(test_server.empty());
-  }
+  if (test_server.empty()) test_server = "http://web-platform.test:8000";
+
   GURL test_url = GURL(test_server).Resolve(GetParam().url);
 
   std::cout << "(" << test_url << ")" << std::endl;
@@ -287,7 +351,9 @@ TEST_P(WebPlatformTest, Run) {
   bool got_results = false;
   std::string json_results = RunWebPlatformTest(test_url, &got_results);
   EXPECT_TRUE(got_results);
-  std::vector<TestResult> results = ParseResults(json_results);
+  HarnessResult result = ParseResults(json_results);
+  const std::vector<TestResult>& results = result.test_results;
+
   bool failed_at_least_once = false;
   for (size_t i = 0; i < results.size(); ++i) {
     const WebPlatformTestInfo& test_info = GetParam();
@@ -309,6 +375,7 @@ TEST_P(WebPlatformTest, Run) {
     }
     EXPECT_PRED_FORMAT2(CheckResult, should_pass, test_result);
   }
+  EXPECT_PRED_FORMAT2(CheckHarnessResult, GetParam().expectation, result);
 }
 
 // Disable on Windows until network stack is implemented.
@@ -316,36 +383,45 @@ TEST_P(WebPlatformTest, Run) {
 // XML Http Request test cases.
 INSTANTIATE_TEST_CASE_P(
     xhr, WebPlatformTest,
-    ::testing::ValuesIn(EnumerateWebPlatformTests("XMLHttpRequest")));
+    ::testing::ValuesIn(EnumerateWebPlatformTests("XMLHttpRequest")),
+    GetTestName());
 
 INSTANTIATE_TEST_CASE_P(
     cobalt_special, WebPlatformTest,
-    ::testing::ValuesIn(EnumerateWebPlatformTests("cobalt_special")));
+    ::testing::ValuesIn(EnumerateWebPlatformTests("cobalt_special")),
+    GetTestName());
 
 INSTANTIATE_TEST_CASE_P(
     csp, WebPlatformTest,
-    ::testing::ValuesIn(EnumerateWebPlatformTests("content-security-policy")));
+    ::testing::ValuesIn(EnumerateWebPlatformTests("content-security-policy")),
+    GetTestName());
 
 INSTANTIATE_TEST_CASE_P(dom, WebPlatformTest,
-                        ::testing::ValuesIn(EnumerateWebPlatformTests("dom")));
+                        ::testing::ValuesIn(EnumerateWebPlatformTests("dom")),
+                        GetTestName());
 
 INSTANTIATE_TEST_CASE_P(cors, WebPlatformTest,
-                        ::testing::ValuesIn(EnumerateWebPlatformTests("cors")));
+                        ::testing::ValuesIn(EnumerateWebPlatformTests("cors")),
+                        GetTestName());
 
 INSTANTIATE_TEST_CASE_P(
     fetch, WebPlatformTest,
-    ::testing::ValuesIn(EnumerateWebPlatformTests("fetch", "'fetch' in this")));
+    ::testing::ValuesIn(EnumerateWebPlatformTests("fetch", "'fetch' in this")),
+    GetTestName());
 
 INSTANTIATE_TEST_CASE_P(html, WebPlatformTest,
-                        ::testing::ValuesIn(EnumerateWebPlatformTests("html")));
+                        ::testing::ValuesIn(EnumerateWebPlatformTests("html")),
+                        GetTestName());
 
 INSTANTIATE_TEST_CASE_P(
     mediasession, WebPlatformTest,
-    ::testing::ValuesIn(EnumerateWebPlatformTests("mediasession")));
+    ::testing::ValuesIn(EnumerateWebPlatformTests("mediasession")),
+    GetTestName());
 
 INSTANTIATE_TEST_CASE_P(streams, WebPlatformTest,
                         ::testing::ValuesIn(EnumerateWebPlatformTests(
-                            "streams", "'ReadableStream' in this")));
+                            "streams", "'ReadableStream' in this")),
+                        GetTestName());
 
 #endif  // !defined(COBALT_WIN)
 

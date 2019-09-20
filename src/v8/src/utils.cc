@@ -11,6 +11,10 @@
 #include "src/base/logging.h"
 #include "src/base/platform/platform.h"
 
+#if V8_OS_STARBOARD
+#include "starboard/common/log.h"
+#endif  // V8_OS_STARBOARD
+
 namespace v8 {
 namespace internal {
 
@@ -144,6 +148,7 @@ void StrNCpy(Vector<char> dest, const char* src, size_t n) {
 }
 
 
+#if !V8_OS_STARBOARD
 void Flush(FILE* out) {
   fflush(out);
 }
@@ -246,6 +251,7 @@ byte* ReadBytes(const char* filename, int* size, bool verbose) {
   char* chars = ReadCharsFromFile(filename, size, 0, verbose);
   return reinterpret_cast<byte*>(chars);
 }
+#endif  // !V8_OS_STARBOARD
 
 
 static Vector<const char> SetVectorContents(char* chars,
@@ -261,6 +267,7 @@ static Vector<const char> SetVectorContents(char* chars,
 }
 
 
+#if !V8_OS_STARBOARD
 Vector<const char> ReadFile(const char* filename,
                             bool* exists,
                             bool verbose) {
@@ -277,9 +284,14 @@ Vector<const char> ReadFile(FILE* file,
   char* result = ReadCharsFromFile(file, &size, 1, verbose, "");
   return SetVectorContents(result, size, exists);
 }
+#endif  // !V8_OS_STARBOARD
 
 
 int WriteCharsToFile(const char* str, int size, FILE* f) {
+#if V8_OS_STARBOARD
+  SB_NOTIMPLEMENTED();
+  return size;
+#else  // V8_OS_STARBOARD
   int total = 0;
   while (total < size) {
     int write = static_cast<int>(fwrite(str, 1, size - total, f));
@@ -290,6 +302,7 @@ int WriteCharsToFile(const char* str, int size, FILE* f) {
     str += write;
   }
   return total;
+#endif  // !V8_OS_STARBOARD
 }
 
 
@@ -297,6 +310,10 @@ int AppendChars(const char* filename,
                 const char* str,
                 int size,
                 bool verbose) {
+#if V8_OS_STARBOARD
+  SB_NOTIMPLEMENTED();
+  return size;
+#else  // V8_OS_STARBOARD
   FILE* f = base::OS::FOpen(filename, "ab");
   if (f == nullptr) {
     if (verbose) {
@@ -307,6 +324,7 @@ int AppendChars(const char* filename,
   int written = WriteCharsToFile(str, size, f);
   fclose(f);
   return written;
+#endif  // !V8_OS_STARBOARD
 }
 
 
@@ -314,6 +332,10 @@ int WriteChars(const char* filename,
                const char* str,
                int size,
                bool verbose) {
+#if V8_OS_STARBOARD
+  SB_NOTIMPLEMENTED();
+  return size;
+#else  // V8_OS_STARBOARD
   FILE* f = base::OS::FOpen(filename, "wb");
   if (f == nullptr) {
     if (verbose) {
@@ -324,6 +346,7 @@ int WriteChars(const char* filename,
   int written = WriteCharsToFile(str, size, f);
   fclose(f);
   return written;
+#endif  // !V8_OS_STARBOARD
 }
 
 
@@ -394,7 +417,7 @@ MemCopyUint8Function CreateMemCopyUint8Function(Isolate* isolate,
 MemCopyUint16Uint8Function CreateMemCopyUint16Uint8Function(
     Isolate* isolate, MemCopyUint16Uint8Function stub);
 
-#elif (V8_OS_POSIX && V8_OS_STARBOARD) && V8_HOST_ARCH_MIPS
+#elif (V8_OS_POSIX || V8_OS_STARBOARD) && V8_HOST_ARCH_MIPS
 V8_EXPORT_PRIVATE MemCopyUint8Function memcopy_uint8_function =
     &MemCopyUint8Wrapper;
 // Defined in codegen-mips.cc.

@@ -28,6 +28,7 @@ AudioNode::AudioNode(AudioContext* context)
       channel_interpretation_(kAudioNodeChannelInterpretationSpeakers) {}
 
 AudioNode::~AudioNode() {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   AudioLock::AutoLock lock(audio_lock());
 
   RemoveAllInputs();
@@ -35,6 +36,7 @@ AudioNode::~AudioNode() {
 }
 
 scoped_refptr<AudioContext> AudioNode::context() const {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   return audio_context_;
 }
 
@@ -101,8 +103,8 @@ void AudioNode::Connect(const scoped_refptr<AudioNode>& destination,
   // TODO: Detect if there is a cycle when connecting an AudioNode to
   // another AudioNode. A cycle is allowed only if there is at least one
   // DelayNode in the cycle or a NOT_SUPPORTED_ERR exception MUST be thrown.
-  AudioNodeInput* input_node = destination->inputs_[input];
-  AudioNodeOutput* output_node = outputs_[output];
+  AudioNodeInput* input_node = destination->inputs_[input].get();
+  AudioNodeOutput* output_node = outputs_[output].get();
 
   DCHECK(input_node);
   DCHECK(output_node);
@@ -182,6 +184,12 @@ AudioNodeOutput* AudioNode::Output(int32 index) const {
     return outputs_[output_index].get();
   }
   return NULL;
+}
+
+void AudioNode::TraceMembers(script::Tracer* tracer) {
+  EventTarget::TraceMembers(tracer);
+
+  tracer->Trace(audio_context_);
 }
 
 }  // namespace audio

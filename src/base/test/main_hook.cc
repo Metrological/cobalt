@@ -9,10 +9,6 @@
 #include "base/command_line.h"
 #endif
 
-#if defined(COBALT_BUILD_TYPE_GOLD)
-#error You cannot build unit tests in gold builds.
-#endif
-
 #if defined(__LB_SHELL__) || defined(COBALT)
 base::AtExitManager* platform_at_exit_manager_;
 
@@ -20,8 +16,8 @@ MainHook::MainHook(MainType main_func, int argc, char* argv[]) {
   // TODO: MainHooks should no longer be used and in fact this
   // class was removed in the recent version of Chromium. Any required
   // initialization logic in tests should be done in TestSuite::Initialize().
-  CommandLine::Init(argc, argv);
-  platform_at_exit_manager_ = new base::AtExitManager();
+  base::CommandLine::Init(argc, argv);
+  // platform_at_exit_manager_ = new base::AtExitManager();
 }
 MainHook::~MainHook() {
   delete platform_at_exit_manager_;

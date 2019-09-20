@@ -4,14 +4,17 @@
 
 #include "cobalt/media/filters/stream_parser_factory.h"
 
+#include <memory>
 #include <set>
 
 #include "base/basictypes.h"
 #include "base/command_line.h"
 #include "base/metrics/histogram.h"
-#include "base/string_number_conversions.h"
-#include "base/string_split.h"
-#include "base/string_util.h"
+#include "base/metrics/histogram_macros.h"
+#include "base/strings/pattern.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_split.h"
+#include "base/strings/string_util.h"
 #include "build/build_config.h"
 #include "cobalt/media/base/media.h"
 #include "cobalt/media/formats/mpeg/adts_stream_parser.h"
@@ -49,7 +52,8 @@ struct CodecInfo {
     HISTOGRAM_OPUS,
     HISTOGRAM_HEVC,
     HISTOGRAM_AC3,
-    HISTOGRAM_MAX = HISTOGRAM_AC3  // Must be equal to largest logged entry.
+    HISTOGRAM_AV1,
+    HISTOGRAM_MAX = HISTOGRAM_AV1  // Must be equal to largest logged entry.
   };
 
   const char* pattern;
@@ -69,6 +73,8 @@ struct SupportedTypeInfo {
   const CodecInfo** codecs;
 };
 
+static const CodecInfo kVP09CodecInfo = {"vp09.*", CodecInfo::VIDEO, NULL,
+                                         CodecInfo::HISTOGRAM_VP9};
 static const CodecInfo kVP8CodecInfo = {"vp8", CodecInfo::VIDEO, NULL,
                                         CodecInfo::HISTOGRAM_VP8};
 static const CodecInfo kVP9CodecInfo = {"vp9*", CodecInfo::VIDEO, NULL,
@@ -77,9 +83,17 @@ static const CodecInfo kVorbisCodecInfo = {"vorbis", CodecInfo::AUDIO, NULL,
                                            CodecInfo::HISTOGRAM_VORBIS};
 static const CodecInfo kOpusCodecInfo = {"opus", CodecInfo::AUDIO, NULL,
                                          CodecInfo::HISTOGRAM_OPUS};
+// Note: Validation of the codec string is handled by the caller.
+static const CodecInfo kAV1CodecInfo = {"av01.*", CodecInfo::VIDEO, nullptr,
+                                        CodecInfo::HISTOGRAM_AV1};
 
-static const CodecInfo* kVideoWebMCodecs[] = {
-    &kVP8CodecInfo, &kVP9CodecInfo, &kVorbisCodecInfo, &kOpusCodecInfo, NULL};
+static const CodecInfo* kVideoWebMCodecs[] = {&kVP09CodecInfo,
+                                              &kVP8CodecInfo,
+                                              &kVP9CodecInfo,
+                                              &kVorbisCodecInfo,
+                                              &kOpusCodecInfo,
+                                              &kAV1CodecInfo,
+                                              NULL};
 
 static const CodecInfo* kAudioWebMCodecs[] = {&kVorbisCodecInfo,
                                               &kOpusCodecInfo, NULL};
@@ -102,8 +116,8 @@ static int GetMP4AudioObjectType(const std::string& codec_id,
   // the second element is a hexadecimal representation of the MP4 Registration
   // Authority ObjectTypeIndication (OTI). Note that MP4RA uses a leading "0x"
   // with these values, which is omitted here and hence implied.
-  std::vector<std::string> tokens;
-  base::SplitString(codec_id, '.', &tokens);
+  std::vector<std::string> tokens = base::SplitString(
+      codec_id, std::string("."), base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
   if (tokens.size() == 3 && tokens[0] == "mp4a" && tokens[1] == "40") {
     // From RFC 6381 section 3.3:
     // One of the OTI values for 'mp4a' is 40 (identifying MPEG-4 audio). For
@@ -114,8 +128,8 @@ static int GetMP4AudioObjectType(const std::string& codec_id,
       return audio_object_type;
   }
 
-  MEDIA_LOG(DEBUG, media_log) << "Malformed mimetype codec '" << codec_id
-                              << "'";
+  MEDIA_LOG(DEBUG, media_log)
+      << "Malformed mimetype codec '" << codec_id << "'";
   return -1;
 }
 
@@ -128,9 +142,9 @@ bool ValidateMP4ACodecID(const std::string& codec_id,
     return true;
   }
 
-  MEDIA_LOG(DEBUG, media_log) << "Unsupported audio object type "
-                              << audio_object_type << " in codec '" << codec_id
-                              << "'";
+  MEDIA_LOG(DEBUG, media_log)
+      << "Unsupported audio object type " << audio_object_type << " in codec '"
+      << codec_id << "'";
   return false;
 }
 
@@ -169,10 +183,9 @@ static const CodecInfo kEAC3CodecInfo3 = {"mp4a.A6", CodecInfo::AUDIO, NULL,
                                           CodecInfo::HISTOGRAM_EAC3};
 
 static const CodecInfo* kVideoMP4Codecs[] = {
-    &kH264AVC1CodecInfo,   &kH264AVC3CodecInfo,
-    &kHEVCHEV1CodecInfo,   &kHEVCHVC1CodecInfo,
-    &kMPEG4VP09CodecInfo,  &kMPEG4AACCodecInfo,
-    &kMPEG2AACLCCodecInfo, NULL};
+    &kH264AVC1CodecInfo,   &kH264AVC3CodecInfo,  &kHEVCHEV1CodecInfo,
+    &kHEVCHVC1CodecInfo,   &kMPEG4VP09CodecInfo, &kMPEG4AACCodecInfo,
+    &kMPEG2AACLCCodecInfo, &kAV1CodecInfo,       NULL};
 
 static const CodecInfo* kAudioMP4Codecs[] = {
     &kMPEG4AACCodecInfo, &kMPEG2AACLCCodecInfo, &kAC3CodecInfo1,
@@ -187,9 +200,9 @@ static StreamParser* BuildMP4Parser(DecoderBuffer::Allocator* buffer_allocator,
   bool has_sbr = false;
   for (size_t i = 0; i < codecs.size(); ++i) {
     std::string codec_id = codecs[i];
-    if (MatchPattern(codec_id, kMPEG2AACLCCodecInfo.pattern)) {
+    if (base::MatchPattern(codec_id, kMPEG2AACLCCodecInfo.pattern)) {
       audio_object_types.insert(mp4::kISO_13818_7_AAC_LC);
-    } else if (MatchPattern(codec_id, kMPEG4AACCodecInfo.pattern)) {
+    } else if (base::MatchPattern(codec_id, kMPEG4AACCodecInfo.pattern)) {
       int audio_object_type = GetMP4AudioObjectType(codec_id, media_log);
       DCHECK_GT(audio_object_type, 0);
 
@@ -200,13 +213,13 @@ static StreamParser* BuildMP4Parser(DecoderBuffer::Allocator* buffer_allocator,
         has_sbr = true;
         break;
       }
-    } else if (MatchPattern(codec_id, kAC3CodecInfo1.pattern) ||
-               MatchPattern(codec_id, kAC3CodecInfo2.pattern) ||
-               MatchPattern(codec_id, kAC3CodecInfo3.pattern)) {
+    } else if (base::MatchPattern(codec_id, kAC3CodecInfo1.pattern) ||
+               base::MatchPattern(codec_id, kAC3CodecInfo2.pattern) ||
+               base::MatchPattern(codec_id, kAC3CodecInfo3.pattern)) {
       audio_object_types.insert(mp4::kAC3);
-    } else if (MatchPattern(codec_id, kEAC3CodecInfo1.pattern) ||
-               MatchPattern(codec_id, kEAC3CodecInfo2.pattern) ||
-               MatchPattern(codec_id, kEAC3CodecInfo3.pattern)) {
+    } else if (base::MatchPattern(codec_id, kEAC3CodecInfo1.pattern) ||
+               base::MatchPattern(codec_id, kEAC3CodecInfo2.pattern) ||
+               base::MatchPattern(codec_id, kEAC3CodecInfo3.pattern)) {
       audio_object_types.insert(mp4::kEAC3);
     }
   }
@@ -325,7 +338,7 @@ static bool CheckTypeAndCodecs(
         bool found_codec = false;
         std::string codec_id = codecs[j];
         for (int k = 0; type_info.codecs[k]; ++k) {
-          if (MatchPattern(codec_id, type_info.codecs[k]->pattern) &&
+          if (base::MatchPattern(codec_id, type_info.codecs[k]->pattern) &&
               (!type_info.codecs[k]->validator ||
                type_info.codecs[k]->validator(codec_id, media_log))) {
             found_codec =
@@ -335,9 +348,9 @@ static bool CheckTypeAndCodecs(
         }
 
         if (!found_codec) {
-          MEDIA_LOG(DEBUG, media_log) << "Codec '" << codec_id
-                                      << "' is not supported for '" << type
-                                      << "'";
+          MEDIA_LOG(DEBUG, media_log)
+              << "Codec '" << codec_id << "' is not supported for '" << type
+              << "'";
           return false;
         }
       }
@@ -358,13 +371,13 @@ bool StreamParserFactory::IsTypeSupported(
   return CheckTypeAndCodecs(type, codecs, new MediaLog(), NULL, NULL, NULL);
 }
 
-scoped_ptr<StreamParser> StreamParserFactory::Create(
+std::unique_ptr<StreamParser> StreamParserFactory::Create(
     DecoderBuffer::Allocator* buffer_allocator, const std::string& type,
     const std::vector<std::string>& codecs,
     const scoped_refptr<MediaLog>& media_log) {
   DCHECK(buffer_allocator);
 
-  scoped_ptr<StreamParser> stream_parser;
+  std::unique_ptr<StreamParser> stream_parser;
   ParserFactoryFunction factory_function;
   std::vector<CodecInfo::HistogramTag> audio_codecs;
   std::vector<CodecInfo::HistogramTag> video_codecs;
@@ -385,7 +398,7 @@ scoped_ptr<StreamParser> StreamParserFactory::Create(
     stream_parser.reset(factory_function(buffer_allocator, codecs, media_log));
   }
 
-  return stream_parser.Pass();
+  return std::move(stream_parser);
 }
 
 }  // namespace media

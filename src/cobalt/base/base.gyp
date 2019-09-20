@@ -20,15 +20,19 @@
       # generating PDBs.
       'product_name': 'cobalt_base',
       'type': 'static_library',
+      'defines': ["COBALT_ENABLE_VERSION_COMPATIBILITY_VALIDATIONS=1"],
+      'direct_dependent_settings': {
+         'defines': ["COBALT_ENABLE_VERSION_COMPATIBILITY_VALIDATIONS=1"],
+      },
       'sources': [
         'accessibility_changed_event.h',
         'address_sanitizer.h',
         'camera_transform.h',
+        'circular_buffer_shell.cc',
+        'circular_buffer_shell.h',
         'clock.h',
         'cobalt_paths.h',
         'compiler.h',
-        'console_commands.cc',
-        'console_commands.h',
         'c_val.cc',
         'c_val.h',
         'c_val_collection_entry_stats.h',
@@ -76,8 +80,6 @@
         'unicode/character.h',
         'unicode/character_values.h',
         'unused.h',
-        'user_log.cc',
-        'user_log.h',
         'version_compatibility.cc',
         'version_compatibility.h',
       ],
@@ -93,18 +95,12 @@
       'export_dependent_settings': [
         '<(DEPTH)/base/base.gyp:base',
       ],
-      'conditions': [
-        ['OS != "starboard"', {
-          'includes': [
-            'copy_i18n_data.gypi',
-          ],
-        }],
-      ],
     },
     {
       'target_name': 'base_test',
       'type': '<(gtest_target_type)',
       'sources': [
+        'circular_buffer_shell_unittest.cc',
         'c_val_collection_entry_stats_test.cc',
         'c_val_collection_timer_stats_test.cc',
         'c_val_test.cc',

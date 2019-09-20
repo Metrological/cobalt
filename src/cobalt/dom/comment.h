@@ -17,7 +17,7 @@
 
 #include <string>
 
-#include "base/string_piece.h"
+#include "base/strings/string_piece.h"
 #include "cobalt/dom/character_data.h"
 #include "cobalt/script/environment_settings.h"
 

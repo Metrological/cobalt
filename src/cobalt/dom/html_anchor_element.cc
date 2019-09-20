@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "cobalt/dom/document.h"
 #include "cobalt/dom/html_anchor_element.h"
+#include "cobalt/dom/document.h"
 
 namespace cobalt {
 namespace dom {
@@ -32,12 +32,16 @@ void HTMLAnchorElement::OnSetAttribute(const std::string& name,
     if (!ResolveAndSetURL(value)) {
       url_utils_.set_url(GURL(value));
     }
+  } else {
+    HTMLElement::OnSetAttribute(name, value);
   }
 }
 
 void HTMLAnchorElement::OnRemoveAttribute(const std::string& name) {
   if (name == "href") {
     url_utils_.set_url(GURL());
+  } else {
+    HTMLElement::OnRemoveAttribute(name);
   }
 }
 

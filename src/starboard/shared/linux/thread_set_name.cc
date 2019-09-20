@@ -19,8 +19,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "starboard/log.h"
-#include "starboard/string.h"
+#include "starboard/common/log.h"
+#include "starboard/common/string.h"
 
 void SbThreadSetName(const char* name) {
   // We don't want to rename the main thread.
@@ -28,8 +28,7 @@ void SbThreadSetName(const char* name) {
     return;
   }
 
-  const int kMaxThreadNameLength = 16;
-  char buffer[kMaxThreadNameLength];
+  char buffer[SB_MAX_THREAD_NAME_LENGTH] = {};
 
   if (SbStringGetLength(name) >= SB_ARRAY_SIZE_INT(buffer)) {
     SbStringCopy(buffer, name, SB_ARRAY_SIZE_INT(buffer));

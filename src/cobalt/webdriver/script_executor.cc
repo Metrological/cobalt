@@ -14,8 +14,8 @@
 
 #include "cobalt/webdriver/script_executor.h"
 
-#include "base/file_path.h"
-#include "base/file_util.h"
+#include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/lazy_instance.h"
 #include "base/path_service.h"
 #include "cobalt/script/source_code.h"
@@ -32,14 +32,14 @@ const char kWebDriverInitScriptPath[] = "webdriver/webdriver-init.js";
 class LazySourceLoader {
  public:
   LazySourceLoader() {
-    FilePath exe_path;
-    if (!PathService::Get(base::DIR_EXE, &exe_path)) {
+    base::FilePath exe_path;
+    if (!base::PathService::Get(base::DIR_EXE, &exe_path)) {
       NOTREACHED() << "Failed to get EXE path.";
       return;
     }
-    FilePath script_path = exe_path.Append(kWebDriverInitScriptPath);
+    base::FilePath script_path = exe_path.Append(kWebDriverInitScriptPath);
     std::string script_contents;
-    if (!file_util::ReadFileToString(script_path, &script_contents)) {
+    if (!base::ReadFileToString(script_path, &script_contents)) {
       NOTREACHED() << "Failed to read script contents.";
       return;
     }
@@ -57,7 +57,7 @@ class LazySourceLoader {
 
 // The script only needs to be loaded once, so allow it to persist as a
 // LazyInstance and be shared amongst different WindowDriver instances.
-base::LazyInstance<LazySourceLoader> lazy_source_loader =
+base::LazyInstance<LazySourceLoader>::DestructorAtExit lazy_source_loader =
     LAZY_INSTANCE_INITIALIZER;
 }  // namespace
 
@@ -93,7 +93,7 @@ scoped_refptr<ScriptExecutor> ScriptExecutor::Create(
 bool ScriptExecutor::Execute(
     const scoped_refptr<ScriptExecutorParams>& params,
     ScriptExecutorResult::ResultHandler* result_handler) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   scoped_refptr<ScriptExecutorResult> executor_result(
       new ScriptExecutorResult(result_handler));
   return ExecuteInternal(params, executor_result);
@@ -101,13 +101,13 @@ bool ScriptExecutor::Execute(
 
 void ScriptExecutor::set_execute_script_harness(
     const ExecuteFunctionCallbackHolder& callback) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   execute_callback_.emplace(this, callback);
 }
 
 const ScriptExecutor::ExecuteFunctionCallbackHolder*
 ScriptExecutor::execute_script_harness() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (execute_callback_) {
     return &(execute_callback_->referenced_value());
   } else {
@@ -116,14 +116,14 @@ ScriptExecutor::execute_script_harness() {
 }
 
 scoped_refptr<dom::Element> ScriptExecutor::IdToElement(const std::string& id) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(element_mapping_);
   return element_mapping_->IdToElement(protocol::ElementId(id));
 }
 
 std::string ScriptExecutor::ElementToId(
     const scoped_refptr<dom::Element>& element) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(element_mapping_);
   return element_mapping_->ElementToId(element).id();
 }
@@ -131,7 +131,7 @@ std::string ScriptExecutor::ElementToId(
 bool ScriptExecutor::ExecuteInternal(
     const scoped_refptr<ScriptExecutorParams>& params,
     const scoped_refptr<ScriptExecutorResult>& result_handler) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(params);
   DCHECK(result_handler);
   ExecuteFunctionCallback::ReturnValue callback_result =

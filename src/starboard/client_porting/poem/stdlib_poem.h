@@ -37,15 +37,19 @@ static SB_C_INLINE int PoemAbs(int x) {
 
 #if !defined(POEM_NO_EMULATION)
 
-#include "starboard/string.h"
 #include "starboard/system.h"
 #ifdef __cplusplus
 #include <string>
+#include "starboard/common/string.h"
+#else
+#include "starboard/string.h"
 #endif
 
 // number conversion functions
 #undef strtol
 #define strtol(s, o, b) SbStringParseSignedInteger(s, o, b)
+#undef strtoll
+#define strtoll(s, o, b) SbStringParseSignedInteger(s, o, b)
 #undef atoi
 #define atoi(v) SbStringAToI(v)
 #undef atol

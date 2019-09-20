@@ -102,6 +102,9 @@
 
 // --- Extensions Configuration ----------------------------------------------
 
+// Do not use <unordered_map> and <unordered_set> for the hash table types.
+#define SB_HAS_STD_UNORDERED_HASH 0
+
 // GCC/Clang doesn't define a long long hash function, except for Android and
 // Game consoles.
 #define SB_HAS_LONG_LONG_HASH 0
@@ -238,6 +241,9 @@
 
 // Allow playing audioless video.
 #define SB_HAS_AUDIOLESS_VIDEO 1
+
+// Allow ac3 and ec3 support
+#define SB_HAS_AC3_AUDIO 1
 
 // --- Decoder-only Params ---
 

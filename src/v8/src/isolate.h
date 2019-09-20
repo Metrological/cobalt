@@ -28,6 +28,10 @@
 #include "src/runtime/runtime.h"
 #include "src/zone/zone.h"
 
+#if V8_OS_STARBOARD
+#include "starboard/common/log.h"
+#endif  // V8_OS_STARBOARD
+
 namespace v8 {
 
 namespace base {
@@ -95,6 +99,7 @@ class SweeperThread;
 class ThreadManager;
 class ThreadState;
 class ThreadVisitor;  // Defined in v8threads.h
+class TracingCpuProfilerImpl;
 class UnicodeCache;
 
 template <StateTag Tag> class VMState;
@@ -1664,6 +1669,8 @@ class Isolate {
 
   std::unique_ptr<wasm::WasmEngine> wasm_engine_;
 
+  std::unique_ptr<TracingCpuProfilerImpl> tracing_cpu_profiler_;
+
   // The top entry of the v8::Context::BackupIncumbentScope stack.
   const v8::Context::BackupIncumbentScope* top_backup_incumbent_scope_ =
       nullptr;
@@ -1834,10 +1841,12 @@ class PostponeInterruptsScope BASE_EMBEDDED {
 class CodeTracer final : public Malloced {
  public:
   explicit CodeTracer(int isolate_id) : file_(nullptr), scope_depth_(0) {
+#ifndef V8_OS_STARBOARD
     if (!ShouldRedirect()) {
       file_ = stdout;
       return;
     }
+#endif
 
     if (FLAG_redirect_code_traces_to == nullptr) {
       SNPrintF(filename_,
@@ -1863,6 +1872,9 @@ class CodeTracer final : public Malloced {
   };
 
   void OpenFile() {
+#if V8_OS_STARBOARD
+    SB_NOTIMPLEMENTED();
+#else
     if (!ShouldRedirect()) {
       return;
     }
@@ -1872,9 +1884,13 @@ class CodeTracer final : public Malloced {
     }
 
     scope_depth_++;
+#endif
   }
 
   void CloseFile() {
+#if V8_OS_STARBOARD
+    SB_NOTIMPLEMENTED();
+#else
     if (!ShouldRedirect()) {
       return;
     }
@@ -1883,6 +1899,7 @@ class CodeTracer final : public Malloced {
       fclose(file_);
       file_ = nullptr;
     }
+#endif
   }
 
   FILE* file() const { return file_; }

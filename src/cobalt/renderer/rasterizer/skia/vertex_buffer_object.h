@@ -15,12 +15,12 @@
 #ifndef COBALT_RENDERER_RASTERIZER_SKIA_VERTEX_BUFFER_OBJECT_H_
 #define COBALT_RENDERER_RASTERIZER_SKIA_VERTEX_BUFFER_OBJECT_H_
 
-#include <GLES2/gl2.h>
+#include <memory>
 #include <vector>
 
-#include "base/memory/scoped_ptr.h"
 #include "base/threading/thread_checker.h"
 #include "cobalt/render_tree/mesh.h"
+#include "cobalt/renderer/egl_and_gles.h"
 
 namespace cobalt {
 namespace renderer {
@@ -34,8 +34,8 @@ class VertexBufferObject {
   // Creates a VertexBufferObject for the provided vertex list. The vertex list
   // object is destroyed from main memory, and a buffer will be allocated on
   // the GPU with its data.
-  explicit VertexBufferObject(
-      scoped_ptr<std::vector<render_tree::Mesh::Vertex> > vertices,
+  VertexBufferObject(
+      std::unique_ptr<std::vector<render_tree::Mesh::Vertex> > vertices,
       GLenum draw_mode);
   // Cleans up the GPU memory that holds the vertices.
   virtual ~VertexBufferObject();
@@ -50,7 +50,7 @@ class VertexBufferObject {
   size_t vertex_count_;
   GLenum draw_mode_;
   GLuint mesh_vertex_buffer_;
-  base::ThreadChecker thread_checker_;
+  THREAD_CHECKER(thread_checker_);
 
   DISALLOW_COPY_AND_ASSIGN(VertexBufferObject);
 };

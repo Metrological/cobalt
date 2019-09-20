@@ -15,7 +15,8 @@
 #ifndef COBALT_RENDERER_RASTERIZER_SKIA_HARDWARE_RASTERIZER_H_
 #define COBALT_RENDERER_RASTERIZER_SKIA_HARDWARE_RASTERIZER_H_
 
-#include "base/memory/scoped_ptr.h"
+#include <memory>
+
 #include "cobalt/render_tree/resource_provider.h"
 #include "cobalt/renderer/backend/graphics_context.h"
 #include "cobalt/renderer/backend/render_target.h"
@@ -50,12 +51,12 @@ class HardwareRasterizer : public Rasterizer {
   // If |surface_cache_size| is non-zero, the rasterizer will set itself up with
   // a surface cache such that expensive render tree nodes seen multiple times
   // will get saved to offscreen surfaces.
-  explicit HardwareRasterizer(backend::GraphicsContext* graphics_context,
-                              int skia_atlas_width, int skia_atlas_height,
-                              int skia_cache_size_in_bytes,
-                              int scratch_surface_cache_size_in_bytes,
-                              bool purge_skia_font_caches_on_destruction,
-                              bool force_deterministic_rendering);
+  HardwareRasterizer(backend::GraphicsContext* graphics_context,
+                     int skia_atlas_width, int skia_atlas_height,
+                     int skia_cache_size_in_bytes,
+                     int scratch_surface_cache_size_in_bytes,
+                     bool purge_skia_font_caches_on_destruction,
+                     bool force_deterministic_rendering);
   virtual ~HardwareRasterizer();
 
   // Consume the render tree and output the results to the render target passed
@@ -78,10 +79,11 @@ class HardwareRasterizer : public Rasterizer {
   GrContext* GetGrContext();
 
   void MakeCurrent() override;
+  void ReleaseContext() override;
 
  private:
   class Impl;
-  scoped_ptr<Impl> impl_;
+  std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace skia

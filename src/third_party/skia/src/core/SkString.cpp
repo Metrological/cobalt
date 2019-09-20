@@ -12,7 +12,11 @@
 #include <stdarg.h>
 
 #if defined(STARBOARD)
-#include "starboard/string.h"
+#include "starboard/client_porting/poem/stdio_leaks_poem.h"
+#endif
+
+#if defined(STARBOARD)
+#include "starboard/common/string.h"
 #else
 #include <stdio.h>
 #endif  // defined(STARBOARD)

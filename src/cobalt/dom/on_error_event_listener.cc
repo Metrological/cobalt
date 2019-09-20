@@ -16,17 +16,16 @@
 
 #include <string>
 
-#include "base/debug/trace_event.h"
 #include "base/logging.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/dom/error_event.h"
 #include "cobalt/dom/event_target.h"
-#include "cobalt/dom/script_event_log.h"
 
 namespace cobalt {
 namespace dom {
 
-base::optional<bool> OnErrorEventListener::HandleEvent(
+base::Optional<bool> OnErrorEventListener::HandleEvent(
     const scoped_refptr<script::Wrappable>& callback_this,
     const scoped_refptr<Event>& event, bool* had_exception,
     bool unpack_error_events) const {

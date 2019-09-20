@@ -12,14 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#if defined(STARBOARD)
+#include "starboard/client_porting/poem/string_leaks_poem.h"
+#endif  // defined(STARBOARD)
+
 #include "cobalt/script/v8c/v8c_engine.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
 
-#include "base/debug/trace_event.h"
 #include "base/logging.h"
-#include "base/message_loop.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/base/c_val.h"
 #include "cobalt/browser/stack_size_constants.h"
 #include "cobalt/script/v8c/isolate_fellowship.h"
@@ -99,15 +103,6 @@ void GCEpilogueCallback(v8::Isolate* isolate, v8::GCType type,
   }
 }
 
-SbOnceControl v8_flag_init_once_control = SB_ONCE_INITIALIZER;
-
-// Configure v8's global command line flag options for Cobalt.
-void V8FlagInitOnce() {
-  char optimize_for_size_flag_str[] = "--optimize_for_size=true";
-  v8::V8::SetFlagsFromString(optimize_for_size_flag_str,
-                             sizeof(optimize_for_size_flag_str));
-}
-
 }  // namespace
 
 V8cEngine::V8cEngine(const Options& options) : options_(options) {
@@ -118,6 +113,7 @@ V8cEngine::V8cEngine(const Options& options) : options_(options) {
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
       isolate_fellowship->array_buffer_allocator;
+#if !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
   auto* startup_data = &isolate_fellowship->startup_data;
   if (startup_data->data != nullptr) {
     create_params.snapshot_blob = startup_data;
@@ -127,10 +123,12 @@ V8cEngine::V8cEngine(const Options& options) : options_(options) {
     LOG(WARNING) << "Isolate fellowship startup data was null, this will "
                     "significantly slow down startup time.";
   }
+#endif  // !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
 
-  SbOnce(&v8_flag_init_once_control, V8FlagInitOnce);
   isolate_ = v8::Isolate::New(create_params);
   CHECK(isolate_);
+  isolate_fellowship->platform->RegisterIsolateOnThread(
+      isolate_, base::MessageLoop::current());
 
   // There are 2 total isolate data slots, one for the sole |V8cEngine| (us),
   // and one for the |V8cGlobalEnvironment|.
@@ -156,8 +154,10 @@ V8cEngine::V8cEngine(const Options& options) : options_(options) {
 
 V8cEngine::~V8cEngine() {
   TRACE_EVENT0("cobalt::script", "V8cEngine::~V8cEngine");
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
+  IsolateFellowship::GetInstance()->platform->UnregisterIsolateOnThread(
+      isolate_);
   // Send a low memory notification to V8 in order to force a garbage
   // collection before shut down.  This is required to run weak callbacks that
   // are responsible for freeing native objects that live in the internal
@@ -171,18 +171,18 @@ V8cEngine::~V8cEngine() {
 
 scoped_refptr<GlobalEnvironment> V8cEngine::CreateGlobalEnvironment() {
   TRACE_EVENT0("cobalt::script", "V8cEngine::CreateGlobalEnvironment()");
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   return new V8cGlobalEnvironment(isolate_);
 }
 
 void V8cEngine::CollectGarbage() {
   TRACE_EVENT0("cobalt::script", "V8cEngine::CollectGarbage()");
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   isolate_->LowMemoryNotification();
 }
 
 void V8cEngine::AdjustAmountOfExternalAllocatedMemory(int64_t bytes) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   isolate_->AdjustAmountOfExternalAllocatedMemory(bytes);
 }
 
@@ -201,10 +201,10 @@ HeapStatistics V8cEngine::GetHeapStatistics() {
 }  // namespace v8c
 
 // static
-scoped_ptr<JavaScriptEngine> JavaScriptEngine::CreateEngine(
+std::unique_ptr<JavaScriptEngine> JavaScriptEngine::CreateEngine(
     const JavaScriptEngine::Options& options) {
   TRACE_EVENT0("cobalt::script", "JavaScriptEngine::CreateEngine()");
-  return make_scoped_ptr<JavaScriptEngine>(new v8c::V8cEngine(options));
+  return std::unique_ptr<JavaScriptEngine>(new v8c::V8cEngine(options));
 }
 
 std::string GetJavaScriptEngineNameAndVersion() {

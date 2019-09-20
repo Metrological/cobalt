@@ -27,7 +27,7 @@
 #include "glimp/gles/pixel_format.h"
 #include "glimp/tracing/tracing.h"
 #include "nb/pointer_arithmetic.h"
-#include "starboard/log.h"
+#include "starboard/common/log.h"
 #include "starboard/memory.h"
 #include "starboard/once.h"
 
@@ -174,6 +174,9 @@ void Context::GetIntegerv(GLenum pname, GLint* params) {
       break;
     case GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS:
       *params = impl_->GetMaxCombinedTextureImageUnits();
+      break;
+    case GL_UNPACK_ALIGNMENT:
+      *params = unpack_alignment_;
       break;
     default: {
       SB_NOTIMPLEMENTED();
@@ -1374,6 +1377,7 @@ bool TextureFormatIsValid(GLenum format) {
     case GL_RGBA:
     case GL_LUMINANCE:
     case GL_LUMINANCE_ALPHA:
+    case GL_RED_INTEGER:
       return true;
     default:
       return false;
@@ -1383,6 +1387,7 @@ bool TextureFormatIsValid(GLenum format) {
 bool TextureTypeIsValid(GLenum type) {
   switch (type) {
     case GL_UNSIGNED_BYTE:
+    case GL_UNSIGNED_SHORT:
     case GL_UNSIGNED_SHORT_5_6_5:
     case GL_UNSIGNED_SHORT_4_4_4_4:
     case GL_UNSIGNED_SHORT_5_5_5_1:
@@ -1406,6 +1411,8 @@ PixelFormat PixelFormatFromGLTypeAndFormat(GLenum format, GLenum type) {
       case GL_LUMINANCE_ALPHA:
         return kPixelFormatBA8;
     }
+  } else if (type == GL_UNSIGNED_SHORT && format == GL_RED_INTEGER) {
+    return kPixelFormatA16;
   }
   return kPixelFormatInvalid;
 }
@@ -2210,6 +2217,7 @@ bool ValidReadPixelsFormat(GLenum format) {
   switch (format) {
     case GL_RGBA:
     case GL_RGBA_INTEGER:
+    case GL_RED_INTEGER:
       return true;
       break;
     default:
@@ -2222,6 +2230,7 @@ bool ValidReadPixelsType(GLenum type) {
   switch (type) {
     case GL_UNSIGNED_BYTE:
     case GL_UNSIGNED_INT:
+    case GL_UNSIGNED_SHORT:
     case GL_INT:
     case GL_FLOAT:
       return true;

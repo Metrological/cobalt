@@ -51,6 +51,16 @@
 
 #else  // STARBOARD
 
+#include <string.h>
+
+#include "starboard/common/string.h"
+#include "starboard/memory.h"
+
+#undef __builtin_strlen
+#define __builtin_strlen SbStringGetLength
+#undef strlen
+#define strlen SbStringGetLength
+
 // We avoid using poems here because a subsequent #include of math.h may
 // result, on some platforms, of the indirect inclusion of stdlib.h, which
 // will then conflict with our poem includes.
@@ -58,9 +68,6 @@
 // For access to PoemFindCharacterInString() as a replacement for strchr().
 #include "starboard/client_porting/poem/string_poem.h"
 #undef POEM_NO_EMULATION
-
-#include "starboard/memory.h"
-#include "starboard/string.h"
 
 #endif  // STARBOARD
 
@@ -669,6 +676,10 @@ string CHexEscape(const string& src) {
 //    platforms, including errno preservation in error-free calls.
 // ----------------------------------------------------------------------
 
+#if __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wtautological-compare"
+#endif
 int32 strto32_adaptor(const char *nptr, char **endptr, int base) {
   const int saved_errno = errno;
   errno = 0;
@@ -703,6 +714,9 @@ uint32 strtou32_adaptor(const char *nptr, char **endptr, int base) {
     errno = saved_errno;
   return static_cast<uint32>(result);
 }
+#if __clang__
+#pragma clang diagnostic pop
+#endif
 
 inline bool safe_parse_sign(string* text  /*inout*/,
                             bool* negative_ptr  /*output*/) {

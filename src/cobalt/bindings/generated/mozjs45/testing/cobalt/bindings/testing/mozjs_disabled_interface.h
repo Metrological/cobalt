@@ -1,4 +1,4 @@
-// Copyright 2018 The Cobalt Authors. All Rights Reserved.
+// Copyright 2019 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,14 +20,12 @@
 #ifndef MozjsDisabledInterface_h
 #define MozjsDisabledInterface_h
 
-
-// This must be included above the check for NO_ENABLE_CONDITIONAL_INTERFACE, since
-// NO_ENABLE_CONDITIONAL_INTERFACE may be defined within.
 #include "cobalt/bindings/shared/idl_conditional_macros.h"
+
 
 #if defined(NO_ENABLE_CONDITIONAL_INTERFACE)
 
-#include "base/hash_tables.h"
+#include "base/containers/hash_tables.h"
 #include "base/lazy_instance.h"
 #include "base/memory/ref_counted.h"
 #include "base/threading/thread_checker.h"

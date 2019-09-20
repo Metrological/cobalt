@@ -77,8 +77,8 @@ void HTMLStyleElement::Process() {
   const bool bypass_csp = csp_delegate->IsValidNonce(
       CspDelegate::kStyle, GetAttribute("nonce").value_or(""));
 
-  base::optional<std::string> content = text_content();
-  const std::string& text = content.value_or(EmptyString());
+  base::Optional<std::string> content = text_content();
+  const std::string& text = content.value_or(base::EmptyString());
   if (bypass_csp || text.empty() ||
       csp_delegate->AllowInline(CspDelegate::kStyle, inline_style_location_,
                                 text)) {
@@ -91,7 +91,7 @@ void HTMLStyleElement::Process() {
     document->OnStyleSheetsModified();
   } else {
     // Report a violation.
-    PostToDispatchEvent(FROM_HERE, base::Tokens::error());
+    PostToDispatchEventName(FROM_HERE, base::Tokens::error());
   }
 }
 

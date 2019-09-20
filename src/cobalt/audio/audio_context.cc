@@ -12,24 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "cobalt/audio/audio_context.h"
 
 #include "base/callback.h"
+#include "cobalt/base/polymorphic_downcast.h"
+#include "cobalt/dom/dom_settings.h"
 
 namespace cobalt {
 namespace audio {
 
-AudioContext::AudioContext()
-    : ALLOW_THIS_IN_INITIALIZER_LIST(weak_ptr_factory_(this)),
+AudioContext::AudioContext(script::EnvironmentSettings* settings)
+    : global_environment_(
+          base::polymorphic_downcast<dom::DOMSettings*>(settings)
+              ->global_environment()),
+      ALLOW_THIS_IN_INITIALIZER_LIST(weak_ptr_factory_(this)),
       ALLOW_THIS_IN_INITIALIZER_LIST(
           weak_this_(weak_ptr_factory_.GetWeakPtr())),
-      sample_rate_(0.0f),
+      sample_rate_(
+          static_cast<float>(SbAudioSinkGetNearestSupportedSampleFrequency(
+              kStandardOutputSampleRate))),
       current_time_(0.0f),
       audio_lock_(new AudioLock()),
       ALLOW_THIS_IN_INITIALIZER_LIST(
           destination_(new AudioDestinationNode(this))),
       next_callback_id_(0),
-      main_message_loop_(base::MessageLoopProxy::current()) {
+      main_message_loop_(base::MessageLoop::current()->task_runner()) {
   DCHECK(main_message_loop_);
 }
 
@@ -48,16 +57,52 @@ AudioContext::~AudioContext() {
   }
 }
 
+scoped_refptr<AudioBuffer> AudioContext::CreateBuffer(uint32 num_of_channels,
+                                                      uint32 length,
+                                                      float sample_rate) {
+  DCHECK(main_message_loop_->BelongsToCurrentThread());
+
+  return scoped_refptr<AudioBuffer>(new AudioBuffer(
+      sample_rate, std::unique_ptr<ShellAudioBus>(new ShellAudioBus(
+                       num_of_channels, length, GetPreferredOutputSampleType(),
+                       kStorageTypeInterleaved))));
+}
+
 scoped_refptr<AudioBufferSourceNode> AudioContext::CreateBufferSource() {
   DCHECK(main_message_loop_->BelongsToCurrentThread());
 
   return scoped_refptr<AudioBufferSourceNode>(new AudioBufferSourceNode(this));
 }
 
+void AudioContext::PreventGarbageCollection() {
+  prevent_gc_until_playback_complete_.reset(
+      new script::GlobalEnvironment::ScopedPreventGarbageCollection(
+          global_environment_, this));
+}
+
+void AudioContext::AllowGarbageCollection() {
+  prevent_gc_until_playback_complete_.reset();
+}
+
+void AudioContext::AddBufferSource(
+    const scoped_refptr<AudioBufferSourceNode>& buffer_source) {
+  buffer_sources_.insert(buffer_source);
+}
+
+void AudioContext::RemoveBufferSource(
+    const scoped_refptr<AudioBufferSourceNode>& buffer_source) {
+  if (buffer_sources_.find(buffer_source) != buffer_sources_.end()) {
+    buffer_sources_.erase(buffer_source);
+  }
+}
+
 void AudioContext::TraceMembers(script::Tracer* tracer) {
   dom::EventTarget::TraceMembers(tracer);
 
-  tracer->Trace(destination_);
+  tracer->Trace(destination_.get());
+  for (const auto& source : buffer_sources_) {
+    tracer->Trace(source);
+  }
 }
 
 void AudioContext::DecodeAudioData(
@@ -66,9 +111,9 @@ void AudioContext::DecodeAudioData(
     const DecodeSuccessCallbackArg& success_handler) {
   DCHECK(main_message_loop_->BelongsToCurrentThread());
 
-  scoped_ptr<DecodeCallbackInfo> info(
+  std::unique_ptr<DecodeCallbackInfo> info(
       new DecodeCallbackInfo(settings, audio_data, this, success_handler));
-  DecodeAudioDataInternal(info.Pass());
+  DecodeAudioDataInternal(std::move(info));
 }
 
 void AudioContext::DecodeAudioData(
@@ -78,13 +123,13 @@ void AudioContext::DecodeAudioData(
     const DecodeErrorCallbackArg& error_handler) {
   DCHECK(main_message_loop_->BelongsToCurrentThread());
 
-  scoped_ptr<DecodeCallbackInfo> info(new DecodeCallbackInfo(
+  std::unique_ptr<DecodeCallbackInfo> info(new DecodeCallbackInfo(
       settings, audio_data, this, success_handler, error_handler));
-  DecodeAudioDataInternal(info.Pass());
+  DecodeAudioDataInternal(std::move(info));
 }
 
 void AudioContext::DecodeAudioDataInternal(
-    scoped_ptr<DecodeCallbackInfo> info) {
+    std::unique_ptr<DecodeCallbackInfo> info) {
   DCHECK(main_message_loop_->BelongsToCurrentThread());
 
   const int callback_id = next_callback_id_++;
@@ -103,7 +148,7 @@ void AudioContext::DecodeAudioDataInternal(
 // Success callback and error callback should be scheduled to run on the main
 // thread's event loop.
 void AudioContext::DecodeFinish(int callback_id, float sample_rate,
-                                scoped_ptr<ShellAudioBus> audio_bus) {
+                                std::unique_ptr<ShellAudioBus> audio_bus) {
   if (!main_message_loop_->BelongsToCurrentThread()) {
     main_message_loop_->PostTask(
         FROM_HERE,
@@ -116,12 +161,12 @@ void AudioContext::DecodeFinish(int callback_id, float sample_rate,
       pending_decode_callbacks_.find(callback_id);
   DCHECK(info_iterator != pending_decode_callbacks_.end());
 
-  scoped_ptr<DecodeCallbackInfo> info(info_iterator->second);
+  std::unique_ptr<DecodeCallbackInfo> info(info_iterator->second);
   pending_decode_callbacks_.erase(info_iterator);
 
   if (audio_bus) {
     const scoped_refptr<AudioBuffer>& audio_buffer =
-        new AudioBuffer(sample_rate, audio_bus.Pass());
+        new AudioBuffer(sample_rate, std::move(audio_bus));
     info->success_callback.value().Run(audio_buffer);
   } else if (info->error_callback) {
     info->error_callback.value().value().Run();

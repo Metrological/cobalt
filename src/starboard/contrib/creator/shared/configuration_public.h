@@ -88,7 +88,7 @@
 #define SB_HAS_CROSS_CORE_SCHEDULER 1
 
 // The API version implemented by this platform.
-#define SB_API_VERSION 6
+#define SB_API_VERSION SB_EXPERIMENTAL_API_VERSION
 
 // --- System Header Configuration -------------------------------------------
 
@@ -161,6 +161,9 @@
 #define SB_IMPORT_PLATFORM
 
 // --- Extensions Configuration ----------------------------------------------
+
+// Do not use <unordered_map> and <unordered_set> for the hash table types.
+#define SB_HAS_STD_UNORDERED_HASH 0
 
 // GCC/Clang doesn't define a long long hash function, except for Android and
 // Game consoles.
@@ -276,6 +279,12 @@
 // Whether the current platform has speech synthesis.
 #define SB_HAS_SPEECH_SYNTHESIS 0
 
+#if SB_API_VERSION >= 8
+// Whether the current platform implements the on screen keyboard interface.
+#define SB_HAS_ON_SCREEN_KEYBOARD 0
+
+#endif  // SB_API_VERSION >= 8
+
 // --- Media Configuration ---------------------------------------------------
 
 // Specifies whether this platform has support for a possibly-decrypting
@@ -285,27 +294,6 @@
 // synchronized audio/video. If a player is defined, it must choose one of the
 // supported composition methods below.
 #define SB_HAS_PLAYER 1
-
-#if SB_API_VERSION < 4
-// Specifies whether this platform's player will produce an OpenGL texture that
-// the client must draw every frame with its graphics rendering. It may be that
-// we get a texture handle, but cannot perform operations like GlReadPixels on
-// it if it is DRM-protected.
-#define SB_IS_PLAYER_PRODUCING_TEXTURE 0
-
-// Specifies whether this platform's player is composited with a formal
-// compositor, where the client must specify how video is to be composited into
-// the graphicals scene.
-#define SB_IS_PLAYER_COMPOSITED 0
-
-// Specifies whether this platform's player uses a "punch-out" model, where
-// video is rendered to the far background, and the graphics plane is
-// automatically composited on top of the video by the platform. The client must
-// punch an alpha hole out of the graphics plane for video to show through.  In
-// this case, changing the video bounds must be tightly synchronized between the
-// player and the graphics plane.
-#define SB_IS_PLAYER_PUNCHED_OUT 1
-#endif  // SB_API_VERSION < 4
 
 // The maximum audio bitrate the platform can decode.  The following value
 // equals to 5M bytes per seconds which is more than enough for compressed
@@ -325,6 +313,13 @@
 // use the default thread stack size.  Set to non-zero to explicitly set the
 // stack size for media stack threads.
 #define SB_MEDIA_THREAD_STACK_SIZE 0U
+
+// Specifies whether this platform updates audio frames asynchronously.  In such
+// case an extra parameter will be added to |SbAudioSinkConsumeFramesFunc| to
+// indicate the absolute time that the consumed audio frames are reported.
+// Check document for |SbAudioSinkConsumeFramesFunc| in audio_sink.h for more
+// details.
+#define SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING 0
 
 // --- Decoder-only Params ---
 

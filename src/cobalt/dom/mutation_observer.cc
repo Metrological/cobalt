@@ -14,6 +14,7 @@
 
 #include "cobalt/dom/mutation_observer.h"
 
+#include "base/trace_event/trace_event.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/dom/dom_settings.h"
 #include "cobalt/dom/mutation_observer_task_manager.h"
@@ -114,7 +115,7 @@ void MutationObserver::Disconnect() {
        it != observed_nodes_.end(); ++it) {
     dom::Node* node = it->get();
     if (node != NULL) {
-      node->UnregisterMutationObserver(make_scoped_refptr(this));
+      node->UnregisterMutationObserver(base::WrapRefCounted(this));
     }
   }
   observed_nodes_.clear();
@@ -131,11 +132,13 @@ MutationObserver::MutationRecordSequence MutationObserver::TakeRecords() {
 
 void MutationObserver::QueueMutationRecord(
     const scoped_refptr<MutationRecord>& record) {
+  TRACE_EVENT0("cobalt::dom", "MutationObserver::QueueMutationRecord()");
   record_queue_.push_back(record);
   task_manager_->QueueMutationObserverMicrotask();
 }
 
 bool MutationObserver::Notify() {
+  TRACE_EVENT0("cobalt::dom", "MutationObserver::Notify()");
   // https://www.w3.org/TR/dom/#mutationobserver
   // Step 3 of "notify mutation observers" steps:
   //     1. Let queue be a copy of mo's record queue.
@@ -149,7 +152,7 @@ bool MutationObserver::Notify() {
   //        argument, and mo (itself) as second argument and callback this
   //        value. If this throws an exception, report the exception.
   if (!records.empty()) {
-    return callback_->RunCallback(records, make_scoped_refptr(this));
+    return callback_->RunCallback(records, base::WrapRefCounted(this));
   }
   // If no records, return true to indicate no error occurred.
   return true;
@@ -163,7 +166,7 @@ void MutationObserver::TraceMembers(script::Tracer* tracer) {
 void MutationObserver::TrackObservedNode(const scoped_refptr<dom::Node>& node) {
   for (WeakNodeVector::iterator it = observed_nodes_.begin();
        it != observed_nodes_.end();) {
-    if (*it == NULL) {
+    if (it->get() == NULL) {
       it = observed_nodes_.erase(it);
       continue;
     }
@@ -184,7 +187,7 @@ void MutationObserver::ObserveInternal(
     NOTREACHED();
     return;
   }
-  if (!target->RegisterMutationObserver(make_scoped_refptr(this), options)) {
+  if (!target->RegisterMutationObserver(base::WrapRefCounted(this), options)) {
     // This fails if the options are invalid.
     exception_state->SetSimpleException(script::kTypeError, "Invalid options.");
     return;

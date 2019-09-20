@@ -15,8 +15,6 @@
 #ifndef COBALT_RENDERER_RASTERIZER_EGL_DRAW_OBJECT_H_
 #define COBALT_RENDERER_RASTERIZER_EGL_DRAW_OBJECT_H_
 
-#include <GLES2/gl2.h>
-
 #include "base/callback.h"
 #include "base/optional.h"
 #include "cobalt/base/type_id.h"
@@ -25,6 +23,7 @@
 #include "cobalt/render_tree/color_rgba.h"
 #include "cobalt/render_tree/rounded_corners.h"
 #include "cobalt/renderer/backend/egl/texture.h"
+#include "cobalt/renderer/egl_and_gles.h"
 #include "cobalt/renderer/rasterizer/egl/graphics_state.h"
 #include "cobalt/renderer/rasterizer/egl/shader_program_manager.h"
 
@@ -36,7 +35,7 @@ namespace egl {
 // Base type to rasterize various objects via GL commands.
 class DrawObject {
  public:
-  typedef base::optional<render_tree::RoundedCorners> OptionalRoundedCorners;
+  typedef base::Optional<render_tree::RoundedCorners> OptionalRoundedCorners;
 
   // Callback to get a scratch "1D" texture of the given |size|. If such a
   // request was previously fulfilled for the relevant render tree node, then
@@ -81,13 +80,13 @@ class DrawObject {
   // of vertex buffers needed. Once this stage is executed, the rasterizer will
   // then notify the GraphicsState to send all vertex data from all draw
   // objects to the GPU.
-  virtual void ExecuteUpdateVertexBuffer(GraphicsState* graphics_state,
-      ShaderProgramManager* program_manager) = 0;
+  virtual void ExecuteUpdateVertexBuffer(
+      GraphicsState* graphics_state, ShaderProgramManager* program_manager) = 0;
 
   // This stage is responsible for issuing the GPU commands to do the actual
   // rendering.
   virtual void ExecuteRasterize(GraphicsState* graphics_state,
-      ShaderProgramManager* program_manager) = 0;
+                                ShaderProgramManager* program_manager) = 0;
 
   // Return a TypeId that can be used to sort draw objects in order to minimize
   // state changes. This may be the class' TypeId, or the TypeId of the shader
@@ -108,7 +107,7 @@ class DrawObject {
     float rx, ry;
   };
   struct RRectAttributes {
-    math::RectF bounds;   // The region in which to use the rcorner data.
+    math::RectF bounds;  // The region in which to use the rcorner data.
     RCorner rcorner;
   };
 
@@ -136,16 +135,16 @@ class DrawObject {
   // Get the vertex attributes to use to draw the given rounded rect. Each
   // corner uses a different attribute. These RCorner values must be transformed
   // before being passed to the shader. (See RCorner constructor.)
-  static void GetRRectAttributes(const math::RectF& bounds,
-      math::RectF rect, render_tree::RoundedCorners corners,
-      RRectAttributes (&out_attributes)[4]);
+  static void GetRRectAttributes(const math::RectF& bounds, math::RectF rect,
+                                 render_tree::RoundedCorners corners,
+                                 RRectAttributes (&out_attributes)[4]);
 
   // Get the vertex attributes to draw the given rounded rect excluding the
   // inscribed rect. These RCorner values must be transformed before being
   // passed to the shader. (See RCorner constructor.)
-  static void GetRRectAttributes(const math::RectF& bounds,
-      math::RectF rect, render_tree::RoundedCorners corners,
-      RRectAttributes (&out_attributes)[8]);
+  static void GetRRectAttributes(const math::RectF& bounds, math::RectF rect,
+                                 render_tree::RoundedCorners corners,
+                                 RRectAttributes (&out_attributes)[8]);
 
   BaseState base_state_;
 
@@ -157,8 +156,8 @@ class DrawObject {
   // Return the RCorner values for the given rounded rect, and the normalized
   // rect and corner values used.
   static void GetRCornerValues(math::RectF* rect,
-      render_tree::RoundedCorners* corners,
-      RRectAttributes out_rcorners[4]);
+                               render_tree::RoundedCorners* corners,
+                               RRectAttributes out_rcorners[4]);
 };
 
 }  // namespace egl

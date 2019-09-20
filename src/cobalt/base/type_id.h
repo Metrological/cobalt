@@ -15,7 +15,8 @@
 #ifndef COBALT_BASE_TYPE_ID_H_
 #define COBALT_BASE_TYPE_ID_H_
 
-#include "base/hash_tables.h"
+#include "base/basictypes.h"
+#include "base/containers/hash_tables.h"
 
 // This file introduces the template function GetTypeId<T>() as well as the
 // class TypeId.  GetTypeId<T>() will return a TypeId object that is unique
@@ -59,7 +60,8 @@ class TypeId {
  private:
   explicit TypeId(intptr_t value) : value_(value) {}
   intptr_t value_;
-  template <typename T> friend TypeId GetTypeId();
+  template <typename T>
+  friend TypeId GetTypeId();
 #if defined(BASE_HASH_USE_HASH_STRUCT)
   friend struct BASE_HASH_NAMESPACE::hash<TypeId>;
 #else
@@ -73,8 +75,8 @@ class TypeId {
 // same type argument is guaranteed to return the same ID.
 template <typename T>
 TypeId GetTypeId() {
-  return
-      TypeId(reinterpret_cast<intptr_t>(&(internal::TypeIdHelper<T>::dummy_)));
+  return TypeId(
+      reinterpret_cast<intptr_t>(&(internal::TypeIdHelper<T>::dummy_)));
 }
 
 }  // namespace base
@@ -89,8 +91,8 @@ namespace BASE_HASH_NAMESPACE {
 #if defined(BASE_HASH_USE_HASH_STRUCT)
 
 // Forward declaration in case <hash_fun.h> is not #include'd.
-template <typename Key>
-struct hash;
+template <>
+struct hash<base::TypeId>;
 
 template <>
 struct hash<base::TypeId> {
@@ -101,6 +103,7 @@ struct hash<base::TypeId> {
   hash<intptr_t> base_hash;
 };
 
+// TODO(Starboard) Migrate all platforms to use std::hash and deprecate these.
 //
 // Dinkumware-flavored hash functor.
 //
@@ -117,7 +120,7 @@ class hash_compare<base::TypeId, Predicate> {
 
   enum {
     bucket_size = BaseHashCompare::bucket_size,
-#if !defined(COMPILER_MSVC)
+#if !SB_IS(COMPILER_MSVC)
     min_buckets = BaseHashCompare::min_buckets,
 #endif
   };
@@ -128,8 +131,7 @@ class hash_compare<base::TypeId, Predicate> {
     return base_hash_compare_(key.value_);
   }
 
-  bool operator()(const base::TypeId& lhs,
-                  const base::TypeId& rhs) const {
+  bool operator()(const base::TypeId& lhs, const base::TypeId& rhs) const {
     return base_hash_compare_(lhs.value_, rhs.value_);
   }
 

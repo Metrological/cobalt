@@ -17,6 +17,7 @@
 #include <utility>
 
 #include "cobalt/math/vector2d_f.h"
+#include "cobalt/render_tree/text_node.h"
 #include "cobalt/renderer/rasterizer/blitter/skia_blitter_conversions.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/core/SkCanvas.h"
@@ -68,9 +69,9 @@ void CachedSoftwareRasterizer::OnStartNewFrame() {
     // If the surface was referenced mark it as being unreferenced for the next
     // frame.
     if (current->second.referenced) {
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
       current->second.created = false;
-#endif  // defined(ENABLE_DEBUG_CONSOLE)
+#endif  // defined(ENABLE_DEBUGGER)
       current->second.referenced = false;
     }
   }
@@ -124,18 +125,19 @@ CachedSoftwareRasterizer::Surface CachedSoftwareRasterizer::GetSurface(
 
   Surface software_surface;
   software_surface.referenced = true;
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
   software_surface.created = true;
-#endif  // defined(ENABLE_DEBUG_CONSOLE)
+#endif  // defined(ENABLE_DEBUGGER)
   software_surface.node = node;
   software_surface.surface = kSbBlitterInvalidSurface;
   software_surface.cached = false;
 
-  // We ensure that scale is at least 1. Since it is common to have animating
-  // scale between 0 and 1 (e.g. an item animating from 0 to 1 to "grow" into
-  // the scene), this ensures that rendered items will not look pixellated as
-  // they grow (e.g. if they were cached at scale 0.2, they would be stretched
-  // x5 if the scale were to animate to 1.0).
+  // We ensure that scale is at least 1 except for TextNodes, since the Blitter
+  // scaling is not as sophisticated as Skia's. Since it is common to have
+  // animating scale between 0 and 1 (e.g. an item animating from 0 to 1 to
+  // "grow" into the scene), this ensures that rendered items will not look
+  // pixellated as they grow (e.g. if they were cached at scale 0.2, they would
+  // be stretched x5 if the scale were to animate to 1.0).
   if (transform.scale().x() == 0.0f || transform.scale().y() == 0.0f) {
     // There won't be anything to render if the transform squishes one dimension
     // to 0.
@@ -148,11 +150,13 @@ CachedSoftwareRasterizer::Surface CachedSoftwareRasterizer::GetSurface(
 // scale down for us, it results in too many artifacts.
 #if SB_HAS(BILINEAR_FILTERING_SUPPORT)
   math::Vector2dF apply_scale(1.0f, 1.0f);
-  if (transform.scale().x() < 1.0f) {
-    apply_scale.set_x(1.0f / transform.scale().x());
-  }
-  if (transform.scale().y() < 1.0f) {
-    apply_scale.set_y(1.0f / transform.scale().y());
+  if (node->GetTypeId() != base::GetTypeId<render_tree::TextNode>()) {
+    if (transform.scale().x() < 1.0f) {
+      apply_scale.set_x(1.0f / transform.scale().x());
+    }
+    if (transform.scale().y() < 1.0f) {
+      apply_scale.set_y(1.0f / transform.scale().y());
+    }
   }
   scaled_transform.ApplyScale(apply_scale);
 #endif  // SB_HAS(BILINEAR_FILTERING_SUPPORT)
@@ -162,7 +166,7 @@ CachedSoftwareRasterizer::Surface CachedSoftwareRasterizer::GetSurface(
   common::OffscreenRenderCoordinateMapping coord_mapping =
       common::GetOffscreenRenderCoordinateMapping(node->GetBounds(),
                                                   scaled_transform.ToMatrix(),
-                                                  base::optional<math::Rect>());
+                                                  base::Optional<math::Rect>());
 
   software_surface.coord_mapping = coord_mapping;
 
@@ -171,12 +175,10 @@ CachedSoftwareRasterizer::Surface CachedSoftwareRasterizer::GetSurface(
     return software_surface;
   }
 
-  DCHECK_GE(0.001f, std::abs(1.0f -
-                             scaled_transform.scale().x() *
-                                 coord_mapping.output_post_scale.x()));
-  DCHECK_GE(0.001f, std::abs(1.0f -
-                             scaled_transform.scale().y() *
-                                 coord_mapping.output_post_scale.y()));
+  DCHECK_GE(0.001f, std::abs(1.0f - scaled_transform.scale().x() *
+                                        coord_mapping.output_post_scale.x()));
+  DCHECK_GE(0.001f, std::abs(1.0f - scaled_transform.scale().y() *
+                                        coord_mapping.output_post_scale.y()));
 
   SkImageInfo output_image_info = SkImageInfo::MakeN32(
       coord_mapping.output_bounds.width(), coord_mapping.output_bounds.height(),

@@ -16,10 +16,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 
 #include "base/logging.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/stringprintf.h"
+#include "base/strings/stringprintf.h"
 #include "cobalt/base/event_dispatcher.h"
 #include "cobalt/system_window/input_event.h"
 #include "starboard/double.h"
@@ -27,7 +27,6 @@
 
 namespace cobalt {
 namespace system_window {
-
 namespace {
 
 SystemWindow* g_the_window = NULL;
@@ -40,7 +39,7 @@ int Round(const float f) {
 }  // namespace
 
 SystemWindow::SystemWindow(base::EventDispatcher* event_dispatcher,
-                           const base::optional<math::Size>& window_size)
+                           const base::Optional<math::Size>& window_size)
     : event_dispatcher_(event_dispatcher),
       window_(kSbWindowInvalid),
       key_down_(false) {
@@ -71,9 +70,17 @@ math::Size SystemWindow::GetWindowSize() const {
   SbWindowSize window_size;
   if (!SbWindowGetSize(window_, &window_size)) {
     DLOG(WARNING) << "SbWindowGetSize() failed.";
-    return math::Size(0, 0);
+    return math::Size();
   }
   return math::Size(window_size.width, window_size.height);
+}
+
+float SystemWindow::GetDiagonalSizeInches() const {
+#if SB_API_VERSION >= 11
+  return SbWindowGetDiagonalSizeInInches(window_);
+#else
+  return 0.f;
+#endif
 }
 
 float SystemWindow::GetVideoPixelRatio() const {
@@ -117,7 +124,6 @@ void SystemWindow::DispatchInputEvent(const SbInputData& data,
   // Starboard handily uses the Microsoft key mapping, which is also what Cobalt
   // uses.
   int key_code = static_cast<int>(data.key);
-#if SB_API_VERSION >= 6
   float pressure = data.pressure;
   uint32 modifiers = data.key_modifiers;
   if (((data.device_type == kSbInputDeviceTypeTouchPad) ||
@@ -127,6 +133,8 @@ void SystemWindow::DispatchInputEvent(const SbInputData& data,
       case InputEvent::kPointerMove:
       case InputEvent::kTouchpadDown:
       case InputEvent::kTouchpadMove:
+      case InputEvent::kTouchscreenDown:
+      case InputEvent::kTouchscreenMove:
         // For touch contact input, ensure that the device button state is also
         // reported as pressed.
         //   https://www.w3.org/TR/2015/REC-pointerevents-20150224/#button-states
@@ -142,68 +150,70 @@ void SystemWindow::DispatchInputEvent(const SbInputData& data,
       case InputEvent::kInput:
       case InputEvent::kPointerUp:
       case InputEvent::kTouchpadUp:
+      case InputEvent::kTouchscreenUp:
       case InputEvent::kWheel:
         break;
     }
   }
 
 #if SB_HAS(ON_SCREEN_KEYBOARD)
-  scoped_ptr<InputEvent> input_event(
-      new InputEvent(timestamp, type, data.device_id,
-                     key_code, modifiers, is_repeat,
-                     math::PointF(data.position.x, data.position.y),
+  std::unique_ptr<InputEvent> input_event(
+      new InputEvent(timestamp, type, data.device_id, key_code, modifiers,
+                     is_repeat, math::PointF(data.position.x, data.position.y),
                      math::PointF(data.delta.x, data.delta.y), pressure,
                      math::PointF(data.size.x, data.size.y),
                      math::PointF(data.tilt.x, data.tilt.y),
-                     data.input_text ? data.input_text : ""));
+                     data.input_text ? data.input_text : "",
+                     data.is_composing ? data.is_composing : false));
 #else   // SB_HAS(ON_SCREEN_KEYBOARD)
-  scoped_ptr<InputEvent> input_event(
-      new InputEvent(timestamp, type, data.device_id,
-                     key_code, modifiers, is_repeat,
-                     math::PointF(data.position.x, data.position.y),
+  std::unique_ptr<InputEvent> input_event(
+      new InputEvent(timestamp, type, data.device_id, key_code, modifiers,
+                     is_repeat, math::PointF(data.position.x, data.position.y),
                      math::PointF(data.delta.x, data.delta.y), pressure,
                      math::PointF(data.size.x, data.size.y),
                      math::PointF(data.tilt.x, data.tilt.y)));
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
-#else
-  scoped_ptr<InputEvent> input_event(
-      new InputEvent(timestamp, type, data.device_id,
-                     key_code, data.key_modifiers, is_repeat,
-                     math::PointF(data.position.x, data.position.y),
-                     math::PointF(data.delta.x, data.delta.y)));
-#endif
-  event_dispatcher()->DispatchEvent(input_event.PassAs<base::Event>());
+  event_dispatcher()->DispatchEvent(
+      std::unique_ptr<base::Event>(input_event.release()));
 }
 
 void SystemWindow::HandlePointerInputEvent(const SbInputData& data) {
+  InputEvent::Type input_event_type;
   switch (data.type) {
     case kSbInputEventTypePress: {
-      InputEvent::Type input_event_type =
-          data.device_type == kSbInputDeviceTypeTouchPad
-              ? InputEvent::kTouchpadDown
-              : InputEvent::kPointerDown;
+      if (data.device_type == kSbInputDeviceTypeTouchPad) {
+        input_event_type = InputEvent::kTouchpadDown;
+      } else if (data.device_type == kSbInputDeviceTypeTouchScreen) {
+        input_event_type = InputEvent::kTouchscreenDown;
+      } else {
+        input_event_type = InputEvent::kPointerDown;
+      }
       DispatchInputEvent(data, input_event_type, false /* is_repeat */);
       break;
     }
     case kSbInputEventTypeUnpress: {
-      InputEvent::Type input_event_type =
-          data.device_type == kSbInputDeviceTypeTouchPad
-              ? InputEvent::kTouchpadUp
-              : InputEvent::kPointerUp;
+      if (data.device_type == kSbInputDeviceTypeTouchPad) {
+        input_event_type = InputEvent::kTouchpadUp;
+      } else if (data.device_type == kSbInputDeviceTypeTouchScreen) {
+        input_event_type = InputEvent::kTouchscreenUp;
+      } else {
+        input_event_type = InputEvent::kPointerUp;
+      }
       DispatchInputEvent(data, input_event_type, false /* is_repeat */);
       break;
     }
-#if SB_API_VERSION >= 6
     case kSbInputEventTypeWheel: {
       DispatchInputEvent(data, InputEvent::kWheel, false /* is_repeat */);
       break;
     }
-#endif
     case kSbInputEventTypeMove: {
-      InputEvent::Type input_event_type =
-          data.device_type == kSbInputDeviceTypeTouchPad
-              ? InputEvent::kTouchpadMove
-              : InputEvent::kPointerMove;
+      if (data.device_type == kSbInputDeviceTypeTouchPad) {
+        input_event_type = InputEvent::kTouchpadMove;
+      } else if (data.device_type == kSbInputDeviceTypeTouchScreen) {
+        input_event_type = InputEvent::kTouchscreenMove;
+      } else {
+        input_event_type = InputEvent::kPointerMove;
+      }
       DispatchInputEvent(data, input_event_type, false /* is_repeat */);
       break;
     }

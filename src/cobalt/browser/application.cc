@@ -12,22 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#if defined(STARBOARD)
+#include "starboard/client_porting/poem/stdio_leaks_poem.h"
+#endif
+
 #include "cobalt/browser/application.h"
 
-#include <algorithm>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "base/command_line.h"
-#include "base/debug/trace_event.h"
 #include "base/lazy_instance.h"
 #include "base/logging.h"
 #include "base/optional.h"
 #include "base/path_service.h"
-#include "base/string_number_conversions.h"
-#include "base/string_split.h"
-#include "base/string_util.h"
-#include "base/time.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_split.h"
+#include "base/strings/string_util.h"
+#include "base/task/task_scheduler/task_scheduler.h"
+#include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "cobalt/base/accessibility_caption_settings_changed_event.h"
 #include "cobalt/base/accessibility_settings_changed_event.h"
@@ -42,26 +47,28 @@
 #include "cobalt/base/on_screen_keyboard_focused_event.h"
 #include "cobalt/base/on_screen_keyboard_hidden_event.h"
 #include "cobalt/base/on_screen_keyboard_shown_event.h"
+#include "cobalt/base/on_screen_keyboard_suggestions_updated_event.h"
 #include "cobalt/base/startup_timer.h"
-#include "cobalt/base/user_log.h"
 #if defined(COBALT_ENABLE_VERSION_COMPATIBILITY_VALIDATIONS)
 #include "cobalt/base/version_compatibility.h"
 #endif  // defined(COBALT_ENABLE_VERSION_COMPATIBILITY_VALIDATIONS)
 #include "cobalt/base/window_size_changed_event.h"
+#include "cobalt/browser/device_authentication.h"
 #include "cobalt/browser/memory_settings/auto_mem_settings.h"
 #include "cobalt/browser/memory_tracker/tool.h"
 #include "cobalt/browser/switches.h"
 #include "cobalt/loader/image/image_decoder.h"
 #include "cobalt/math/size.h"
-#include "cobalt/network/network_event.h"
 #include "cobalt/script/javascript_engine.h"
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
 #include "cobalt/storage/savegame_fake.h"
 #endif  // defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
 #include "cobalt/system_window/input_event.h"
 #include "cobalt/trace_event/scoped_trace_to_file.h"
-#include "googleurl/src/gurl.h"
 #include "starboard/configuration.h"
+#include "url/gurl.h"
+
+using cobalt::cssom::ViewportSize;
 
 namespace cobalt {
 namespace browser {
@@ -75,31 +82,35 @@ bool IsStringNone(const std::string& str) {
   return !base::strcasecmp(str.c_str(), "none");
 }
 
-#if defined(ENABLE_REMOTE_DEBUGGING)
+#if defined(ENABLE_DEBUGGER)
 int GetRemoteDebuggingPort() {
 #if defined(SB_OVERRIDE_DEFAULT_REMOTE_DEBUGGING_PORT)
-  const int kDefaultRemoteDebuggingPort =
+  const unsigned int kDefaultRemoteDebuggingPort =
       SB_OVERRIDE_DEFAULT_REMOTE_DEBUGGING_PORT;
 #else
-  const int kDefaultRemoteDebuggingPort = 9222;
+  const unsigned int kDefaultRemoteDebuggingPort = 9222;
 #endif  // defined(SB_OVERRIDE_DEFAULT_REMOTE_DEBUGGING_PORT)
-  int remote_debugging_port = kDefaultRemoteDebuggingPort;
+  unsigned int remote_debugging_port = kDefaultRemoteDebuggingPort;
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
-  CommandLine* command_line = CommandLine::ForCurrentProcess();
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(switches::kRemoteDebuggingPort)) {
     std::string switch_value =
         command_line->GetSwitchValueASCII(switches::kRemoteDebuggingPort);
-    if (!base::StringToInt(switch_value, &remote_debugging_port)) {
+    if (!base::StringToUint(switch_value, &remote_debugging_port)) {
       DLOG(ERROR) << "Invalid port specified for remote debug server: "
                   << switch_value
                   << ". Using default port: " << kDefaultRemoteDebuggingPort;
       remote_debugging_port = kDefaultRemoteDebuggingPort;
     }
   }
+  DCHECK(remote_debugging_port != 0 ||
+         !command_line->HasSwitch(switches::kWaitForWebDebugger))
+      << switches::kWaitForWebDebugger << " switch can't be used when "
+      << switches::kRemoteDebuggingPort << " is 0 (disabled).";
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
-  return remote_debugging_port;
+  return uint16_t(remote_debugging_port);
 }
-#endif  // ENABLE_REMOTE_DEBUGGING
+#endif  // ENABLE_DEBUGGER
 
 #if defined(ENABLE_WEBDRIVER)
 int GetWebDriverPort() {
@@ -112,7 +123,7 @@ int GetWebDriverPort() {
 #endif  // defined(SB_OVERRIDE_DEFAULT_WEBDRIVER_PORT)
   int webdriver_port = kDefaultWebDriverPort;
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
-  CommandLine* command_line = CommandLine::ForCurrentProcess();
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(switches::kWebDriverPort)) {
     if (!base::StringToInt(
             command_line->GetSwitchValueASCII(switches::kWebDriverPort),
@@ -133,7 +144,7 @@ std::string GetWebDriverListenIp() {
   std::string webdriver_listen_ip =
       webdriver::WebDriverModule::kDefaultListenIp;
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
-  CommandLine* command_line = CommandLine::ForCurrentProcess();
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(switches::kWebDriverListenIp)) {
     webdriver_listen_ip =
         command_line->GetSwitchValueASCII(switches::kWebDriverListenIp);
@@ -144,23 +155,42 @@ std::string GetWebDriverListenIp() {
 #endif  // ENABLE_WEBDRIVER
 
 GURL GetInitialURL() {
+  GURL initial_url = GURL(kDefaultURL);
   // Allow the user to override the default URL via a command line parameter.
-  CommandLine* command_line = CommandLine::ForCurrentProcess();
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(switches::kInitialURL)) {
     GURL url = GURL(command_line->GetSwitchValueASCII(switches::kInitialURL));
     if (url.is_valid()) {
-      return url;
+      initial_url = url;
     } else {
       DLOG(ERROR) << "URL from parameter " << command_line
                   << " is not valid, using default URL.";
     }
   }
 
-  return GURL(kDefaultURL);
+#if SB_API_VERSION >= 11
+  // Append the device authentication query parameters based on the platform's
+  // certification secret to the initial URL.
+  std::string query = initial_url.query();
+  std::string device_authentication_query_string =
+      GetDeviceAuthenticationSignedURLQueryString();
+  if (!query.empty() && !device_authentication_query_string.empty()) {
+    query += "&";
+  }
+  query += device_authentication_query_string;
+
+  if (!query.empty()) {
+    GURL::Replacements replacements;
+    replacements.SetQueryStr(query);
+    initial_url = initial_url.ReplaceComponents(replacements);
+  }
+#endif  // SB_API_VERSION >= 11
+
+  return initial_url;
 }
 
-base::optional<GURL> GetFallbackSplashScreenURL() {
-  CommandLine* command_line = CommandLine::ForCurrentProcess();
+base::Optional<GURL> GetFallbackSplashScreenURL() {
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   std::string fallback_splash_screen_string;
   if (command_line->HasSwitch(switches::kFallbackSplashScreenURL)) {
     fallback_splash_screen_string =
@@ -169,9 +199,9 @@ base::optional<GURL> GetFallbackSplashScreenURL() {
     fallback_splash_screen_string = COBALT_FALLBACK_SPLASH_SCREEN_URL;
   }
   if (IsStringNone(fallback_splash_screen_string)) {
-    return base::optional<GURL>();
+    return base::Optional<GURL>();
   }
-  base::optional<GURL> fallback_splash_screen_url =
+  base::Optional<GURL> fallback_splash_screen_url =
       GURL(fallback_splash_screen_string);
   if (!fallback_splash_screen_url->is_valid() ||
       !(fallback_splash_screen_url->SchemeIsFile() ||
@@ -184,7 +214,7 @@ base::optional<GURL> GetFallbackSplashScreenURL() {
 
 base::TimeDelta GetTimedTraceDuration() {
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
-  CommandLine* command_line = CommandLine::ForCurrentProcess();
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   int duration_in_seconds = 0;
   if (command_line->HasSwitch(switches::kTimedTrace) &&
       base::StringToInt(
@@ -197,19 +227,19 @@ base::TimeDelta GetTimedTraceDuration() {
   return base::TimeDelta();
 }
 
-FilePath GetExtraWebFileDir() {
+base::FilePath GetExtraWebFileDir() {
   // Default is empty, command line can override.
-  FilePath result;
+  base::FilePath result;
 
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
-  CommandLine* command_line = CommandLine::ForCurrentProcess();
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(switches::kExtraWebFileDir)) {
-    result =
-        FilePath(command_line->GetSwitchValueASCII(switches::kExtraWebFileDir));
+    result = base::FilePath(
+        command_line->GetSwitchValueASCII(switches::kExtraWebFileDir));
     if (!result.IsAbsolute()) {
       // Non-absolute paths are relative to the executable directory.
-      FilePath content_path;
-      PathService::Get(base::DIR_EXE, &content_path);
+      base::FilePath content_path;
+      base::PathService::Get(base::DIR_EXE, &content_path);
       result = content_path.DirName().DirName().Append(result);
     }
     DLOG(INFO) << "Extra web file dir: " << result.value();
@@ -221,65 +251,15 @@ FilePath GetExtraWebFileDir() {
 
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
 void EnableUsingStubImageDecoderIfRequired() {
-  CommandLine* command_line = CommandLine::ForCurrentProcess();
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(switches::kStubImageDecoder)) {
     loader::image::ImageDecoder::UseStubImageDecoder();
   }
 }
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
 
-#if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
-base::optional<math::Size> GetVideoOutputResolutionOverride(
-    CommandLine* command_line) {
-  DCHECK(command_line);
-  if (command_line->HasSwitch(switches::kVideoContainerSizeOverride)) {
-    std::string size_override = command_line->GetSwitchValueASCII(
-        browser::switches::kVideoContainerSizeOverride);
-    DLOG(INFO) << "Set video container size override from command line to "
-               << size_override;
-    // Override string should be something like "1920x1080".
-    int32 width, height;
-    std::vector<std::string> tokens;
-    base::SplitString(size_override, 'x', &tokens);
-    if (tokens.size() == 2 && base::StringToInt32(tokens[0], &width) &&
-        base::StringToInt32(tokens[1], &height)) {
-      return math::Size(width, height);
-    }
-
-    DLOG(WARNING) << "Invalid size specified for video container: "
-                  << size_override;
-  }
-
-  return base::nullopt;
-}
-#endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
-
-// Represents a parsed int.
-struct ParsedIntValue {
- public:
-  ParsedIntValue() : value_(0), error_(false) {}
-  ParsedIntValue(const ParsedIntValue& other)
-      : value_(other.value_), error_(other.error_) {}
-  int value_;
-  bool error_;  // true if there was a parse error.
-};
-
-// Parses a string like "1234x5678" to vector of parsed int values.
-std::vector<ParsedIntValue> ParseDimensions(const std::string& value_str) {
-  std::vector<ParsedIntValue> output;
-
-  std::vector<std::string> lengths;
-  base::SplitString(value_str, 'x', &lengths);
-
-  for (size_t i = 0; i < lengths.size(); ++i) {
-    ParsedIntValue parsed_value;
-    parsed_value.error_ = !base::StringToInt(lengths[i], &parsed_value.value_);
-    output.push_back(parsed_value);
-  }
-  return output;
-}
-
-base::optional<math::Size> GetRequestedViewportSize(CommandLine* command_line) {
+base::Optional<cssom::ViewportSize> GetRequestedViewportSize(
+    base::CommandLine* command_line) {
   DCHECK(command_line);
   if (!command_line->HasSwitch(browser::switches::kViewport)) {
     return base::nullopt;
@@ -287,46 +267,54 @@ base::optional<math::Size> GetRequestedViewportSize(CommandLine* command_line) {
 
   std::string switch_value =
       command_line->GetSwitchValueASCII(browser::switches::kViewport);
-  std::vector<ParsedIntValue> parsed_ints = ParseDimensions(switch_value);
-  if (parsed_ints.size() < 1) {
+
+  std::vector<std::string> lengths = base::SplitString(
+      switch_value, "x", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
+
+  if (lengths.empty()) {
+    DLOG(ERROR) << "Viewport " << switch_value << " is invalid.";
     return base::nullopt;
   }
 
-  const ParsedIntValue parsed_width = parsed_ints[0];
-  if (parsed_width.error_) {
-    DLOG(ERROR) << "Invalid value specified for viewport width: "
-                << switch_value << ". Using default viewport size.";
+  int width = 0;
+  if (!base::StringToInt(lengths[0], &width)) {
+    DLOG(ERROR) << "Viewport " << switch_value << " has invalid width.";
     return base::nullopt;
   }
 
-  const ParsedIntValue* parsed_height_ptr = NULL;
-  if (parsed_ints.size() >= 2) {
-    parsed_height_ptr = &parsed_ints[1];
-  }
-
-  if (!parsed_height_ptr) {
+  if (lengths.size() < 2) {
     // Allow shorthand specification of the viewport by only giving the
     // width. This calculates the height at 4:3 aspect ratio for smaller
     // viewport widths, and 16:9 for viewports 1280 pixels wide or larger.
-    if (parsed_width.value_ >= 1280) {
-      return math::Size(parsed_width.value_, 9 * parsed_width.value_ / 16);
+    if (width >= 1280) {
+      return ViewportSize(width, 9 * width / 16, 0);
     }
-
-    return math::Size(parsed_width.value_, 3 * parsed_width.value_ / 4);
+    return ViewportSize(width, 3 * width / 4, 0);
   }
 
-  if (parsed_height_ptr->error_) {
-    DLOG(ERROR) << "Invalid value specified for viewport height: "
-                << switch_value << ". Using default viewport size.";
+  int height = 0;
+  if (!base::StringToInt(lengths[1], &height)) {
+    DLOG(ERROR) << "Viewport " << switch_value << " has invalid height.";
     return base::nullopt;
   }
 
-  return math::Size(parsed_width.value_, parsed_height_ptr->value_);
+  if (lengths.size() < 3) {
+    return ViewportSize(width, height);
+  }
+
+  double screen_diagonal_inches = 0.0;
+  if (!base::StringToDouble(lengths[2], &screen_diagonal_inches)) {
+    DLOG(ERROR) << "Viewport " << switch_value
+                << " has invalid screen_diagonal_inches.";
+    return base::nullopt;
+  }
+  return ViewportSize(width, height,
+                      static_cast<float>(screen_diagonal_inches));
 }
 
 std::string GetMinLogLevelString() {
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
-  CommandLine* command_line = CommandLine::ForCurrentProcess();
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(switches::kMinLogLevel)) {
     return command_line->GetSwitchValueASCII(switches::kMinLogLevel);
   }
@@ -350,10 +338,11 @@ int StringToLogLevel(const std::string& log_level) {
 }
 
 void SetIntegerIfSwitchIsSet(const char* switch_name, int* output) {
-  if (CommandLine::ForCurrentProcess()->HasSwitch(switch_name)) {
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(switch_name)) {
     int32 out;
     if (base::StringToInt32(
-            CommandLine::ForCurrentProcess()->GetSwitchValueNative(switch_name),
+            base::CommandLine::ForCurrentProcess()->GetSwitchValueNative(
+                switch_name),
             &out)) {
       LOG(INFO) << "Command line switch '" << switch_name << "': Modifying "
                 << *output << " -> " << out;
@@ -369,7 +358,7 @@ void ApplyCommandLineSettingsToRendererOptions(
   SetIntegerIfSwitchIsSet(browser::switches::kScratchSurfaceCacheSizeInBytes,
                           &options->scratch_surface_cache_size_in_bytes);
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
-  auto command_line = CommandLine::ForCurrentProcess();
+  auto command_line = base::CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(browser::switches::kDisableRasterizerCaching) ||
       command_line->HasSwitch(
           browser::switches::kForceDeterministicRendering)) {
@@ -395,8 +384,17 @@ struct SecurityFlags {
 
 // |non_trivial_static_fields| will be lazily created on the first time it's
 // accessed.
-base::LazyInstance<NonTrivialStaticFields> non_trivial_static_fields =
-    LAZY_INSTANCE_INITIALIZER;
+base::LazyInstance<NonTrivialStaticFields>::DestructorAtExit
+    non_trivial_static_fields = LAZY_INSTANCE_INITIALIZER;
+
+#if defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
+const char kMemoryTrackerCommand[] = "memory_tracker";
+const char kMemoryTrackerCommandShortHelp[] = "Create a memory tracker.";
+const char kMemoryTrackerCommandLongHelp[] =
+    "Create a memory tracker of the given type. Use an empty string to see the "
+    "available trackers.";
+#endif  // defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
+
 }  // namespace
 
 // Static user logs
@@ -416,27 +414,35 @@ int Application::network_connect_count_ = 0;
 int Application::network_disconnect_count_ = 0;
 
 Application::Application(const base::Closure& quit_closure, bool should_preload)
-    : message_loop_(MessageLoop::current()),
-      quit_closure_(quit_closure),
-      stats_update_timer_(true, true) {
+    : message_loop_(base::MessageLoop::current()),
+      quit_closure_(quit_closure)
+#if defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
+      ,
+      ALLOW_THIS_IN_INITIALIZER_LIST(memory_tracker_command_handler_(
+          kMemoryTrackerCommand,
+          base::Bind(&Application::OnMemoryTrackerCommand,
+                     base::Unretained(this)),
+          kMemoryTrackerCommandShortHelp, kMemoryTrackerCommandLongHelp))
+#endif  // defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
+{
   DCHECK(!quit_closure_.is_null());
   // Check to see if a timed_trace has been set, indicating that we should
   // begin a timed trace upon startup.
   base::TimeDelta trace_duration = GetTimedTraceDuration();
   if (trace_duration != base::TimeDelta()) {
     trace_event::TraceToFileForDuration(
-        FilePath(FILE_PATH_LITERAL("timed_trace.json")), trace_duration);
+        base::FilePath(FILE_PATH_LITERAL("timed_trace.json")), trace_duration);
   }
 
   TRACE_EVENT0("cobalt::browser", "Application::Application()");
 
-  DCHECK(MessageLoop::current());
-  DCHECK_EQ(MessageLoop::TYPE_UI, MessageLoop::current()->type());
+  DCHECK(base::MessageLoop::current());
+  DCHECK_EQ(
+      base::MessageLoop::TYPE_UI,
+      static_cast<base::MessageLoop*>(base::MessageLoop::current())->type());
 
-  network_event_thread_checker_.DetachFromThread();
-  application_event_thread_checker_.DetachFromThread();
-
-  RegisterUserLogs();
+  DETACH_FROM_THREAD(network_event_thread_checker_);
+  DETACH_FROM_THREAD(application_event_thread_checker_);
 
   // Set the minimum logging level, if specified on the command line.
   logging::SetMinLogLevel(StringToLogLevel(GetMinLogLevelString()));
@@ -450,7 +456,7 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   DLOG(INFO) << "Initial URL: " << initial_url;
 
   // Get the fallback splash screen URL.
-  base::optional<GURL> fallback_splash_screen_url =
+  base::Optional<GURL> fallback_splash_screen_url =
       GetFallbackSplashScreenURL();
   DLOG(INFO) << "Fallback splash screen URL: "
              << (fallback_splash_screen_url ? fallback_splash_screen_url->spec()
@@ -460,8 +466,13 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   std::string language = base::GetSystemLanguage();
   base::LocalizedStrings::GetInstance()->Initialize(language);
 
-  CommandLine* command_line = CommandLine::ForCurrentProcess();
-  base::optional<math::Size> requested_viewport_size =
+  // A one-per-process task scheduler is needed for usage of APIs in
+  // base/post_task.h which will be used by some net APIs like
+  // URLRequestContext;
+  base::TaskScheduler::CreateAndStartWithDefaultParams("Cobalt TaskScheduler");
+
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+  base::Optional<cssom::ViewportSize> requested_viewport_size =
       GetRequestedViewportSize(command_line);
 
   WebModule::Options web_options;
@@ -499,6 +510,12 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
     options.storage_manager_options.savegame_options.factory =
         &storage::SavegameFake::Create;
   }
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+  if (command_line->HasSwitch(browser::switches::kDisableOnScreenKeyboard)) {
+    options.enable_on_screen_keyboard = false;
+  }
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+
 #endif  // defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
 
 #if defined(COBALT_ENABLE_VERSION_COMPATIBILITY_VALIDATIONS)
@@ -516,7 +533,7 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   base::VersionCompatibility::GetInstance()->SetMinimumVersion(minimum_version);
 #endif  // defined(COBALT_ENABLE_VERSION_COMPATIBILITY_VALIDATIONS)
 
-  base::optional<std::string> partition_key;
+  base::Optional<std::string> partition_key;
   if (command_line->HasSwitch(browser::switches::kLocalStoragePartitionUrl)) {
     std::string local_storage_partition_url = command_line->GetSwitchValueASCII(
         browser::switches::kLocalStoragePartitionUrl);
@@ -527,9 +544,11 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   }
   options.storage_manager_options.savegame_options.id = partition_key;
 
-  base::optional<std::string> default_key =
+  base::Optional<std::string> default_key =
       base::GetApplicationKey(GURL(kDefaultURL));
-  if (partition_key == default_key) {
+  if (command_line->HasSwitch(
+          browser::switches::kForceMigrationForStoragePartitioning) ||
+      partition_key == default_key) {
     options.storage_manager_options.savegame_options.fallback_to_default_id =
         true;
   }
@@ -545,12 +564,12 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   // The main web module's stat tracker tracks event stats.
   options.web_module_options.track_event_stats = true;
 
-#if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
   if (command_line->HasSwitch(browser::switches::kProxy)) {
     options.network_module_options.custom_proxy =
         command_line->GetSwitchValueASCII(browser::switches::kProxy);
   }
 
+#if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
 #if defined(ENABLE_IGNORE_CERTIFICATE_ERRORS)
   if (command_line->HasSwitch(browser::switches::kIgnoreCertificateErrors)) {
     options.network_module_options.ignore_certificate_errors = true;
@@ -583,29 +602,13 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
 
   EnableUsingStubImageDecoderIfRequired();
 
-  if (command_line->HasSwitch(browser::switches::kDisableWebmVp9)) {
-    DLOG(INFO) << "Webm/Vp9 disabled";
-    options.media_module_options.disable_webm_vp9 = true;
-  }
-  if (command_line->HasSwitch(switches::kAudioDecoderStub)) {
-    DLOG(INFO) << "Use ShellRawAudioDecoderStub";
-    options.media_module_options.use_audio_decoder_stub = true;
-  }
-  if (command_line->HasSwitch(switches::kNullAudioStreamer)) {
-    DLOG(INFO) << "Use null audio";
-    options.media_module_options.use_null_audio_streamer = true;
-  }
-  if (command_line->HasSwitch(switches::kVideoDecoderStub)) {
-    DLOG(INFO) << "Use ShellRawVideoDecoderStub";
-    options.media_module_options.use_video_decoder_stub = true;
-  }
-  options.media_module_options.output_resolution_override =
-      GetVideoOutputResolutionOverride(command_line);
+#if defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
   if (command_line->HasSwitch(switches::kMemoryTracker)) {
     std::string command_arg =
         command_line->GetSwitchValueASCII(switches::kMemoryTracker);
     memory_tracker_tool_ = memory_tracker::CreateMemoryTrackerTool(command_arg);
   }
+#endif  // defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
 
   if (command_line->HasSwitch(switches::kDisableImageAnimations)) {
     options.web_module_options.enable_image_animations = false;
@@ -636,15 +639,11 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
                         (should_preload ? base::kApplicationStatePreloading
                                         : base::kApplicationStateStarted),
                         &event_dispatcher_, account_manager_.get(), options));
-  UpdateAndMaybeRegisterUserAgent();
+  UpdateUserAgent();
 
   app_status_ = (should_preload ? kPreloadingAppStatus : kRunningAppStatus);
 
   // Register event callbacks.
-  network_event_callback_ =
-      base::Bind(&Application::OnNetworkEvent, base::Unretained(this));
-  event_dispatcher_.AddEventCallback(network::NetworkEvent::TypeId(),
-                                     network_event_callback_);
   deep_link_event_callback_ =
       base::Bind(&Application::OnDeepLinkEvent, base::Unretained(this));
   event_dispatcher_.AddEventCallback(base::DeepLinkEvent::TypeId(),
@@ -675,13 +674,22 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   event_dispatcher_.AddEventCallback(
       base::OnScreenKeyboardBlurredEvent::TypeId(),
       on_screen_keyboard_blurred_event_callback_);
+#if SB_API_VERSION >= 11
+  on_screen_keyboard_suggestions_updated_event_callback_ =
+      base::Bind(&Application::OnOnScreenKeyboardSuggestionsUpdatedEvent,
+                 base::Unretained(this));
+  event_dispatcher_.AddEventCallback(
+      base::OnScreenKeyboardSuggestionsUpdatedEvent::TypeId(),
+      on_screen_keyboard_suggestions_updated_event_callback_);
+#endif  // SB_API_VERSION >= 11
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
 #if SB_HAS(CAPTIONS)
+  on_caption_settings_changed_event_callback_ = base::Bind(
+      &Application::OnCaptionSettingsChangedEvent, base::Unretained(this));
   event_dispatcher_.AddEventCallback(
       base::AccessibilityCaptionSettingsChangedEvent::TypeId(),
-      base::Bind(&Application::OnCaptionSettingsChangedEvent,
-                 base::Unretained(this)));
+      on_caption_settings_changed_event_callback_);
 #endif  // SB_HAS(CAPTIONS)
 #if defined(ENABLE_WEBDRIVER)
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
@@ -695,23 +703,26 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
         GetWebDriverPort(), GetWebDriverListenIp(),
         base::Bind(&BrowserModule::CreateSessionDriver,
                    base::Unretained(browser_module_.get())),
-        // Webdriver spec requires us to encode to PNG format.
-        base::Bind(&BrowserModule::RequestScreenshotToBuffer,
-                   base::Unretained(browser_module_.get()),
-                   loader::image::EncodedStaticImage::ImageFormat::kPNG),
+        base::Bind(&BrowserModule::RequestScreenshotToMemory,
+                   base::Unretained(browser_module_.get())),
         base::Bind(&BrowserModule::SetProxy,
                    base::Unretained(browser_module_.get())),
         base::Bind(&Application::Quit, base::Unretained(this))));
   }
 #endif  // ENABLE_WEBDRIVER
 
-#if defined(ENABLE_REMOTE_DEBUGGING)
+#if defined(ENABLE_DEBUGGER)
   int remote_debugging_port = GetRemoteDebuggingPort();
-  debug_web_server_.reset(new debug::DebugWebServer(
-      remote_debugging_port,
-      base::Bind(&BrowserModule::GetDebugServer,
-                 base::Unretained(browser_module_.get()))));
-#endif  // ENABLE_REMOTE_DEBUGGING
+  if (remote_debugging_port == 0) {
+    DLOG(INFO) << "Remote web debugger disabled because "
+               << switches::kRemoteDebuggingPort << " is 0.";
+  } else {
+    debug_web_server_.reset(new debug::remote::DebugWebServer(
+        remote_debugging_port,
+        base::Bind(&BrowserModule::CreateDebugClient,
+                   base::Unretained(browser_module_.get()))));
+  }
+#endif  // ENABLE_DEBUGGER
 
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
   int duration_in_seconds = 0;
@@ -722,7 +733,7 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
     // If the "shutdown_after" command line option is specified, setup a delayed
     // message to quit the application after the specified number of seconds
     // have passed.
-    message_loop_->PostDelayedTask(
+    message_loop_->task_runner()->PostDelayedTask(
         FROM_HERE, quit_closure_,
         base::TimeDelta::FromSeconds(duration_in_seconds));
   }
@@ -734,23 +745,48 @@ Application::~Application() {
   // and involves a thread join. If this were to hang the app then having
   // the destruction at this point gives a real file-line number and a place
   // for the debugger to land.
+#if defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
   memory_tracker_tool_.reset(NULL);
+#endif  // defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
 
   // Unregister event callbacks.
-  event_dispatcher_.RemoveEventCallback(network::NetworkEvent::TypeId(),
-                                        network_event_callback_);
   event_dispatcher_.RemoveEventCallback(base::DeepLinkEvent::TypeId(),
                                         deep_link_event_callback_);
 #if SB_API_VERSION >= 8
   event_dispatcher_.RemoveEventCallback(base::WindowSizeChangedEvent::TypeId(),
                                         window_size_change_event_callback_);
 #endif  // SB_API_VERSION >= 8
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+  event_dispatcher_.RemoveEventCallback(
+      base::OnScreenKeyboardShownEvent::TypeId(),
+      on_screen_keyboard_shown_event_callback_);
+  event_dispatcher_.RemoveEventCallback(
+      base::OnScreenKeyboardHiddenEvent::TypeId(),
+      on_screen_keyboard_hidden_event_callback_);
+  event_dispatcher_.RemoveEventCallback(
+      base::OnScreenKeyboardFocusedEvent::TypeId(),
+      on_screen_keyboard_focused_event_callback_);
+  event_dispatcher_.RemoveEventCallback(
+      base::OnScreenKeyboardBlurredEvent::TypeId(),
+      on_screen_keyboard_blurred_event_callback_);
+#if SB_API_VERSION >= 11
+  event_dispatcher_.RemoveEventCallback(
+      base::OnScreenKeyboardSuggestionsUpdatedEvent::TypeId(),
+      on_screen_keyboard_suggestions_updated_event_callback_);
+#endif  // SB_API_VERSION >= 11
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_HAS(CAPTIONS)
+  event_dispatcher_.RemoveEventCallback(
+      base::AccessibilityCaptionSettingsChangedEvent::TypeId(),
+      on_caption_settings_changed_event_callback_);
+#endif  // SB_HAS(CAPTIONS)
+
   app_status_ = kShutDownAppStatus;
 }
 
 void Application::Start() {
-  if (MessageLoop::current() != message_loop_) {
-    message_loop_->PostTask(
+  if (base::MessageLoop::current() != message_loop_) {
+    message_loop_->task_runner()->PostTask(
         FROM_HERE, base::Bind(&Application::Start, base::Unretained(this)));
     return;
   }
@@ -764,8 +800,8 @@ void Application::Start() {
 }
 
 void Application::Quit() {
-  if (MessageLoop::current() != message_loop_) {
-    message_loop_->PostTask(
+  if (base::MessageLoop::current() != message_loop_) {
+    message_loop_->task_runner()->PostTask(
         FROM_HERE, base::Bind(&Application::Quit, base::Unretained(this)));
     return;
   }
@@ -789,9 +825,7 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
     case kSbEventTypeUnpause:
     case kSbEventTypeSuspend:
     case kSbEventTypeResume:
-#if SB_API_VERSION >= 6
     case kSbEventTypeLowMemory:
-#endif  // SB_API_VERSION >= 6
       OnApplicationEvent(starboard_event->type);
       break;
 #if SB_API_VERSION >= 8
@@ -822,15 +856,13 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
       DispatchEventInternal(new base::OnScreenKeyboardBlurredEvent(
           *static_cast<int*>(starboard_event->data)));
       break;
+#if SB_API_VERSION >= 11
+    case kSbEventTypeOnScreenKeyboardSuggestionsUpdated:
+      DispatchEventInternal(new base::OnScreenKeyboardSuggestionsUpdatedEvent(
+          *static_cast<int*>(starboard_event->data)));
+      break;
+#endif  // SB_API_VERSION >= 11
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
-    case kSbEventTypeNetworkConnect:
-      DispatchEventInternal(
-          new network::NetworkEvent(network::NetworkEvent::kConnection));
-      break;
-    case kSbEventTypeNetworkDisconnect:
-      DispatchEventInternal(
-          new network::NetworkEvent(network::NetworkEvent::kDisconnection));
-      break;
     case kSbEventTypeLink: {
       const char* link = static_cast<const char*>(starboard_event->data);
       DispatchEventInternal(new base::DeepLinkEvent(link));
@@ -848,9 +880,11 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
     // Explicitly list unhandled cases here so that the compiler can give a
     // warning when a value is added, but not handled.
     case kSbEventTypeInput:
-#if SB_API_VERSION >= 6
     case kSbEventTypePreload:
-#endif  // SB_API_VERSION >= 6
+#if SB_API_VERSION < 11
+    case kSbEventTypeNetworkConnect:
+    case kSbEventTypeNetworkDisconnect:
+#endif  // SB_API_VERSION < 11
     case kSbEventTypeScheduled:
     case kSbEventTypeStart:
     case kSbEventTypeStop:
@@ -861,30 +895,9 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
   }
 }
 
-void Application::OnNetworkEvent(const base::Event* event) {
-  TRACE_EVENT0("cobalt::browser", "Application::OnNetworkEvent()");
-  DCHECK(network_event_thread_checker_.CalledOnValidThread());
-  const network::NetworkEvent* network_event =
-      base::polymorphic_downcast<const network::NetworkEvent*>(event);
-  if (network_event->type() == network::NetworkEvent::kDisconnection) {
-    network_status_ = kDisconnectedNetworkStatus;
-    ++network_disconnect_count_;
-    browser_module_->Navigate(GURL("h5vcc://network-failure"));
-  } else if (network_event->type() == network::NetworkEvent::kConnection) {
-    network_status_ = kConnectedNetworkStatus;
-    ++network_connect_count_;
-    if (network_disconnect_count_ > 0) {
-      DLOG(INFO) << "Got network connection event, reloading browser.";
-      browser_module_->Reload();
-    } else {
-      DLOG(INFO) << "Got network connection event, NOT reloading browser.";
-    }
-  }
-}
-
 void Application::OnApplicationEvent(SbEventType event_type) {
   TRACE_EVENT0("cobalt::browser", "Application::OnApplicationEvent()");
-  DCHECK(application_event_thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(application_event_thread_checker_);
   switch (event_type) {
     case kSbEventTypeStop:
       DLOG(INFO) << "Got quit event.";
@@ -929,7 +942,6 @@ void Application::OnApplicationEvent(SbEventType event_type) {
       browser_module_->Resume();
       DLOG(INFO) << "Finished resuming.";
       break;
-#if SB_API_VERSION >= 6
     case kSbEventTypeLowMemory:
       DLOG(INFO) << "Got low memory event.";
       browser_module_->ReduceMemory();
@@ -937,7 +949,6 @@ void Application::OnApplicationEvent(SbEventType event_type) {
       break;
     // All of the remaining event types are unexpected:
     case kSbEventTypePreload:
-#endif  // SB_API_VERSION >= 6
 #if SB_API_VERSION >= 8
     case kSbEventTypeWindowSizeChanged:
 #endif
@@ -949,12 +960,17 @@ void Application::OnApplicationEvent(SbEventType event_type) {
     case kSbEventTypeOnScreenKeyboardFocused:
     case kSbEventTypeOnScreenKeyboardHidden:
     case kSbEventTypeOnScreenKeyboardShown:
+#if SB_API_VERSION >= 11
+    case kSbEventTypeOnScreenKeyboardSuggestionsUpdated:
+#endif  // SB_API_VERSION >= 11
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
     case kSbEventTypeAccessiblitySettingsChanged:
     case kSbEventTypeInput:
     case kSbEventTypeLink:
+#if SB_API_VERSION < 11
     case kSbEventTypeNetworkConnect:
     case kSbEventTypeNetworkDisconnect:
+#endif  // SB_API_VERSION < 11
     case kSbEventTypeScheduled:
     case kSbEventTypeUser:
     case kSbEventTypeVerticalSync:
@@ -978,7 +994,16 @@ void Application::OnWindowSizeChangedEvent(const base::Event* event) {
   TRACE_EVENT0("cobalt::browser", "Application::OnWindowSizeChangedEvent()");
   const base::WindowSizeChangedEvent* window_size_change_event =
       base::polymorphic_downcast<const base::WindowSizeChangedEvent*>(event);
-  browser_module_->OnWindowSizeChanged(window_size_change_event->size());
+  const auto& size = window_size_change_event->size();
+#if SB_API_VERSION >= 11
+  float diagonal =
+      SbWindowGetDiagonalSizeInInches(window_size_change_event->window());
+#else
+  float diagonal = 0.0f;  // Special value meaning diagonal size is not known.
+#endif
+
+  cssom::ViewportSize viewport_size(size.width, size.height, diagonal);
+  browser_module_->OnWindowSizeChanged(viewport_size, size.video_pixel_ratio);
 }
 #endif  // SB_API_VERSION >= 8
 
@@ -1014,6 +1039,17 @@ void Application::OnOnScreenKeyboardBlurredEvent(const base::Event* event) {
       base::polymorphic_downcast<const base::OnScreenKeyboardBlurredEvent*>(
           event));
 }
+
+#if SB_API_VERSION >= 11
+void Application::OnOnScreenKeyboardSuggestionsUpdatedEvent(
+    const base::Event* event) {
+  TRACE_EVENT0("cobalt::browser",
+               "Application::OnOnScreenKeyboardSuggestionsUpdatedEvent()");
+  browser_module_->OnOnScreenKeyboardSuggestionsUpdated(
+      base::polymorphic_downcast<
+          const base::OnScreenKeyboardSuggestionsUpdatedEvent*>(event));
+}
+#endif  // SB_API_VERSION >= 11
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
 #if SB_HAS(CAPTIONS)
@@ -1053,51 +1089,13 @@ Application::CValStats::CValStats()
   }
 }
 
-void Application::RegisterUserLogs() {
-  if (base::UserLog::IsRegistrationSupported()) {
-    base::UserLog::Register(
-        base::UserLog::kSystemLanguageStringIndex, "SystemLanguage",
-        non_trivial_static_fields.Get().system_language.c_str(),
-        non_trivial_static_fields.Get().system_language.size());
-
-    base::UserLog::Register(base::UserLog::kAvailableMemoryIndex,
-                            "AvailableMemory", &available_memory_,
-                            sizeof(available_memory_));
-    base::UserLog::Register(base::UserLog::kAppLifetimeIndex, "Lifetime(ms)",
-                            &lifetime_in_ms_, sizeof(lifetime_in_ms_));
-    base::UserLog::Register(base::UserLog::kAppStatusIndex, "AppStatus",
-                            &app_status_, sizeof(app_status_));
-    base::UserLog::Register(base::UserLog::kAppPauseCountIndex, "PauseCnt",
-                            &app_pause_count_, sizeof(app_pause_count_));
-    base::UserLog::Register(base::UserLog::kAppUnpauseCountIndex, "UnpauseCnt",
-                            &app_unpause_count_, sizeof(app_unpause_count_));
-    base::UserLog::Register(base::UserLog::kAppSuspendCountIndex, "SuspendCnt",
-                            &app_suspend_count_, sizeof(app_suspend_count_));
-    base::UserLog::Register(base::UserLog::kAppResumeCountIndex, "ResumeCnt",
-                            &app_resume_count_, sizeof(app_resume_count_));
-    base::UserLog::Register(base::UserLog::kNetworkStatusIndex, "NetworkStatus",
-                            &network_status_, sizeof(network_status_));
-    base::UserLog::Register(base::UserLog::kNetworkConnectCountIndex,
-                            "ConnectCnt", &network_connect_count_,
-                            sizeof(network_connect_count_));
-    base::UserLog::Register(base::UserLog::kNetworkDisconnectCountIndex,
-                            "DisconnectCnt", &network_disconnect_count_,
-                            sizeof(network_disconnect_count_));
-  }
-}
-
 // NOTE: UserAgent registration is handled separately, as the value is not
 // available when the app is first being constructed. Registration must happen
 // each time the user agent is modified, because the string may be pointing
 // to a new location on the heap.
-void Application::UpdateAndMaybeRegisterUserAgent() {
+void Application::UpdateUserAgent() {
   non_trivial_static_fields.Get().user_agent = browser_module_->GetUserAgent();
   DLOG(INFO) << "User Agent: " << non_trivial_static_fields.Get().user_agent;
-  if (base::UserLog::IsRegistrationSupported()) {
-    base::UserLog::Register(base::UserLog::kUserAgentStringIndex, "UserAgent",
-                            non_trivial_static_fields.Get().user_agent.c_str(),
-                            non_trivial_static_fields.Get().user_agent.size());
-  }
 }
 
 void Application::UpdatePeriodicStats() {
@@ -1105,7 +1103,7 @@ void Application::UpdatePeriodicStats() {
   c_val_stats_.app_lifetime = base::StartupTimer::TimeElapsed();
 
   int64_t used_cpu_memory = SbSystemGetUsedCPUMemory();
-  base::optional<int64_t> used_gpu_memory;
+  base::Optional<int64_t> used_gpu_memory;
   if (SbSystemHasCapability(kSbSystemCapabilityCanQueryGPUMemoryStats)) {
     used_gpu_memory = SbSystemGetUsedGPUMemory();
   }
@@ -1127,8 +1125,26 @@ void Application::UpdatePeriodicStats() {
 }
 
 void Application::DispatchEventInternal(base::Event* event) {
-  event_dispatcher_.DispatchEvent(make_scoped_ptr<base::Event>(event));
+  event_dispatcher_.DispatchEvent(std::unique_ptr<base::Event>(event));
 }
+
+#if defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
+void Application::OnMemoryTrackerCommand(const std::string& message) {
+  if (base::MessageLoop::current() != message_loop_) {
+    message_loop_->task_runner()->PostTask(
+        FROM_HERE, base::Bind(&Application::OnMemoryTrackerCommand,
+                              base::Unretained(this), message));
+    return;
+  }
+
+  if (memory_tracker_tool_) {
+    LOG(ERROR) << "Can not create a memory tracker when one is already active.";
+    return;
+  }
+  LOG(WARNING) << "Creating \"" << message << "\" memory tracker.";
+  memory_tracker_tool_ = memory_tracker::CreateMemoryTrackerTool(message);
+}
+#endif  // defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
 
 }  // namespace browser
 }  // namespace cobalt

@@ -14,7 +14,7 @@
 
 #include "cobalt/layout/layout.h"
 
-#include "base/debug/trace_event.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/base/stop_watch.h"
 #include "cobalt/cssom/computed_style.h"
 #include "cobalt/cssom/css_style_declaration.h"
@@ -80,6 +80,12 @@ void UpdateComputedStylesAndLayoutBoxTree(
     (*initial_containing_block)->set_blend_background_color(false);
   }
 
+  // Associate the UI navigation root with the initial containing block.
+  if (document->window()) {
+    (*initial_containing_block)->SetUiNavItem(
+        document->window()->GetUiNavRoot());
+  }
+
   // Generate boxes.
   if (document->html()) {
     TRACE_EVENT0("cobalt::layout", kBenchmarkStatBoxGeneration);
@@ -87,8 +93,20 @@ void UpdateComputedStylesAndLayoutBoxTree(
         LayoutStatTracker::kStopWatchTypeBoxGeneration,
         base::StopWatch::kAutoStartOn, layout_stat_tracker);
 
+    // If the implicit root is a root for any observers, the initial containing
+    // block should reference the corresponding IntersectionObserverRoots.
+    dom::HTMLElement* html_element =
+        document->document_element()->AsHTMLElement();
+    BoxIntersectionObserverModule::IntersectionObserverRootVector roots =
+        html_element->GetLayoutIntersectionObserverRoots();
+    BoxIntersectionObserverModule::IntersectionObserverTargetVector targets =
+        html_element->GetLayoutIntersectionObserverTargets();
+    (*initial_containing_block)
+        ->AddIntersectionObserverRootsAndTargets(std::move(roots),
+                                                 std::move(targets));
+
     ScopedParagraph scoped_paragraph(
-        new Paragraph(locale, (*initial_containing_block)->GetBaseDirection(),
+        new Paragraph(locale, (*initial_containing_block)->base_direction(),
                       Paragraph::DirectionalEmbeddingStack(),
                       line_break_iterator, character_break_iterator));
     BoxGenerator::Context context(
@@ -146,7 +164,7 @@ scoped_refptr<render_tree::Node> GenerateRenderTreeFromBoxTree(
 
     (*initial_containing_block)
         ->RenderAndAnimate(&render_tree_root_builder, math::Vector2dF(0, 0),
-                           (*initial_containing_block));
+                           (initial_containing_block->get()));
   }
 
   // During computed style update and RenderAndAnimate, we get the actual images
@@ -155,7 +173,7 @@ scoped_refptr<render_tree::Node> GenerateRenderTreeFromBoxTree(
   used_style_provider->UpdateAnimatedImages();
 
   render_tree::CompositionNode* static_root_node =
-      new render_tree::CompositionNode(render_tree_root_builder.Pass());
+      new render_tree::CompositionNode(std::move(render_tree_root_builder));
 
   // Make it easy to animate the entire tree by placing an AnimateNode at the
   // root to merge any sub-AnimateNodes.

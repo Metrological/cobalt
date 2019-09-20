@@ -15,6 +15,7 @@
 #ifndef COBALT_LOADER_IMAGE_IMAGE_DECODER_H_
 #define COBALT_LOADER_IMAGE_IMAGE_DECODER_H_
 
+#include <memory>
 #include <string>
 
 #include "base/atomicops.h"
@@ -44,15 +45,18 @@ class ImageDecoder : public Decoder {
     kImageTypeWebP,
   };
 
-  typedef base::Callback<void(const scoped_refptr<Image>&)> SuccessCallback;
-  typedef base::Callback<void(const std::string&)> ErrorCallback;
+  typedef base::Callback<void(const scoped_refptr<Image>&)>
+      ImageAvailableCallback;
 
-  ImageDecoder(render_tree::ResourceProvider* resource_provider,
-               const SuccessCallback& success_callback,
-               const ErrorCallback& error_callback);
-  ImageDecoder(render_tree::ResourceProvider* resource_provider,
-               const SuccessCallback& success_callback,
-               const ErrorCallback& error_callback, ImageType image_type);
+  ImageDecoder(
+      render_tree::ResourceProvider* resource_provider,
+      const ImageAvailableCallback& image_available_callback,
+      const loader::Decoder::OnCompleteFunction& load_complete_callback);
+  ImageDecoder(
+      render_tree::ResourceProvider* resource_provider,
+      const ImageAvailableCallback& image_available_callback,
+      ImageType image_type,
+      const loader::Decoder::OnCompleteFunction& load_complete_callback);
 
   // From Decoder.
   LoadResponseType OnResponseStarted(
@@ -71,6 +75,9 @@ class ImageDecoder : public Decoder {
   // Call this function to use the StubImageDecoder which produces a small image
   // without decoding.
   static void UseStubImageDecoder();
+  // Returns true if the platform allows decoding and storing decoded images
+  // into multi-plane.
+  static bool AllowDecodingToMultiPlane();
 
  private:
   enum State {
@@ -94,10 +101,10 @@ class ImageDecoder : public Decoder {
                                  size_t* consumed_size);
 
   render_tree::ResourceProvider* resource_provider_;
-  const SuccessCallback success_callback_;
-  const ErrorCallback error_callback_;
+  const ImageAvailableCallback image_available_callback_;
   ImageType image_type_;
-  scoped_ptr<ImageDataDecoder> decoder_;
+  const loader::Decoder::OnCompleteFunction load_complete_callback_;
+  std::unique_ptr<ImageDataDecoder> decoder_;
   SignatureCache signature_cache_;
   State state_;
   std::string error_message_;

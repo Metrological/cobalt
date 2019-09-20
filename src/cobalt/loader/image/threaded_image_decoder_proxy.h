@@ -15,12 +15,13 @@
 #ifndef COBALT_LOADER_IMAGE_THREADED_IMAGE_DECODER_PROXY_H_
 #define COBALT_LOADER_IMAGE_THREADED_IMAGE_DECODER_PROXY_H_
 
+#include <memory>
 #include <string>
 
 #include "base/callback.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
-#include "base/message_loop.h"
+#include "base/message_loop/message_loop.h"
 #include "cobalt/loader/decoder.h"
 #include "cobalt/loader/image/image.h"
 #include "cobalt/loader/image/image_data_decoder.h"
@@ -36,39 +37,52 @@ namespace image {
 // work.
 class ThreadedImageDecoderProxy : public Decoder {
  public:
-  typedef base::Callback<void(const scoped_refptr<Image>&)> SuccessCallback;
-  typedef base::Callback<void(const std::string&)> ErrorCallback;
-
-  ThreadedImageDecoderProxy(render_tree::ResourceProvider* resource_provider,
-                            const SuccessCallback& success_callback,
-                            const ErrorCallback& error_callback,
-                            MessageLoop* load_message_loop_);
+  typedef base::Callback<void(const scoped_refptr<Image>&)>
+      ImageAvailableCallback;
 
   ~ThreadedImageDecoderProxy();
+
+  // This function is used for binding a callback to create a
+  // ThreadedImageDecoderProxy.
+  static std::unique_ptr<Decoder> Create(
+      render_tree::ResourceProvider* resource_provider,
+      const ImageAvailableCallback& image_available_callback,
+      base::MessageLoop* load_message_loop_,
+      const loader::Decoder::OnCompleteFunction& load_complete_callback) {
+    return std::unique_ptr<Decoder>(new ThreadedImageDecoderProxy(
+        resource_provider, image_available_callback, load_message_loop_,
+        load_complete_callback));
+  }
 
   // From the Decoder interface.
   LoadResponseType OnResponseStarted(
       Fetcher* fetcher,
       const scoped_refptr<net::HttpResponseHeaders>& headers) override;
   void DecodeChunk(const char* data, size_t size) override;
-  void DecodeChunkPassed(scoped_ptr<std::string> data) override;
+  void DecodeChunkPassed(std::unique_ptr<std::string> data) override;
   void Finish() override;
   bool Suspend() override;
   void Resume(render_tree::ResourceProvider* resource_provider) override;
 
  private:
+  ThreadedImageDecoderProxy(
+      render_tree::ResourceProvider* resource_provider,
+      const ImageAvailableCallback& image_available_callback,
+      base::MessageLoop* load_message_loop_,
+      const loader::Decoder::OnCompleteFunction& load_complete_callback);
+
   base::WeakPtrFactory<ThreadedImageDecoderProxy> weak_ptr_factory_;
   base::WeakPtr<ThreadedImageDecoderProxy> weak_this_;
 
   // The message loop that |image_decoder_| should run on.
-  MessageLoop* load_message_loop_;
+  base::MessageLoop* load_message_loop_;
 
   // The message loop that the original callbacks passed into us should run
   // on.
-  MessageLoop* result_message_loop_;
+  base::MessageLoop* result_message_loop_;
 
   // The actual image decoder.
-  scoped_ptr<ImageDecoder> image_decoder_;
+  std::unique_ptr<ImageDecoder> image_decoder_;
 };
 
 }  // namespace image

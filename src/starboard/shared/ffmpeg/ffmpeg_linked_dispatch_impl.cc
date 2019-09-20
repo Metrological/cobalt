@@ -20,12 +20,12 @@
 #include <dlfcn.h>
 #include <map>
 
+#include "starboard/common/log.h"
 #include "starboard/common/scoped_ptr.h"
-#include "starboard/log.h"
+#include "starboard/common/string.h"
 #include "starboard/once.h"
 #include "starboard/shared/ffmpeg/ffmpeg_common.h"
 #include "starboard/shared/starboard/lazy_initialization_internal.h"
-#include "starboard/string.h"
 
 namespace starboard {
 namespace shared {
@@ -77,6 +77,7 @@ void LoadSymbols(FFMPEGDispatch* ffmpeg) {
   INITSYMBOL(avcodec_alloc_frame);
   INITSYMBOL(avcodec_get_frame_defaults);
 #endif
+  INITSYMBOL(avcodec_align_dimensions2);
 
   // Load symbols from the avformat shared library.
   INITSYMBOL(avformat_version);

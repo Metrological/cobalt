@@ -14,11 +14,70 @@
 
 #include "cobalt/media_session/media_session_client.h"
 
+#include <algorithm>
+#include <cmath>
+#include <memory>
+
+#include "starboard/time.h"
+
 namespace cobalt {
 namespace media_session {
 
-MediaSessionPlaybackState MediaSessionClient::GetActualPlaybackState() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+namespace {
+
+// Delay to re-query position state after an action has been invoked.
+const base::TimeDelta kUpdateDelay = base::TimeDelta::FromMilliseconds(250);
+
+// Guess the media position state for the media session.
+void GuessMediaPositionState(MediaSessionState* session_state,
+    const media::WebMediaPlayer** guess_player,
+    const media::WebMediaPlayer* current_player) {
+  // Assume the player with the biggest video size is the one controlled by the
+  // media session. This isn't perfect, so it's best that the web app set the
+  // media position state explicitly.
+  if (*guess_player == nullptr ||
+      (*guess_player)->GetNaturalSize().GetArea() <
+      current_player->GetNaturalSize().GetArea()) {
+    *guess_player = current_player;
+
+    MediaPositionState position_state;
+    float duration = (*guess_player)->GetDuration();
+    if (std::isfinite(duration)) {
+      position_state.set_duration(duration);
+    } else if (std::isinf(duration)) {
+      position_state.set_duration(kSbTimeMax);
+    } else {
+      position_state.set_duration(0.0);
+    }
+    position_state.set_playback_rate((*guess_player)->GetPlaybackRate());
+    position_state.set_position((*guess_player)->GetCurrentTime());
+
+    *session_state = MediaSessionState(
+        session_state->metadata(),
+        SbTimeGetMonotonicNow(),
+        position_state,
+        session_state->actual_playback_state(),
+        session_state->available_actions());
+  }
+}
+
+}  // namespace
+
+MediaSessionClient::~MediaSessionClient() {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  // Prevent any outstanding MediaSession::OnChanged tasks from calling this.
+  media_session_->media_session_client_ = nullptr;
+}
+
+void MediaSessionClient::SetMediaPlayerFactory(
+    const media::WebMediaPlayerFactory* factory) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  media_player_factory_ = factory;
+}
+
+MediaSessionPlaybackState MediaSessionClient::ComputeActualPlaybackState()
+    const {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   // Per https://wicg.github.io/mediasession/#guessed-playback-state
   // - If the "declared playback state" is "playing", then return "playing"
@@ -45,9 +104,9 @@ MediaSessionPlaybackState MediaSessionClient::GetActualPlaybackState() {
   return kMediaSessionPlaybackStateNone;
 }
 
-MediaSessionClient::AvailableActionsSet
-MediaSessionClient::GetAvailableActions() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+MediaSessionState::AvailableActionsSet
+MediaSessionClient::ComputeAvailableActions() const {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   // "Available actions" are determined based on active media session
   // and supported media session actions.
   // Note for cobalt, there's only one window/tab so there's only one
@@ -56,22 +115,29 @@ MediaSessionClient::GetAvailableActions() {
   //
   // Note that this is essentially the "media session actions update algorithm"
   // inverted.
-  AvailableActionsSet result = AvailableActionsSet();
+  MediaSessionState::AvailableActionsSet result =
+      MediaSessionState::AvailableActionsSet();
 
   for (MediaSession::ActionMap::iterator it =
-         media_session_->action_map_.begin();
-       it != media_session_->action_map_.end();
-       ++it) {
+           media_session_->action_map_.begin();
+       it != media_session_->action_map_.end(); ++it) {
     result[it->first] = true;
   }
 
-  switch (GetActualPlaybackState()) {
+  switch (ComputeActualPlaybackState()) {
     case kMediaSessionPlaybackStatePlaying:
       // "If the active media session’s actual playback state is playing, remove
       // play from available actions."
       result[kMediaSessionActionPlay] = false;
       break;
     case kMediaSessionPlaybackStateNone:
+      // Not defined in the spec: disable Seekbackward, Seekforward, SeekTo, &
+      // Stop when no media is playing.
+      result[kMediaSessionActionSeekbackward] = false;
+      result[kMediaSessionActionSeekforward] = false;
+      result[kMediaSessionActionSeekto] = false;
+      result[kMediaSessionActionStop] = false;
+    // Fall-through intended (None case falls through to Paused case).
     case kMediaSessionPlaybackStatePaused:
       // "Otherwise, remove pause from available actions."
       result[kMediaSessionActionPause] = false;
@@ -83,38 +149,97 @@ MediaSessionClient::GetAvailableActions() {
 
 void MediaSessionClient::UpdatePlatformPlaybackState(
     MediaSessionPlaybackState state) {
-  if (base::MessageLoopProxy::current() != media_session_->message_loop_) {
-    media_session_->message_loop_->PostTask(
+  DCHECK(media_session_->task_runner_);
+  if (!media_session_->task_runner_->BelongsToCurrentThread()) {
+    media_session_->task_runner_->PostTask(
         FROM_HERE, base::Bind(&MediaSessionClient::UpdatePlatformPlaybackState,
                               base::Unretained(this), state));
     return;
   }
 
-  MediaSessionPlaybackState prev_actual_state = GetActualPlaybackState();
   platform_playback_state_ = state;
-
-  if (prev_actual_state != GetActualPlaybackState()) {
-    OnMediaSessionChanged();
+  if (session_state_.actual_playback_state() != ComputeActualPlaybackState()) {
+    UpdateMediaSessionState();
   }
 }
 
 void MediaSessionClient::InvokeActionInternal(
-    scoped_ptr<MediaSessionActionDetails::Data> data) {
-  if (base::MessageLoopProxy::current() != media_session_->message_loop_) {
-    media_session_->message_loop_->PostTask(
+    std::unique_ptr<MediaSessionActionDetails> details) {
+  DCHECK(details->has_action());
+
+  // Some fields should only be set for applicable actions.
+  DCHECK(!details->has_seek_offset() ||
+         details->action() == kMediaSessionActionSeekforward ||
+         details->action() == kMediaSessionActionSeekbackward);
+  DCHECK(!details->has_seek_time() ||
+         details->action() == kMediaSessionActionSeekto);
+  DCHECK(!details->has_fast_seek() ||
+         details->action() == kMediaSessionActionSeekto);
+
+  // Seek times/offsets are non-negative, even for seeking backwards.
+  DCHECK(!details->has_seek_time() || details->seek_time() >= 0.0);
+  DCHECK(!details->has_seek_offset() || details->seek_offset() >= 0.0);
+
+  DCHECK(media_session_->task_runner_);
+  if (!media_session_->task_runner_->BelongsToCurrentThread()) {
+    media_session_->task_runner_->PostTask(
         FROM_HERE, base::Bind(&MediaSessionClient::InvokeActionInternal,
-                              base::Unretained(this), base::Passed(&data)));
+                              base::Unretained(this), base::Passed(&details)));
     return;
   }
 
   MediaSession::ActionMap::iterator it =
-      media_session_->action_map_.find(data->action());
+      media_session_->action_map_.find(details->action());
 
   if (it == media_session_->action_map_.end()) {
     return;
   }
 
-  it->second->value().Run(new MediaSessionActionDetails(*data));
+  it->second->value().Run(*details);
+
+  // Queue a session update to reflect the effects of the action.
+  if (!media_session_->media_position_state_) {
+    media_session_->MaybeQueueChangeTask(kUpdateDelay);
+  }
+}
+
+void MediaSessionClient::UpdateMediaSessionState() {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+
+  scoped_refptr<MediaMetadata> session_metadata(media_session_->metadata());
+  base::Optional<MediaMetadataInit> metadata;
+  if (session_metadata) {
+    metadata.emplace();
+    metadata->set_title(session_metadata->title());
+    metadata->set_artist(session_metadata->artist());
+    metadata->set_album(session_metadata->album());
+    metadata->set_artwork(session_metadata->artwork());
+  }
+
+  session_state_ = MediaSessionState(
+      metadata,
+      media_session_->last_position_updated_time_,
+      media_session_->media_position_state_,
+      ComputeActualPlaybackState(),
+      ComputeAvailableActions());
+
+  // Compute the media position state if it's not set in the media session.
+  if (!media_session_->media_position_state_ && media_player_factory_) {
+    const media::WebMediaPlayer* player = nullptr;
+    media_player_factory_->EnumerateWebMediaPlayers(
+        base::BindRepeating(&GuessMediaPositionState,
+                            &session_state_, &player));
+
+    // The media duration may be reported as 0 when seeking. Re-query the
+    // media session state after a delay.
+    if (session_state_.actual_playback_state() ==
+            kMediaSessionPlaybackStatePlaying &&
+        session_state_.duration() == 0) {
+      media_session_->MaybeQueueChangeTask(kUpdateDelay);
+    }
+  }
+
+  OnMediaSessionStateChanged(session_state_);
 }
 
 }  // namespace media_session

@@ -27,7 +27,7 @@
 #include "cobalt/script/sequence.h"
 #include "cobalt/script/union_type.h"
 #include "cobalt/script/wrappable.h"
-#include "googleurl/src/gurl.h"
+#include "url/gurl.h"
 
 namespace cobalt {
 namespace dom {
@@ -44,10 +44,10 @@ class BlobPropertyBag;
 class Blob : public script::Wrappable {
  public:
   typedef UrlRegistry<Blob> Registry;
-  typedef script::UnionType4<script::Handle<script::ArrayBuffer>,
+  typedef script::UnionType5<script::Handle<script::ArrayBuffer>,
                              script::Handle<script::ArrayBufferView>,
                              script::Handle<script::DataView>,
-                             scoped_refptr<Blob> >
+                             scoped_refptr<Blob>, std::string>
       BlobPart;
 
   // settings is non-nullable.

@@ -42,7 +42,8 @@ class ScriptExecutor :
  public:
   typedef script::CallbackFunction<void(
       const scoped_refptr<ScriptExecutorParams>&,
-      const scoped_refptr<ScriptExecutorResult>&)> ExecuteFunctionCallback;
+      const scoped_refptr<ScriptExecutorResult>&)>
+      ExecuteFunctionCallback;
   typedef script::ScriptValue<ExecuteFunctionCallback>
       ExecuteFunctionCallbackHolder;
 
@@ -84,9 +85,9 @@ class ScriptExecutor :
       const scoped_refptr<ScriptExecutorParams>& params,
       const scoped_refptr<ScriptExecutorResult>& result_handler);
 
-  base::ThreadChecker thread_checker_;
+  THREAD_CHECKER(thread_checker_);
   ElementMapping* element_mapping_;
-  base::optional<ExecuteFunctionCallbackHolder::Reference> execute_callback_;
+  base::Optional<ExecuteFunctionCallbackHolder::Reference> execute_callback_;
 };
 
 }  // namespace webdriver

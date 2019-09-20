@@ -15,13 +15,14 @@
 #ifndef COBALT_XHR_XML_HTTP_REQUEST_H_
 #define COBALT_XHR_XML_HTTP_REQUEST_H_
 
+#include <memory>
 #include <ostream>
 #include <string>
 #include <vector>
 
 #include "base/gtest_prod_util.h"
 #include "base/optional.h"
-#include "base/timer.h"
+#include "base/timer/timer.h"
 #include "cobalt/dom/csp_delegate.h"
 #include "cobalt/dom/document.h"
 #include "cobalt/dom/dom_exception.h"
@@ -30,16 +31,17 @@
 #include "cobalt/script/array_buffer.h"
 #include "cobalt/script/array_buffer_view.h"
 #include "cobalt/script/environment_settings.h"
+#include "cobalt/script/global_environment.h"
 #include "cobalt/script/typed_arrays.h"
 #include "cobalt/script/union_type.h"
 #include "cobalt/xhr/xhr_response_data.h"
 #include "cobalt/xhr/xml_http_request_event_target.h"
 #include "cobalt/xhr/xml_http_request_upload.h"
-#include "googleurl/src/gurl.h"
 #include "net/http/http_request_headers.h"
 #include "net/http/http_response_headers.h"
 #include "net/url_request/url_fetcher.h"
 #include "net/url_request/url_fetcher_delegate.h"
+#include "url/gurl.h"
 
 namespace cobalt {
 namespace dom {
@@ -110,13 +112,13 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
                 exception_state);
   }
   void Open(const std::string& method, const std::string& url, bool async,
-            const base::optional<std::string>& username,
+            const base::Optional<std::string>& username,
             script::ExceptionState* exception_state) {
     return Open(method, url, async, username, base::nullopt, exception_state);
   }
   void Open(const std::string& method, const std::string& url, bool async,
-            const base::optional<std::string>& username,
-            const base::optional<std::string>& password,
+            const base::Optional<std::string>& username,
+            const base::Optional<std::string>& password,
             script::ExceptionState* exception_state);
 
   // Must be called after open(), but before send().
@@ -129,7 +131,7 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
                         script::ExceptionState* exception_state);
 
   void Send(script::ExceptionState* exception_state);
-  void Send(const base::optional<RequestBodyType>& request_body,
+  void Send(const base::Optional<RequestBodyType>& request_body,
             script::ExceptionState* exception_state);
 
   // FetchAPI: replacement for Send() when fetch functionality is required.
@@ -141,17 +143,17 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
   typedef script::ScriptValue<FetchModeCallback> FetchModeCallbackArg;
   void Fetch(const FetchUpdateCallbackArg& fetch_callback,
              const FetchModeCallbackArg& fetch_mode_callback,
-             const base::optional<RequestBodyType>& request_body,
+             const base::Optional<RequestBodyType>& request_body,
              script::ExceptionState* exception_state);
 
-  base::optional<std::string> GetResponseHeader(const std::string& header);
+  base::Optional<std::string> GetResponseHeader(const std::string& header);
   std::string GetAllResponseHeaders();
 
   const std::string& response_text(script::ExceptionState* exception_state);
   scoped_refptr<dom::Document> response_xml(
       script::ExceptionState* exception_state);
   std::string status_text();
-  base::optional<ResponseType> response(
+  base::Optional<ResponseType> response(
       script::ExceptionState* exception_state);
 
   int ready_state() const { return static_cast<int>(state_); }
@@ -172,10 +174,10 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
   static bool verbose() { return verbose_; }
   // net::URLFetcherDelegate interface
   void OnURLFetchResponseStarted(const net::URLFetcher* source) override;
-  void OnURLFetchDownloadData(const net::URLFetcher* source,
-                              scoped_ptr<std::string> download_data) override;
+  void OnURLFetchDownloadProgress(const net::URLFetcher* source,
+                                  int64_t current, int64_t total,
+                                  int64_t current_network_bytes) override;
   void OnURLFetchComplete(const net::URLFetcher* source) override;
-  bool ShouldSendDownloadData() override { return true; }
 
   void OnURLFetchUploadProgress(const net::URLFetcher* source, int64 current,
                                 int64 total) override;
@@ -216,17 +218,13 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
 
   void UpdateProgress();
 
-  // Prevent this object from being destroyed while there are active requests
-  // in flight.
-  // https://www.w3.org/TR/2014/WD-XMLHttpRequest-20140130/#garbage-collection
-  void PreventGarbageCollection();
-  void AllowGarbageCollection();
   void StartRequest(const std::string& request_body);
 
   // The following two methods are used to determine if garbage collection is
   // needed. It is legal to reuse XHR and send a new request in last request's
   // onload event listener. We should not allow garbage collection until
   // the last request is fetched.
+  // https://www.w3.org/TR/2014/WD-XMLHttpRequest-20140130/#garbage-collection
   void IncrementActiveRequests();
   void DecrementActiveRequests();
 
@@ -246,16 +244,17 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
   void PrepareForNewRequest();
 
   scoped_refptr<dom::Document> GetDocumentResponseEntityBody();
-  void XMLDecoderErrorCallback(const std::string& error);
+  void XMLDecoderLoadCompleteCallback(
+      const base::Optional<std::string>& status);
   void CORSPreflightErrorCallback();
   void CORSPreflightSuccessCallback();
 
-  base::ThreadChecker thread_checker_;
+  THREAD_CHECKER(thread_checker_);
 
-  scoped_ptr<net::URLFetcher> url_fetcher_;
+  std::unique_ptr<net::URLFetcher> url_fetcher_;
   scoped_refptr<net::HttpResponseHeaders> http_response_headers_;
   XhrResponseData response_body_;
-  scoped_ptr<script::ScriptValue<script::ArrayBuffer>::Reference>
+  std::unique_ptr<script::ScriptValue<script::ArrayBuffer>::Reference>
       response_array_buffer_reference_;
   scoped_refptr<XMLHttpRequestUpload> upload_;
 
@@ -265,7 +264,7 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
   net::HttpRequestHeaders request_headers_;
 
   // For handling send() timeout.
-  base::OneShotTimer<XMLHttpRequest> timer_;
+  base::OneShotTimer timer_;
   base::TimeTicks send_start_time_;
 
   // Time to throttle progress notifications.
@@ -273,9 +272,9 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
   base::TimeTicks upload_last_progress_time_;
 
   // FetchAPI: transfer progress callback.
-  scoped_ptr<FetchUpdateCallbackArg::Reference> fetch_callback_;
+  std::unique_ptr<FetchUpdateCallbackArg::Reference> fetch_callback_;
   // FetchAPI: tell fetch polyfill if the response mode is cors.
-  scoped_ptr<FetchModeCallbackArg::Reference> fetch_mode_callback_;
+  std::unique_ptr<FetchModeCallbackArg::Reference> fetch_mode_callback_;
 
   // All members requiring initialization are grouped below.
   dom::DOMSettings* settings_;
@@ -299,9 +298,12 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
 
   bool has_xml_decoder_error_;
 
+  std::unique_ptr<script::GlobalEnvironment::ScopedPreventGarbageCollection>
+      prevent_gc_until_send_complete_;
+
   // A corspreflight instance for potentially sending preflight
   // request and perfoming cors check for all cross origin requests.
-  scoped_ptr<cobalt::loader::CORSPreflight> corspreflight_;
+  std::unique_ptr<cobalt::loader::CORSPreflight> corspreflight_;
   bool is_cross_origin_;
   // net::URLReuqest does not have origin variable so we can only store it here.
   // https://fetch.spec.whatwg.org/#concept-request-origin
@@ -311,6 +313,7 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
   std::string request_body_text_;
   int redirect_times_;
   bool is_data_url_;
+
   DISALLOW_COPY_AND_ASSIGN(XMLHttpRequest);
 };
 

@@ -14,6 +14,7 @@
 
 {
   'variables': {
+    'optimize_target_for_speed': 1,
     'sb_pedantic_warnings': 1,
   },
   'targets': [
@@ -48,6 +49,7 @@
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
         '<(DEPTH)/cobalt/browser/browser_bindings_gen.gyp:generated_types',
+        '<(DEPTH)/cobalt/media/media.gyp:media',
       ],
       'export_dependent_settings': [
         # Additionally, ensure that the include directories for generated

@@ -15,7 +15,8 @@
 #ifndef COBALT_RENDERER_RASTERIZER_BLITTER_HARDWARE_RASTERIZER_H_
 #define COBALT_RENDERER_RASTERIZER_BLITTER_HARDWARE_RASTERIZER_H_
 
-#include "base/memory/scoped_ptr.h"
+#include <memory>
+
 #include "cobalt/render_tree/node.h"
 #include "cobalt/render_tree/resource_provider.h"
 #include "cobalt/renderer/backend/graphics_context.h"
@@ -36,11 +37,11 @@ namespace blitter {
 // cannot render.
 class HardwareRasterizer : public Rasterizer {
  public:
-  explicit HardwareRasterizer(backend::GraphicsContext* graphics_context,
-                              int skia_atlas_width, int skia_atlas_height,
-                              int scratch_surface_size_in_bytes,
-                              int software_surface_cache_size_in_bytes,
-                              bool purge_skia_font_caches_on_destruction);
+  HardwareRasterizer(backend::GraphicsContext* graphics_context,
+                     int skia_atlas_width, int skia_atlas_height,
+                     int scratch_surface_size_in_bytes,
+                     int software_surface_cache_size_in_bytes,
+                     bool purge_skia_font_caches_on_destruction);
   virtual ~HardwareRasterizer();
 
   // Consume the render tree and output the results to the render target passed
@@ -52,10 +53,11 @@ class HardwareRasterizer : public Rasterizer {
   render_tree::ResourceProvider* GetResourceProvider() override;
 
   void MakeCurrent() override {}
+  void ReleaseContext() override {}
 
  private:
   class Impl;
-  scoped_ptr<Impl> impl_;
+  std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace blitter

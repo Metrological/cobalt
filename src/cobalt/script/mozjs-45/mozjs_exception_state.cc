@@ -18,8 +18,8 @@
 #include <vector>
 
 #include "base/logging.h"
-#include "base/string_number_conversions.h"
-#include "base/string_util.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
 #include "cobalt/script/mozjs-45/conversion_helpers.h"
 #include "third_party/mozjs-45/js/src/jsexn.h"
 
@@ -57,7 +57,7 @@ const JSErrorFormatString* GetErrorMessage(void* user_ref,
 
 void MozjsExceptionState::SetException(
     const scoped_refptr<ScriptException>& exception) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(!is_exception_set_);
 
   MozjsGlobalEnvironment* global_environment =
@@ -77,7 +77,7 @@ void MozjsExceptionState::SetException(
 void MozjsExceptionState::SetSimpleExceptionVA(SimpleExceptionType type,
                                                const char* format,
                                                va_list arguments) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(!is_exception_set_);
 
   std::string error_message = base::StringPrintV(format, arguments);

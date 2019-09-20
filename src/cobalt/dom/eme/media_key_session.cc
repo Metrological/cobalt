@@ -14,6 +14,7 @@
 
 #include "cobalt/dom/eme/media_key_session.h"
 
+#include <memory>
 #include <type_traits>
 
 #include "base/polymorphic_downcast.h"
@@ -27,62 +28,9 @@
 #include "cobalt/script/array_buffer_view.h"
 #include "cobalt/script/script_value_factory.h"
 
-// TODO: Remove this workaround.
-#include "cobalt/network/network_module.h"
-
 namespace cobalt {
 namespace dom {
 namespace eme {
-
-// TODO: Remove this workaround.
-namespace {
-
-const char kIndividualizationUrlPrefix[] =
-    "https://www.googleapis.com/certificateprovisioning/v1/devicecertificates/"
-    "create?key=AIzaSyB-5OLKTx2iU5mko18DfdwK5611JIjbUhE&signedRequest=";
-
-}  // namespace
-
-MediaKeySession::IndividualizationFetcherDelegate::
-    IndividualizationFetcherDelegate(MediaKeySession* media_key_session)
-    : media_key_session_(media_key_session) {
-  DCHECK(media_key_session_);
-}
-
-void MediaKeySession::IndividualizationFetcherDelegate::OnURLFetchDownloadData(
-    const net::URLFetcher* source, scoped_ptr<std::string> download_data) {
-  UNREFERENCED_PARAMETER(source);
-  if (download_data) {
-    response_.insert(response_.end(), download_data->begin(),
-                     download_data->end());
-  }
-}
-
-void MediaKeySession::IndividualizationFetcherDelegate::OnURLFetchComplete(
-    const net::URLFetcher* source) {
-  UNREFERENCED_PARAMETER(source);
-  media_key_session_->OnIndividualizationResponse(response_);
-}
-
-void MediaKeySession::OnIndividualizationResponse(const std::string& response) {
-  DCHECK(invidualization_fetcher_);
-  invidualization_fetcher_.reset();
-
-  if (response.empty()) {
-    // TODO: Add error handling if we are going to keep this workaround.
-    return;
-  }
-
-  script::Handle<script::Promise<void>> promise =
-      script_value_factory_->CreateBasicPromise<void>();
-  drm_system_session_->Update(
-      reinterpret_cast<const uint8*>(response.data()),
-      static_cast<int>(response.size()),
-      base::Bind(&MediaKeySession::OnSessionUpdated, base::AsWeakPtr(this),
-                 base::Owned(new VoidPromiseValue::Reference(this, promise))),
-      base::Bind(&MediaKeySession::OnSessionDidNotUpdate, base::AsWeakPtr(this),
-                 base::Owned(new VoidPromiseValue::Reference(this, promise))));
-}
 
 // See step 3.1 of
 // https://www.w3.org/TR/encrypted-media/#dom-mediakeys-createsession.
@@ -90,20 +38,16 @@ MediaKeySession::MediaKeySession(
     const scoped_refptr<media::DrmSystem>& drm_system,
     script::ScriptValueFactory* script_value_factory,
     const ClosedCallback& closed_callback)
-    : // TODO: Remove this workaround.
-      ALLOW_THIS_IN_INITIALIZER_LIST(invidualization_fetcher_delegate_(this)),
-      ALLOW_THIS_IN_INITIALIZER_LIST(event_queue_(this)),
+    : ALLOW_THIS_IN_INITIALIZER_LIST(event_queue_(this)),
       drm_system_(drm_system),
       drm_system_session_(drm_system->CreateSession(
-#if SB_HAS(DRM_KEY_STATUSES)
           base::Bind(&MediaKeySession::OnSessionUpdateKeyStatuses,
                      base::AsWeakPtr(this))
-#endif  // SB_HAS(DRM_KEY_STATUSES)
 #if SB_HAS(DRM_SESSION_CLOSED)
-          ,
+              ,
           base::Bind(&MediaKeySession::OnSessionClosed,
                      base::AsWeakPtr(this))
-#endif  // SB_HAS(DRM_SESSION_CLOSED)
+#endif             // SB_HAS(DRM_SESSION_CLOSED)
               )),  // NOLINT(whitespace/parens)
       script_value_factory_(script_value_factory),
       uninitialized_(true),
@@ -293,7 +237,7 @@ void MediaKeySession::TraceMembers(script::Tracer* tracer) {
 void MediaKeySession::OnSessionUpdateRequestGenerated(
     script::EnvironmentSettings* settings,
     VoidPromiseValue::Reference* promise_reference,
-    SbDrmSessionRequestType type, scoped_array<uint8> message,
+    SbDrmSessionRequestType type, std::unique_ptr<uint8[]> message,
     int message_size) {
   DCHECK(settings);
   DOMSettings* dom_settings =
@@ -332,32 +276,6 @@ void MediaKeySession::OnSessionUpdateRequestGenerated(
           kMediaKeyMessageTypeLicenseRelease);
       break;
     case kSbDrmSessionRequestTypeIndividualizationRequest:
-      // TODO: Remove this workaround.
-      // Note that |message_size| will never be 0, the if statement serves the
-      // purpose to keep the statements after it uncommented without triggering
-      // any build error.
-      if (message_size != 0) {
-        DCHECK(!invidualization_fetcher_);
-
-        std::string request(
-            reinterpret_cast<const char*>(message.get()),
-            reinterpret_cast<const char*>(message.get()) + message_size);
-        GURL request_url(kIndividualizationUrlPrefix + request);
-        invidualization_fetcher_.reset(
-            net::URLFetcher::Create(request_url, net::URLFetcher::POST,
-                                    &invidualization_fetcher_delegate_));
-        invidualization_fetcher_->SetRequestContext(
-            dom_settings->network_module()->url_request_context_getter());
-        // Don't cache the response, send it to us in OnURLFetchDownloadData().
-        invidualization_fetcher_->DiscardResponse();
-        // Handle redirect automatically.
-        invidualization_fetcher_->SetAutomaticallyRetryOn5xx(true);
-        invidualization_fetcher_->SetStopOnRedirect(false);
-        // TODO: Handle CORS properly if we are going to keep this workaround.
-        invidualization_fetcher_->Start();
-
-        return;
-      }
       media_key_message_event_init.set_message_type(
           kMediaKeyMessageTypeIndividualizationRequest);
       break;
@@ -482,17 +400,19 @@ void MediaKeySession::OnSessionUpdateKeyStatuses(
 
 // See https://www.w3.org/TR/encrypted-media/#session-closed.
 void MediaKeySession::OnSessionClosed() {
-  // 2. Run the Update Key Statuses algorithm on the session, providing an empty
-  //    sequence.
-  //
-  // TODO: Implement key statuses.
-
-  // 3. Run the Update Expiration algorithm on the session, providing NaN.
-  //
-  // TODO: Implement expiration.
-
-  // 4. Let promise be the closed attribute of the session.
-  // 5. Resolve promise.
+  // 2. Let promise be the session's closed attribute.
+  // 3. If promise is resolved, abort these steps.
+  if (closed_promise_reference_.value().State() !=
+      script::PromiseState::kPending) {
+    return;
+  }
+  // 4. Set the session's closing or closed value to true.
+  // 5. Run the Update Key Statuses algorithm on the session, providing an
+  //    empty sequence.
+  //    - TODO: Implement key statuses.
+  // 6. Run the Update Expiration algorithm on the session, providing NaN.
+  //    - TODO: Implement expiration.
+  // 7. Resolve promise.
   closed_promise_reference_.value().Resolve();
 }
 

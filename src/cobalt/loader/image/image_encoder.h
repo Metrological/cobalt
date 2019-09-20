@@ -15,9 +15,10 @@
 #ifndef COBALT_LOADER_IMAGE_IMAGE_ENCODER_H_
 #define COBALT_LOADER_IMAGE_IMAGE_ENCODER_H_
 
+#include <memory>
+
 #include "base/basictypes.h"
 #include "base/memory/ref_counted.h"
-#include "base/memory/scoped_ptr.h"
 #include "cobalt/loader/image/image.h"
 #include "cobalt/math/size.h"
 
@@ -28,11 +29,12 @@ namespace image {
 class EncodedStaticImage : public Image {
  public:
   enum class ImageFormat {
+    kJPEG,
     kPNG,
     kWEBP,
   };
 
-  EncodedStaticImage(ImageFormat image_format, scoped_array<uint8> memory,
+  EncodedStaticImage(ImageFormat image_format, std::unique_ptr<uint8[]> memory,
                      uint32 size_in_bytes, const math::Size& image_dimensions);
 
   ImageFormat GetImageFormat() const { return image_format_; }
@@ -47,12 +49,8 @@ class EncodedStaticImage : public Image {
   ImageFormat image_format_;
   uint32 size_in_bytes_;
   math::Size image_dimensions_;
-  scoped_array<uint8> memory_;
+  std::unique_ptr<uint8[]> memory_;
 };
-
-scoped_array<uint8> WriteRGBAPixelsToPNG(const uint8* const pixel_data,
-                                         const math::Size& dimensions,
-                                         size_t* out_num_bytes);
 
 scoped_refptr<EncodedStaticImage> CompressRGBAImage(
     EncodedStaticImage::ImageFormat desired_format,

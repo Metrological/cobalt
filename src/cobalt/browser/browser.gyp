@@ -28,10 +28,8 @@
         'application.h',
         'browser_module.cc',
         'browser_module.h',
-        'debug_console.cc',
-        'debug_console.h',
-        'h5vcc_url_handler.cc',
-        'h5vcc_url_handler.h',
+        'device_authentication.cc',
+        'device_authentication.h',
         'lifecycle_observer.h',
         'memory_settings/auto_mem.cc',
         'memory_settings/auto_mem.h',
@@ -102,8 +100,6 @@
         'switches.h',
         'system_platform_error_handler.cc',
         'system_platform_error_handler.h',
-        'trace_manager.cc',
-        'trace_manager.h',
         'url_handler.cc',
         'url_handler.h',
         'user_agent_string.cc',
@@ -118,6 +114,7 @@
         'COBALT_SKIA_CACHE_SIZE_IN_BYTES=<(skia_cache_size_in_bytes)',
         'COBALT_SKIA_GLYPH_ATLAS_WIDTH=<(skia_glyph_atlas_width)',
         'COBALT_SKIA_GLYPH_ATLAS_HEIGHT=<(skia_glyph_atlas_height)',
+        'COBALT_ENCODED_IMAGE_CACHE_SIZE_IN_BYTES=<(encoded_image_cache_size_in_bytes)',
         'COBALT_IMAGE_CACHE_SIZE_IN_BYTES=<(image_cache_size_in_bytes)',
         'COBALT_REMOTE_TYPEFACE_CACHE_SIZE_IN_BYTES=<(remote_font_cache_size_in_bytes)',
         'COBALT_IMAGE_CACHE_CAPACITY_MULTIPLIER_WHEN_PLAYING_VIDEO=<(image_cache_capacity_multiplier_when_playing_video)',
@@ -131,12 +128,10 @@
       ],
       'dependencies': [
         '<@(cobalt_platform_dependencies)',
-        '<(DEPTH)/cobalt/accessibility/accessibility.gyp:accessibility',
         '<(DEPTH)/cobalt/account/account.gyp:account',
         '<(DEPTH)/cobalt/audio/audio.gyp:audio',
         '<(DEPTH)/cobalt/base/base.gyp:base',
         '<(DEPTH)/cobalt/css_parser/css_parser.gyp:css_parser',
-        '<(DEPTH)/cobalt/debug/debug.gyp:debug',
         '<(DEPTH)/cobalt/dom/dom.gyp:dom',
         '<(DEPTH)/cobalt/dom_parser/dom_parser.gyp:dom_parser',
         '<(DEPTH)/cobalt/fetch/fetch.gyp:fetch',
@@ -144,6 +139,7 @@
         '<(DEPTH)/cobalt/input/input.gyp:input',
         '<(DEPTH)/cobalt/layout/layout.gyp:layout',
         '<(DEPTH)/cobalt/math/math.gyp:math',
+        '<(DEPTH)/cobalt/media/media.gyp:media',
         '<(DEPTH)/cobalt/media_capture/media_capture.gyp:*',
         '<(DEPTH)/cobalt/media_session/media_session.gyp:media_session',
         '<(DEPTH)/cobalt/network/network.gyp:network',
@@ -156,11 +152,13 @@
         '<(DEPTH)/cobalt/sso/sso.gyp:sso',
         '<(DEPTH)/cobalt/system_window/system_window.gyp:system_window',
         '<(DEPTH)/cobalt/trace_event/trace_event.gyp:trace_event',
+        '<(DEPTH)/cobalt/ui_navigation/ui_navigation.gyp:ui_navigation',
         '<(DEPTH)/cobalt/webdriver/webdriver.gyp:webdriver',
         '<(DEPTH)/cobalt/websocket/websocket.gyp:websocket',
         '<(DEPTH)/cobalt/xhr/xhr.gyp:xhr',
-        '<(DEPTH)/googleurl/googleurl.gyp:googleurl',
+        '<(DEPTH)/net/net.gyp:net',
         '<(DEPTH)/nb/nb.gyp:nb',
+        '<(DEPTH)/url/url.gyp:url',
         'browser_bindings.gyp:bindings',
         '<(cobalt_webapi_extension_gyp_target)',
       ],
@@ -187,17 +185,16 @@
         ['enable_map_to_mesh == 1', {
           'defines' : ['ENABLE_MAP_TO_MESH'],
         }],
-        ['cobalt_media_source_2016==1', {
-          'dependencies': [
-            '<(DEPTH)/cobalt/media/media2.gyp:media2',
+        ['enable_debugger == 1', {
+          'sources': [
+            'debug_console.cc',
+            'debug_console.h',
+            'lifecycle_console_commands.cc',
+            'lifecycle_console_commands.h',
           ],
-        }, {
           'dependencies': [
-            '<(DEPTH)/cobalt/media/media.gyp:media',
+            '<(DEPTH)/cobalt/debug/debug.gyp:debug',
           ],
-        }],
-        ['cobalt_enable_lib == 1', {
-          'defines' : ['COBALT_ENABLE_LIB'],
         }],
         ['mesh_cache_size_in_bytes == "auto"', {
           'conditions': [
@@ -223,6 +220,7 @@
       'target_name': 'browser_test',
       'type': '<(gtest_target_type)',
       'sources': [
+        'device_authentication_test.cc',
         'storage_upgrade_handler_test.cc',
         'memory_settings/auto_mem_test.cc',
         'memory_settings/auto_mem_settings_test.cc',
@@ -262,16 +260,5 @@
       'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
 
-    {
-      'target_name': 'browser_copy_debug_console',
-      'type': 'none',
-      'variables': {
-        'content_web_input_files': [
-          '<(DEPTH)/cobalt/browser/debug_console/',
-        ],
-        'content_web_output_subdir': 'cobalt/browser/debug_console/',
-      },
-      'includes': [ '<(DEPTH)/cobalt/build/copy_web_data.gypi' ],
-    },
   ],
 }

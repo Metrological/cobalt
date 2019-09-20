@@ -24,14 +24,14 @@
   readonly attribute MediaSourceReadyState readyState;
   [RaisesException] attribute unrestricted double duration;
 
-  [RaisesException] SourceBuffer addSourceBuffer(DOMString type);
+  [RaisesException, CallWith=EnvironmentSettings] SourceBuffer addSourceBuffer(DOMString type);
   [RaisesException] void removeSourceBuffer(SourceBuffer sourceBuffer);
 
   [RaisesException] void endOfStream(optional MediaSourceEndOfStreamError error);
 
-  [Conditional=COBALT_MEDIA_SOURCE_2016, RaisesException]
+  [RaisesException]
       void setLiveSeekableRange(double start, double end);
-  [Conditional=COBALT_MEDIA_SOURCE_2016, RaisesException]
+  [RaisesException]
       void clearLiveSeekableRange();
 
   [CallWith=EnvironmentSettings] static boolean isTypeSupported(DOMString type);

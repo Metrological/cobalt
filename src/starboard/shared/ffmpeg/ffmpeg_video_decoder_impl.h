@@ -15,13 +15,16 @@
 #ifndef STARBOARD_SHARED_FFMPEG_FFMPEG_VIDEO_DECODER_IMPL_H_
 #define STARBOARD_SHARED_FFMPEG_FFMPEG_VIDEO_DECODER_IMPL_H_
 
+#include <queue>
+
+#include "starboard/common/log.h"
+#include "starboard/common/queue.h"
 #include "starboard/common/ref_counted.h"
-#include "starboard/log.h"
 #include "starboard/media.h"
-#include "starboard/queue.h"
 #include "starboard/shared/ffmpeg/ffmpeg_common.h"
 #include "starboard/shared/ffmpeg/ffmpeg_dispatch.h"
 #include "starboard/shared/ffmpeg/ffmpeg_video_decoder.h"
+#include "starboard/shared/ffmpeg/ffmpeg_video_decoder_impl_interface.h"
 #include "starboard/shared/internal_only.h"
 #include "starboard/shared/starboard/player/filter/cpu_video_frame.h"
 #include "starboard/shared/starboard/player/filter/video_decoder_internal.h"
@@ -31,17 +34,6 @@
 namespace starboard {
 namespace shared {
 namespace ffmpeg {
-
-// For each version V that is supported, there will be an explicit
-// specialization of the VideoDecoder class.
-template <int V>
-class VideoDecoderImpl : public VideoDecoder {
- public:
-  static VideoDecoder* Create(SbMediaVideoCodec video_codec,
-                              SbPlayerOutputMode output_mode,
-                              SbDecodeTargetGraphicsContextProvider*
-                                  decode_target_graphics_context_provider);
-};
 
 // Forward class declaration of the explicit specialization with value FFMPEG.
 template <>
@@ -69,6 +61,7 @@ class VideoDecoderImpl<FFMPEG> : public VideoDecoder {
                   const ErrorCB& error_cb) override;
   size_t GetPrerollFrameCount() const override { return 8; }
   SbTime GetPrerollTimeout() const override { return kSbTimeMax; }
+  size_t GetMaxNumberOfCachedFrames() const override { return 12; }
 
   void WriteInputBuffer(
       const scoped_refptr<InputBuffer>& input_buffer) override;
@@ -113,7 +106,7 @@ class VideoDecoderImpl<FFMPEG> : public VideoDecoder {
   void TeardownCodec();
   SbDecodeTarget GetCurrentDecodeTarget() override;
 
-  bool UpdateDecodeTarget(const scoped_refptr<CpuVideoFrame>& frame);
+  void UpdateDecodeTarget_Locked(const scoped_refptr<CpuVideoFrame>& frame);
 
   FFMPEGDispatch* ffmpeg_;
 
@@ -157,6 +150,7 @@ class VideoDecoderImpl<FFMPEG> : public VideoDecoder {
 
   // int frame_last_rendered_pts_;
   // scoped_refptr<VideoFrame> frame_;
+  std::queue<scoped_refptr<CpuVideoFrame>> frames_;
 };
 
 }  // namespace ffmpeg

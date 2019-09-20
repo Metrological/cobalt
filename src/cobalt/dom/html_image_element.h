@@ -15,12 +15,13 @@
 #ifndef COBALT_DOM_HTML_IMAGE_ELEMENT_H_
 #define COBALT_DOM_HTML_IMAGE_ELEMENT_H_
 
+#include <memory>
 #include <string>
 
-#include "base/memory/scoped_ptr.h"
 #include "cobalt/dom/html_element.h"
 #include "cobalt/loader/image/image_cache.h"
 #include "cobalt/script/environment_settings.h"
+#include "cobalt/script/global_environment.h"
 
 namespace cobalt {
 namespace dom {
@@ -34,8 +35,7 @@ class HTMLImageElement : public HTMLElement {
   static const char kTagName[];
 
   explicit HTMLImageElement(Document* document)
-      : HTMLElement(document, base::Token(kTagName)),
-        prevent_garbage_collection_count_(0) {}
+      : HTMLElement(document, base::Token(kTagName)) {}
 
   explicit HTMLImageElement(script::EnvironmentSettings* env_settings);
 
@@ -53,6 +53,9 @@ class HTMLImageElement : public HTMLElement {
  private:
   ~HTMLImageElement() override {}
 
+  // From Node.
+  void PurgeCachedBackgroundImagesOfNodeAndDescendants() override;
+
   // From Element.
   void OnSetAttribute(const std::string& name,
                       const std::string& value) override;
@@ -65,14 +68,20 @@ class HTMLImageElement : public HTMLElement {
   void OnLoadingError();
 
   void PreventGarbageCollectionUntilEventIsDispatched(base::Token event_name);
-  void AllowGarbageCollectionAfterEventIsDispatched(base::Token event_name);
-  void PreventGarbageCollection();
-  void AllowGarbageCollection();
+  void AllowGarbageCollectionAfterEventIsDispatched(
+      base::Token event_name,
+      std::unique_ptr<script::GlobalEnvironment::ScopedPreventGarbageCollection>
+          scoped_prevent_gc);
+  void DestroyScopedPreventGC(
+      std::unique_ptr<script::GlobalEnvironment::ScopedPreventGarbageCollection>
+          scoped_prevent_gc);
 
-  base::ThreadChecker thread_checker_;
-  scoped_ptr<loader::image::CachedImage::OnLoadedCallbackHandler>
+  std::unique_ptr<loader::image::WeakCachedImage> weak_cached_image_;
+  std::unique_ptr<loader::image::CachedImage::OnLoadedCallbackHandler>
       cached_image_loaded_callback_handler_;
-  int prevent_garbage_collection_count_;
+
+  std::unique_ptr<script::GlobalEnvironment::ScopedPreventGarbageCollection>
+      prevent_gc_until_load_complete_;
 };
 
 }  // namespace dom

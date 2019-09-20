@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "starboard/mutex.h"
+#include "starboard/common/mutex.h"
 
 #include <pthread.h>
 
+#include "starboard/common/log.h"
 #include "starboard/shared/pthread/is_success.h"
 
 bool SbMutexDestroy(SbMutex* mutex) {
@@ -23,5 +24,13 @@ bool SbMutexDestroy(SbMutex* mutex) {
     return false;
   }
 
-  return IsSuccess(pthread_mutex_destroy(mutex));
+  // Destroying a locked mutex is undefined, so fail if the mutex is
+  // already locked,
+  if (!IsSuccess(pthread_mutex_trylock(mutex))) {
+    SB_LOG(ERROR) << "Trying to destroy a locked mutex";
+    return false;
+  }
+
+  return IsSuccess(pthread_mutex_unlock(mutex)) &&
+         IsSuccess(pthread_mutex_destroy(mutex));
 }

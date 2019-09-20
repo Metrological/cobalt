@@ -26,12 +26,15 @@
     # Refer to base.gypi for a list of all available variables.
     'compiler_flags_host': [
       '-O2',
-    ],
+      # Do not warn about unused function params.
+      '-Wno-unused-parameter',
+     ],
     'compiler_flags': [
       # We'll pretend not to be Linux, but Starboard instead.
       '-U__linux__',
     ],
     'linker_flags': [
+      '-static-libstdc++'
     ],
     'compiler_flags_debug': [
       '-frtti',
@@ -84,6 +87,8 @@
           # Do not warn if a function or variable cannot be implicitly
           # instantiated.
           '-Wno-undefined-var-template',
+          # Do not warn about unused function params.
+          '-Wno-unused-parameter',
         ],
       }],
       ['cobalt_fastbuild==0', {
@@ -148,8 +153,6 @@
           '-Wno-undefined-bool-conversion',
           # Skia doesn't use overrides.
           '-Wno-inconsistent-missing-override',
-          # Do not warn about unused function params.
-          '-Wno-unused-parameter',
           # Do not warn for implicit type conversions that may change a value.
           '-Wno-conversion',
           # shifting a negative signed value is undefined

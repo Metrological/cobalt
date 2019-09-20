@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "cobalt/media/sandbox/web_media_player_helper.h"
 
 #include "cobalt/media/fetcher_buffered_data_source.h"
@@ -19,12 +21,6 @@
 namespace cobalt {
 namespace media {
 namespace sandbox {
-
-#if !defined(COBALT_MEDIA_SOURCE_2016)
-using ::media::BufferedDataSource;
-using ::media::VideoFrame;
-using ::media::WebMediaPlayerClient;
-#endif  // !defined(WebMediaPlayerDelegate)
 
 class WebMediaPlayerHelper::WebMediaPlayerClientStub
     : public WebMediaPlayerClient {
@@ -54,12 +50,11 @@ class WebMediaPlayerHelper::WebMediaPlayerClientStub
     chunk_demuxer_open_cb_.Run(chunk_demuxer);
   }
   std::string SourceURL() const override { return ""; }
+  std::string MaxVideoCapabilities() const override { return std::string(); };
   bool PreferDecodeToTexture() { return true; }
 
-#if defined(COBALT_MEDIA_SOURCE_2016)
   void EncryptedMediaInitDataEncountered(EmeInitDataType, const unsigned char*,
                                          unsigned) override {}
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
 
   ChunkDemuxerOpenCB chunk_demuxer_open_cb_;
 };
@@ -69,11 +64,7 @@ WebMediaPlayerHelper::WebMediaPlayerHelper(MediaModule* media_module,
     : client_(new WebMediaPlayerClientStub(open_cb)),
       player_(media_module->CreateWebMediaPlayer(client_)) {
   player_->SetRate(1.0);
-// TODO: Investigate a better way to exclude this when SB_HAS(PLAYER_WITH_URL)
-//       is enabled.
-#if !SB_HAS(PLAYER_WITH_URL)
   player_->LoadMediaSource();
-#endif  // !SB_HAS(PLAYER_WITH_URL)
   player_->Play();
 }
 
@@ -83,15 +74,11 @@ WebMediaPlayerHelper::WebMediaPlayerHelper(
     : client_(new WebMediaPlayerClientStub),
       player_(media_module->CreateWebMediaPlayer(client_)) {
   player_->SetRate(1.0);
-  scoped_ptr<BufferedDataSource> data_source(new FetcherBufferedDataSource(
-      base::MessageLoopProxy::current(), video_url, csp::SecurityCallback(),
-      fetcher_factory->network_module(), loader::kNoCORSMode,
-      loader::Origin()));
-// TODO: Investigate a better way to exclude this when SB_HAS(PLAYER_WITH_URL)
-//       is enabled.
-#if !SB_HAS(PLAYER_WITH_URL)
-  player_->LoadProgressive(video_url, data_source.Pass());
-#endif  // !SB_HAS(PLAYER_WITH_URL)
+  std::unique_ptr<BufferedDataSource> data_source(new FetcherBufferedDataSource(
+      base::MessageLoop::current()->task_runner(), video_url,
+      csp::SecurityCallback(), fetcher_factory->network_module(),
+      loader::kNoCORSMode, loader::Origin()));
+  player_->LoadProgressive(video_url, std::move(data_source));
   player_->Play();
 }
 
@@ -99,12 +86,6 @@ WebMediaPlayerHelper::~WebMediaPlayerHelper() {
   player_.reset();
   delete client_;
 }
-
-#if !defined(COBALT_MEDIA_SOURCE_2016)
-scoped_refptr<VideoFrame> WebMediaPlayerHelper::GetCurrentFrame() const {
-  return player_->GetVideoFrameProvider()->GetCurrentFrame();
-}
-#endif  // !defined(COBALT_MEDIA_SOURCE_2016)
 
 SbDecodeTarget WebMediaPlayerHelper::GetCurrentDecodeTarget() const {
   return player_->GetVideoFrameProvider()->GetCurrentSbDecodeTarget();

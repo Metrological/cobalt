@@ -14,11 +14,11 @@
 
 #include "cobalt/dom/node.h"
 
+#include <memory>
 #include <vector>
 
-#include "base/debug/trace_event.h"
 #include "base/lazy_instance.h"
-#include "cobalt/base/user_log.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/cssom/css_rule_visitor.h"
 #include "cobalt/cssom/css_style_rule.h"
 #include "cobalt/dom/cdata_section.h"
@@ -47,44 +47,6 @@
 
 namespace cobalt {
 namespace dom {
-
-namespace {
-
-// This struct manages the user log information for Node count.
-struct NodeCountLog {
- public:
-  NodeCountLog() : count(0) {
-    base::UserLog::Register(base::UserLog::kNodeCountIndex, "NodeCnt", &count,
-                            sizeof(count));
-#if defined(HANDLE_CORE_DUMP)
-    SbCoreDumpRegisterHandler(CoreDumpHandler, this);
-#endif
-  }
-
-  ~NodeCountLog() {
-#if defined(HANDLE_CORE_DUMP)
-    SbCoreDumpUnregisterHandler(CoreDumpHandler, this);
-#endif
-    base::UserLog::Deregister(base::UserLog::kNodeCountIndex);
-  }
-
-#if defined(HANDLE_CORE_DUMP)
-  static void CoreDumpHandler(void* context) {
-    SbCoreDumpLogInteger(
-        "Total number of nodes",
-        static_cast<NodeCountLog*>(context)->count);
-  }
-#endif
-
-  int count;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(NodeCountLog);
-};
-
-base::LazyInstance<NodeCountLog> node_count_log = LAZY_INSTANCE_INITIALIZER;
-
-}  // namespace
 
 // Diagram for DispatchEvent:
 //  https://www.w3.org/TR/DOM-Level-3-Events/#event-flow
@@ -189,7 +151,7 @@ Element* Node::parent_element() const {
   return parent_ ? parent_->AsElement() : NULL;
 }
 
-bool Node::HasChildNodes() const { return first_child_ != NULL; }
+bool Node::HasChildNodes() const { return first_child_.get() != NULL; }
 
 scoped_refptr<NodeList> Node::child_nodes() const {
   return NodeListLive::CreateWithChildren(this);
@@ -199,6 +161,7 @@ scoped_refptr<NodeList> Node::child_nodes() const {
 //   https://www.w3.org/TR/2015/WD-dom-20150618/#dom-node-clonenode
 scoped_refptr<Node> Node::CloneNode(bool deep) const {
   TRACK_MEMORY_SCOPE("DOM");
+  TRACE_EVENT0("cobalt::dom", "Node::CloneNode()");
   scoped_refptr<Node> new_node = Duplicate();
   DCHECK(new_node);
   if (deep) {
@@ -214,12 +177,12 @@ scoped_refptr<Node> Node::CloneNode(bool deep) const {
 }
 
 bool Node::Contains(const scoped_refptr<Node>& other_node) const {
-  const Node* child = first_child_;
+  const Node* child = first_child_.get();
   while (child) {
     if (child == other_node || child->Contains(other_node)) {
       return true;
     }
-    child = child->next_sibling_;
+    child = child->next_sibling_.get();
   }
   return false;
 }
@@ -229,6 +192,7 @@ bool Node::Contains(const scoped_refptr<Node>& other_node) const {
 scoped_refptr<Node> Node::InsertBefore(
     const scoped_refptr<Node>& new_child,
     const scoped_refptr<Node>& reference_child) {
+  TRACE_EVENT0("cobalt::dom", "Node::InsertBefore()");
   // The insertBefore(node, child) method must return the result of
   // pre-inserting node into the context object before child.
   return PreInsert(new_child, reference_child);
@@ -237,6 +201,7 @@ scoped_refptr<Node> Node::InsertBefore(
 // Algorithm for AppendChild:
 //   https://www.w3.org/TR/dom/#dom-node-appendchild
 scoped_refptr<Node> Node::AppendChild(const scoped_refptr<Node>& new_child) {
+  TRACE_EVENT0("cobalt::dom", "Node::AppendChild()");
   // The appendChild(node) method must return the result of appending node to
   // the context object.
   // To append a node to a parent, pre-insert node into parent before null.
@@ -247,6 +212,7 @@ scoped_refptr<Node> Node::AppendChild(const scoped_refptr<Node>& new_child) {
 //   https://www.w3.org/TR/dom/#dom-node-replacechild
 scoped_refptr<Node> Node::ReplaceChild(const scoped_refptr<Node>& node,
                                        const scoped_refptr<Node>& child) {
+  TRACE_EVENT0("cobalt::dom", "Node::ReplaceChild()");
   // The replaceChild(node, child) method must return the result of replacing
   // child with node within the context object.
   // To replace a child with node within a parent, run these steps:
@@ -313,7 +279,7 @@ scoped_refptr<Node> Node::ReplaceChild(const scoped_refptr<Node>& node,
   }
 
   // 9. Adopt node into parent's node document.
-  node->AdoptIntoDocument(node_document_);
+  node->AdoptIntoDocument(node_document_.get());
 
   // 10. Remove child from its parent with the suppress observers flag set.
   Remove(child, true);
@@ -343,6 +309,7 @@ scoped_refptr<Node> Node::ReplaceChild(const scoped_refptr<Node>& node,
 // Algorithm for RemoveChild:
 //   https://www.w3.org/TR/dom/#dom-node-removechild
 scoped_refptr<Node> Node::RemoveChild(const scoped_refptr<Node>& node) {
+  TRACE_EVENT0("cobalt::dom", "Node::RemoveChild()");
   // The removeChild(child) method must return the result of pre-removing child
   // from the context object.
   return PreRemove(node);
@@ -424,6 +391,7 @@ Element* Node::next_element_sibling() const {
 // Algorithm for AdoptIntoDocument:
 //   https://www.w3.org/TR/dom/#concept-node-adopt
 void Node::AdoptIntoDocument(Document* document) {
+  TRACE_EVENT0("cobalt::dom", "Node::AdoptIntoDocument()");
   DCHECK(!IsDocument());
   if (!document) {
     return;
@@ -490,7 +458,6 @@ Node::Node(Document* document)
       node_generation_(kInitialNodeGeneration),
       ALLOW_THIS_IN_INITIALIZER_LIST(registered_observers_(this)) {
   DCHECK(node_document_);
-  ++(node_count_log.Get().count);
   GlobalStats::GetInstance()->Add(this);
 }
 
@@ -504,7 +471,6 @@ Node::~Node() {
     node->previous_sibling_ = NULL;
     node = previous_sibling;
   }
-  --(node_count_log.Get().count);
   GlobalStats::GetInstance()->Remove(this);
 }
 
@@ -513,10 +479,10 @@ void Node::OnInsertedIntoDocument() {
   DCHECK(!inserted_into_document_);
   inserted_into_document_ = true;
 
-  Node* child = first_child_;
+  Node* child = first_child_.get();
   while (child) {
     child->OnInsertedIntoDocument();
-    child = child->next_sibling_;
+    child = child->next_sibling_.get();
   }
 }
 
@@ -524,15 +490,15 @@ void Node::OnRemovedFromDocument() {
   DCHECK(inserted_into_document_);
   inserted_into_document_ = false;
 
-  Node* child = first_child_;
+  Node* child = first_child_.get();
   while (child) {
     child->OnRemovedFromDocument();
-    child = child->next_sibling_;
+    child = child->next_sibling_.get();
   }
 }
 
-void Node::MarkDisplayNoneOnNodeAndDescendants() {
-  MarkDisplayNoneOnDescendants();
+void Node::MarkNotDisplayedOnNodeAndDescendants() {
+  MarkNotDisplayedOnDescendants();
 }
 
 void Node::PurgeCachedBackgroundImagesOfNodeAndDescendants() {
@@ -551,27 +517,27 @@ void Node::InvalidateLayoutBoxesOfNodeAndDescendants() {
   InvalidateLayoutBoxesOfDescendants();
 }
 
-void Node::MarkDisplayNoneOnDescendants() {
-  Node* child = first_child_;
+void Node::MarkNotDisplayedOnDescendants() {
+  Node* child = first_child_.get();
   while (child) {
-    child->MarkDisplayNoneOnNodeAndDescendants();
-    child = child->next_sibling_;
+    child->MarkNotDisplayedOnNodeAndDescendants();
+    child = child->next_sibling_.get();
   }
 }
 
 void Node::PurgeCachedBackgroundImagesOfDescendants() {
-  Node* child = first_child_;
+  Node* child = first_child_.get();
   while (child) {
     child->PurgeCachedBackgroundImagesOfNodeAndDescendants();
-    child = child->next_sibling_;
+    child = child->next_sibling_.get();
   }
 }
 
 void Node::InvalidateComputedStylesOfDescendants() {
-  Node* child = first_child_;
+  Node* child = first_child_.get();
   while (child) {
     child->InvalidateComputedStylesOfNodeAndDescendants();
-    child = child->next_sibling_;
+    child = child->next_sibling_.get();
   }
 }
 
@@ -585,7 +551,7 @@ void Node::InvalidateLayoutBoxesOfDescendants() {
   Node* child = first_child_;
   while (child) {
     child->InvalidateLayoutBoxesOfNodeAndDescendants();
-    child = child->next_sibling_;
+    child = child->next_sibling_.get();
   }
 }
 
@@ -598,9 +564,9 @@ void Node::UpdateGenerationForNodeAndAncestors() {
   }
 }
 
-scoped_ptr<Node::RegisteredObserverVector>
+std::unique_ptr<Node::RegisteredObserverVector>
 Node::GatherInclusiveAncestorsObservers() {
-  scoped_ptr<RegisteredObserverVector> inclusive_observers(
+  std::unique_ptr<RegisteredObserverVector> inclusive_observers(
       new RegisteredObserverVector());
   Node* current = this;
   while (current) {
@@ -610,7 +576,7 @@ Node::GatherInclusiveAncestorsObservers() {
                                 node_observers.begin(), node_observers.end());
     current = current->parent_;
   }
-  return inclusive_observers.Pass();
+  return inclusive_observers;
 }
 
 // Algorithm for EnsurePreInsertionValidity:
@@ -672,6 +638,7 @@ bool Node::EnsurePreInsertionValidity(const scoped_refptr<Node>& node,
 //   https://www.w3.org/TR/dom/#concept-node-pre-insert
 scoped_refptr<Node> Node::PreInsert(const scoped_refptr<Node>& node,
                                     const scoped_refptr<Node>& child) {
+  TRACE_EVENT0("cobalt::dom", "Node::PreInsert()");
   // 1. Ensure pre-insertion validity of node into parent before child.
   if (!EnsurePreInsertionValidity(node, child)) {
     return NULL;
@@ -681,7 +648,7 @@ scoped_refptr<Node> Node::PreInsert(const scoped_refptr<Node>& node,
   // 3. If reference child is node, set it to node's next sibling.
   // 4. Adopt node into parent's node document.
   // 5. Insert node into parent before reference child.
-  node->AdoptIntoDocument(node_document_);
+  node->AdoptIntoDocument(node_document_.get());
   Insert(node, child == node ? child->next_sibling_ : child, false);
 
   // 6. Return node.
@@ -692,6 +659,7 @@ scoped_refptr<Node> Node::PreInsert(const scoped_refptr<Node>& node,
 //   https://www.w3.org/TR/dom/#concept-node-insert
 void Node::Insert(const scoped_refptr<Node>& node,
                   const scoped_refptr<Node>& child, bool suppress_observers) {
+  TRACE_EVENT0("cobalt::dom", "Node::Insert()");
   // 1. 2. Not needed by Cobalt.
   // 3. Let nodes be node's children if node is a DocumentFragment node, and a
   // list containing solely node otherwise.
@@ -706,15 +674,16 @@ void Node::Insert(const scoped_refptr<Node>& node,
   //   2. Run the insertion steps with newNode.
 
   if (!suppress_observers) {
-    scoped_ptr<RegisteredObserverVector> observers =
+    std::unique_ptr<RegisteredObserverVector> observers =
         GatherInclusiveAncestorsObservers();
     if (!observers->empty()) {
-      MutationReporter mutation_reporter(this, observers.Pass());
+      MutationReporter mutation_reporter(this, std::move(observers));
       scoped_refptr<dom::NodeList> added_nodes = new dom::NodeList();
       added_nodes->AppendNode(node);
       mutation_reporter.ReportChildListMutation(
-          added_nodes, NULL, child ? child->previous_sibling_
-                                 : this->last_child_ /* previous_sibling */,
+          added_nodes, NULL,
+          child ? child->previous_sibling_
+                : this->last_child_ /* previous_sibling */,
           child /* next_sibling */);
     }
   }
@@ -762,6 +731,7 @@ void Node::Insert(const scoped_refptr<Node>& node,
 // Algorithm for PreRemove:
 //   https://www.w3.org/TR/dom/#concept-node-pre-remove
 scoped_refptr<Node> Node::PreRemove(const scoped_refptr<Node>& child) {
+  TRACE_EVENT0("cobalt::dom", "Node::PreRemove()");
   // 1. If child's parent is not parent, throw a "NotFoundError" exception.
   if (!child || child->parent_ != this) {
     // TODO: Throw JS NotFoundError.
@@ -779,6 +749,7 @@ scoped_refptr<Node> Node::PreRemove(const scoped_refptr<Node>& child) {
 //   https://www.w3.org/TR/dom/#concept-node-remove
 void Node::Remove(const scoped_refptr<Node>& node, bool suppress_observers) {
   DCHECK(node);
+  TRACE_EVENT0("cobalt::dom", "Node::Remove()");
 
   OnMutation();
   node->UpdateGenerationForNodeAndAncestors();
@@ -801,6 +772,7 @@ void Node::Remove(const scoped_refptr<Node>& node, bool suppress_observers) {
   bool was_inserted_to_document = node->inserted_into_document_;
   if (was_inserted_to_document) {
     node->OnRemovedFromDocument();
+    node->MarkNotDisplayedOnNodeAndDescendants();
   }
 
   // 1. 5. Not needed by Cobalt.
@@ -816,12 +788,12 @@ void Node::Remove(const scoped_refptr<Node>& node, bool suppress_observers) {
   // 9. Remove node from its parent.
   // 10. Run the removing steps with node, parent, and oldPreviousSibling.
 
-  scoped_ptr<RegisteredObserverVector> observers =
+  std::unique_ptr<RegisteredObserverVector> observers =
       GatherInclusiveAncestorsObservers();
   if (!observers->empty()) {
     // Step 7 - Queue a mutation record.
     if (!suppress_observers) {
-      MutationReporter mutation_reporter(this, observers.Pass());
+      MutationReporter mutation_reporter(this, std::move(observers));
       scoped_refptr<dom::NodeList> removed_nodes = new dom::NodeList();
       removed_nodes->AppendNode(node);
       mutation_reporter.ReportChildListMutation(
@@ -858,6 +830,7 @@ void Node::Remove(const scoped_refptr<Node>& node, bool suppress_observers) {
 // Algorithm for ReplaceAll:
 //   https://www.w3.org/TR/dom/#concept-node-replace-all
 void Node::ReplaceAll(const scoped_refptr<Node>& node) {
+  TRACE_EVENT0("cobalt::dom", "Node::ReplaceAll()");
   // 1. If node is not null, adopt node into parent's node document.
   if (node) {
     node->AdoptIntoDocument(this->node_document());
@@ -892,10 +865,10 @@ void Node::ReplaceAll(const scoped_refptr<Node>& node) {
 
   // 6. Queue a mutation record of "childList" for parent with addedNodes
   //    addedNodes and removedNodes removedNodes.
-  scoped_ptr<RegisteredObserverVector> observers =
+  std::unique_ptr<RegisteredObserverVector> observers =
       GatherInclusiveAncestorsObservers();
   if (!observers->empty()) {
-    MutationReporter mutation_reporter(this, observers.Pass());
+    MutationReporter mutation_reporter(this, std::move(observers));
     scoped_refptr<dom::NodeList> new_added_nodes = new dom::NodeList();
     if (node) {
       new_added_nodes->AppendNode(node);

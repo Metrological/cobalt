@@ -15,11 +15,15 @@
 #include "cobalt/loader/embedded_fetcher.h"
 
 #include <algorithm>
+#include <vector>
 
 #include "base/bind.h"
 #include "base/callback.h"
-#include "base/message_loop.h"
-#include "base/stringprintf.h"
+#include "base/message_loop/message_loop.h"
+#include "base/strings/string_split.h"
+#include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
+#include "cobalt/base/localized_strings.h"
 #include "cobalt/loader/embedded_resources.h"  // Generated.
 
 namespace cobalt {
@@ -86,9 +90,19 @@ void EmbeddedFetcher::GetEmbeddedData(const std::string& key,
   const char* data = reinterpret_cast<const char*>(file_contents.data);
   size_t size = static_cast<size_t>(file_contents.size);
   data += start_offset;
-  size = std::min(size, static_cast<size_t>(bytes_to_read));
 
-  handler()->OnReceived(this, data, size);
+  // If the key is a template file, localized the strings in the file data.
+  if (base::EndsWith(key, ".template", base::CompareCase::SENSITIVE)) {
+    std::string output_file(data);
+    LocalizeFileData(&output_file);
+    const char* final_data = output_file.c_str();
+    size = std::min(static_cast<size_t>(output_file.size()),
+                    static_cast<size_t>(bytes_to_read));
+    handler()->OnReceived(this, final_data, size);
+  } else {
+    size = std::min(size, static_cast<size_t>(bytes_to_read));
+    handler()->OnReceived(this, data, size);
+  }
   handler()->OnDone(this);
 }
 
@@ -100,6 +114,33 @@ bool EmbeddedFetcher::IsAllowedByCsp() {
   } else {
     return false;
   }
+}
+
+void EmbeddedFetcher::LocalizeFileData(std::string* output_file) {
+  base::LocalizedStrings* localized_strings =
+      base::LocalizedStrings::GetInstance();
+  std::string opening_delimiter = "[[";
+  std::vector<std::string> parts =
+      base::SplitStringUsingSubstr(*output_file, opening_delimiter,
+                                   base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
+  for (size_t idx = 1; idx < parts.size(); ++idx) {
+    std::string& value = parts[idx];
+    std::string closing_delimiter = "]]";
+    std::vector<std::string> key_result = base::SplitStringUsingSubstr(
+        value, closing_delimiter, base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
+    size_t key_results = key_result.size();
+
+    if (key_results > 1) {
+      std::string& message_postfix = key_result[1];
+      std::string localized_message =
+          localized_strings->GetString(key_result[0], "");
+      value = localized_message + message_postfix;
+    } else {
+      value = key_result[0];
+    }
+  }
+
+  *output_file = base::JoinString(parts, std::string());
 }
 
 }  // namespace loader

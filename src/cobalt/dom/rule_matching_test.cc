@@ -15,12 +15,14 @@
 #include "cobalt/dom/rule_matching.h"
 
 #include <algorithm>
+#include <memory>
 #include <vector>
 
 #include "cobalt/css_parser/parser.h"
 #include "cobalt/cssom/css_rule_list.h"
 #include "cobalt/cssom/css_style_rule.h"
 #include "cobalt/cssom/css_style_sheet.h"
+#include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/document.h"
 #include "cobalt/dom/dom_stat_tracker.h"
 #include "cobalt/dom/element.h"
@@ -33,9 +35,16 @@
 #include "cobalt/dom/testing/stub_window.h"
 #include "cobalt/dom_parser/parser.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "cobalt/script/script_exception.h"
+#include "cobalt/script/testing/mock_exception_state.h"
+
+using cobalt::cssom::ViewportSize;
 
 namespace cobalt {
 namespace dom {
+
+using script::testing::MockExceptionState;
+using ::testing::StrictMock;
 
 class RuleMatchingTest : public ::testing::Test {
  protected:
@@ -65,9 +74,9 @@ class RuleMatchingTest : public ::testing::Test {
     return document_->style_sheets()->Item(index)->AsCSSStyleSheet();
   }
 
-  scoped_ptr<css_parser::Parser> css_parser_;
-  scoped_ptr<dom_parser::Parser> dom_parser_;
-  scoped_ptr<DomStatTracker> dom_stat_tracker_;
+  std::unique_ptr<css_parser::Parser> css_parser_;
+  std::unique_ptr<dom_parser::Parser> dom_parser_;
+  std::unique_ptr<DomStatTracker> dom_stat_tracker_;
   HTMLElementContext html_element_context_;
 
   scoped_refptr<Document> document_;
@@ -239,7 +248,8 @@ TEST_F(RuleMatchingTest, FocusPseudoClassMatch) {
   testing::StubWindow window;
   document_->set_window(window.window());
   // Give the document initial computed style.
-  document_->SetViewport(math::Size(320, 240));
+  ViewportSize view_size(320, 240);
+  document_->SetViewport(view_size);
 
   head_->set_inner_html("<style>:focus {}</style>");
   body_->set_inner_html("<div tabIndex=\"-1\"/>");
@@ -262,7 +272,8 @@ TEST_F(RuleMatchingTest, FocusPseudoClassNoMatch) {
   testing::StubWindow window;
   document_->set_window(window.window());
   // Give the document initial computed style.
-  document_->SetViewport(math::Size(320, 240));
+  ViewportSize view_size(320, 240);
+  document_->SetViewport(view_size);
 
   head_->set_inner_html("<style>:focus {}</style>");
   body_->set_inner_html("<div tabIndex=\"-1\"/>");
@@ -768,6 +779,13 @@ TEST_F(RuleMatchingTest, QuerySelectorAllShouldReturnAllMatches) {
 
   node_list = QuerySelectorAll(document_, "span", css_parser_.get());
   EXPECT_EQ(0, node_list->length());
+}
+
+TEST_F(RuleMatchingTest, ElementMatches) {
+  scoped_refptr<Element> root = new Element(document_, base::Token("root"));
+  StrictMock<MockExceptionState> exception_state;
+  EXPECT_TRUE(root->Matches("root", &exception_state));
+  EXPECT_FALSE(root->Matches("r", &exception_state));
 }
 
 TEST_F(RuleMatchingTest, StyleElementRemoval) {

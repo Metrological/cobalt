@@ -15,16 +15,20 @@
 #include "cobalt/loader/image/image_decoder.h"
 
 #include <algorithm>
+#include <memory>
 
-#include "base/debug/trace_event.h"
+#include "base/command_line.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/loader/image/dummy_gif_image_decoder.h"
 #include "cobalt/loader/image/image_decoder_starboard.h"
 #include "cobalt/loader/image/jpeg_image_decoder.h"
 #include "cobalt/loader/image/png_image_decoder.h"
 #include "cobalt/loader/image/stub_image_decoder.h"
 #include "cobalt/loader/image/webp_image_decoder.h"
+#include "cobalt/loader/switches.h"
 #include "net/base/mime_util.h"
 #include "net/http/http_status_code.h"
+#include "starboard/configuration.h"
 #include "starboard/image.h"
 
 namespace cobalt {
@@ -62,26 +66,28 @@ ImageDecoder::ImageType DetermineImageType(const uint8* header) {
 
 }  // namespace
 
-ImageDecoder::ImageDecoder(render_tree::ResourceProvider* resource_provider,
-                           const SuccessCallback& success_callback,
-                           const ErrorCallback& error_callback)
+ImageDecoder::ImageDecoder(
+    render_tree::ResourceProvider* resource_provider,
+    const ImageAvailableCallback& image_available_callback,
+    const loader::Decoder::OnCompleteFunction& load_complete_callback)
     : resource_provider_(resource_provider),
-      success_callback_(success_callback),
-      error_callback_(error_callback),
+      image_available_callback_(image_available_callback),
       image_type_(kImageTypeInvalid),
+      load_complete_callback_(load_complete_callback),
       state_(resource_provider_ ? kWaitingForHeader : kSuspended),
       is_deletion_pending_(false) {
   signature_cache_.position = 0;
 }
 
-ImageDecoder::ImageDecoder(render_tree::ResourceProvider* resource_provider,
-                           const SuccessCallback& success_callback,
-                           const ErrorCallback& error_callback,
-                           ImageType image_type)
+ImageDecoder::ImageDecoder(
+    render_tree::ResourceProvider* resource_provider,
+    const ImageAvailableCallback& image_available_callback,
+    ImageType image_type,
+    const loader::Decoder::OnCompleteFunction& load_complete_callback)
     : resource_provider_(resource_provider),
-      success_callback_(success_callback),
-      error_callback_(error_callback),
+      image_available_callback_(image_available_callback),
       image_type_(image_type),
+      load_complete_callback_(load_complete_callback),
       state_(resource_provider_ ? kWaitingForHeader : kSuspended),
       is_deletion_pending_(false) {
   signature_cache_.position = 0;
@@ -89,7 +95,7 @@ ImageDecoder::ImageDecoder(render_tree::ResourceProvider* resource_provider,
 
 LoadResponseType ImageDecoder::OnResponseStarted(
     Fetcher* fetcher, const scoped_refptr<net::HttpResponseHeaders>& headers) {
-  UNREFERENCED_PARAMETER(fetcher);
+  SB_UNREFERENCED_PARAMETER(fetcher);
   TRACE_EVENT0("cobalt::loader::image", "ImageDecoder::OnResponseStarted()");
 
   if (state_ == kSuspended) {
@@ -153,48 +159,32 @@ void ImageDecoder::Finish() {
   switch (state_) {
     case kDecoding:
       DCHECK(decoder_);
-      if (decoder_->FinishWithSuccess()) {
-        if (!decoder_->has_animation()) {
-#if SB_HAS(GRAPHICS)
-          SbDecodeTarget target = decoder_->RetrieveSbDecodeTarget();
-          if (SbDecodeTargetIsValid(target)) {
-            success_callback_.Run(new StaticImage(
-                resource_provider_->CreateImageFromSbDecodeTarget(target)));
-          } else  // NOLINT
-#endif
-          {
-            scoped_ptr<render_tree::ImageData> image_data =
-                decoder_->RetrieveImageData();
-            success_callback_.Run(
-                image_data ? new StaticImage(resource_provider_->CreateImage(
-                                 image_data.Pass()))
-                           : NULL);
-          }
-        } else {
-          success_callback_.Run(decoder_->animated_image());
-        }
+      if (auto image = decoder_->FinishAndMaybeReturnImage()) {
+        image_available_callback_.Run(image);
+        load_complete_callback_.Run(base::nullopt);
       } else {
-        error_callback_.Run(decoder_->GetTypeString() +
-                            " failed to decode image.");
+        load_complete_callback_.Run(std::string(decoder_->GetTypeString() +
+                                                " failed to decode image."));
       }
       break;
     case kWaitingForHeader:
       if (signature_cache_.position == 0) {
         // no image is available.
-        error_callback_.Run(error_message_);
+        load_complete_callback_.Run(error_message_);
       } else {
-        error_callback_.Run("No enough image data for header.");
+        load_complete_callback_.Run(
+            std::string("No enough image data for header."));
       }
       break;
     case kUnsupportedImageFormat:
-      error_callback_.Run("Unsupported image format.");
+      load_complete_callback_.Run(std::string("Unsupported image format."));
       break;
     case kSuspended:
       DLOG(WARNING) << __FUNCTION__ << "[" << this << "] while suspended.";
       break;
     case kNotApplicable:
       // no image is available.
-      error_callback_.Run(error_message_);
+      load_complete_callback_.Run(error_message_);
       break;
   }
 }
@@ -262,7 +252,7 @@ void ImageDecoder::DecodeChunkInternal(const uint8* input_bytes, size_t size) {
 }
 
 namespace {
-#if SB_HAS(GRAPHICS)
+#if SB_HAS(GRAPHICS) && !SB_IS(EVERGREEN)
 const char* GetMimeTypeFromImageType(ImageDecoder::ImageType image_type) {
   switch (image_type) {
     case ImageDecoder::kImageTypeJPEG:
@@ -281,7 +271,7 @@ const char* GetMimeTypeFromImageType(ImageDecoder::ImageType image_type) {
 }
 
 // If |mime_type| is empty, |image_type| will be used to deduce the mime type.
-scoped_ptr<ImageDataDecoder> MaybeCreateStarboardDecoder(
+std::unique_ptr<ImageDataDecoder> MaybeCreateStarboardDecoder(
     const std::string& mime_type, ImageDecoder::ImageType image_type,
     render_tree::ResourceProvider* resource_provider) {
   // clang-format off
@@ -315,35 +305,35 @@ scoped_ptr<ImageDataDecoder> MaybeCreateStarboardDecoder(
 
     if (SbDecodeTargetIsFormatValid(format) &&
         resource_provider->SupportsSbDecodeTarget()) {
-      return make_scoped_ptr<ImageDataDecoder>(new ImageDecoderStarboard(
+      return std::unique_ptr<ImageDataDecoder>(new ImageDecoderStarboard(
           resource_provider, mime_type_c_string, format));
     }
   }
-  return scoped_ptr<ImageDataDecoder>();
+  return std::unique_ptr<ImageDataDecoder>();
 }
-#endif  // SB_HAS(GRAPHICS)
+#endif  // SB_HAS(GRAPHICS) && !SB_IS(EVERGREEN)
 
-scoped_ptr<ImageDataDecoder> CreateImageDecoderFromImageType(
+std::unique_ptr<ImageDataDecoder> CreateImageDecoderFromImageType(
     ImageDecoder::ImageType image_type,
     render_tree::ResourceProvider* resource_provider) {
   // Call different types of decoders by matching the image signature.
   if (s_use_stub_image_decoder) {
-    return make_scoped_ptr<ImageDataDecoder>(
+    return std::unique_ptr<ImageDataDecoder>(
         new StubImageDecoder(resource_provider));
   } else if (image_type == ImageDecoder::kImageTypeJPEG) {
-    return make_scoped_ptr<ImageDataDecoder>(
-        new JPEGImageDecoder(resource_provider));
+    return std::unique_ptr<ImageDataDecoder>(new JPEGImageDecoder(
+        resource_provider, ImageDecoder::AllowDecodingToMultiPlane()));
   } else if (image_type == ImageDecoder::kImageTypePNG) {
-    return make_scoped_ptr<ImageDataDecoder>(
+    return std::unique_ptr<ImageDataDecoder>(
         new PNGImageDecoder(resource_provider));
   } else if (image_type == ImageDecoder::kImageTypeWebP) {
-    return make_scoped_ptr<ImageDataDecoder>(
+    return std::unique_ptr<ImageDataDecoder>(
         new WEBPImageDecoder(resource_provider));
   } else if (image_type == ImageDecoder::kImageTypeGIF) {
-    return make_scoped_ptr<ImageDataDecoder>(
+    return std::unique_ptr<ImageDataDecoder>(
         new DummyGIFImageDecoder(resource_provider));
   } else {
-    return scoped_ptr<ImageDataDecoder>();
+    return std::unique_ptr<ImageDataDecoder>();
   }
 }
 }  // namespace
@@ -367,10 +357,11 @@ bool ImageDecoder::InitializeInternalDecoder(const uint8* input_bytes,
     image_type_ = DetermineImageType(signature_cache_.data);
   }
 
-#if SB_HAS(GRAPHICS)
+// TODO: Remove the EVERGREEN check once the EGL wiring is ready.
+#if SB_HAS(GRAPHICS) && !SB_IS(EVERGREEN)
   decoder_ =
       MaybeCreateStarboardDecoder(mime_type_, image_type_, resource_provider_);
-#endif  // SB_HAS(GRAPHICS)
+#endif  // SB_HAS(GRAPHICS) && !SB_IS(EVERGREEN)
 
   if (!decoder_) {
     decoder_ = CreateImageDecoderFromImageType(image_type_, resource_provider_);
@@ -386,6 +377,41 @@ bool ImageDecoder::InitializeInternalDecoder(const uint8* input_bytes,
 
 // static
 void ImageDecoder::UseStubImageDecoder() { s_use_stub_image_decoder = true; }
+
+// static
+bool ImageDecoder::AllowDecodingToMultiPlane() {
+#if SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
+  // Many image formats can produce native output in multi plane images in YUV
+  // 420.  Allow these images to be decoded into multi plane image not only
+  // reduces the space to store the decoded image to 37.5%, but also improves
+  // decoding performance by not converting the output from YUV to RGBA.
+  bool allow_image_decoding_to_multi_plane = true;
+#else   // SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
+  // Decoding to single plane by default because blitter platforms usually
+  // don't have the ability to perform hardware accelerated YUV-formatted
+  // image blitting.
+  // This also applies to skia based "hardware" rasterizers as the rendering
+  // of multi plane images in such cases are not optimized, but this may be
+  // improved in future.
+  bool allow_image_decoding_to_multi_plane = false;
+#endif  // SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
+
+#if !defined(COBALT_BUILD_TYPE_GOLD)
+  auto command_line = base::CommandLine::ForCurrentProcess();
+  if (command_line->HasSwitch(switches::kAllowImageDecodingToMultiPlane)) {
+    std::string value = command_line->GetSwitchValueASCII(
+        switches::kAllowImageDecodingToMultiPlane);
+    if (value == "true") {
+      allow_image_decoding_to_multi_plane = true;
+    } else {
+      DCHECK_EQ(value, "false");
+      allow_image_decoding_to_multi_plane = false;
+    }
+  }
+#endif  // !defined(COBALT_BUILD_TYPE_GOLD)
+
+  return allow_image_decoding_to_multi_plane;
+}
 
 }  // namespace image
 }  // namespace loader

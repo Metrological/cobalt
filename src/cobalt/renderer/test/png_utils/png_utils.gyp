@@ -13,6 +13,9 @@
 # limitations under the License.
 
 {
+  'variables': {
+    'optimize_target_for_speed': 1,
+  },
   'targets': [
     {
       # This target provides (not production suitable) utility code for decoding
@@ -56,7 +59,6 @@
       ],
       'dependencies': [
         '<(DEPTH)/base/base.gyp:base',
-        '<(DEPTH)/cobalt/trace_event/trace_event.gyp:run_all_benchmarks',
         'png_utils',
         'png_utils_copy_test_data',
       ],

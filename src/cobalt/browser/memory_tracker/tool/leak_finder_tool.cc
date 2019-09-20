@@ -19,17 +19,20 @@
 #include <map>
 #include <utility>
 
-#include "base/timer.h"
+#include "base/timer/timer.h"
 #include "cobalt/browser/memory_tracker/tool/params.h"
 #include "cobalt/browser/memory_tracker/tool/tool_impl.h"
 #include "cobalt/browser/memory_tracker/tool/util.h"
 #include "cobalt/script/util/stack_trace_helpers.h"
 #include "nb/memory_scope.h"
-#include "starboard/string.h"
+#include "starboard/common/string.h"
 
 namespace cobalt {
 namespace browser {
 namespace memory_tracker {
+
+// Number of output values to display in the csv.
+const size_t kNumberOfOutputColumns = 40;
 
 LeakFinderTool::LeakFinderTool(StackTraceMode mode)
     : string_pool_(128),
@@ -99,7 +102,7 @@ void LeakFinderTool::OnMemoryAllocation(
 void LeakFinderTool::OnMemoryDeallocation(
     const void* memory_block, const nb::analytics::AllocationRecord& record,
     const nb::analytics::CallStack& callstack) {
-  UNREFERENCED_PARAMETER(callstack);
+  SB_UNREFERENCED_PARAMETER(callstack);
 
   const std::string* symbol_str = NULL;
 
@@ -202,14 +205,13 @@ void LeakFinderTool::Run(Params* params) {
       std::vector<AllocationProfile> alloc_profiles;
       GenerateTopLeakingAllocationProfiles(time_values, map_allocations,
                                            &alloc_profiles);
-
       if (alloc_profiles.empty()) {
         params->logger()->Output(
             "MemoryTrackerLeakFinder: alloc_profiles was "
             "empty and nothing is written.");
       } else {
-        if (alloc_profiles.size() > 20) {
-          alloc_profiles.resize(20);
+        if (alloc_profiles.size() > kNumberOfOutputColumns) {
+          alloc_profiles.resize(kNumberOfOutputColumns);
         }
 
         std::string csv_str = GenerateCSV(time_values, alloc_profiles);
@@ -319,8 +321,11 @@ std::string LeakFinderTool::GenerateCSV(
   ss << kNewLine << kNewLine;
 
   // HEADER
-  ss << "// Allocation in megabytes." << kNewLine;
-  ss << kQuote << "Time(min)" << kQuote << kDelimiter;
+  ss << "// Allocation in megabytes. Keep in mind that only" << kNewLine
+     << "// the N top allocations will be displayed, sorted" << kNewLine
+     << "// by slope steepness. Negative slopping allocations" << kNewLine
+     << "// and allocations that have few blocks may be filtered" << kNewLine
+     << "// out." << kNewLine << kQuote << "Time(min)" << kQuote << kDelimiter;
   for (size_t i = 0; i < data.size(); ++i) {
     const AllocationProfile& alloc_profile = data[i];
     const std::string& name = *alloc_profile.name_;

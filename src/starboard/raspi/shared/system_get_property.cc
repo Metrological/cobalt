@@ -15,8 +15,14 @@
 #include "starboard/system.h"
 
 #include <sys/utsname.h>
-#include "starboard/log.h"
-#include "starboard/string.h"
+
+#include <string>
+
+#if SB_API_VERSION >= 11
+#include "starboard/format_string.h"
+#endif  // SB_API_VERSION >= 11
+#include "starboard/common/log.h"
+#include "starboard/common/string.h"
 
 namespace {
 
@@ -46,7 +52,11 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
     case kSbSystemPropertyFirmwareVersion:
     case kSbSystemPropertyModelName:
     case kSbSystemPropertyModelYear:
+#if SB_API_VERSION >= 11
+    case kSbSystemPropertyOriginalDesignManufacturerName:
+#else
     case kSbSystemPropertyNetworkOperatorName:
+#endif
     case kSbSystemPropertySpeechApiKey:
       return false;
 
@@ -60,19 +70,10 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       if (uname(&name) == -1)
         return false;
 
-      if (SbStringCopy(out_value, "Raspian ", value_length) >= value_length)
-        return false;
+      std::string temp =
+          starboard::FormatString("Raspian %s %s", name.sysname, name.machine);
 
-      if (SbStringConcat(out_value, name.sysname, value_length) >= value_length)
-        return false;
-
-      if (SbStringConcat(out_value, " ", value_length) >= value_length)
-        return false;
-
-      if (SbStringConcat(out_value, name.machine, value_length) >= value_length)
-        return false;
-
-      return true;
+      return CopyStringAndTestIfSuccess(out_value, value_length, temp.c_str());
     }
 
     default:

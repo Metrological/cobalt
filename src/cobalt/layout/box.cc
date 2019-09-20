@@ -16,9 +16,11 @@
 
 #include <algorithm>
 #include <limits>
+#include <memory>
 
 #include "base/logging.h"
 #include "cobalt/base/polymorphic_downcast.h"
+#include "cobalt/cssom/computed_style_utils.h"
 #include "cobalt/cssom/integer_value.h"
 #include "cobalt/cssom/keyword_value.h"
 #include "cobalt/cssom/length_value.h"
@@ -26,6 +28,7 @@
 #include "cobalt/cssom/property_list_value.h"
 #include "cobalt/cssom/shadow_value.h"
 #include "cobalt/cssom/transform_function_list_value.h"
+#include "cobalt/cssom/transform_property_value.h"
 #include "cobalt/dom/serializer.h"
 #include "cobalt/layout/container_box.h"
 #include "cobalt/layout/render_tree_animations.h"
@@ -62,6 +65,39 @@ using cobalt::render_tree::animations::AnimateNode;
 
 namespace cobalt {
 namespace layout {
+
+namespace {
+// Returns a matrix representing the transform on the object induced by its
+// CSS transform style property.  If the object does not have a transform
+// style property set, this will be the identity matrix.  Otherwise, it is
+// calculated from the property value and returned.  The transform-origin
+// style property will also be taken into account, and therefore the laid
+// out size of the object is also required in order to resolve a
+// percentage-based transform-origin.
+math::Matrix3F GetCSSTransform(
+    cssom::PropertyValue* transform_property_value,
+    cssom::PropertyValue* transform_origin_property_value,
+    const math::RectF& used_rect,
+    const scoped_refptr<ui_navigation::NavItem>& ui_nav_focus) {
+  if (transform_property_value == cssom::KeywordValue::GetNone()) {
+    return math::Matrix3F::Identity();
+  }
+
+  cssom::TransformPropertyValue* transform_value =
+      base::polymorphic_downcast<cssom::TransformPropertyValue*>(
+          transform_property_value);
+  math::Matrix3F css_transform_matrix = transform_value->ToMatrix(
+      used_rect.size(), ui_nav_focus);
+
+  // Apply the CSS transformations, taking into account the CSS
+  // transform-origin property.
+  math::Vector2dF origin =
+      GetTransformOrigin(used_rect, transform_origin_property_value);
+
+  return math::TranslateMatrix(origin.x(), origin.y()) * css_transform_matrix *
+         math::TranslateMatrix(-origin.x(), -origin.y());
+}
+}  // namespace
 
 Box::Box(const scoped_refptr<cssom::CSSComputedStyleDeclaration>&
              css_computed_style_declaration,
@@ -244,6 +280,61 @@ LayoutUnit Box::GetMarginBoxHeight() const {
   return margin_top() + GetBorderBoxHeight() + margin_bottom();
 }
 
+math::Matrix3F Box::GetMarginBoxTransformFromContainingBlock(
+    const ContainerBox* containing_block) const {
+  math::Matrix3F transform = math::Matrix3F::Identity();
+  if (this == containing_block) {
+    return transform;
+  }
+
+  // Walk up the containing block tree to build the transform matrix.
+  // The logic is similar to using ApplyTransformActionToCoordinate with exit
+  // transform but a matrix is calculated instead; logic analogous to
+  // GetMarginBoxOffsetFromRoot is also factored in.
+  for (const Box* box = this;;) {
+    // Factor in the margin box offset.
+    transform =
+        math::TranslateMatrix(
+            box->margin_box_offset_from_containing_block().x().toFloat(),
+            box->margin_box_offset_from_containing_block().y().toFloat()) *
+        transform;
+
+    // Factor in the box's transform.
+    if (box->IsTransformed()) {
+      Vector2dLayoutUnit transform_rect_offset =
+          box->margin_box_offset_from_containing_block() +
+          box->GetBorderBoxOffsetFromMarginBox();
+      transform =
+          GetCSSTransform(
+              box->computed_style()->transform().get(),
+              box->computed_style()->transform_origin().get(),
+              math::RectF(transform_rect_offset.x().toFloat(),
+                          transform_rect_offset.y().toFloat(),
+                          box->GetBorderBoxWidth().toFloat(),
+                          box->GetBorderBoxHeight().toFloat()),
+              box->ComputeUiNavFocusForTransform()) *
+          transform;
+    }
+
+    const ContainerBox* container = box->GetContainingBlock();
+    if (container == containing_block || container == nullptr) {
+      break;
+    }
+
+    // Convert the transform into the container's coordinate space.
+    Vector2dLayoutUnit containing_block_offset =
+        box->GetContainingBlockOffsetFromItsContentBox(container) +
+        container->GetContentBoxOffsetFromMarginBox();
+    transform = math::TranslateMatrix(
+        containing_block_offset.x().toFloat(),
+        containing_block_offset.y().toFloat()) * transform;
+
+    box = container;
+  }
+
+  return transform;
+}
+
 Vector2dLayoutUnit Box::GetMarginBoxOffsetFromRoot(
     bool transform_forms_root) const {
   Vector2dLayoutUnit containing_block_offset_from_root =
@@ -284,37 +375,38 @@ RectLayoutUnit Box::GetBorderBoxFromRoot(bool transform_forms_root) const {
 }
 
 RectLayoutUnit Box::GetTransformedBorderBoxFromRoot() const {
-  // Initialize the box corners to the border box.
-  RectLayoutUnit border_box =
-      GetBorderBoxFromRoot(true /*transform_forms_root*/);
-  std::vector<math::Vector2dF> box_corners;
-  box_corners.push_back(
-      math::Vector2dF(border_box.x().toFloat(), border_box.y().toFloat()));
-  box_corners.push_back(
-      math::Vector2dF((border_box.x() + border_box.width()).toFloat(),
-                      border_box.y().toFloat()));
-  box_corners.push_back(
-      math::Vector2dF(border_box.x().toFloat(),
-                      (border_box.y() + border_box.height()).toFloat()));
-  box_corners.push_back(
-      math::Vector2dF((border_box.x() + border_box.width()).toFloat(),
-                      (border_box.y() + border_box.height()).toFloat()));
+  return GetTransformedBorderBoxFromContainingBlock(nullptr);
+}
 
-  // Update the coordinates of the 4 corners by walking up to root and removing
-  // any transforms that have been applied.
-  for (const Box* check_box = this; check_box != NULL;
-       check_box = check_box->GetContainingBlock()) {
-    check_box->ApplyTransformActionToCoordinates(kExitTransform, &box_corners);
+RectLayoutUnit Box::GetTransformedBorderBoxFromContainingBlock(
+    const ContainerBox* containing_block) const {
+  // Get the transform for the margin box from the containing block and
+  // add the border box offset to the beginning of the transform.
+  Vector2dLayoutUnit border_box_offset = GetBorderBoxOffsetFromMarginBox();
+  math::Matrix3F transform =
+      GetMarginBoxTransformFromContainingBlock(containing_block) *
+      math::TranslateMatrix(border_box_offset.x().toFloat(),
+                            border_box_offset.y().toFloat());
+
+  // Transform the border box.
+  const int kNumPoints = 4;
+  math::PointF border_box_corners[kNumPoints] = {
+    { 0.0f, 0.0f },
+    { GetBorderBoxWidth().toFloat(), 0.0f },
+    { 0.0f, GetBorderBoxHeight().toFloat() },
+    { GetBorderBoxWidth().toFloat(), GetBorderBoxHeight().toFloat() },
+  };
+
+  for (int i = 0; i < kNumPoints; ++i) {
+    border_box_corners[i] = transform * border_box_corners[i];
   }
 
-  // Generate the new box from the min and max values of all of the corners.
-  math::Vector2dF& current_corner = box_corners[0];
-  math::Vector2dF min_corner(current_corner);
-  math::Vector2dF max_corner(current_corner);
-  for (size_t i = 1; i < 4; ++i) {
-    current_corner = box_corners[i];
-    min_corner.SetToMin(current_corner);
-    max_corner.SetToMax(current_corner);
+  // Return the bounding box for the transformed points.
+  math::PointF min_corner(border_box_corners[0]);
+  math::PointF max_corner(border_box_corners[0]);
+  for (int i = 1; i < kNumPoints; ++i) {
+    min_corner.SetToMin(border_box_corners[i]);
+    max_corner.SetToMax(border_box_corners[i]);
   }
 
   return RectLayoutUnit(LayoutUnit(min_corner.x()), LayoutUnit(min_corner.y()),
@@ -330,8 +422,13 @@ LayoutUnit Box::GetBorderBoxHeight() const {
   return border_top_width() + GetPaddingBoxHeight() + border_bottom_width();
 }
 
-SizeLayoutUnit Box::GetBorderBoxSize() const {
-  return SizeLayoutUnit(GetBorderBoxWidth(), GetBorderBoxHeight());
+SizeLayoutUnit Box::GetClampedBorderBoxSize() const {
+  // Border box size depends on the content, padding, and border areas
+  // Its dimensions cannot be negative because the content, padding, and border
+  // areas must be at least zero
+  // (https://www.w3.org/TR/css-box-3/#the-css-box-model)
+  return SizeLayoutUnit(std::max(LayoutUnit(0), GetBorderBoxWidth()),
+                        std::max(LayoutUnit(0), GetBorderBoxHeight()));
 }
 
 Vector2dLayoutUnit Box::GetBorderBoxOffsetFromRoot(
@@ -344,6 +441,19 @@ Vector2dLayoutUnit Box::GetBorderBoxOffsetFromMarginBox() const {
   return Vector2dLayoutUnit(margin_left(), margin_top());
 }
 
+Vector2dLayoutUnit Box::GetBorderBoxOffsetFromContainingBlock() const {
+  return Vector2dLayoutUnit(GetBorderBoxLeftEdgeOffsetFromContainingBlock(),
+                            GetBorderBoxTopEdgeOffsetFromContainingBlock());
+}
+
+LayoutUnit Box::GetBorderBoxLeftEdgeOffsetFromContainingBlock() const {
+  return left() + GetBorderBoxOffsetFromMarginBox().x();
+}
+
+LayoutUnit Box::GetBorderBoxTopEdgeOffsetFromContainingBlock() const {
+  return top() + GetBorderBoxOffsetFromMarginBox().y();
+}
+
 LayoutUnit Box::GetPaddingBoxWidth() const {
   return padding_left() + width() + padding_right();
 }
@@ -352,8 +462,13 @@ LayoutUnit Box::GetPaddingBoxHeight() const {
   return padding_top() + height() + padding_bottom();
 }
 
-SizeLayoutUnit Box::GetPaddingBoxSize() const {
-  return SizeLayoutUnit(GetPaddingBoxWidth(), GetPaddingBoxHeight());
+SizeLayoutUnit Box::GetClampedPaddingBoxSize() const {
+  // Padding box size depends on the content and padding areas
+  // Its dimensions cannot be negative because the content and padding areas
+  // must be at least zero
+  // (https://www.w3.org/TR/css-box-3/#the-css-box-model)
+  return SizeLayoutUnit(std::max(LayoutUnit(0), GetPaddingBoxWidth()),
+                        std::max(LayoutUnit(0), GetPaddingBoxHeight()));
 }
 
 Vector2dLayoutUnit Box::GetPaddingBoxOffsetFromRoot(
@@ -364,6 +479,27 @@ Vector2dLayoutUnit Box::GetPaddingBoxOffsetFromRoot(
 
 Vector2dLayoutUnit Box::GetPaddingBoxOffsetFromBorderBox() const {
   return Vector2dLayoutUnit(border_left_width(), border_top_width());
+}
+
+LayoutUnit Box::GetPaddingBoxLeftEdgeOffsetFromMarginBox() const {
+  return margin_left() + border_left_width();
+}
+
+LayoutUnit Box::GetPaddingBoxTopEdgeOffsetFromMarginBox() const {
+  return margin_top() + border_top_width();
+}
+
+Vector2dLayoutUnit Box::GetPaddingBoxOffsetFromContainingBlock() const {
+  return Vector2dLayoutUnit(GetPaddingBoxLeftEdgeOffsetFromContainingBlock(),
+                            GetPaddingBoxTopEdgeOffsetFromContainingBlock());
+}
+
+LayoutUnit Box::GetPaddingBoxLeftEdgeOffsetFromContainingBlock() const {
+  return left() + GetPaddingBoxLeftEdgeOffsetFromMarginBox();
+}
+
+LayoutUnit Box::GetPaddingBoxTopEdgeOffsetFromContainingBlock() const {
+  return top() + GetPaddingBoxTopEdgeOffsetFromMarginBox();
 }
 
 Vector2dLayoutUnit Box::GetContentBoxOffsetFromRoot(
@@ -425,6 +561,16 @@ LayoutUnit Box::GetContentBoxEndEdgeOffsetFromContainingBlock(
 
 Vector2dLayoutUnit Box::GetContentBoxOffsetFromPaddingBox() const {
   return Vector2dLayoutUnit(padding_left(), padding_top());
+}
+
+LayoutUnit Box::GetContentToMarginHorizontal() const {
+  return margin_left() + border_left_width() + padding_left() +
+         padding_right() + border_right_width() + margin_right();
+}
+
+LayoutUnit Box::GetContentToMarginVertical() const {
+  return margin_top() + border_top_width() + padding_top() + padding_bottom() +
+         border_bottom_width() + margin_bottom();
 }
 
 LayoutUnit Box::GetInlineLevelBoxHeight() const { return GetMarginBoxHeight(); }
@@ -549,11 +695,21 @@ void Box::RenderAndAnimate(
   render_tree::CompositionNode::Builder border_node_builder(border_box_offset);
   AnimateNode::Builder animate_node_builder;
 
-  const base::optional<RoundedCorners> rounded_corners =
+  const base::Optional<RoundedCorners> rounded_corners =
       ComputeRoundedCorners();
 
-  const base::optional<RoundedCorners> padding_rounded_corners =
+  const base::Optional<RoundedCorners> padding_rounded_corners =
       ComputePaddingRoundedCorners(rounded_corners);
+
+  // Update the associated UI navigation item with the box's properties.
+  if (ui_nav_item_) {
+    UpdateUiNavigationItem();
+  }
+
+  // Update intersection observers for any targets represented by this box.
+  if (box_intersection_observer_module_) {
+    box_intersection_observer_module_->UpdateIntersectionObservations();
+  }
 
   // The painting order is:
   // - background color.
@@ -590,8 +746,7 @@ void Box::RenderAndAnimate(
                               &border_node_builder, &animate_node_builder);
   }
 
-  const bool overflow_hidden =
-      computed_style()->overflow() == cssom::KeywordValue::GetHidden();
+  const bool overflow_hidden = IsOverflowCropped(computed_style());
 
   bool overflow_hidden_needs_to_be_applied = overflow_hidden;
 
@@ -607,16 +762,18 @@ void Box::RenderAndAnimate(
   // check to see if there is a need to distinguish between content and
   // background.
   if (!overflow_hidden ||
-      (!outline_is_visible &&
+      (!IsOverflowAnimatedByUiNavigation() &&
+       !outline_is_visible &&
        computed_style()->box_shadow() == cssom::KeywordValue::GetNone() &&
        border_insets_.zero())) {
     // If there's no reason to distinguish between content and background,
     // just add them all to the same composition node.
     RenderAndAnimateContent(&border_node_builder, stacking_context);
   } else {
+    // Otherwise, deal with content specifically so that we can animate the
+    // content offset for UI navigation and/or apply overflow: hidden to the
+    // content but not the background.
     CompositionNode::Builder content_node_builder;
-    // Otherwise, deal with content specifically so that we can apply overflow:
-    // hidden to the content but not the background.
     RenderAndAnimateContent(&content_node_builder, stacking_context);
     if (!content_node_builder.children().empty()) {
       border_node_builder.AddChild(RenderAndAnimateOverflow(
@@ -634,7 +791,7 @@ void Box::RenderAndAnimate(
 
   if (!border_node_builder.children().empty()) {
     scoped_refptr<render_tree::Node> border_node =
-        new CompositionNode(border_node_builder.Pass());
+        new CompositionNode(std::move(border_node_builder));
     if (overflow_hidden_needs_to_be_applied) {
       border_node =
           RenderAndAnimateOverflow(padding_rounded_corners, border_node,
@@ -686,6 +843,8 @@ bool Box::IsRenderedLater(RenderSequence render_sequence,
 
 AnonymousBlockBox* Box::AsAnonymousBlockBox() { return NULL; }
 const AnonymousBlockBox* Box::AsAnonymousBlockBox() const { return NULL; }
+BlockContainerBox* Box::AsBlockContainerBox() { return NULL; }
+const BlockContainerBox* Box::AsBlockContainerBox() const { return NULL; }
 ContainerBox* Box::AsContainerBox() { return NULL; }
 const ContainerBox* Box::AsContainerBox() const { return NULL; }
 TextBox* Box::AsTextBox() { return NULL; }
@@ -720,23 +879,24 @@ void Box::DumpWithIndent(std::ostream* stream, int indent) const {
 namespace {
 void PopulateBaseStyleForBackgroundColorNode(
     const scoped_refptr<const cssom::CSSComputedStyleData>& source_style,
-    const scoped_refptr<cssom::CSSComputedStyleData>& destination_style) {
+    const scoped_refptr<cssom::MutableCSSComputedStyleData>&
+        destination_style) {
   // NOTE: Properties set by PopulateBaseStyleForBackgroundNode() should match
   // the properties used by SetupBackgroundNodeFromStyle().
   destination_style->set_background_color(source_style->background_color());
 }
 
 void SetupBackgroundColorNodeFromStyle(
-    const base::optional<RoundedCorners>& rounded_corners,
+    const base::Optional<RoundedCorners>& rounded_corners,
     const scoped_refptr<const cssom::CSSComputedStyleData>& style,
     RectNode::Builder* rect_node_builder) {
   rect_node_builder->background_brush =
-      scoped_ptr<render_tree::Brush>(new render_tree::SolidColorBrush(
+      std::unique_ptr<render_tree::Brush>(new render_tree::SolidColorBrush(
           GetUsedColor(style->background_color())));
 
   if (rounded_corners) {
     rect_node_builder->rounded_corners =
-        scoped_ptr<RoundedCorners>(new RoundedCorners(*rounded_corners));
+        std::unique_ptr<RoundedCorners>(new RoundedCorners(*rounded_corners));
   }
 }
 
@@ -788,7 +948,8 @@ Border CreateBorderFromStyle(
 
 void PopulateBaseStyleForBorderNode(
     const scoped_refptr<const cssom::CSSComputedStyleData>& source_style,
-    const scoped_refptr<cssom::CSSComputedStyleData>& destination_style) {
+    const scoped_refptr<cssom::MutableCSSComputedStyleData>&
+        destination_style) {
   // NOTE: Properties set by PopulateBaseStyleForBorderNode() should match the
   // properties used by SetupBorderNodeFromStyle().
 
@@ -817,21 +978,22 @@ void PopulateBaseStyleForBorderNode(
 }
 
 void SetupBorderNodeFromStyle(
-    const base::optional<RoundedCorners>& rounded_corners,
+    const base::Optional<RoundedCorners>& rounded_corners,
     const scoped_refptr<const cssom::CSSComputedStyleData>& style,
     RectNode::Builder* rect_node_builder) {
   rect_node_builder->border =
-      scoped_ptr<Border>(new Border(CreateBorderFromStyle(style)));
+      std::unique_ptr<Border>(new Border(CreateBorderFromStyle(style)));
 
   if (rounded_corners) {
     rect_node_builder->rounded_corners =
-        scoped_ptr<RoundedCorners>(new RoundedCorners(*rounded_corners));
+        std::unique_ptr<RoundedCorners>(new RoundedCorners(*rounded_corners));
   }
 }
 
 void PopulateBaseStyleForOutlineNode(
     const scoped_refptr<const cssom::CSSComputedStyleData>& source_style,
-    const scoped_refptr<cssom::CSSComputedStyleData>& destination_style) {
+    const scoped_refptr<cssom::MutableCSSComputedStyleData>&
+        destination_style) {
   // NOTE: Properties set by PopulateBaseStyleForOutlineNode() should match the
   // properties used by SetupOutlineNodeFromStyle().
 
@@ -848,7 +1010,7 @@ void SetupOutlineNodeFromStyleWithOutset(
   rect_node_builder->rect.Outset(outset_width, outset_width);
   if (outset_width != 0) {
     rect_node_builder->border =
-        scoped_ptr<Border>(new Border(render_tree::BorderSide(
+        std::unique_ptr<Border>(new Border(render_tree::BorderSide(
             outset_width, GetRenderTreeBorderStyle(style->outline_style()),
             GetUsedColor(style->outline_color()))));
   }
@@ -887,6 +1049,11 @@ void Box::DumpProperties(std::ostream* stream) const {
   *stream << "padding=" << padding_insets_.ToString() << " ";
 
   *stream << "baseline=" << GetBaselineOffsetFromTopMarginEdge() << " ";
+  if (css_computed_style_declaration_ &&
+      css_computed_style_declaration_->data()) {
+    *stream << "is_inline_before_blockification="
+            << is_inline_before_blockification() << " ";
+  }
 }
 
 void Box::DumpChildrenWithIndent(std::ostream* /*stream*/,
@@ -959,6 +1126,12 @@ int Box::GetZIndex() const {
     return base::polymorphic_downcast<cssom::IntegerValue*>(
                computed_style()->z_index().get())->value();
   }
+}
+
+int Box::GetOrder() const {
+  return base::polymorphic_downcast<cssom::IntegerValue*>(
+             computed_style()->order().get())
+      ->value();
 }
 
 bool Box::IsUnderCoordinate(const Vector2dLayoutUnit& coordinate) const {
@@ -1125,57 +1298,33 @@ void Box::UpdatePaddings(const LayoutParams& layout_params) {
 
 namespace {
 
-// Returns a matrix representing the transform on the object induced by its
-// CSS transform style property.  If the object does not have a transform
-// style property set, this will be the identity matrix.  Otherwise, it is
-// calculated from the property value and returned.  The transform-origin
-// style property will also be taken into account, and therefore the laid
-// out size of the object is also required in order to resolve a
-// percentage-based transform-origin.
-math::Matrix3F GetCSSTransform(
-    cssom::PropertyValue* transform_property_value,
-    cssom::PropertyValue* transform_origin_property_value,
-    const math::RectF& used_rect) {
-  if (transform_property_value == cssom::KeywordValue::GetNone()) {
-    return math::Matrix3F::Identity();
-  }
-
-  math::Matrix3F css_transform_matrix =
-      GetTransformMatrix(transform_property_value).ToMatrix3F(used_rect.size());
-
-  // Apply the CSS transformations, taking into account the CSS
-  // transform-origin property.
-  math::Vector2dF origin =
-      GetTransformOrigin(used_rect, transform_origin_property_value);
-
-  return math::TranslateMatrix(origin.x(), origin.y()) * css_transform_matrix *
-         math::TranslateMatrix(-origin.x(), -origin.y());
-}
-
-void PopulateBaseStyleForMatrixTransformNode(
-    const scoped_refptr<const cssom::CSSComputedStyleData>& source_style,
-    const scoped_refptr<cssom::CSSComputedStyleData>& destination_style) {
-  // NOTE: Properties set by PopulateBaseStyleForMatrixTransformNode() should
-  // match the properties used by
-  // SetupMatrixTransformNodeFromCSSSStyleTransform().
-  destination_style->set_transform(source_style->transform());
-  destination_style->set_transform_origin(source_style->transform_origin());
-}
-
 // Used within the animation callback for CSS transforms.  This will set the
 // transform of a single-child matrix transform node to that specified by the
 // CSS transform of the provided CSS Style Declaration.
-void SetupMatrixTransformNodeFromCSSSStyleTransform(
+void SetupMatrixTransformNodeFromCSSStyle(
     const math::RectF& used_rect,
+    const scoped_refptr<ui_navigation::NavItem>& ui_nav_focus,
     const scoped_refptr<const cssom::CSSComputedStyleData>& style,
     MatrixTransformNode::Builder* transform_node_builder) {
-  transform_node_builder->transform =
-      GetCSSTransform(style->transform(), style->transform_origin(), used_rect);
+  transform_node_builder->transform = GetCSSTransform(
+      style->transform().get(), style->transform_origin().get(),
+      used_rect, ui_nav_focus);
+}
+
+void SetupMatrixTransformNodeFromCSSTransform(
+    const math::RectF& used_rect,
+    const scoped_refptr<ui_navigation::NavItem>& ui_nav_focus,
+    const scoped_refptr<cssom::PropertyValue>& transform,
+    const scoped_refptr<cssom::PropertyValue>& transform_origin,
+    MatrixTransformNode::Builder* transform_node_builder) {
+  transform_node_builder->transform = GetCSSTransform(
+      transform.get(), transform_origin.get(), used_rect, ui_nav_focus);
 }
 
 void PopulateBaseStyleForFilterNode(
     const scoped_refptr<const cssom::CSSComputedStyleData>& source_style,
-    const scoped_refptr<cssom::CSSComputedStyleData>& destination_style) {
+    const scoped_refptr<cssom::MutableCSSComputedStyleData>&
+        destination_style) {
   // NOTE: Properties set by PopulateBaseStyleForFilterNode() should match the
   // properties used by SetupFilterNodeFromStyle().
   destination_style->set_opacity(source_style->opacity());
@@ -1218,8 +1367,8 @@ bool HasAnimatedOutline(const web_animations::AnimationSet* animation_set) {
 
 }  // namespace
 
-base::optional<render_tree::RoundedCorners> Box::ComputeRoundedCorners() const {
-  UsedBorderRadiusProvider border_radius_provider(GetBorderBoxSize());
+base::Optional<render_tree::RoundedCorners> Box::ComputeRoundedCorners() const {
+  UsedBorderRadiusProvider border_radius_provider(GetClampedBorderBoxSize());
   render_tree::RoundedCorner border_top_left_radius;
   render_tree::RoundedCorner border_top_right_radius;
   render_tree::RoundedCorner border_bottom_right_radius;
@@ -1254,7 +1403,7 @@ base::optional<render_tree::RoundedCorners> Box::ComputeRoundedCorners() const {
         border_radius_provider.rounded_corner()->vertical);
   }
 
-  base::optional<RoundedCorners> rounded_corners;
+  base::Optional<RoundedCorners> rounded_corners;
   if (!border_top_left_radius.IsSquare() ||
       !border_top_right_radius.IsSquare() ||
       !border_bottom_right_radius.IsSquare() ||
@@ -1263,15 +1412,15 @@ base::optional<render_tree::RoundedCorners> Box::ComputeRoundedCorners() const {
                             border_bottom_right_radius,
                             border_bottom_left_radius);
     rounded_corners =
-        rounded_corners->Normalize(math::RectF(GetBorderBoxSize()));
+        rounded_corners->Normalize(math::RectF(GetClampedBorderBoxSize()));
   }
 
   return rounded_corners;
 }
 
-base::optional<render_tree::RoundedCorners> Box::ComputePaddingRoundedCorners(
-    const base::optional<RoundedCorners>& rounded_corners) const {
-  base::optional<RoundedCorners> padding_rounded_corners_if_different;
+base::Optional<render_tree::RoundedCorners> Box::ComputePaddingRoundedCorners(
+    const base::Optional<RoundedCorners>& rounded_corners) const {
+  base::Optional<RoundedCorners> padding_rounded_corners_if_different;
 
   if (rounded_corners && !border_insets_.zero()) {
     // If we have rounded corners and a non-zero border, then we need to
@@ -1282,24 +1431,44 @@ base::optional<render_tree::RoundedCorners> Box::ComputePaddingRoundedCorners(
         border_insets_.right().toFloat(), border_insets_.bottom().toFloat()));
   }
 
-  const base::optional<RoundedCorners>& padding_rounded_corners =
+  const base::Optional<RoundedCorners>& padding_rounded_corners =
       padding_rounded_corners_if_different
           ? padding_rounded_corners_if_different
           : rounded_corners;
 
   if (padding_rounded_corners) {
-    return padding_rounded_corners->Normalize(math::RectF(GetPaddingBoxSize()));
+    return padding_rounded_corners->Normalize(
+        math::RectF(GetClampedPaddingBoxSize()));
   } else {
     return padding_rounded_corners;
   }
 }
 
+scoped_refptr<ui_navigation::NavItem> Box::ComputeUiNavFocusForTransform()
+    const {
+  const cssom::TransformPropertyValue* transform_property_value =
+      base::polymorphic_downcast<cssom::TransformPropertyValue*>(
+          computed_style()->transform().get());
+  if (!transform_property_value->HasTrait(
+      cssom::TransformFunction::kTraitUsesUiNavFocus)) {
+    return nullptr;
+  }
+
+  // Find the nearest UI navigation item that is a focus item.
+  for (const Box* box = this; box != nullptr; box = box->parent_) {
+    if (box->ui_nav_item_ && !box->ui_nav_item_->IsContainer()) {
+      return box->ui_nav_item_;
+    }
+  }
+  return nullptr;
+}
+
 void Box::RenderAndAnimateBoxShadow(
-    const base::optional<RoundedCorners>& outer_rounded_corners,
-    const base::optional<RoundedCorners>& inner_rounded_corners,
+    const base::Optional<RoundedCorners>& outer_rounded_corners,
+    const base::Optional<RoundedCorners>& inner_rounded_corners,
     CompositionNode::Builder* border_node_builder,
     AnimateNode::Builder* animate_node_builder) {
-  UNREFERENCED_PARAMETER(animate_node_builder);
+  SB_UNREFERENCED_PARAMETER(animate_node_builder);
 
   if (computed_style()->box_shadow() != cssom::KeywordValue::GetNone()) {
     const cssom::PropertyListValue* box_shadow_list =
@@ -1335,8 +1504,9 @@ void Box::RenderAndAnimateBoxShadow(
                           GetUsedLength(shadow_value->offset_y()).toFloat()),
           shadow_blur_sigma, GetUsedColor(shadow_value->color()));
 
-      math::SizeF shadow_rect_size =
-          shadow_value->has_inset() ? GetPaddingBoxSize() : GetBorderBoxSize();
+      math::SizeF shadow_rect_size = shadow_value->has_inset()
+                                         ? GetClampedPaddingBoxSize()
+                                         : GetClampedBorderBoxSize();
 
       // Inset nodes apply within the border, starting at the padding box.
       math::PointF rect_offset =
@@ -1375,7 +1545,7 @@ bool AllBorderSidesShareSameStyle(const Border& border) {
 }  // namespace
 
 void Box::RenderAndAnimateBorder(
-    const base::optional<RoundedCorners>& rounded_corners,
+    const base::Optional<RoundedCorners>& rounded_corners,
     CompositionNode::Builder* border_node_builder,
     AnimateNode::Builder* animate_node_builder) {
   bool has_animated_border = HasAnimatedBorder(animations());
@@ -1386,7 +1556,7 @@ void Box::RenderAndAnimateBorder(
     return;
   }
 
-  math::RectF rect(GetBorderBoxSize());
+  math::RectF rect(GetClampedBorderBoxSize());
   RectNode::Builder rect_node_builder(rect);
   SetupBorderNodeFromStyle(rounded_corners, computed_style(),
                            &rect_node_builder);
@@ -1399,7 +1569,8 @@ void Box::RenderAndAnimateBorder(
     return;
   }
 
-  scoped_refptr<RectNode> border_node(new RectNode(rect_node_builder.Pass()));
+  scoped_refptr<RectNode> border_node(
+      new RectNode(std::move(rect_node_builder)));
   border_node_builder->AddChild(border_node);
 
   if (has_animated_border) {
@@ -1412,7 +1583,7 @@ void Box::RenderAndAnimateBorder(
 
 void Box::RenderAndAnimateOutline(CompositionNode::Builder* border_node_builder,
                                   AnimateNode::Builder* animate_node_builder) {
-  math::RectF rect(GetBorderBoxSize());
+  math::RectF rect(GetClampedBorderBoxSize());
   RectNode::Builder rect_node_builder(rect);
   bool has_animated_outline = HasAnimatedOutline(animations());
   if (has_animated_outline) {
@@ -1422,7 +1593,8 @@ void Box::RenderAndAnimateOutline(CompositionNode::Builder* border_node_builder,
     SetupOutlineNodeFromStyle(rect, computed_style(), &rect_node_builder);
   }
 
-  scoped_refptr<RectNode> outline_node(new RectNode(rect_node_builder.Pass()));
+  scoped_refptr<RectNode> outline_node(
+      new RectNode(std::move(rect_node_builder)));
 
   border_node_builder->AddChild(outline_node);
 
@@ -1437,11 +1609,11 @@ void Box::RenderAndAnimateOutline(CompositionNode::Builder* border_node_builder,
 math::RectF Box::GetBackgroundRect() {
   return math::RectF(
       math::PointF(border_left_width().toFloat(), border_top_width().toFloat()),
-      GetPaddingBoxSize());
+      GetClampedPaddingBoxSize());
 }
 
 void Box::RenderAndAnimateBackgroundColor(
-    const base::optional<RoundedCorners>& rounded_corners,
+    const base::Optional<RoundedCorners>& rounded_corners,
     render_tree::CompositionNode::Builder* border_node_builder,
     AnimateNode::Builder* animate_node_builder) {
   bool background_color_animated =
@@ -1465,11 +1637,12 @@ void Box::RenderAndAnimateBackgroundColor(
       GetUsedColor(computed_style()->background_color()).a() == 0.0f;
   if (!background_color_transparent || background_color_animated) {
     RectNode::Builder rect_node_builder(GetBackgroundRect(),
-                                        scoped_ptr<Brush>());
+                                        std::unique_ptr<Brush>());
     SetupBackgroundColorNodeFromStyle(rounded_corners, computed_style(),
                                       &rect_node_builder);
     if (!rect_node_builder.rect.IsEmpty()) {
-      scoped_refptr<RectNode> rect_node(new RectNode(rect_node_builder.Pass()));
+      scoped_refptr<RectNode> rect_node(
+          new RectNode(std::move(rect_node_builder)));
       border_node_builder->AddChild(rect_node);
 
       // TODO: Investigate if we could pass css_computed_style_declaration_
@@ -1485,14 +1658,14 @@ void Box::RenderAndAnimateBackgroundColor(
 }
 
 Box::RenderAndAnimateBackgroundImageResult Box::RenderAndAnimateBackgroundImage(
-    const base::optional<RoundedCorners>& rounded_corners) {
+    const base::Optional<RoundedCorners>& rounded_corners) {
   RenderAndAnimateBackgroundImageResult result;
   // We track a single render tree node because most of the time there will only
   // be one.  If there is more, we set |single_node| to NULL and instead
   // populate |composition|.  The code here tries to avoid using CompositionNode
   // if possible to avoid constructing an std::vector.
   scoped_refptr<render_tree::Node> single_node = NULL;
-  base::optional<CompositionNode::Builder> composition;
+  base::Optional<CompositionNode::Builder> composition;
   result.is_opaque = false;
 
   math::RectF image_frame(GetBackgroundRect());
@@ -1585,30 +1758,43 @@ scoped_refptr<render_tree::Node> Box::RenderAndAnimateOpacity(
 scoped_refptr<render_tree::Node> Box::RenderAndAnimateOverflow(
     const scoped_refptr<render_tree::Node>& content_node,
     const math::Vector2dF& border_offset) {
-  const base::optional<RoundedCorners> rounded_corners =
+  const base::Optional<RoundedCorners> rounded_corners =
       ComputeRoundedCorners();
 
-  const base::optional<RoundedCorners> padding_rounded_corners =
+  const base::Optional<RoundedCorners> padding_rounded_corners =
       ComputePaddingRoundedCorners(rounded_corners);
 
-  return RenderAndAnimateOverflow(padding_rounded_corners, content_node, NULL,
-                                  border_offset);
+  AnimateNode::Builder animate_node_builder;
+  scoped_refptr<render_tree::Node> overflow_node =
+      RenderAndAnimateOverflow(padding_rounded_corners, content_node,
+                               &animate_node_builder, border_offset);
+  if (animate_node_builder.empty()) {
+    return overflow_node;
+  }
+  return new AnimateNode(animate_node_builder, overflow_node);
 }
 
 scoped_refptr<render_tree::Node> Box::RenderAndAnimateOverflow(
-    const base::optional<render_tree::RoundedCorners>& rounded_corners,
+    const base::Optional<render_tree::RoundedCorners>& rounded_corners,
     const scoped_refptr<render_tree::Node>& content_node,
-    AnimateNode::Builder* /* animate_node_builder */,
+    AnimateNode::Builder* animate_node_builder,
     const math::Vector2dF& border_node_offset) {
-  DCHECK_EQ(computed_style()->overflow(), cssom::KeywordValue::GetHidden());
+  DCHECK(IsOverflowCropped(computed_style()));
 
   // The "overflow" property specifies whether a box is clipped to its padding
   // edge.  Use a render_tree viewport filter to implement it.
+  FilterNode::Builder filter_node_builder(content_node);
+
+  // The filter source node may be animated.
+  if (IsOverflowAnimatedByUiNavigation()) {
+    filter_node_builder.source = RenderAndAnimateUiNavigationContainer(
+        content_node, animate_node_builder);
+  }
+
   // Note that while it is unintuitive that we clip to the padding box and
   // not the content box, this behavior is consistent with Chrome and IE.
   //   https://www.w3.org/TR/CSS21/visufx.html#overflow
-  math::SizeF padding_size = GetPaddingBoxSize();
-  FilterNode::Builder filter_node_builder(content_node);
+  math::SizeF padding_size = GetClampedPaddingBoxSize();
   filter_node_builder.viewport_filter = ViewportFilter(
       math::RectF(border_node_offset.x() + border_left_width().toFloat(),
                   border_node_offset.y() + border_top_width().toFloat(),
@@ -1624,6 +1810,29 @@ scoped_refptr<render_tree::Node> Box::RenderAndAnimateTransform(
     const scoped_refptr<render_tree::Node>& border_node,
     AnimateNode::Builder* animate_node_builder,
     const math::Vector2dF& border_node_offset) {
+  // Certain transforms need a UI navigation focus item as input.
+  scoped_refptr<ui_navigation::NavItem> ui_nav_focus;
+
+  // Some transform functions change over time, so they will need to be
+  // evaluated indefinitely.
+  bool transform_is_dynamic = false;
+
+  {
+    const scoped_refptr<cssom::PropertyValue>& property_value =
+        computed_style()->transform();
+    if (property_value != cssom::KeywordValue::GetNone()) {
+      ui_nav_focus = ComputeUiNavFocusForTransform();
+      cssom::TransformPropertyValue* transform_value =
+          base::polymorphic_downcast<cssom::TransformPropertyValue*>(
+              property_value.get());
+      transform_is_dynamic =
+          transform_value->HasTrait(cssom::TransformFunction::kTraitIsDynamic);
+    }
+  }
+
+  math::RectF used_rect(PointAtOffsetFromOrigin(border_node_offset),
+                        GetClampedBorderBoxSize());
+
   if (IsTransformable() &&
       animations()->IsPropertyAnimated(cssom::kTransformProperty)) {
     // If the CSS transform is animated, we cannot flatten it into the layout
@@ -1634,22 +1843,44 @@ scoped_refptr<render_tree::Node> Box::RenderAndAnimateTransform(
 
     // Specifically animate only the matrix transform node with the CSS
     // transform.
-    AddAnimations<MatrixTransformNode>(
-        base::Bind(&PopulateBaseStyleForMatrixTransformNode),
-        base::Bind(&SetupMatrixTransformNodeFromCSSSStyleTransform,
-                   math::RectF(PointAtOffsetFromOrigin(border_node_offset),
-                               GetBorderBoxSize())),
-        *css_computed_style_declaration(), css_transform_node,
-        animate_node_builder);
+    // Do AddAnimations<MatrixTransformNode> with a custom end time.
+    scoped_refptr<cssom::MutableCSSComputedStyleData> base_style =
+        new cssom::MutableCSSComputedStyleData();
+    base_style->set_transform(computed_style()->transform());
+    base_style->set_transform_origin(computed_style()->transform_origin());
+    web_animations::BakedAnimationSet baked_animation_set(
+        *css_computed_style_declaration()->animations());
+    animate_node_builder->Add(
+        css_transform_node,
+        base::Bind(&ApplyAnimation<MatrixTransformNode>,
+                   base::Bind(&SetupMatrixTransformNodeFromCSSStyle,
+                              used_rect, ui_nav_focus),
+                   baked_animation_set, base_style),
+        transform_is_dynamic ? base::TimeDelta::Max()
+                             : baked_animation_set.end_time());
 
     return css_transform_node;
   }
 
+  if (transform_is_dynamic) {
+    // The CSS transform uses function(s) whose value changes over time. Animate
+    // the matrix transform node indefinitely.
+    scoped_refptr<MatrixTransformNode> css_transform_node =
+        new MatrixTransformNode(border_node, math::Matrix3F::Identity());
+    animate_node_builder->Add(
+        css_transform_node,
+        base::Bind(&SetupMatrixTransformNodeFromCSSTransform,
+                   used_rect, ui_nav_focus,
+                   computed_style()->transform(),
+                   computed_style()->transform_origin()));
+    return css_transform_node;
+  }
+
   if (IsTransformed()) {
-    math::Matrix3F matrix = GetCSSTransform(
-        computed_style()->transform(), computed_style()->transform_origin(),
-        math::RectF(PointAtOffsetFromOrigin(border_node_offset),
-                    GetBorderBoxSize()));
+    math::Matrix3F matrix =
+        GetCSSTransform(computed_style()->transform().get(),
+                        computed_style()->transform_origin().get(),
+                        used_rect, ui_nav_focus);
     if (matrix.IsIdentity()) {
       return border_node;
     } else {
@@ -1661,14 +1892,100 @@ scoped_refptr<render_tree::Node> Box::RenderAndAnimateTransform(
   return border_node;
 }
 
+namespace {
+void SetupCompositionNodeFromUiNavContainer(
+    const scoped_refptr<ui_navigation::NavItem>& container,
+    render_tree::CompositionNode::Builder* node_builder) {
+  float offset_x, offset_y;
+  container->GetContentOffset(&offset_x, &offset_y);
+  node_builder->set_offset(math::Vector2dF(-offset_x, -offset_y));
+}
+}  // namespace
+
+scoped_refptr<render_tree::Node> Box::RenderAndAnimateUiNavigationContainer(
+    const scoped_refptr<render_tree::Node>& node_to_animate,
+    render_tree::animations::AnimateNode::Builder* animate_node_builder) {
+  DCHECK(IsOverflowAnimatedByUiNavigation());
+
+  // If the node_to_animate is a suitable CompositionNode, then animate that
+  // instead of creating one to animate.
+  scoped_refptr<CompositionNode> composition_node;
+  if (node_to_animate->GetTypeId() == base::GetTypeId<CompositionNode>() &&
+      base::polymorphic_downcast<CompositionNode*>(node_to_animate.get())
+          ->data().offset().IsZero()) {
+    composition_node = base::polymorphic_downcast<CompositionNode*>(
+        node_to_animate.get());
+  } else {
+    composition_node = new CompositionNode(node_to_animate, math::Vector2dF());
+  }
+
+  animate_node_builder->Add(
+      composition_node,
+      base::Bind(&SetupCompositionNodeFromUiNavContainer, ui_nav_item_));
+
+  return composition_node;
+}
+
+void Box::UpdateUiNavigationItem() {
+  // The scrollable overflow region is the union of the border box of all
+  // contained boxes.
+  //   https://www.w3.org/TR/css-overflow-3/#scrollable-overflow-region
+  // Set the UI navigation position and size based on the border box. However,
+  // since navigation items have no notion of transforms on nodes, dimensions
+  // should be transformed to world space.
+
+  // Find this UI nav item's container. It will belong to one of this box's
+  // containing blocks.
+  scoped_refptr<ui_navigation::NavItem> ui_nav_container;
+  const ContainerBox* containing_block;
+  for (containing_block = GetContainingBlock(); containing_block != nullptr;
+       containing_block = containing_block->GetContainingBlock()) {
+    if (containing_block->ui_nav_item_ &&
+        containing_block->ui_nav_item_->IsContainer()) {
+      ui_nav_container = containing_block->ui_nav_item_;
+      break;
+    }
+  }
+
+  // Update the UI nav item's container as needed.
+  if (ui_nav_item_->GetContainerItem() != ui_nav_container) {
+    ui_nav_item_->SetContainerItem(ui_nav_container);
+  }
+
+  // The navigation item corresponds to the border box.
+  SizeLayoutUnit border_box_size = GetClampedBorderBoxSize();
+  ui_nav_item_->SetSize(border_box_size.width().toFloat(),
+                        border_box_size.height().toFloat());
+
+  // Get the border box's transform relative to its containing item. This
+  // dictates the center of the border box relative to its container.
+  Vector2dLayoutUnit border_box_offset = GetBorderBoxOffsetFromMarginBox();
+  math::Matrix3F transform =
+      GetMarginBoxTransformFromContainingBlock(containing_block) *
+      math::TranslateMatrix(border_box_offset.x().toFloat() +
+                            0.5f * border_box_size.width().toFloat(),
+                            border_box_offset.y().toFloat() +
+                            0.5f * border_box_size.height().toFloat());
+  ui_navigation::NativeMatrix2x3 ui_nav_matrix;
+  ui_nav_matrix.m[0] = transform(0, 0);
+  ui_nav_matrix.m[1] = transform(0, 1);
+  ui_nav_matrix.m[2] = transform(0, 2);
+  ui_nav_matrix.m[3] = transform(1, 0);
+  ui_nav_matrix.m[4] = transform(1, 1);
+  ui_nav_matrix.m[5] = transform(1, 2);
+  ui_nav_item_->SetTransform(&ui_nav_matrix);
+
+  ui_nav_item_->SetEnabled(true);
+}
+
 // Based on https://www.w3.org/TR/CSS21/visudet.html#blockwidth.
 void Box::UpdateHorizontalMarginsAssumingBlockLevelInFlowBox(
     LayoutUnit containing_block_width, LayoutUnit border_box_width,
-    const base::optional<LayoutUnit>& possibly_overconstrained_margin_left,
-    const base::optional<LayoutUnit>& possibly_overconstrained_margin_right) {
-  base::optional<LayoutUnit> maybe_margin_left =
+    const base::Optional<LayoutUnit>& possibly_overconstrained_margin_left,
+    const base::Optional<LayoutUnit>& possibly_overconstrained_margin_right) {
+  base::Optional<LayoutUnit> maybe_margin_left =
       possibly_overconstrained_margin_left;
-  base::optional<LayoutUnit> maybe_margin_right =
+  base::Optional<LayoutUnit> maybe_margin_right =
       possibly_overconstrained_margin_right;
 
   // If "border-left-width" + "padding-left" + "width" + "padding-right" +
@@ -1743,12 +2060,13 @@ bool Box::ApplyTransformActionToCoordinates(
   }
 
   // Transform the coordinates.
-  math::Matrix3F matrix =
-      GetCSSTransform(transform, computed_style()->transform_origin(),
-                      math::RectF(transform_rect_offset.x().toFloat(),
-                                  transform_rect_offset.y().toFloat(),
-                                  GetBorderBoxWidth().toFloat(),
-                                  GetBorderBoxHeight().toFloat()));
+  math::Matrix3F matrix = GetCSSTransform(
+      transform.get(), computed_style()->transform_origin().get(),
+      math::RectF(transform_rect_offset.x().toFloat(),
+                  transform_rect_offset.y().toFloat(),
+                  GetBorderBoxWidth().toFloat(),
+                  GetBorderBoxHeight().toFloat()),
+      ComputeUiNavFocusForTransform());
   if (!matrix.IsIdentity()) {
     if (action == kEnterTransform) {
       matrix = matrix.Inverse();
@@ -1787,6 +2105,31 @@ bool Box::ApplyTransformActionToCoordinates(
     }
   }
   return true;
+}
+
+void Box::AddIntersectionObserverRootsAndTargets(
+    BoxIntersectionObserverModule::IntersectionObserverRootVector&& roots,
+    BoxIntersectionObserverModule::IntersectionObserverTargetVector&& targets) {
+  if (!box_intersection_observer_module_) {
+    box_intersection_observer_module_ =
+        std::unique_ptr<BoxIntersectionObserverModule>(
+            new BoxIntersectionObserverModule(this));
+  }
+
+  box_intersection_observer_module_->AddIntersectionObserverRoots(
+      std::move(roots));
+  box_intersection_observer_module_->AddIntersectionObserverTargets(
+      std::move(targets));
+}
+
+bool Box::ContainsIntersectionObserverRoot(
+    const scoped_refptr<IntersectionObserverRoot>& intersection_observer_root)
+    const {
+  if (box_intersection_observer_module_) {
+    return box_intersection_observer_module_
+        ->BoxContainsIntersectionObserverRoot(intersection_observer_root);
+  }
+  return false;
 }
 
 }  // namespace layout

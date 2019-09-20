@@ -15,14 +15,15 @@
 #ifndef COBALT_LAYOUT_USED_STYLE_H_
 #define COBALT_LAYOUT_USED_STYLE_H_
 
+#include "cobalt/cssom/calc_value.h"
 #include "cobalt/cssom/css_computed_style_data.h"
+#include "cobalt/cssom/keyword_value.h"
 #include "cobalt/cssom/linear_gradient_value.h"
 #include "cobalt/cssom/property_list_value.h"
 #include "cobalt/cssom/property_value.h"
 #include "cobalt/cssom/property_value_visitor.h"
 #include "cobalt/cssom/radial_gradient_value.h"
 #include "cobalt/cssom/transform_function_list_value.h"
-#include "cobalt/cssom/transform_matrix.h"
 #include "cobalt/dom/font_cache.h"
 #include "cobalt/dom/font_list.h"
 #include "cobalt/dom/html_element_context.h"
@@ -66,7 +67,8 @@ class UsedStyleProvider {
   // is most minimum.
   typedef base::Callback<scoped_refptr<render_tree::Node>(
       const scoped_refptr<render_tree::Node>&, float max_horizontal_fov_rad,
-      float max_vertical_fov_rad)> AttachCameraNodeFunction;
+      float max_vertical_fov_rad)>
+      AttachCameraNodeFunction;
 
   UsedStyleProvider(dom::HTMLElementContext* html_element_context,
                     dom::FontCache* font_cache,
@@ -269,16 +271,60 @@ class UsedBorderRadiusProvider : public cssom::NotReachedPropertyValueVisitor {
   void VisitLength(cssom::LengthValue* length) override;
   void VisitPercentage(cssom::PercentageValue* percentage) override;
 
-  const base::optional<render_tree::RoundedCorner>& rounded_corner() const {
+  const base::Optional<render_tree::RoundedCorner>& rounded_corner() const {
     return rounded_corner_;
   }
 
  private:
-  base::optional<render_tree::RoundedCorner> rounded_corner_;
+  base::Optional<render_tree::RoundedCorner> rounded_corner_;
 
   const math::SizeF frame_size_;
 
   DISALLOW_COPY_AND_ASSIGN(UsedBorderRadiusProvider);
+};
+
+class UsedLengthValueProvider : public cssom::NotReachedPropertyValueVisitor {
+ public:
+  explicit UsedLengthValueProvider(LayoutUnit percentage_base,
+                                   bool calc_permitted = false)
+      : percentage_base_(percentage_base), calc_permitted_(calc_permitted) {}
+
+  void VisitLength(cssom::LengthValue* length) override {
+    depends_on_containing_block_ = false;
+
+    DCHECK_EQ(cssom::kPixelsUnit, length->unit());
+    used_length_ = LayoutUnit(length->value());
+  }
+
+  void VisitPercentage(cssom::PercentageValue* percentage) override {
+    depends_on_containing_block_ = true;
+    used_length_ = percentage->value() * percentage_base_;
+  }
+
+  void VisitCalc(cssom::CalcValue* calc) override {
+    if (!calc_permitted_) {
+      NOTREACHED();
+    }
+    depends_on_containing_block_ = true;
+    used_length_ = LayoutUnit(calc->length_value()->value()) +
+                   calc->percentage_value()->value() * percentage_base_;
+  }
+
+  bool depends_on_containing_block() const {
+    return depends_on_containing_block_;
+  }
+  const base::Optional<LayoutUnit>& used_length() const { return used_length_; }
+
+ protected:
+  bool depends_on_containing_block_;
+
+ private:
+  const LayoutUnit percentage_base_;
+  const bool calc_permitted_;
+
+  base::Optional<LayoutUnit> used_length_;
+
+  DISALLOW_COPY_AND_ASSIGN(UsedLengthValueProvider);
 };
 
 class UsedLineHeightProvider : public cssom::NotReachedPropertyValueVisitor {
@@ -320,54 +366,56 @@ class UsedLineHeightProvider : public cssom::NotReachedPropertyValueVisitor {
 math::Vector2dF GetTransformOrigin(const math::RectF& used_rect,
                                    cssom::PropertyValue* value);
 
-cssom::TransformMatrix GetTransformMatrix(cssom::PropertyValue* value);
-
 // Functions to calculate used values of box model properties.
-base::optional<LayoutUnit> GetUsedLeftIfNotAuto(
+base::Optional<LayoutUnit> GetUsedLeftIfNotAuto(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
     const SizeLayoutUnit& containing_block_size);
-base::optional<LayoutUnit> GetUsedTopIfNotAuto(
+base::Optional<LayoutUnit> GetUsedTopIfNotAuto(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
     const SizeLayoutUnit& containing_block_size);
-base::optional<LayoutUnit> GetUsedRightIfNotAuto(
+base::Optional<LayoutUnit> GetUsedRightIfNotAuto(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
     const SizeLayoutUnit& containing_block_size);
-base::optional<LayoutUnit> GetUsedBottomIfNotAuto(
+base::Optional<LayoutUnit> GetUsedBottomIfNotAuto(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
     const SizeLayoutUnit& containing_block_size);
-base::optional<LayoutUnit> GetUsedWidthIfNotAuto(
+base::Optional<LayoutUnit> GetUsedFlexBasisIfNotContent(
+    const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
+    const bool main_direction_is_horizontal,
+    const SizeLayoutUnit& flex_container_size,
+    bool* flex_basis_depends_on_available_space);
+base::Optional<LayoutUnit> GetUsedWidthIfNotAuto(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
     const SizeLayoutUnit& containing_block_size,
     bool* width_depends_on_containing_block);
-base::optional<LayoutUnit> GetUsedMaxHeightIfNotNone(
+base::Optional<LayoutUnit> GetUsedMaxHeightIfNotNone(
+    const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
+    const SizeLayoutUnit& containing_block_size);
+base::Optional<LayoutUnit> GetUsedMaxWidthIfNotNone(
+    const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
+    const SizeLayoutUnit& containing_block_size,
+    bool* width_depends_on_containing_block);
+base::Optional<LayoutUnit> GetUsedMinHeightIfNotAuto(
+    const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
+    const SizeLayoutUnit& containing_block_size);
+base::Optional<LayoutUnit> GetUsedMinWidthIfNotAuto(
+    const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
+    const SizeLayoutUnit& containing_block_size,
+    bool* width_depends_on_containing_block);
+base::Optional<LayoutUnit> GetUsedHeightIfNotAuto(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
     const SizeLayoutUnit& containing_block_size,
     bool* height_depends_on_containing_block);
-base::optional<LayoutUnit> GetUsedMaxWidthIfNotNone(
-    const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
-    const SizeLayoutUnit& containing_block_size,
-    bool* width_depends_on_containing_block);
-LayoutUnit GetUsedMinHeight(
-    const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
-    const SizeLayoutUnit& containing_block_size,
-    bool* height_depends_on_containing_block);
-LayoutUnit GetUsedMinWidth(
-    const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
-    const SizeLayoutUnit& containing_block_size,
-    bool* width_depends_on_containing_block);
-base::optional<LayoutUnit> GetUsedHeightIfNotAuto(
+base::Optional<LayoutUnit> GetUsedMarginLeftIfNotAuto(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
     const SizeLayoutUnit& containing_block_size);
-base::optional<LayoutUnit> GetUsedMarginLeftIfNotAuto(
+base::Optional<LayoutUnit> GetUsedMarginTopIfNotAuto(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
     const SizeLayoutUnit& containing_block_size);
-base::optional<LayoutUnit> GetUsedMarginTopIfNotAuto(
+base::Optional<LayoutUnit> GetUsedMarginRightIfNotAuto(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
     const SizeLayoutUnit& containing_block_size);
-base::optional<LayoutUnit> GetUsedMarginRightIfNotAuto(
-    const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
-    const SizeLayoutUnit& containing_block_size);
-base::optional<LayoutUnit> GetUsedMarginBottomIfNotAuto(
+base::Optional<LayoutUnit> GetUsedMarginBottomIfNotAuto(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
     const SizeLayoutUnit& containing_block_size);
 LayoutUnit GetUsedBorderLeft(
@@ -390,6 +438,11 @@ LayoutUnit GetUsedPaddingRight(
 LayoutUnit GetUsedPaddingBottom(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
     const SizeLayoutUnit& containing_block_size);
+
+const scoped_refptr<cobalt::cssom::PropertyValue>& GetUsedAlignSelf(
+    const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
+    const scoped_refptr<const cssom::CSSComputedStyleData>&
+        parent_computed_style);
 
 }  // namespace layout
 }  // namespace cobalt

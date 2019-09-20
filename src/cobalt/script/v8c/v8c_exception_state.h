@@ -17,7 +17,7 @@
 
 #include <string>
 
-#include "base/stringprintf.h"
+#include "base/strings/stringprintf.h"
 #include "base/threading/thread_checker.h"
 #include "cobalt/script/exception_state.h"
 #include "cobalt/script/v8c/v8c_global_environment.h"
@@ -43,7 +43,7 @@ class V8cExceptionState : public ExceptionState {
   bool is_exception_set() const { return is_exception_set_; }
 
  private:
-  base::ThreadChecker thread_checker_;
+  THREAD_CHECKER(thread_checker_);
 
   v8::Isolate* isolate_;
   bool is_exception_set_;

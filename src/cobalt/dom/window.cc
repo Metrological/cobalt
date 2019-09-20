@@ -14,14 +14,16 @@
 #include "cobalt/dom/window.h"
 
 #include <algorithm>
+#include <memory>
 
 #include "base/bind.h"
 #include "base/bind_helpers.h"
-#include "base/debug/trace_event.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/base/tokens.h"
 #include "cobalt/cssom/css_computed_style_declaration.h"
 #include "cobalt/cssom/user_agent_style_sheet.h"
+#include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/base64.h"
 #include "cobalt/dom/camera_3d.h"
 #include "cobalt/dom/console.h"
@@ -56,6 +58,7 @@
 #include "cobalt/speech/speech_synthesis.h"
 #include "starboard/file.h"
 
+using cobalt::cssom::ViewportSize;
 using cobalt::media_session::MediaSession;
 
 namespace cobalt {
@@ -68,7 +71,7 @@ class Window::RelayLoadEvent : public DocumentObserver {
 
   // From DocumentObserver.
   void OnLoad() override {
-    window_->PostToDispatchEvent(FROM_HERE, base::Tokens::load());
+    window_->PostToDispatchEventName(FROM_HERE, base::Tokens::load());
   }
   void OnMutation() override {}
   void OnFocusChanged() override {}
@@ -88,7 +91,7 @@ const int64_t kPerformanceTimerMinResolutionInMicroseconds = 20;
 }  // namespace
 
 Window::Window(
-    int width, int height, float device_pixel_ratio,
+    const ViewportSize& view_size, float device_pixel_ratio,
     base::ApplicationState initial_application_state,
     cssom::CSSParser* css_parser, Parser* dom_parser,
     loader::FetcherFactory* fetcher_factory,
@@ -111,7 +114,7 @@ Window::Window(
     const std::string& user_agent, const std::string& language,
     const std::string& font_language_script,
     const base::Callback<void(const GURL&)> navigation_callback,
-    const base::Callback<void(const std::string&)>& error_callback,
+    const loader::Decoder::OnCompleteFunction& load_complete_callback,
     network_bridge::CookieJar* cookie_jar,
     const network_bridge::PostSender& post_sender,
     csp::CSPHeaderPolicy require_csp, CspEnforcementType csp_enforcement_mode,
@@ -127,15 +130,16 @@ Window::Window(
     const ScreenshotManager::ProvideScreenshotFunctionCallback&
         screenshot_function_callback,
     base::WaitableEvent* synchronous_loader_interrupt,
+    const scoped_refptr<ui_navigation::NavItem>& ui_nav_root,
     int csp_insecure_allowed_token, int dom_max_element_depth,
     float video_playback_rate_multiplier, ClockType clock_type,
     const CacheCallback& splash_screen_cache_callback,
-    const scoped_refptr<captions::SystemCaptionSettings>& captions)
+    const scoped_refptr<captions::SystemCaptionSettings>& captions,
+    bool log_tts)
     // 'window' object EventTargets require special handling for onerror events,
     // see EventTarget constructor for more details.
     : EventTarget(kUnpackOnErrorEvents),
-      width_(width),
-      height_(height),
+      viewport_size_(view_size),
       device_pixel_ratio_(device_pixel_ratio),
       is_resize_event_pending_(false),
       is_reporting_script_error_(false),
@@ -151,16 +155,7 @@ Window::Window(
           mesh_cache, dom_stat_tracker, font_language_script,
           initial_application_state, synchronous_loader_interrupt,
           video_playback_rate_multiplier)),
-      performance_(new Performance(
-#if defined(ENABLE_TEST_RUNNER)
-          clock_type == kClockTypeTestRunner
-              ? test_runner_->GetClock()
-              :
-#endif
-              new base::MinimumResolutionClock(
-                  new base::SystemMonotonicClock(),
-                  base::TimeDelta::FromMicroseconds(
-                      kPerformanceTimerMinResolutionInMicroseconds)))),
+      performance_(new Performance(MakePerformanceClock(clock_type))),
       ALLOW_THIS_IN_INITIALIZER_LIST(document_(new Document(
           html_element_context_.get(),
           Document::Options(
@@ -168,10 +163,10 @@ Window::Window(
               base::Bind(&Window::FireHashChangeEvent, base::Unretained(this)),
               performance_->timing()->GetNavigationStartClock(),
               navigation_callback, ParseUserAgentStyleSheet(css_parser),
-              math::Size(width_, height_), cookie_jar, post_sender, require_csp,
+              view_size, cookie_jar, post_sender, require_csp,
               csp_enforcement_mode, csp_policy_changed_callback,
               csp_insecure_allowed_token, dom_max_element_depth)))),
-      document_loader_(NULL),
+      document_loader_(nullptr),
       history_(new History()),
       navigator_(new Navigator(user_agent, language, media_session, captions,
                                script_value_factory)),
@@ -182,12 +177,12 @@ Window::Window(
       ALLOW_THIS_IN_INITIALIZER_LIST(animation_frame_request_callback_list_(
           new AnimationFrameRequestCallbackList(this))),
       crypto_(new Crypto()),
-      speech_synthesis_(new speech::SpeechSynthesis(navigator_)),
+      speech_synthesis_(new speech::SpeechSynthesis(navigator_, log_tts)),
       ALLOW_THIS_IN_INITIALIZER_LIST(local_storage_(
           new Storage(this, Storage::kLocalStorage, local_storage_database))),
       ALLOW_THIS_IN_INITIALIZER_LIST(
           session_storage_(new Storage(this, Storage::kSessionStorage, NULL))),
-      screen_(new Screen(width, height)),
+      screen_(new Screen(view_size)),
       preflight_cache_(new loader::CORSPreflightCache()),
       ran_animation_frame_callbacks_callback_(
           ran_animation_frame_callbacks_callback),
@@ -202,9 +197,10 @@ Window::Window(
       splash_screen_cache_callback_(splash_screen_cache_callback),
       on_start_dispatch_event_callback_(on_start_dispatch_event_callback),
       on_stop_dispatch_event_callback_(on_stop_dispatch_event_callback),
-      screenshot_manager_(screenshot_function_callback) {
+      screenshot_manager_(screenshot_function_callback),
+      ui_nav_root_(ui_nav_root) {
 #if !defined(ENABLE_TEST_RUNNER)
-  UNREFERENCED_PARAMETER(clock_type);
+  SB_UNREFERENCED_PARAMETER(clock_type);
 #endif
   document_->AddObserver(relay_on_load_event_.get());
   html_element_context_->page_visibility_state()->AddObserver(this);
@@ -213,21 +209,46 @@ Window::Window(
   // Document load start is deferred from this constructor so that we can be
   // guaranteed that this Window object is fully constructed before document
   // loading begins.
-  MessageLoop::current()->PostTask(
-      FROM_HERE, base::Bind(&Window::StartDocumentLoad, this, fetcher_factory,
-                            url, dom_parser, error_callback));
+  base::MessageLoop::current()->task_runner()->PostTask(
+      FROM_HERE,
+      base::Bind(&Window::StartDocumentLoad, base::Unretained(this),
+                 fetcher_factory, url, dom_parser, load_complete_callback));
 }
 
 void Window::StartDocumentLoad(
     loader::FetcherFactory* fetcher_factory, const GURL& url,
     Parser* dom_parser,
-    const base::Callback<void(const std::string&)>& error_callback) {
-  document_loader_.reset(
-      new loader::Loader(base::Bind(&loader::FetcherFactory::CreateFetcher,
-                                    base::Unretained(fetcher_factory), url),
-                         dom_parser->ParseDocumentAsync(
-                             document_, base::SourceLocation(url.spec(), 1, 1)),
-                         error_callback));
+    const loader::Decoder::OnCompleteFunction& load_complete_callback) {
+  document_loader_.reset(new loader::Loader(
+      base::Bind(&loader::FetcherFactory::CreateFetcher,
+                 base::Unretained(fetcher_factory), url),
+      base::Bind(&Parser::ParseDocumentAsync, base::Unretained(dom_parser),
+                 document_, base::SourceLocation(url.spec(), 1, 1)),
+      load_complete_callback));
+}
+
+scoped_refptr<base::BasicClock> Window::MakePerformanceClock(
+    ClockType clock_type) {
+  switch (clock_type) {
+    case kClockTypeTestRunner: {
+#if defined(ENABLE_TEST_RUNNER)
+      return test_runner_->GetClock();
+#else
+      NOTREACHED();
+#endif
+    } break;
+    case kClockTypeSystemTime: {
+      return new base::SystemMonotonicClock();
+    } break;
+    case kClockTypeResolutionLimitedSystemTime: {
+      return new base::MinimumResolutionClock(
+          new base::SystemMonotonicClock(),
+          base::TimeDelta::FromMicroseconds(
+              kPerformanceTimerMinResolutionInMicroseconds));
+    } break;
+  }
+  NOTREACHED();
+  return scoped_refptr<base::BasicClock>();
 }
 
 const scoped_refptr<Document>& Window::document() const { return document_; }
@@ -279,7 +300,7 @@ scoped_refptr<cssom::CSSStyleDeclaration> Window::GetComputedStyle(
     const scoped_refptr<Element>& elt) {
   scoped_refptr<HTMLElement> html_element = elt->AsHTMLElement();
   if (html_element) {
-    document_->UpdateComputedStyleOnElementAndAncestor(html_element);
+    document_->UpdateComputedStyleOnElementAndAncestor(html_element.get());
     return html_element->css_computed_style_declaration();
   }
   return NULL;
@@ -298,15 +319,15 @@ scoped_refptr<cssom::CSSStyleDeclaration> Window::GetComputedStyle(
   scoped_refptr<HTMLElement> html_element = elt->AsHTMLElement();
   scoped_refptr<cssom::CSSComputedStyleDeclaration> obj;
   if (html_element) {
-    document_->UpdateComputedStyleOnElementAndAncestor(html_element);
+    document_->UpdateComputedStyleOnElementAndAncestor(html_element.get());
 
     // 2. Let obj be elt.
     obj = html_element->css_computed_style_declaration();
 
     // 3. If pseudoElt is as an ASCII case-insensitive match for either
     // ':before' or '::before' let obj be the ::before pseudo-element of elt.
-    if (LowerCaseEqualsASCII(pseudo_elt, ":before") ||
-        LowerCaseEqualsASCII(pseudo_elt, "::before")) {
+    if (base::LowerCaseEqualsASCII(pseudo_elt, ":before") ||
+        base::LowerCaseEqualsASCII(pseudo_elt, "::before")) {
       PseudoElement* pseudo_element =
           html_element->pseudo_element(kBeforePseudoElementType);
       obj = pseudo_element ? pseudo_element->css_computed_style_declaration()
@@ -315,8 +336,8 @@ scoped_refptr<cssom::CSSStyleDeclaration> Window::GetComputedStyle(
 
     // 4. If pseudoElt is as an ASCII case-insensitive match for either ':after'
     // or '::after' let obj be the ::after pseudo-element of elt.
-    if (LowerCaseEqualsASCII(pseudo_elt, ":after") ||
-        LowerCaseEqualsASCII(pseudo_elt, "::after")) {
+    if (base::LowerCaseEqualsASCII(pseudo_elt, ":after") ||
+        base::LowerCaseEqualsASCII(pseudo_elt, "::after")) {
       PseudoElement* pseudo_element =
           html_element->pseudo_element(kAfterPseudoElementType);
       obj = pseudo_element ? pseudo_element->css_computed_style_declaration()
@@ -343,7 +364,7 @@ scoped_refptr<MediaQueryList> Window::MatchMedia(const std::string& query) {
   scoped_refptr<cssom::MediaList> media_list =
       html_element_context_->css_parser()->ParseMediaList(
           query, GetInlineSourceLocation());
-  return make_scoped_refptr(new MediaQueryList(media_list, screen_));
+  return base::WrapRefCounted(new MediaQueryList(media_list, screen_));
 }
 
 const scoped_refptr<Screen>& Window::screen() { return screen_; }
@@ -353,6 +374,9 @@ scoped_refptr<Crypto> Window::crypto() const { return crypto_; }
 std::string Window::Btoa(const std::string& string_to_encode,
                          script::ExceptionState* exception_state) {
   TRACE_EVENT0("cobalt::dom", "Window::Btoa()");
+  LOG(WARNING) << "In older Cobalt(<19), btoa() can not take a string"
+                  " containing NUL. Be careful that you don't need to stay "
+                  "compatible with old versions of Cobalt if you use btoa.";
   auto output = ForgivingBase64Encode(string_to_encode);
   if (!output) {
     DOMException::Raise(DOMException::kInvalidCharacterErr, exception_state);
@@ -420,7 +444,7 @@ void Window::ClearInterval(int handle) {
   }
 }
 
-void Window::DestroyTimers() { window_timers_.reset(); }
+void Window::DestroyTimers() { window_timers_->DisableCallbacks(); }
 
 scoped_refptr<Storage> Window::local_storage() const { return local_storage_; }
 
@@ -469,8 +493,8 @@ void Window::RunAnimationFrameCallbacks() {
 
     // First grab the current list of frame request callbacks and hold on to it
     // here locally.
-    scoped_ptr<AnimationFrameRequestCallbackList> frame_request_list =
-        animation_frame_request_callback_list_.Pass();
+    std::unique_ptr<AnimationFrameRequestCallbackList> frame_request_list =
+        std::move(animation_frame_request_callback_list_);
 
     // Then setup the Window's frame request callback list with a freshly
     // created and empty one.
@@ -589,19 +613,16 @@ void Window::SetSynchronousLayoutAndProduceRenderTreeCallback(
   document_->set_synchronous_layout_and_produce_render_tree_callback(callback);
 }
 
-void Window::SetSize(int width, int height, float device_pixel_ratio) {
-  if (width_ == width && height_ == height &&
-      device_pixel_ratio_ == device_pixel_ratio) {
+void Window::SetSize(ViewportSize size, float device_pixel_ratio) {
+  if (size == viewport_size_ && device_pixel_ratio == device_pixel_ratio_) {
     return;
   }
 
-  width_ = width;
-  height_ = height;
+  viewport_size_ = size;
   device_pixel_ratio_ = device_pixel_ratio;
-  screen_->SetSize(width, height);
-
+  screen_->SetSize(viewport_size_);
   // This will cause layout invalidation.
-  document_->SetViewport(math::Size(width, height));
+  document_->SetViewport(viewport_size_);
 
   if (html_element_context_->page_visibility_state()->GetVisibilityState() ==
       page_visibility::kVisibilityStateVisible) {
@@ -698,11 +719,14 @@ const scoped_refptr<OnScreenKeyboard>& Window::on_screen_keyboard() const {
 void Window::ReleaseOnScreenKeyboard() { on_screen_keyboard_ = nullptr; }
 
 Window::~Window() {
+  if (ui_nav_root_) {
+    ui_nav_root_->SetEnabled(false);
+  }
   html_element_context_->page_visibility_state()->RemoveObserver(this);
 }
 
 void Window::FireHashChangeEvent() {
-  PostToDispatchEvent(FROM_HERE, base::Tokens::hashchange());
+  PostToDispatchEventName(FROM_HERE, base::Tokens::hashchange());
 }
 
 }  // namespace dom

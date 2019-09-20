@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "starboard/client_porting/poem/string_leaks_poem.h"
+
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -22,8 +24,8 @@
 #include "nb/simple_profiler.h"
 #include "nb/thread_local_object.h"
 #include "starboard/atomic.h"
+#include "starboard/common/string.h"
 #include "starboard/once.h"
-#include "starboard/string.h"
 #include "starboard/time.h"
 
 namespace nb {

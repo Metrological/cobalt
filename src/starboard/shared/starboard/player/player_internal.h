@@ -28,9 +28,10 @@ struct SbPlayerPrivate {
  public:
   typedef starboard::shared::starboard::player::PlayerWorker PlayerWorker;
 
-  SbPlayerPrivate(
+  static SbPlayerPrivate* CreateInstance(
       SbMediaAudioCodec audio_codec,
       SbMediaVideoCodec video_codec,
+      const SbMediaAudioSampleInfo* audio_sample_info,
       SbPlayerDeallocateSampleFunc sample_deallocate_func,
       SbPlayerDecoderStatusFunc decoder_status_func,
       SbPlayerStatusFunc player_status_func,
@@ -41,13 +42,12 @@ struct SbPlayerPrivate {
       starboard::scoped_ptr<PlayerWorker::Handler> player_worker_handler);
 
   void Seek(SbTime seek_to_time, int ticket);
+#if SB_API_VERSION >= 11
+  void WriteSample(const SbPlayerSampleInfo& sample_info);
+#else   // SB_API_VERSION >= 11
   void WriteSample(SbMediaType sample_type,
-                   const void* const* sample_buffers,
-                   const int* sample_buffer_sizes,
-                   int number_of_sample_buffers,
-                   SbTime sample_time,
-                   const SbMediaVideoSampleInfo* video_sample_info,
-                   const SbDrmSampleInfo* sample_drm_info);
+                   const SbPlayerSampleInfo& sample_info);
+#endif  // SB_API_VERSION >= 11
   void WriteEndOfStream(SbMediaType stream_type);
   void SetBounds(int z_index, int x, int y, int width, int height);
 
@@ -62,27 +62,51 @@ struct SbPlayerPrivate {
 
   SbDecodeTarget GetCurrentDecodeTarget();
 
-  ~SbPlayerPrivate() { --number_of_players_; }
+  ~SbPlayerPrivate() {
+    --number_of_players_;
+    SB_DLOG(INFO) << "Destroying SbPlayerPrivate. There are "
+                  << number_of_players_ << " players.";
+  }
 
   static int number_of_players() { return number_of_players_; }
 
  private:
-  void UpdateMediaInfo(SbTime media_time, int dropped_video_frames, int ticket);
+  SbPlayerPrivate(
+      SbMediaAudioCodec audio_codec,
+      SbMediaVideoCodec video_codec,
+      const SbMediaAudioSampleInfo* audio_sample_info,
+      SbPlayerDeallocateSampleFunc sample_deallocate_func,
+      SbPlayerDecoderStatusFunc decoder_status_func,
+      SbPlayerStatusFunc player_status_func,
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+      SbPlayerErrorFunc player_error_func,
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
+      void* context,
+      starboard::scoped_ptr<PlayerWorker::Handler> player_worker_handler);
+
+  void UpdateMediaInfo(SbTime media_time,
+                       int dropped_video_frames,
+                       int ticket,
+                       bool underflow);
 
   SbPlayerDeallocateSampleFunc sample_deallocate_func_;
   void* context_;
+#if SB_API_VERSION < 11
+  SbMediaAudioSampleInfo audio_sample_info_;
+#endif  // SB_API_VERSION < 11
 
   starboard::Mutex mutex_;
-  int ticket_;
-  SbTime media_time_;
+  int ticket_ = SB_PLAYER_INITIAL_TICKET;
+  SbTime media_time_ = 0;
   SbTimeMonotonic media_time_updated_at_;
-  int frame_width_;
-  int frame_height_;
-  bool is_paused_;
-  double playback_rate_;
-  double volume_;
-  int total_video_frames_;
-  int dropped_video_frames_;
+  int frame_width_ = 0;
+  int frame_height_ = 0;
+  bool is_paused_ = false;
+  double playback_rate_ = 1.0;
+  double volume_ = 1.0;
+  int total_video_frames_ = 0;
+  int dropped_video_frames_ = 0;
+  bool underflow_ = false;
 
   starboard::scoped_ptr<PlayerWorker> worker_;
 

@@ -20,7 +20,6 @@
 #include <vector>
 
 #include "base/memory/ref_counted.h"
-#include "base/memory/scoped_vector.h"
 
 namespace cobalt {
 namespace script {
@@ -37,6 +36,7 @@ class Sequence {
 
   // --- Vector partial emulation ---
   typedef typename SequenceType::size_type size_type;
+  typedef typename SequenceType::value_type value_type;
   typedef typename SequenceType::reference reference;
   typedef typename SequenceType::const_reference const_reference;
   typedef typename SequenceType::iterator iterator;
@@ -58,7 +58,7 @@ class Sequence {
   SequenceType sequence_;
 };
 
-// Needed to instantiate base::optional< Sequence<T> >
+// Needed to instantiate base::Optional< Sequence<T> >
 template <typename T>
 inline std::ostream& operator<<(std::ostream& stream,
                                 const Sequence<T>& sequence) {

@@ -15,10 +15,11 @@
 #ifndef COBALT_RENDERER_BACKEND_EGL_FRAMEBUFFER_RENDER_TARGET_H_
 #define COBALT_RENDERER_BACKEND_EGL_FRAMEBUFFER_RENDER_TARGET_H_
 
-#include "base/memory/scoped_ptr.h"
+#include <memory>
 #include "cobalt/math/size.h"
 #include "cobalt/renderer/backend/egl/framebuffer.h"
 #include "cobalt/renderer/backend/egl/render_target.h"
+#include "cobalt/renderer/egl_and_gles.h"
 
 namespace cobalt {
 namespace renderer {

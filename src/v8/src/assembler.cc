@@ -188,8 +188,10 @@ void AssemblerBase::FlushICache(Isolate* isolate, void* start, size_t size) {
 }
 
 void AssemblerBase::Print(Isolate* isolate) {
+#ifndef V8_OS_STARBOARD
   OFStream os(stdout);
   v8::internal::Disassembler::Decode(isolate, &os, buffer_, pc_, nullptr);
+#endif
 }
 
 // -----------------------------------------------------------------------------
@@ -1390,7 +1392,7 @@ ExternalReference ExternalReference::ieee754_tanh_function(Isolate* isolate) {
       Redirect(isolate, FUNCTION_ADDR(base::ieee754::tanh), BUILTIN_FP_CALL));
 }
 
-void* libc_memchr(void* string, int character, size_t search_length) {
+const void* libc_memchr(void* string, int character, size_t search_length) {
   return memchr(string, character, search_length);
 }
 
@@ -1423,9 +1425,20 @@ ExternalReference ExternalReference::libc_memset_function(Isolate* isolate) {
   return ExternalReference(Redirect(isolate, FUNCTION_ADDR(libc_memset)));
 }
 
+#if V8_OS_STARBOARD
+namespace {
+int no_printf(const char *format, ...) {
+  return 0;
+}
+}
+ExternalReference ExternalReference::printf_function(Isolate* isolate) {
+  return ExternalReference(Redirect(isolate, FUNCTION_ADDR(no_printf)));
+}
+#else
 ExternalReference ExternalReference::printf_function(Isolate* isolate) {
   return ExternalReference(Redirect(isolate, FUNCTION_ADDR(std::printf)));
 }
+#endif
 
 template <typename SubjectChar, typename PatternChar>
 ExternalReference ExternalReference::search_string_raw(Isolate* isolate) {

@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "cobalt/renderer/rasterizer/blitter/render_tree_node_visitor.h"
 
 #include "base/bind.h"
-#include "base/debug/trace_event.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/math/matrix3_f.h"
 #include "cobalt/math/rect.h"
@@ -49,6 +51,8 @@ namespace renderer {
 namespace rasterizer {
 namespace blitter {
 
+using common::utils::IsOpaque;
+using common::utils::IsTransparent;
 using math::Matrix3F;
 using math::Rect;
 using math::RectF;
@@ -134,7 +138,7 @@ void RenderTreeNodeVisitor::Visit(render_tree::FilterNode* filter_node) {
   render_tree::Node* source = filter_node->data().source.get();
 
   // Will be made active if a viewport filter is set.
-  base::optional<BoundsStack::ScopedPush> scoped_push;
+  base::Optional<BoundsStack::ScopedPush> scoped_push;
 
   if (filter_node->data().viewport_filter) {
     const ViewportFilter& viewport_filter =
@@ -152,9 +156,9 @@ void RenderTreeNodeVisitor::Visit(render_tree::FilterNode* filter_node) {
   }
 
   if (!filter_node->data().opacity_filter ||
-      filter_node->data().opacity_filter->opacity() == 1.0f) {
+      IsOpaque(filter_node->data().opacity_filter->opacity())) {
     source->Accept(this);
-  } else if (filter_node->data().opacity_filter->opacity() != 0.0f) {
+  } else if (!IsTransparent(filter_node->data().opacity_filter->opacity())) {
     // If the opacity is set to 0, the contents are invisible and we are
     // trivially done.  However, if we made it into this branch, then
     // we know that opacity is in the range (0, 1), exclusive.
@@ -172,7 +176,7 @@ void RenderTreeNodeVisitor::Visit(render_tree::FilterNode* filter_node) {
 
     // Render our source subtree to an offscreen surface, and then we will
     // re-render it to our main render target with an alpha value applied to it.
-    scoped_ptr<OffscreenRender> offscreen_render =
+    std::unique_ptr<OffscreenRender> offscreen_render =
         RenderToOffscreenSurface(source);
     if (!offscreen_render) {
       // This can happen if the output area of the source node is 0, in which
@@ -252,7 +256,7 @@ void RenderTreeNodeVisitor::Visit(render_tree::ImageNode* image_node) {
                 -local_matrix.Get(1, 2) * image_size.height()));
 
   // Render the image.
-  if (render_state_.opacity < 1.0f) {
+  if (!IsOpaque(render_state_.opacity)) {
     SbBlitterSetBlending(context_, true);
     SbBlitterSetModulateBlitsWithColor(context_, true);
     SbBlitterSetColor(
@@ -313,9 +317,8 @@ void RenderTreeNodeVisitor::Visit(
       RectFToBlitterRect(render_state_.transform.TransformRect(
           punch_through_video_node->data().rect));
 
-  punch_through_video_node->data().set_bounds_cb.Run(
-      math::Rect(blitter_rect.x, blitter_rect.y, blitter_rect.width,
-                 blitter_rect.height));
+  punch_through_video_node->data().set_bounds_cb.Run(math::Rect(
+      blitter_rect.x, blitter_rect.y, blitter_rect.width, blitter_rect.height));
 
   DrawClearRect(context_, blitter_rect, SbBlitterColorFromRGBA(0, 0, 0, 0));
 }
@@ -335,12 +338,7 @@ void RenderRectNodeBorder(SbBlitterContext context, ColorRGBA color, float left,
                           const RectF& rect) {
   SbBlitterColor blitter_color = RenderTreeToBlitterColor(color);
   SbBlitterSetColor(context, blitter_color);
-
-  if (SbBlitterAFromColor(blitter_color) < 255) {
-    SbBlitterSetBlending(context, true);
-  } else {
-    SbBlitterSetBlending(context, false);
-  }
+  SbBlitterSetBlending(context, !IsOpaque(color.a()));
 
   // We draw four rectangles, one for each border edge.  They have the following
   // layout:
@@ -406,11 +404,11 @@ void RenderTreeNodeVisitor::Visit(render_tree::RectNode* rect_node) {
               rect_node->data().background_brush.get());
       ColorRGBA color = solid_color_brush->color();
 
-      if (render_state_.opacity < 1.0f) {
+      if (!IsOpaque(render_state_.opacity)) {
         color.set_a(color.a() * render_state_.opacity);
       }
 
-      SbBlitterSetBlending(context_, color.a() < 1.0f);
+      SbBlitterSetBlending(context_, !IsOpaque(color.a()));
       SbBlitterSetColor(context_, RenderTreeToBlitterColor(color));
 
       SbBlitterFillRect(context_, RectFToBlitterRect(transformed_rect));
@@ -447,7 +445,7 @@ void RenderTreeNodeVisitor::Visit(render_tree::RectNode* rect_node) {
           border.bottom.width * render_state_.transform.scale().y();
 
       ColorRGBA color = border.left.color;
-      if (render_state_.opacity < 1.0f) {
+      if (!IsOpaque(render_state_.opacity)) {
         color.set_a(color.a() * render_state_.opacity);
       }
       RenderRectNodeBorder(context_, color, left_width, right_width, top_width,
@@ -492,7 +490,7 @@ void RenderTreeNodeVisitor::RenderWithSoftwareRenderer(
 
   SbBlitterSetBlending(context_, true);
 
-  if (render_state_.opacity < 1.0f) {
+  if (!IsOpaque(render_state_.opacity)) {
     SbBlitterSetModulateBlitsWithColor(context_, true);
     SbBlitterSetColor(
         context_,
@@ -503,12 +501,12 @@ void RenderTreeNodeVisitor::RenderWithSoftwareRenderer(
   }
 
 // Blit the software rasterized surface to our actual render target.
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
   if (render_state_.highlight_software_draws && software_surface.created) {
     SbBlitterSetColor(context_, SbBlitterColorFromRGBA(0, 255, 0, 255));
     SbBlitterFillRect(context_, output_blitter_rect);
   } else  // NOLINT(readability/braces)
-#endif    // defined(ENABLE_DEBUG_CONSOLE)
+#endif    // defined(ENABLE_DEBUGGER)
   {
     TRACE_EVENT0("cobalt::renderer", "SbBlitterBlitRectToRect()");
     SbBlitterBlitRectToRect(
@@ -520,7 +518,7 @@ void RenderTreeNodeVisitor::RenderWithSoftwareRenderer(
   }
 }
 
-scoped_ptr<RenderTreeNodeVisitor::OffscreenRender>
+std::unique_ptr<RenderTreeNodeVisitor::OffscreenRender>
 RenderTreeNodeVisitor::RenderToOffscreenSurface(render_tree::Node* node) {
   TRACE_EVENT0_IF_ENABLED("RenderToOffscreenSurface()");
 
@@ -530,7 +528,7 @@ RenderTreeNodeVisitor::RenderToOffscreenSurface(render_tree::Node* node) {
           render_state_.bounds_stack.Top());
   if (coord_mapping.output_bounds.IsEmpty()) {
     // There's nothing to render if the bounds are 0.
-    return scoped_ptr<OffscreenRender>();
+    return std::unique_ptr<OffscreenRender>();
   }
   DCHECK_GE(0.001f, std::abs(1.0f -
                              render_state_.transform.scale().x() *
@@ -539,11 +537,12 @@ RenderTreeNodeVisitor::RenderToOffscreenSurface(render_tree::Node* node) {
                              render_state_.transform.scale().y() *
                                  coord_mapping.output_post_scale.y()));
 
-  scoped_ptr<CachedScratchSurface> scratch_surface(new CachedScratchSurface(
-      scratch_surface_cache_, coord_mapping.output_bounds.size()));
+  std::unique_ptr<CachedScratchSurface> scratch_surface(
+      new CachedScratchSurface(scratch_surface_cache_,
+                               coord_mapping.output_bounds.size()));
   SbBlitterSurface surface = scratch_surface->GetSurface();
   if (!SbBlitterIsSurfaceValid(surface)) {
-    return scoped_ptr<RenderTreeNodeVisitor::OffscreenRender>();
+    return std::unique_ptr<RenderTreeNodeVisitor::OffscreenRender>();
   }
 
   SbBlitterRenderTarget render_target =
@@ -570,12 +569,12 @@ RenderTreeNodeVisitor::RenderToOffscreenSurface(render_tree::Node* node) {
                               coord_mapping.output_pre_translate +
                               render_state_.transform.translate();
 
-  scoped_ptr<OffscreenRender> ret(new OffscreenRender());
+  std::unique_ptr<OffscreenRender> ret(new OffscreenRender());
   ret->destination_rect =
       math::RectF(output_point, coord_mapping.output_bounds.size());
-  ret->scratch_surface = scratch_surface.Pass();
+  ret->scratch_surface = std::move(scratch_surface);
 
-  return ret.Pass();
+  return std::move(ret);
 }
 
 }  // namespace blitter

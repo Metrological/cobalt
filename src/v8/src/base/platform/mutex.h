@@ -17,10 +17,8 @@
 #endif
 
 #if V8_OS_STARBOARD
-#include "starboard/mutex.h"
-// TODO: Implement recursive mutex with a hand rolled recursive mutex built
-// out of SbMutex instead.
-#include <mutex>
+#include "starboard/common/mutex.h"
+#include "starboard/common/recursive_mutex.h"
 #endif
 
 namespace v8 {
@@ -167,9 +165,7 @@ class V8_BASE_EXPORT RecursiveMutex final {
 #elif V8_OS_WIN
   typedef CRITICAL_SECTION NativeHandle;
 #elif V8_OS_STARBOARD
-  // TODO: Implement recursive mutex with a hand rolled recursive mutex built
-  // out of SbMutex instead.
-  typedef std::recursive_mutex NativeHandle;
+  typedef starboard::RecursiveMutex NativeHandle;
 #endif
 
   NativeHandle& native_handle() {

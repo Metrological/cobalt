@@ -13,14 +13,17 @@
 # limitations under the License.
 """Starboard Raspberry Pi platform configuration."""
 
-import logging
 import os
-import sys
 
 from starboard.build import clang
 from starboard.build import platform_configuration
 from starboard.tools import build
 from starboard.tools.testing import test_filter
+
+# Use a bogus path instead of None so that anything based on $RASPI_HOME won't
+# inadvertently end up pointing to something in the root directory, and this
+# will show up in an error message when that fails.
+_UNDEFINED_RASPI_HOME = '/UNDEFINED/RASPI_HOME'
 
 
 class RaspiPlatformConfig(platform_configuration.PlatformConfiguration):
@@ -29,15 +32,8 @@ class RaspiPlatformConfig(platform_configuration.PlatformConfiguration):
   def __init__(self, platform):
     super(RaspiPlatformConfig, self).__init__(platform)
     self.AppendApplicationConfigurationPath(os.path.dirname(__file__))
-
-  def _GetRasPiHome(self):
-    try:
-      raspi_home = os.environ['RASPI_HOME']
-    except KeyError:
-      logging.critical('RasPi builds require the "RASPI_HOME" '
-                       'environment variable to be set.')
-      sys.exit(1)
-    return raspi_home
+    self.raspi_home = os.environ.get('RASPI_HOME', _UNDEFINED_RASPI_HOME)
+    self.sysroot = os.path.realpath(os.path.join(self.raspi_home, 'arm-buildroot-linux-gnueabihf/sysroot'))
 
   def GetBuildFormat(self):
     """Returns the desired build format."""
@@ -47,34 +43,37 @@ class RaspiPlatformConfig(platform_configuration.PlatformConfiguration):
     return 'ninja,qtcreator_ninja'
 
   def GetVariables(self, configuration):
-    raspi_home = self._GetRasPiHome()
-    sysroot = os.path.realpath(os.path.join(raspi_home, 'arm-buildroot-linux-gnueabihf/sysroot'))
-    if not os.path.isdir(sysroot):
-      logging.critical('RasPi builds require $RASPI_HOME/sysroot '
-                       'to be a valid directory.')
-      sys.exit(1)
     variables = super(RaspiPlatformConfig, self).GetVariables(configuration)
     variables.update({
         'clang': 0,
-        'sysroot': sysroot,
+        'sysroot': self.sysroot,
     })
 
     return variables
 
   def GetEnvironmentVariables(self):
     env_variables = {}
-    raspi_home = self._GetRasPiHome()
-
     toolchain = os.path.realpath(
         os.path.join(
-            raspi_home,
+            self.raspi_home,
             '.'))
     toolchain_bin_dir = os.path.join(toolchain, 'bin')
     env_variables.update({
         'CC': os.path.join(toolchain_bin_dir, 'arm-buildroot-linux-gnueabihf-gcc'),
         'CXX': os.path.join(toolchain_bin_dir, 'arm-buildroot-linux-gnueabihf-g++'),
+        'CC_host': 'gcc -m32',        
+        'CXX_host': 'g++ -m32',
     })
     return env_variables
+
+  def SetupPlatformTools(self, build_number):
+    # Nothing to setup, but validate that RASPI_HOME is correct.
+    if self.raspi_home == _UNDEFINED_RASPI_HOME:
+      raise RuntimeError('RasPi builds require the "RASPI_HOME" '
+                         'environment variable to be set.')
+    if not os.path.isdir(self.sysroot):
+      raise RuntimeError('RasPi builds require $RASPI_HOME/sysroot '
+                         'to be a valid directory.')
 
   def GetLauncherPath(self):
     """Gets the path to the launcher module for this platform."""
@@ -89,11 +88,11 @@ class RaspiPlatformConfig(platform_configuration.PlatformConfiguration):
 
   def GetTestFilters(self):
     filters = super(RaspiPlatformConfig, self).GetTestFilters()
-    for target, tests in self._FILTERED_TESTS.iteritems():
+    for target, tests in self.__FILTERED_TESTS.iteritems():
       filters.extend(test_filter.TestFilter(target, test) for test in tests)
     return filters
 
-  _FILTERED_TESTS = {
+  __FILTERED_TESTS = {
       'nplb': [
           'SbDrmTest.AnySupportedKeySystems',
           # The RasPi test devices don't have access to an IPV6 network, so
@@ -105,8 +104,12 @@ class RaspiPlatformConfig(platform_configuration.PlatformConfiguration):
           'SbSocketAddressTypes/SbSocketGetInterfaceAddressTest'
           '.SunnyDaySourceNotLoopback/1',
       ],
-      'nplb_blitter_pixel_tests': [test_filter.FILTER_ALL],
-      # TODO: enable player_filter_tests.
-      'player_filter_tests': [test_filter.FILTER_ALL],
-      'starboard_platform_tests': [test_filter.FILTER_ALL],
+      'player_filter_tests': [
+          # TODO: debug these failures.
+          'VideoDecoderTests/VideoDecoderTest.EndOfStreamWithoutAnyInput/0',
+          'VideoDecoderTests/VideoDecoderTest.MultipleResets/0',
+          'VideoDecoderTests/VideoDecoderTest'
+          '.MultipleValidInputsAfterInvalidKeyFrame/*',
+          'VideoDecoderTests/VideoDecoderTest.MultipleInvalidInput/*',
+      ],
   }

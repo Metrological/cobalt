@@ -19,8 +19,11 @@
 import argparse
 import logging
 import os
-import shutil
 import sys
+
+import _env  # pylint: disable=unused-import
+import starboard.build.port_symlink as port_symlink
+
 
 # The name of an environment variable that when set to |'1'|, signals to us that
 # we should log all output directories that we have populated.
@@ -32,6 +35,13 @@ def EscapePath(path):
   return path.replace(' ', '\\ ')
 
 
+def _ClearDir(path):
+  path = os.path.normpath(path)
+  if not os.path.exists(path):  # Works for symlinks for both *nix and Windows.
+    return
+  port_symlink.Rmtree(path)
+
+
 def main(argv):
   parser = argparse.ArgumentParser()
   parser.add_argument(
@@ -41,6 +51,9 @@ def main(argv):
   parser.add_argument(
       '-s', dest='stamp_file', required=True,
       help='stamp file to update after the output directory is populated')
+  parser.add_argument(
+      '--use_absolute_symlinks', action='store_true',
+      help='Generated symlinks are stored as absolute paths.')
   parser.add_argument(
       'subdirs', metavar='subdirs', nargs='*',
       help='subdirectories within both the input and output directories')
@@ -57,10 +70,11 @@ def main(argv):
   for subdir in options.subdirs:
     logging.info('+ %s', subdir)
 
-  if os.path.exists(options.output_dir):
-    shutil.rmtree(options.output_dir)
+  if os.path.isdir(options.output_dir):
+    _ClearDir(options.output_dir)
 
-  for subdir in options.subdirs:
+  last_link = None
+  for subdir in sorted(options.subdirs):
     src_path = os.path.abspath(
         EscapePath(os.path.join(options.input_dir, subdir)))
     dst_path = os.path.abspath(
@@ -69,16 +83,38 @@ def main(argv):
     dst_dir = os.path.dirname(dst_path)
     rel_path = os.path.relpath(src_path, dst_dir)
 
+    # We process subdirs in sorted order so that if there are nested deploy
+    # directories we only create the parent and skip all redundant descendants.
+    if last_link and src_path.startswith(last_link):
+      logging.warning('Redundant deploy content: %s', subdir)
+      continue
+    last_link = src_path
+
     logging.info('%s => %s', dst_path, rel_path)
 
-    # TODO: Add an alternate implementation for win32.
     if not os.path.exists(dst_dir):
-      os.makedirs(dst_dir)
-    os.symlink(rel_path, dst_path)
+      try:
+        os.makedirs(dst_dir)
+      except Exception as err:  # pylint: disable=broad-except
+        msg = 'Error: ' + str(err)
+        if os.path.isdir(dst_dir):
+          msg += ' path is a directory'
+        elif os.path.isfile(dst_dir):
+          msg += ' path is a file'
+        else:
+          msg += ' path points to an unknown type'
+        logging.error(msg)
+
+    if options.use_absolute_symlinks:
+      port_symlink.MakeSymLink(from_folder=os.path.abspath(src_path),
+                               link_folder=os.path.abspath(dst_path))
+    else:
+      port_symlink.MakeSymLink(from_folder=rel_path, link_folder=dst_path)
 
   if options.stamp_file:
     with open(options.stamp_file, 'w') as stamp_file:
       stamp_file.write('\n'.join(options.subdirs))
+
 
 if __name__ == '__main__':
   sys.exit(main(sys.argv))

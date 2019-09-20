@@ -15,24 +15,26 @@
 #include "cobalt/dom/html_script_element.h"
 
 #include <deque>
+#include <memory>
 #include <utility>
 
 #include "base/bind.h"
 #include "base/compiler_specific.h"
-#include "base/debug/trace_event.h"
-#include "base/string_util.h"
+#include "base/strings/string_util.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/base/tokens.h"
 #include "cobalt/dom/csp_delegate.h"
 #include "cobalt/dom/document.h"
 #include "cobalt/dom/global_stats.h"
 #include "cobalt/dom/html_element_context.h"
+#include "cobalt/loader/decoder.h"
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/loader/sync_loader.h"
 #include "cobalt/loader/text_decoder.h"
 #include "cobalt/script/global_environment.h"
 #include "cobalt/script/script_runner.h"
-#include "googleurl/src/gurl.h"
 #include "nb/memory_scope.h"
+#include "url/gurl.h"
 
 namespace cobalt {
 namespace dom {
@@ -42,7 +44,7 @@ namespace {
 bool PermitAnyURL(const GURL&, bool) { return true; }
 
 loader::RequestMode GetRequestMode(
-    const base::optional<std::string>& cross_origin_attribute) {
+    const base::Optional<std::string>& cross_origin_attribute) {
   // https://html.spec.whatwg.org/#cors-settings-attribute
   if (cross_origin_attribute) {
     if (*cross_origin_attribute == "use-credentials") {
@@ -70,15 +72,14 @@ HTMLScriptElement::HTMLScriptElement(Document* document)
       load_option_(0),
       inline_script_location_(GetSourceLocationName(), 1, 1),
       is_sync_load_successful_(false),
-      prevent_garbage_collection_count_(0),
       should_execute_(true),
       synchronous_loader_interrupt_(
           document->html_element_context()->synchronous_loader_interrupt()) {
   DCHECK(document->html_element_context()->script_runner());
 }
 
-base::optional<std::string> HTMLScriptElement::cross_origin() const {
-  base::optional<std::string> cross_origin_attribute =
+base::Optional<std::string> HTMLScriptElement::cross_origin() const {
+  base::Optional<std::string> cross_origin_attribute =
       GetAttribute("crossOrigin");
   if (cross_origin_attribute &&
       (*cross_origin_attribute != "anonymous" &&
@@ -89,7 +90,7 @@ base::optional<std::string> HTMLScriptElement::cross_origin() const {
 }
 
 void HTMLScriptElement::set_cross_origin(
-    const base::optional<std::string>& value) {
+    const base::Optional<std::string>& value) {
   if (value) {
     SetAttribute("crossOrigin", *value);
   } else {
@@ -152,8 +153,8 @@ HTMLScriptElement::~HTMLScriptElement() {
 void HTMLScriptElement::Prepare() {
   TRACK_MEMORY_SCOPE("DOM");
   // Custom, not in any spec.
-  DCHECK(thread_checker_.CalledOnValidThread());
-  DCHECK(MessageLoop::current());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  DCHECK(base::MessageLoop::current());
   DCHECK(!loader_ || is_already_started_);
   TRACE_EVENT0("cobalt::dom", "HTMLScriptElement::Prepare()");
 
@@ -191,7 +192,7 @@ void HTMLScriptElement::Prepare() {
     set_type("text/javascript");
   } else {
     std::string trimmed_type;
-    TrimWhitespace(type(), TRIM_ALL, &trimmed_type);
+    TrimWhitespaceASCII(type(), base::TRIM_ALL, &trimmed_type);
     set_type(trimmed_type);
   }
 
@@ -214,8 +215,9 @@ void HTMLScriptElement::Prepare() {
   if (HasAttribute("src") && src() == "") {
     LOG(WARNING) << "src attribute of script element is empty.";
 
-    PreventGarbageCollectionAndPostToDispatchEvent(FROM_HERE,
-                                                   base::Tokens::error());
+    PreventGarbageCollectionAndPostToDispatchEvent(
+        FROM_HERE, base::Tokens::error(),
+        &prevent_gc_until_error_event_dispatch_);
     return;
   }
 
@@ -227,8 +229,9 @@ void HTMLScriptElement::Prepare() {
   if (!url_.is_valid()) {
     LOG(WARNING) << src() << " cannot be resolved based on " << base_url << ".";
 
-    PreventGarbageCollectionAndPostToDispatchEvent(FROM_HERE,
-                                                   base::Tokens::error());
+    PreventGarbageCollectionAndPostToDispatchEvent(
+        FROM_HERE, base::Tokens::error(),
+        &prevent_gc_until_error_event_dispatch_);
     return;
   }
 
@@ -309,15 +312,18 @@ void HTMLScriptElement::Prepare() {
               document_->location() ? document_->location()->GetOriginAsObject()
                                     : loader::Origin()),
           base::Bind(&loader::TextDecoder::Create,
-                     base::Bind(&HTMLScriptElement::OnSyncLoadingDone,
-                                base::Unretained(this))),
-          base::Bind(&HTMLScriptElement::OnSyncLoadingError,
+                     base::Bind(&HTMLScriptElement::OnSyncContentProduced,
+                                base::Unretained(this)),
+                     loader::Decoder::OnCompleteFunction()),
+          base::Bind(&HTMLScriptElement::OnSyncLoadingComplete,
                      base::Unretained(this)));
 
       if (is_sync_load_successful_) {
-        PreventGarbageCollection();
+        script::GlobalEnvironment::ScopedPreventGarbageCollection
+            scoped_prevent_gc(
+                html_element_context()->script_runner()->GetGlobalEnvironment(),
+                this);
         ExecuteExternal();
-        AllowGarbageCollection();
         // Release the content string now that we're finished with it.
         content_.reset();
       } else {
@@ -329,7 +335,7 @@ void HTMLScriptElement::Prepare() {
     case 4: {
       // This is an asynchronous script. Prevent garbage collection until
       // loading completes and the script potentially executes.
-      PreventGarbageCollection();
+      PreventGCUntilLoadComplete();
 
       // If the element has a src attribute, does not have an async attribute,
       // and does not have the "force-async" flag set.
@@ -350,20 +356,17 @@ void HTMLScriptElement::Prepare() {
                                   ? document_->location()->GetOriginAsObject()
                                   : loader::Origin();
 
-      loader_ = html_element_context()
-                    ->loader_factory()
-                    ->CreateScriptLoader(
-                        url_, origin, csp_callback,
-                        base::Bind(&HTMLScriptElement::OnLoadingDone,
-                                   base::Unretained(this)),
-                        base::Bind(&HTMLScriptElement::OnLoadingError,
-                                   base::Unretained(this)))
-                    .Pass();
+      loader_ = html_element_context()->loader_factory()->CreateScriptLoader(
+          url_, origin, csp_callback,
+          base::Bind(&HTMLScriptElement::OnContentProduced,
+                     base::Unretained(this)),
+          base::Bind(&HTMLScriptElement::OnLoadingComplete,
+                     base::Unretained(this)));
     } break;
     case 5: {
       // This is an asynchronous script. Prevent garbage collection until
       // loading completes and the script potentially executes.
-      PreventGarbageCollection();
+      PreventGCUntilLoadComplete();
 
       // If the element has a src attribute.
 
@@ -381,23 +384,20 @@ void HTMLScriptElement::Prepare() {
                                   ? document_->location()->GetOriginAsObject()
                                   : loader::Origin();
 
-      loader_ = html_element_context()
-                    ->loader_factory()
-                    ->CreateScriptLoader(
-                        url_, origin, csp_callback,
-                        base::Bind(&HTMLScriptElement::OnLoadingDone,
-                                   base::Unretained(this)),
-                        base::Bind(&HTMLScriptElement::OnLoadingError,
-                                   base::Unretained(this)))
-                    .Pass();
+      loader_ = html_element_context()->loader_factory()->CreateScriptLoader(
+          url_, origin, csp_callback,
+          base::Bind(&HTMLScriptElement::OnContentProduced,
+                     base::Unretained(this)),
+          base::Bind(&HTMLScriptElement::OnLoadingComplete,
+                     base::Unretained(this)));
     } break;
     case 6: {
       // Otherwise.
 
       // The user agent must immediately execute the script block, even if other
       // scripts are already executing.
-      base::optional<std::string> content = text_content();
-      const std::string& text = content.value_or(EmptyString());
+      base::Optional<std::string> content = text_content();
+      const std::string& text = content.value_or(base::EmptyString());
       if (bypass_csp || text.empty() ||
           csp_delegate->AllowInline(CspDelegate::kScript,
                                     inline_script_location_,
@@ -405,42 +405,48 @@ void HTMLScriptElement::Prepare() {
         fetched_last_url_origin_ = document_->location()->GetOriginAsObject();
         ExecuteInternal();
       } else {
-        PreventGarbageCollectionAndPostToDispatchEvent(FROM_HERE,
-                                                       base::Tokens::error());
+        PreventGarbageCollectionAndPostToDispatchEvent(
+            FROM_HERE, base::Tokens::error(),
+            &prevent_gc_until_error_event_dispatch_);
       }
     } break;
     default: { NOTREACHED(); }
   }
 }
 
-void HTMLScriptElement::OnSyncLoadingDone(const loader::Origin& last_url_origin,
-                                          scoped_ptr<std::string> content) {
-  TRACE_EVENT0("cobalt::dom", "HTMLScriptElement::OnSyncLoadingDone()");
+void HTMLScriptElement::OnSyncContentProduced(
+    const loader::Origin& last_url_origin,
+    std::unique_ptr<std::string> content) {
+  TRACE_EVENT0("cobalt::dom", "HTMLScriptElement::OnSyncContentProduced()");
   fetched_last_url_origin_ = last_url_origin;
-  content_ = content.Pass();
+  content_ = std::move(content);
   is_sync_load_successful_ = true;
 }
 
-void HTMLScriptElement::OnSyncLoadingError(const std::string& error) {
-  TRACE_EVENT0("cobalt::dom", "HTMLScriptElement::OnSyncLoadingError()");
-  LOG(ERROR) << error;
+void HTMLScriptElement::OnSyncLoadingComplete(
+    const base::Optional<std::string>& error) {
+  if (!error) return;
+
+  TRACE_EVENT0("cobalt::dom", "HTMLScriptElement::OnSyncLoadingComplete()");
+  LOG(ERROR) << *error;
 }
 
-// Algorithm for OnLoadingDone:
+// Algorithm for OnContentProduced:
 //   https://www.w3.org/TR/html5/scripting-1.html#prepare-a-script
-void HTMLScriptElement::OnLoadingDone(const loader::Origin& last_url_origin,
-                                      scoped_ptr<std::string> content) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+void HTMLScriptElement::OnContentProduced(
+    const loader::Origin& last_url_origin,
+    std::unique_ptr<std::string> content) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(load_option_ == 4 || load_option_ == 5);
   DCHECK(content);
-  TRACE_EVENT0("cobalt::dom", "HTMLScriptElement::OnLoadingDone()");
+  TRACE_EVENT0("cobalt::dom", "HTMLScriptElement::OnContentProduced()");
   if (!document_) {
-    AllowGarbageCollection();
+    AllowGCAfterLoadComplete();
     return;
   }
 
   fetched_last_url_origin_ = last_url_origin;
-  content_ = content.Pass();
+  content_ = std::move(content);
 
   switch (load_option_) {
     case 4: {
@@ -472,7 +478,7 @@ void HTMLScriptElement::OnLoadingDone(const loader::Origin& last_url_origin,
         // If this script isn't the current object, then allow it to be garbage
         // collected now that it has executed.
         if (script != this) {
-          script->AllowGarbageCollection();
+          script->AllowGCAfterLoadComplete();
         }
         MSVC_POP_WARNING();
 
@@ -497,7 +503,7 @@ void HTMLScriptElement::OnLoadingDone(const loader::Origin& last_url_origin,
       }
       // Allow garbage collection on the current script object now that it has
       // finished executing both itself and other pending scripts.
-      AllowGarbageCollection();
+      AllowGCAfterLoadComplete();
     } break;
     case 5: {
       // If the element has a src attribute.
@@ -510,7 +516,7 @@ void HTMLScriptElement::OnLoadingDone(const loader::Origin& last_url_origin,
 
       // Allow garbage collection on the current object now that it has finished
       // executing.
-      AllowGarbageCollection();
+      AllowGCAfterLoadComplete();
 
       // Fetching an external script must delay the load event of the element's
       // document until the task that is queued by the networking task source
@@ -523,29 +529,31 @@ void HTMLScriptElement::OnLoadingDone(const loader::Origin& last_url_origin,
   content_.reset();
 
   // Post a task to release the loader.
-  MessageLoop::current()->PostTask(
+  base::MessageLoop::current()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&HTMLScriptElement::ReleaseLoader, this));
 }
 
-// Algorithm for OnLoadingError:
+// Algorithm for OnLoadingComplete:
 //   https://www.w3.org/TR/html5/scripting-1.html#prepare-a-script
-void HTMLScriptElement::OnLoadingError(const std::string& error) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+void HTMLScriptElement::OnLoadingComplete(
+    const base::Optional<std::string>& error) {
+  if (!error) return;
+
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(load_option_ == 4 || load_option_ == 5);
-  TRACE_EVENT0("cobalt::dom", "HTMLScriptElement::OnLoadingError()");
+  TRACE_EVENT0("cobalt::dom", "HTMLScriptElement::OnLoadingComplete()");
 
   if (!document_) {
-    AllowGarbageCollection();
+    AllowGCAfterLoadComplete();
     return;
   }
 
-  LOG(ERROR) << error;
+  LOG(ERROR) << *error;
 
   // Executing the script block must just consist of firing a simple event
   // named error at the element.
-  DCHECK_GT(prevent_garbage_collection_count_, 0);
   DispatchEvent(new Event(base::Tokens::error()));
-  AllowGarbageCollection();
+  AllowGCAfterLoadComplete();
 
   switch (load_option_) {
     case 4: {
@@ -571,7 +579,7 @@ void HTMLScriptElement::OnLoadingError(const std::string& error) {
   document_->DecreaseLoadingCounterAndMaybeDispatchLoadEvent();
 
   // Post a task to release the loader.
-  MessageLoop::current()->PostTask(
+  base::MessageLoop::current()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&HTMLScriptElement::ReleaseLoader, this));
 }
 
@@ -628,14 +636,15 @@ void HTMLScriptElement::Execute(const std::string& content,
   // named load at the script element.
   // TODO: Remove the firing of readystatechange once we support Promise.
   if (is_external) {
-    DCHECK_GT(prevent_garbage_collection_count_, 0);
     DispatchEvent(new Event(base::Tokens::load()));
     DispatchEvent(new Event(base::Tokens::readystatechange()));
   } else {
-    PreventGarbageCollectionAndPostToDispatchEvent(FROM_HERE,
-                                                   base::Tokens::load());
     PreventGarbageCollectionAndPostToDispatchEvent(
-        FROM_HERE, base::Tokens::readystatechange());
+        FROM_HERE, base::Tokens::load(),
+        &prevent_gc_until_load_event_dispatch_);
+    PreventGarbageCollectionAndPostToDispatchEvent(
+        FROM_HERE, base::Tokens::readystatechange(),
+        &prevent_gc_until_ready_event_dispatch_);
   }
 
   // The script is done running. Stop tracking it in the global stats.
@@ -646,43 +655,42 @@ void HTMLScriptElement::Execute(const std::string& content,
 }
 
 void HTMLScriptElement::PreventGarbageCollectionAndPostToDispatchEvent(
-    const tracked_objects::Location& location, const base::Token& token) {
+    const base::Location& location, const base::Token& token,
+    std::unique_ptr<script::GlobalEnvironment::ScopedPreventGarbageCollection>*
+        scoped_prevent_gc) {
   // Ensure that this HTMLScriptElement is not garbage collected until the event
   // has been processed.
-  PreventGarbageCollection();
-  PostToDispatchEventAndRunCallback(
+  DCHECK(!(*scoped_prevent_gc));
+  scoped_prevent_gc->reset(
+      new script::GlobalEnvironment::ScopedPreventGarbageCollection(
+          html_element_context()->script_runner()->GetGlobalEnvironment(),
+          this));
+  PostToDispatchEventNameAndRunCallback(
       location, token,
-      base::Bind(&HTMLScriptElement::AllowGarbageCollection, this));
+      base::Bind(&HTMLScriptElement::AllowGCAfterEventDispatch, this,
+                 scoped_prevent_gc));
 }
 
-void HTMLScriptElement::PreventGarbageCollection() {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  DCHECK_GE(prevent_garbage_collection_count_, 0);
-  if (prevent_garbage_collection_count_++ == 0) {
-    DCHECK(html_element_context()->script_runner());
-    DCHECK(html_element_context()->script_runner()->GetGlobalEnvironment());
-    html_element_context()
-        ->script_runner()
-        ->GetGlobalEnvironment()
-        ->PreventGarbageCollection(make_scoped_refptr(this));
-  }
+void HTMLScriptElement::AllowGCAfterEventDispatch(
+    std::unique_ptr<script::GlobalEnvironment::ScopedPreventGarbageCollection>*
+        scoped_prevent_gc) {
+  scoped_prevent_gc->reset();
 }
 
-void HTMLScriptElement::AllowGarbageCollection() {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  DCHECK_GT(prevent_garbage_collection_count_, 0);
-  if (--prevent_garbage_collection_count_ == 0) {
-    DCHECK(html_element_context()->script_runner());
-    DCHECK(html_element_context()->script_runner()->GetGlobalEnvironment());
-    html_element_context()
-        ->script_runner()
-        ->GetGlobalEnvironment()
-        ->AllowGarbageCollection(make_scoped_refptr(this));
-  }
+void HTMLScriptElement::PreventGCUntilLoadComplete() {
+  DCHECK(!prevent_gc_until_load_complete_);
+  prevent_gc_until_load_complete_.reset(
+      new script::GlobalEnvironment::ScopedPreventGarbageCollection(
+          html_element_context()->script_runner()->GetGlobalEnvironment(),
+          this));
+}
+
+void HTMLScriptElement::AllowGCAfterLoadComplete() {
+  prevent_gc_until_load_complete_.reset();
 }
 
 void HTMLScriptElement::ReleaseLoader() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(loader_);
   loader_.reset();
 }

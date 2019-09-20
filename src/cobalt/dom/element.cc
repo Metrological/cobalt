@@ -17,9 +17,9 @@
 #include <algorithm>
 
 #include "base/lazy_instance.h"
-#include "base/string_util.h"
+#include "base/strings/string_util.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/base/tokens.h"
-#include "cobalt/base/user_log.h"
 #include "cobalt/cssom/css_style_rule.h"
 #include "cobalt/cssom/selector.h"
 #include "cobalt/dom/document.h"
@@ -32,8 +32,10 @@
 #include "cobalt/dom/html_element_context.h"
 #include "cobalt/dom/mutation_reporter.h"
 #include "cobalt/dom/named_node_map.h"
+#include "cobalt/dom/node.h"
 #include "cobalt/dom/parser.h"
 #include "cobalt/dom/pointer_state.h"
+#include "cobalt/dom/rule_matching.h"
 #include "cobalt/dom/serializer.h"
 #include "cobalt/dom/text.h"
 #include "cobalt/math/rect_f.h"
@@ -46,41 +48,17 @@ namespace {
 
 const char kStyleAttributeName[] = "style";
 
-// This struct manages the user log information for Node count.
-struct ElementCountLog {
- public:
-  ElementCountLog() : count(0) {
-    base::UserLog::Register(base::UserLog::kElementCountIndex, "ElementCnt",
-                            &count, sizeof(count));
-  }
-  ~ElementCountLog() {
-    base::UserLog::Deregister(base::UserLog::kElementCountIndex);
-  }
-
-  int count;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ElementCountLog);
-};
-
-base::LazyInstance<ElementCountLog> element_count_log =
-    LAZY_INSTANCE_INITIALIZER;
-
 }  // namespace
 
 Element::Element(Document* document)
-    : Node(document), animations_(new web_animations::AnimationSet()) {
-  ++(element_count_log.Get().count);
-}
+    : Node(document), animations_(new web_animations::AnimationSet()) {}
 
 Element::Element(Document* document, base::Token local_name)
     : Node(document),
       local_name_(local_name),
-      animations_(new web_animations::AnimationSet()) {
-  ++(element_count_log.Get().count);
-}
+      animations_(new web_animations::AnimationSet()) {}
 
-base::optional<std::string> Element::text_content() const {
+base::Optional<std::string> Element::text_content() const {
   TRACK_MEMORY_SCOPE("DOM");
   std::string content;
 
@@ -96,7 +74,7 @@ base::optional<std::string> Element::text_content() const {
 }
 
 void Element::set_text_content(
-    const base::optional<std::string>& text_content) {
+    const base::Optional<std::string>& text_content) {
   TRACK_MEMORY_SCOPE("DOM");
   // https://www.w3.org/TR/dom/#dom-node-textcontent
   // 1. Let node be null.
@@ -113,6 +91,52 @@ void Element::set_text_content(
 }
 
 bool Element::HasAttributes() const { return !attribute_map_.empty(); }
+
+base::Optional<std::string> Element::GetAttributeNS(
+    const std::string& namespace_uri, const std::string& name) const {
+  // TODO: Implement namespaces, if we actually need this.
+  NOTIMPLEMENTED();
+  SB_UNREFERENCED_PARAMETER(namespace_uri);
+  return GetAttribute(name);
+}
+
+bool Element::HasAttributeNS(const std::string& namespace_uri,
+                             const std::string& name) const {
+  // TODO: Implement namespaces, if we actually need this.
+  NOTIMPLEMENTED();
+  SB_UNREFERENCED_PARAMETER(namespace_uri);
+  return HasAttribute(name);
+}
+
+bool Element::Matches(const std::string& selectors,
+                             script::ExceptionState* exception_state) {
+  TRACK_MEMORY_SCOPE("DOM");
+  // Referenced from:
+  // https://dom.spec.whatwg.org/#dom-element-matches
+
+  // 1. Let s be the result of parse a selector from selectors.
+  cssom::CSSParser* css_parser =
+      this->node_document()->html_element_context()->css_parser();
+  scoped_refptr<cssom::CSSRule> css_rule =
+      css_parser->ParseRule(selectors + " {}", this->GetInlineSourceLocation());
+
+  // 2. If s is failure, throw a "SyntaxError" DOMException.
+  if (!css_rule) {
+    DOMException::Raise(dom::DOMException::kSyntaxErr, exception_state);
+    return false;
+  }
+  scoped_refptr<cssom::CSSStyleRule> css_style_rule =
+      css_rule->AsCSSStyleRule();
+  if (!css_style_rule) {
+    DOMException::Raise(dom::DOMException::kSyntaxErr, exception_state);
+    return false;
+  }
+
+  // 3. Return true if the result of match a selector against an element,
+  //    using s, element, and :scope element context object, returns success,
+  //    and false otherwise.
+  return MatchRuleAndElement(css_style_rule, this);
+}
 
 scoped_refptr<NamedNodeMap> Element::attributes() {
   TRACK_MEMORY_SCOPE("DOM");
@@ -138,7 +162,7 @@ const scoped_refptr<DOMTokenList>& Element::class_list() {
 
 // Algorithm for GetAttribute:
 //   https://www.w3.org/TR/2014/WD-dom-20140710/#dom-element-getattribute
-base::optional<std::string> Element::GetAttribute(
+base::Optional<std::string> Element::GetAttribute(
     const std::string& name) const {
   TRACK_MEMORY_SCOPE("DOM");
   Document* document = node_document();
@@ -147,7 +171,7 @@ base::optional<std::string> Element::GetAttribute(
   //    an HTML document, let name be converted to ASCII lowercase.
   std::string attr_name = name;
   if (document && !document->IsXMLDocument()) {
-    StringToLowerASCII(&attr_name);
+    attr_name = base::ToLowerASCII(attr_name);
   }
 
   // 2. Return the value of the attribute in element's attribute list whose
@@ -174,6 +198,8 @@ base::optional<std::string> Element::GetAttribute(
 //   https://www.w3.org/TR/2014/WD-dom-20140710/#dom-element-setattribute
 void Element::SetAttribute(const std::string& name, const std::string& value) {
   TRACK_MEMORY_SCOPE("DOM");
+  TRACE_EVENT2("cobalt::dom", "Element::SetAttribute",
+               "name", name, "value", value);
   Document* document = node_document();
 
   // 1. Not needed by Cobalt.
@@ -182,7 +208,7 @@ void Element::SetAttribute(const std::string& name, const std::string& value) {
   //    an HTML document, let name be converted to ASCII lowercase.
   std::string attr_name = name;
   if (document && !document->IsXMLDocument()) {
-    StringToLowerASCII(&attr_name);
+    attr_name = base::ToLowerASCII(attr_name);
   }
 
   // 3. Let attribute be the first attribute in the context object's attribute
@@ -192,7 +218,7 @@ void Element::SetAttribute(const std::string& name, const std::string& value) {
   //    terminate these steps.
   // 5. Change attribute from context object to value.
 
-  base::optional<std::string> old_value = GetAttribute(attr_name);
+  base::Optional<std::string> old_value = GetAttribute(attr_name);
   MutationReporter mutation_reporter(this, GatherInclusiveAncestorsObservers());
   mutation_reporter.ReportAttributesMutation(attr_name, old_value);
 
@@ -245,23 +271,24 @@ void Element::SetAttribute(const std::string& name, const std::string& value) {
   if (document && GetRootNode() == document) {
     document->OnDOMMutation();
   }
-  OnSetAttribute(name, value);
+  OnSetAttribute(attr_name, value);
 }
 
 // Algorithm for RemoveAttribute:
 //   https://www.w3.org/TR/2014/WD-dom-20140710/#dom-element-removeattribute
 void Element::RemoveAttribute(const std::string& name) {
   TRACK_MEMORY_SCOPE("DOM");
+  TRACE_EVENT1("cobalt::dom", "Element::RemoveAttribute", "name", name);
   Document* document = node_document();
 
   // 1. If the context object is in the HTML namespace and its node document is
   //    an HTML document, let name be converted to ASCII lowercase.
   std::string attr_name = name;
   if (document && !document->IsXMLDocument()) {
-    StringToLowerASCII(&attr_name);
+    attr_name = base::ToLowerASCII(attr_name);
   }
 
-  base::optional<std::string> old_value = GetAttribute(attr_name);
+  base::Optional<std::string> old_value = GetAttribute(attr_name);
   if (old_value) {
     MutationReporter mutation_reporter(this,
                                        GatherInclusiveAncestorsObservers());
@@ -278,11 +305,7 @@ void Element::RemoveAttribute(const std::string& name) {
       }
     // fall-through if not style attribute name
     default: {
-      AttributeMap::iterator iter = attribute_map_.find(attr_name);
-      if (iter == attribute_map_.end()) {
-        return;
-      }
-      attribute_map_.erase(iter);
+      attribute_map_.erase(attr_name);
       break;
     }
   }
@@ -310,7 +333,7 @@ void Element::RemoveAttribute(const std::string& name) {
   if (document && GetRootNode() == document) {
     document->OnDOMMutation();
   }
-  OnRemoveAttribute(name);
+  OnRemoveAttribute(attr_name);
 }
 
 // Algorithm for tag_name:
@@ -325,7 +348,7 @@ base::Token Element::tag_name() const {
   // an HTML document, let qualified name be converted to ASCII uppercase.
   Document* document = node_document();
   if (document && !document->IsXMLDocument()) {
-    StringToUpperASCII(&qualified_name);
+    qualified_name = base::ToUpperASCII(qualified_name);
   }
 
   // 3. Return qualified name.
@@ -342,7 +365,7 @@ bool Element::HasAttribute(const std::string& name) const {
   //    an HTML document, let name be converted to ASCII lowercase.
   std::string attr_name = name;
   if (document && !document->IsXMLDocument()) {
-    StringToLowerASCII(&attr_name);
+    attr_name = base::ToLowerASCII(attr_name);
   }
 
   // 2. Return true if the context object has an attribute whose name is name,
@@ -362,7 +385,7 @@ scoped_refptr<HTMLCollection> Element::GetElementsByTagName(
   if (document && document->IsXMLDocument()) {
     return HTMLCollection::CreateWithElementsByLocalName(this, local_name);
   } else {
-    const std::string lower_local_name = StringToLowerASCII(local_name);
+    const std::string lower_local_name = base::ToLowerASCII(local_name);
     return HTMLCollection::CreateWithElementsByLocalName(this,
                                                          lower_local_name);
   }
@@ -406,7 +429,7 @@ scoped_refptr<DOMRect> Element::GetBoundingClientRect() {
   // 2. If the list is empty return a DOMRect object whose x, y, width and
   // height members are zero.
   if (list->length() == 0) {
-    return make_scoped_refptr(new DOMRect());
+    return base::WrapRefCounted(new DOMRect());
   }
   // 3. Otherwise, return a DOMRect object describing the smallest rectangle
   // that includes the first rectangle in list and all of the remaining
@@ -420,7 +443,7 @@ scoped_refptr<DOMRect> Element::GetBoundingClientRect() {
       bounding_rect.Union(GetBoundingRectangle(box_rect));
     }
   }
-  return make_scoped_refptr(new DOMRect(bounding_rect));
+  return base::WrapRefCounted(new DOMRect(bounding_rect));
 }
 
 // Algorithm for GetClientRects:
@@ -428,7 +451,7 @@ scoped_refptr<DOMRect> Element::GetBoundingClientRect() {
 scoped_refptr<DOMRectList> Element::GetClientRects() {
   // 1. If the element on which it was invoked does not have an associated
   // layout box return an empty DOMRectList object and stop this algorithm.
-  return make_scoped_refptr(new DOMRectList());
+  return base::WrapRefCounted(new DOMRectList());
 }
 
 // Algorithm for client_top:
@@ -607,7 +630,7 @@ bool Element::HasFocus() {
   return document ? (document->active_element() == this) : false;
 }
 
-base::optional<std::string> Element::GetStyleAttribute() const {
+base::Optional<std::string> Element::GetStyleAttribute() const {
   AttributeMap::const_iterator iter = attribute_map_.find(kStyleAttributeName);
   if (iter != attribute_map_.end()) {
     return iter->second;
@@ -633,15 +656,71 @@ void Element::CollectStyleSheetsOfElementAndDescendants(
   }
 }
 
+void Element::RegisterIntersectionObserverRoot(IntersectionObserver* observer) {
+  EnsureIntersectionObserverModuleInitialized();
+  element_intersection_observer_module_->RegisterIntersectionObserverForRoot(
+      observer);
+}
+
+void Element::UnregisterIntersectionObserverRoot(
+    IntersectionObserver* observer) {
+  if (element_intersection_observer_module_) {
+    element_intersection_observer_module_
+        ->UnregisterIntersectionObserverForRoot(observer);
+  }
+}
+
+void Element::RegisterIntersectionObserverTarget(
+    IntersectionObserver* observer) {
+  EnsureIntersectionObserverModuleInitialized();
+  element_intersection_observer_module_->RegisterIntersectionObserverForTarget(
+      observer);
+}
+
+void Element::UnregisterIntersectionObserverTarget(
+    IntersectionObserver* observer) {
+  element_intersection_observer_module_
+      ->UnregisterIntersectionObserverForTarget(observer);
+}
+
+ElementIntersectionObserverModule::LayoutIntersectionObserverRootVector
+Element::GetLayoutIntersectionObserverRoots() {
+  ElementIntersectionObserverModule::LayoutIntersectionObserverRootVector
+      layout_roots;
+  if (element_intersection_observer_module_) {
+    layout_roots = element_intersection_observer_module_
+                       ->GetLayoutIntersectionObserverRootsForElement();
+  }
+  return layout_roots;
+}
+
+ElementIntersectionObserverModule::LayoutIntersectionObserverTargetVector
+Element::GetLayoutIntersectionObserverTargets() {
+  ElementIntersectionObserverModule::LayoutIntersectionObserverTargetVector
+      layout_targets;
+  if (element_intersection_observer_module_) {
+    layout_targets = element_intersection_observer_module_
+                         ->GetLayoutIntersectionObserverTargetsForElement();
+  }
+  return layout_targets;
+}
+
 scoped_refptr<HTMLElement> Element::AsHTMLElement() { return NULL; }
 
-Element::~Element() { --(element_count_log.Get().count); }
+// Explicitly defined because DOMTokenList is forward declared and held by
+// scoped_refptr in Element's header.
+Element::~Element() {
+  // Reset the ElementIntersectionObserverModule so that functions such as
+  // UnregisterIntersectionRoot/Target will not be called on deleted objects.
+  element_intersection_observer_module_.reset();
+}
 
 void Element::TraceMembers(script::Tracer* tracer) {
   Node::TraceMembers(tracer);
 
   tracer->Trace(named_node_map_);
   tracer->Trace(class_list_);
+  tracer->Trace(element_intersection_observer_module_);
 }
 
 bool Element::GetBooleanAttribute(const std::string& name) const {
@@ -679,6 +758,14 @@ std::string Element::GetDebugName() {
 void Element::HTMLParseError(const std::string& error) {
   // TODO: Report line / column number.
   LOG(WARNING) << "Error when parsing inner HTML or outer HTML: " << error;
+}
+
+void Element::EnsureIntersectionObserverModuleInitialized() {
+  if (!element_intersection_observer_module_) {
+    element_intersection_observer_module_ =
+        std::unique_ptr<ElementIntersectionObserverModule>(
+            new ElementIntersectionObserverModule(this));
+  }
 }
 
 }  // namespace dom

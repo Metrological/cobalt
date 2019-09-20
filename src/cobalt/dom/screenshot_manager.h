@@ -15,13 +15,16 @@
 #ifndef COBALT_DOM_SCREENSHOT_MANAGER_H_
 #define COBALT_DOM_SCREENSHOT_MANAGER_H_
 
+#include <memory>
 #include <unordered_map>
 
 #include "base/memory/ref_counted.h"
+#include "base/optional.h"
 #include "base/threading/thread_checker.h"
 #include "cobalt/dom/dom_settings.h"
 #include "cobalt/loader/image/image.h"
 #include "cobalt/loader/image/image_encoder.h"
+#include "cobalt/math/rect.h"
 #include "cobalt/render_tree/node.h"
 #include "cobalt/script/promise.h"
 #include "cobalt/script/script_value.h"
@@ -38,10 +41,11 @@ class ScreenshotManager {
   using OnEncodedStaticImageCallback = base::Callback<void(
       const scoped_refptr<loader::image::EncodedStaticImage>& image_data)>;
   using OnUnencodedImageCallback =
-      base::Callback<void(scoped_array<uint8>, const math::Size&)>;
+      base::Callback<void(std::unique_ptr<uint8[]>, const math::Size&)>;
 
   using ProvideScreenshotFunctionCallback =
       base::Callback<void(const scoped_refptr<render_tree::Node>&,
+                          const base::Optional<math::Rect>& clip_rect,
                           const OnUnencodedImageCallback&)>;
 
   explicit ScreenshotManager(
@@ -57,9 +61,9 @@ class ScreenshotManager {
  private:
   void FillScreenshot(
       int64_t token,
-      scoped_refptr<base::MessageLoopProxy> expected_message_loop,
+      scoped_refptr<base::SingleThreadTaskRunner> expected_task_runner,
       loader::image::EncodedStaticImage::ImageFormat desired_format,
-      scoped_array<uint8> image_data, const math::Size& dimensions);
+      std::unique_ptr<uint8[]> image_data, const math::Size& dimensions);
 
   int64_t next_ticket_id_ = 0;
 
@@ -67,7 +71,7 @@ class ScreenshotManager {
       std::unordered_map<int64_t,
                          std::unique_ptr<InterfacePromiseValue::Reference>>;
 
-  base::ThreadChecker thread_checker_;
+  THREAD_CHECKER(thread_checker_);
   script::EnvironmentSettings* environment_settings_ = nullptr;
   TicketToPromiseMap ticket_to_screenshot_promise_map_;
   ProvideScreenshotFunctionCallback screenshot_function_callback_;

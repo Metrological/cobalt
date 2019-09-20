@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "base/logging.h"
-#include "base/time.h"
+#include "base/time/time.h"
 #include "cobalt/media/base/media_export.h"
 #include "starboard/types.h"
 
@@ -153,6 +153,20 @@ Ranges<T> Ranges<T>::IntersectionWith(const Ranges<T>& other) const {
   }
 
   return result;
+}
+
+// For logging use only.
+template <class T>
+BASE_EXPORT std::ostream& operator<<(std::ostream& os,
+                                     const Ranges<T>& ranges) {
+  os << ranges.size() << " (";
+  for (size_t i = 0; i < ranges.size(); ++i) {
+    os << '[' << ranges.start(i) << ", " << ranges.end(i) << ']';
+    if (i != ranges.size() - 1) {
+      os << ", ";
+    }
+  }
+  return os << ')';
 }
 
 }  // namespace media

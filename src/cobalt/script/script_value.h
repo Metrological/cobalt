@@ -16,10 +16,10 @@
 #define COBALT_SCRIPT_SCRIPT_VALUE_H_
 
 #include <algorithm>
+#include <memory>
 
 #include "base/basictypes.h"
 #include "base/logging.h"
-#include "base/memory/scoped_ptr.h"
 #include "cobalt/script/tracer.h"
 
 namespace cobalt {
@@ -49,6 +49,14 @@ class Wrappable;
 template <class T>
 class ScriptValue {
  public:
+  // This Deleter is meant to be used only when instantiating std::unique_ptr.
+  // struct Deleter {
+  //   Deleter() = default;
+  //   Deleter(Deleter&) = default;
+  //   Deleter(const Deleter&) = default;
+  //   Deleter(Deleter&&) = default;
+  //   inline void operator()(ScriptValue* value) const { delete value; };
+  // };
   // The Reference class maintains the ownership relationship between a
   // Wrappable and the JavaScript value wrapped by a ScriptValue. This is an
   // RAII object in that creation of a Reference instance will mark the
@@ -84,7 +92,8 @@ class ScriptValue {
 
    private:
     Wrappable* const owner_;
-    scoped_ptr<ScriptValue> referenced_value_;
+    // std::unique_ptr<ScriptValue, Deleter> referenced_value_;
+    std::unique_ptr<ScriptValue> referenced_value_;
 
     DISALLOW_COPY_AND_ASSIGN(Reference);
   };
@@ -99,11 +108,10 @@ class ScriptValue {
   // Creates a new ScriptValue that contains a weak reference to the same
   // underlying JavaScript value. Note that this will not prevent the value
   // from being garbage collected, one must create a Reference to do that.
-  scoped_ptr<ScriptValue> MakeWeakCopy() const {
-    return MakeCopy().Pass();
+  std::unique_ptr<ScriptValue> MakeWeakCopy() const {
+    return std::move(MakeCopy());
   }
 
- protected:
   virtual ~ScriptValue() {}
 
  private:
@@ -113,7 +121,7 @@ class ScriptValue {
   virtual void DeregisterOwner(Wrappable* owner) = 0;
 
   // Prevent/Allow garbage collection of the underlying ScriptValue. Calls
-  // must be balanced and are not idempodent. While the number of calls to
+  // must be balanced and are not idempotent. While the number of calls to
   // |Prevent| are greater than the number of calls to |Allow|, the underlying
   // value will never be garbage collected.
   virtual void PreventGarbageCollection() = 0;
@@ -127,14 +135,13 @@ class ScriptValue {
   // Make a new ScriptValue instance that holds a handle to the same
   // underlying JavaScript value. This should not be called for a ScriptValue
   // that has a NULL script value (that is, GetScriptValue() returns NULL).
-  virtual scoped_ptr<ScriptValue> MakeCopy() const = 0;
+  virtual std::unique_ptr<ScriptValue> MakeCopy() const = 0;
 
   int reference_count_ = 0;
 
-  friend class scoped_ptr<ScriptValue>;
-
   template <typename F>
   friend class Handle;
+  friend class Reference;
 };
 
 // A handle that references a |ScriptValue|, and manages its garbage
@@ -196,7 +203,7 @@ class Handle {
   T* operator*() { return script_value_->GetValue(); }
   T* operator->() const { return script_value_->GetValue(); }
 
-  // These are primarly exposed for internals.  In most cases you don't need
+  // These are primarily exposed for internals.  In most cases you don't need
   // to work with the ScriptValue directly.
   ScriptValue<T>* GetScriptValue() { return script_value_; }
   const ScriptValue<T>* GetScriptValue() const { return script_value_; }

@@ -14,13 +14,15 @@
 
 #include "cobalt/dom/error_event.h"
 
+#include <memory>
 #include <string>
 
 #include "base/bind.h"
 #include "base/callback.h"
-#include "base/memory/scoped_ptr.h"
+#include "base/optional.h"
 #include "base/threading/platform_thread.h"
 #include "cobalt/css_parser/parser.h"
+#include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/error_event_init.h"
 #include "cobalt/dom/local_storage_database.h"
 #include "cobalt/dom/testing/gtest_workarounds.h"
@@ -40,39 +42,44 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
+using cobalt::cssom::ViewportSize;
+using cobalt::script::testing::FakeScriptValue;
+
 namespace cobalt {
 namespace dom {
-using ::cobalt::script::testing::FakeScriptValue;
 
-class MockErrorCallback : public base::Callback<void(const std::string&)> {
+class MockLoadCompleteCallback
+    : public base::Callback<void(const base::Optional<std::string>&)> {
  public:
-  MOCK_METHOD1(Run, void(const std::string&));
+  MOCK_METHOD1(Run, void(const base::Optional<std::string>&));
 };
 
 namespace {
 class ErrorEventTest : public ::testing::Test {
  public:
   ErrorEventTest()
-      : environment_settings_(new script::EnvironmentSettings),
-        message_loop_(MessageLoop::TYPE_DEFAULT),
+      : message_loop_(base::MessageLoop::TYPE_DEFAULT),
+        environment_settings_(new script::EnvironmentSettings),
         css_parser_(css_parser::Parser::Create()),
-        dom_parser_(new dom_parser::Parser(mock_error_callback_)),
+        dom_parser_(new dom_parser::Parser(mock_load_complete_callback_)),
         fetcher_factory_(new loader::FetcherFactory(NULL)),
-        loader_factory_(new loader::LoaderFactory(
-            fetcher_factory_.get(), NULL, base::kThreadPriority_Default)),
+        loader_factory_(
+            new loader::LoaderFactory("Test", fetcher_factory_.get(), NULL, 0,
+                                      base::ThreadPriority::DEFAULT)),
         local_storage_database_(NULL),
         url_("about:blank") {
     engine_ = script::JavaScriptEngine::CreateEngine();
     global_environment_ = engine_->CreateGlobalEnvironment();
 
+    ViewportSize view_size(1920, 1080);
     window_ = new Window(
-        1920, 1080, 1.f, base::kApplicationStateStarted, css_parser_.get(),
+        view_size, 1.f, base::kApplicationStateStarted, css_parser_.get(),
         dom_parser_.get(), fetcher_factory_.get(), loader_factory_.get(), NULL,
         NULL, NULL, NULL, NULL, NULL, &local_storage_database_, NULL, NULL,
         NULL, NULL, global_environment_->script_value_factory(), NULL, NULL,
         url_, "", "en-US", "en", base::Callback<void(const GURL&)>(),
-        base::Bind(&MockErrorCallback::Run,
-                   base::Unretained(&mock_error_callback_)),
+        base::Bind(&MockLoadCompleteCallback::Run,
+                   base::Unretained(&mock_load_complete_callback_)),
         NULL, network_bridge::PostSender(), csp::kCSPRequired,
         kCspEnforcementEnable, base::Closure() /* csp_policy_changed */,
         base::Closure() /* ran_animation_frame_callbacks */,
@@ -89,16 +96,15 @@ class ErrorEventTest : public ::testing::Test {
   bool EvaluateScript(const std::string& js_code, std::string* result);
 
  private:
-  scoped_ptr<script::JavaScriptEngine> engine_;
+  base::MessageLoop message_loop_;
+  std::unique_ptr<script::JavaScriptEngine> engine_;
+  const std::unique_ptr<script::EnvironmentSettings> environment_settings_;
   scoped_refptr<script::GlobalEnvironment> global_environment_;
-
-  const scoped_ptr<script::EnvironmentSettings> environment_settings_;
-  MessageLoop message_loop_;
-  MockErrorCallback mock_error_callback_;
-  scoped_ptr<css_parser::Parser> css_parser_;
-  scoped_ptr<dom_parser::Parser> dom_parser_;
-  scoped_ptr<loader::FetcherFactory> fetcher_factory_;
-  scoped_ptr<loader::LoaderFactory> loader_factory_;
+  MockLoadCompleteCallback mock_load_complete_callback_;
+  std::unique_ptr<css_parser::Parser> css_parser_;
+  std::unique_ptr<dom_parser::Parser> dom_parser_;
+  std::unique_ptr<loader::FetcherFactory> fetcher_factory_;
+  std::unique_ptr<loader::LoaderFactory> loader_factory_;
   dom::LocalStorageDatabase local_storage_database_;
   GURL url_;
   scoped_refptr<Window> window_;
@@ -123,8 +129,8 @@ TEST_F(ErrorEventTest, ConstructorWithEventTypeString) {
   scoped_refptr<ErrorEvent> event = new ErrorEvent("mytestevent");
 
   EXPECT_EQ("mytestevent", event->type());
-  EXPECT_EQ(NULL, event->target());
-  EXPECT_EQ(NULL, event->current_target());
+  EXPECT_EQ(NULL, event->target().get());
+  EXPECT_EQ(NULL, event->current_target().get());
   EXPECT_EQ(Event::kNone, event->event_phase());
   EXPECT_FALSE(event->bubbles());
   EXPECT_FALSE(event->cancelable());
@@ -144,8 +150,8 @@ TEST_F(ErrorEventTest, ConstructorWithEventTypeAndDefaultInitDict) {
   scoped_refptr<ErrorEvent> event = new ErrorEvent("mytestevent", init);
 
   EXPECT_EQ("mytestevent", event->type());
-  EXPECT_EQ(NULL, event->target());
-  EXPECT_EQ(NULL, event->current_target());
+  EXPECT_EQ(NULL, event->target().get());
+  EXPECT_EQ(NULL, event->current_target().get());
   EXPECT_EQ(Event::kNone, event->event_phase());
   EXPECT_FALSE(event->bubbles());
   EXPECT_FALSE(event->cancelable());

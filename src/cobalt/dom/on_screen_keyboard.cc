@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "cobalt/dom/on_screen_keyboard.h"
 
 #include "base/callback.h"
@@ -29,6 +31,7 @@ OnScreenKeyboard::OnScreenKeyboard(
       script_value_factory_(script_value_factory),
       next_ticket_(0) {
   DCHECK(bridge_) << "OnScreenKeyboardBridge must not be NULL";
+  suggestions_supported_ = bridge_->SuggestionsSupported();
 }
 
 script::Handle<script::Promise<void>> OnScreenKeyboard::Show() {
@@ -87,6 +90,36 @@ script::Handle<script::Promise<void>> OnScreenKeyboard::Blur() {
   return promise;
 }
 
+script::Handle<script::Promise<void>> OnScreenKeyboard::UpdateSuggestions(
+    const script::Sequence<std::string>& suggestions) {
+  script::Handle<script::Promise<void>> promise =
+      script_value_factory_->CreateBasicPromise<void>();
+#if SB_API_VERSION >= 11
+  if (suggestions_supported_) {
+    int ticket = next_ticket_++;
+    bool is_emplaced =
+        ticket_to_update_suggestions_promise_map_
+            .emplace(ticket,
+                     std::unique_ptr<VoidPromiseValue::Reference>(
+                         new VoidPromiseValue::Reference(this, promise)))
+            .second;
+    DCHECK(is_emplaced);
+    bridge_->UpdateSuggestions(suggestions, ticket);
+  } else {
+    LOG(WARNING)
+        << "Starboard version " << SB_API_VERSION
+        << " does not support on-screen keyboard suggestions on this platform.";
+    promise->Reject();
+  }
+#else
+  LOG(WARNING)
+      << "Starboard version " << SB_API_VERSION
+      << " does not support on-screen keyboard suggestions on this platform.";
+  promise->Reject();
+#endif  // SB_API_VERSION >= 11
+  return promise;
+}
+
 const EventTarget::EventListenerScriptValue* OnScreenKeyboard::onshow() const {
   return GetAttributeEventListener(base::Tokens::show());
 }
@@ -140,63 +173,60 @@ void OnScreenKeyboard::set_keep_focus(bool keep_focus) {
 }
 
 void OnScreenKeyboard::DispatchHideEvent(int ticket) {
-  if (bridge_->IsValidTicket(ticket)) {
-    TicketToPromiseMap::const_iterator it =
-        ticket_to_hide_promise_map_.find(ticket);
-    if (it == ticket_to_hide_promise_map_.end()) {
-      LOG(ERROR)
-          << "No promise matching ticket for OnScreenKeyboardHidden event.";
-      return;
-    }
-    it->second->value().Resolve();
-    ticket_to_hide_promise_map_.erase(it);
+  if (ResolvePromise(ticket, &ticket_to_hide_promise_map_)) {
+    DispatchEvent(new dom::Event(base::Tokens::hide()));
+  } else {
+    LOG(ERROR)
+        << "No promise matching ticket for OnScreenKeyboardHidden event.";
   }
-  DispatchEvent(new dom::Event(base::Tokens::hide()));
 }
 
 void OnScreenKeyboard::DispatchShowEvent(int ticket) {
-  if (bridge_->IsValidTicket(ticket)) {
-    TicketToPromiseMap::const_iterator it =
-        ticket_to_show_promise_map_.find(ticket);
-    if (it == ticket_to_show_promise_map_.end()) {
-      LOG(ERROR)
-          << "No promise matching ticket for OnScreenKeyboardShown event.";
-      return;
-    }
-    it->second->value().Resolve();
-    ticket_to_show_promise_map_.erase(it);
+  if (ResolvePromise(ticket, &ticket_to_show_promise_map_)) {
+    DispatchEvent(new dom::Event(base::Tokens::show()));
+  } else {
+    LOG(ERROR) << "No promise matching ticket for OnScreenKeyboardShown event.";
   }
-  DispatchEvent(new dom::Event(base::Tokens::show()));
 }
 
 void OnScreenKeyboard::DispatchFocusEvent(int ticket) {
-  if (bridge_->IsValidTicket(ticket)) {
-    TicketToPromiseMap::const_iterator it =
-        ticket_to_focus_promise_map_.find(ticket);
-    if (it == ticket_to_focus_promise_map_.end()) {
-      LOG(ERROR)
-          << "No promise matching ticket for OnScreenKeyboardFocused event.";
-      return;
-    }
-    it->second->value().Resolve();
-    ticket_to_focus_promise_map_.erase(it);
+  if (ResolvePromise(ticket, &ticket_to_focus_promise_map_)) {
+    DispatchEvent(new dom::Event(base::Tokens::focus()));
+  } else {
+    LOG(ERROR)
+        << "No promise matching ticket for OnScreenKeyboardFocused event.";
   }
-  DispatchEvent(new dom::Event(base::Tokens::focus()));
 }
 
 void OnScreenKeyboard::DispatchBlurEvent(int ticket) {
+  if (ResolvePromise(ticket, &ticket_to_blur_promise_map_)) {
+    DispatchEvent(new dom::Event(base::Tokens::blur()));
+  } else {
+    LOG(ERROR)
+        << "No promise matching ticket for OnScreenKeyboardBlurred event.";
+  }
+}
+
+void OnScreenKeyboard::DispatchSuggestionsUpdatedEvent(int ticket) {
+  if (ResolvePromise(ticket, &ticket_to_update_suggestions_promise_map_)) {
+    DispatchEvent(new dom::Event(base::Tokens::suggestionsUpdated()));
+  } else {
+    LOG(ERROR) << "No promise matching ticket for "
+                  "OnScreenKeyboardSuggestionsUpdated event.";
+  }
+}
+
+bool OnScreenKeyboard::ResolvePromise(
+    int ticket, TicketToPromiseMap* ticket_to_promise_map) {
   if (bridge_->IsValidTicket(ticket)) {
-    TicketToPromiseMap::const_iterator it =
-        ticket_to_blur_promise_map_.find(ticket);
-    if (it == ticket_to_blur_promise_map_.end()) {
-      LOG(ERROR)
-          << "No promise matching ticket for OnScreenKeyboardBlurred event.";
-      return;
+    TicketToPromiseMap::const_iterator it = ticket_to_promise_map->find(ticket);
+    if (it == ticket_to_promise_map->end()) {
+      return false;
     }
     it->second->value().Resolve();
-    ticket_to_blur_promise_map_.erase(it);
+    ticket_to_promise_map->erase(it);
   }
-  DispatchEvent(new dom::Event(base::Tokens::blur()));
+  return true;
 }
 
 }  // namespace dom

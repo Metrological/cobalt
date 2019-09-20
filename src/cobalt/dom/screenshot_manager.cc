@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "cobalt/dom/screenshot_manager.h"
 
-#include "base/time.h"
+#include "base/time/time.h"
 #include "cobalt/dom/screenshot.h"
 #include "cobalt/render_tree/node.h"
 #include "cobalt/script/array_buffer.h"
@@ -38,10 +40,11 @@ void ScreenshotManager::Screenshot(
   DCHECK(!screenshot_function_callback_.is_null());
 
   // We want to ScreenshotManager::FillScreenshot, on this thread.
-  base::Callback<void(scoped_array<uint8>, const math::Size&)> fill_screenshot =
-      base::Bind(&ScreenshotManager::FillScreenshot, base::Unretained(this),
-                 next_ticket_id_, base::MessageLoopProxy::current(),
-                 desired_format);
+  base::Callback<void(std::unique_ptr<uint8[]>, const math::Size&)>
+      fill_screenshot = base::Bind(&ScreenshotManager::FillScreenshot,
+                                   base::Unretained(this), next_ticket_id_,
+                                   base::MessageLoop::current()->task_runner(),
+                                   desired_format);
   bool was_emplaced =
       ticket_to_screenshot_promise_map_
           .emplace(next_ticket_id_, std::move(promise_reference))
@@ -49,7 +52,8 @@ void ScreenshotManager::Screenshot(
   DCHECK(was_emplaced);
   ++next_ticket_id_;
 
-  screenshot_function_callback_.Run(render_tree_root, fill_screenshot);
+  screenshot_function_callback_.Run(
+      render_tree_root, /*clip_rect=*/base::nullopt, fill_screenshot);
 }
 
 void ScreenshotManager::SetEnvironmentSettings(
@@ -58,18 +62,19 @@ void ScreenshotManager::SetEnvironmentSettings(
 }
 
 void ScreenshotManager::FillScreenshot(
-    int64_t token, scoped_refptr<base::MessageLoopProxy> expected_message_loop,
+    int64_t token,
+    scoped_refptr<base::SingleThreadTaskRunner> expected_task_runner,
     loader::image::EncodedStaticImage::ImageFormat desired_format,
-    scoped_array<uint8> image_data, const math::Size& image_dimensions) {
-  if (base::MessageLoopProxy::current() != expected_message_loop) {
-    expected_message_loop->PostTask(
+    std::unique_ptr<uint8[]> image_data, const math::Size& image_dimensions) {
+  if (expected_task_runner && !expected_task_runner->BelongsToCurrentThread()) {
+    expected_task_runner->PostTask(
         FROM_HERE,
         base::Bind(&ScreenshotManager::FillScreenshot, base::Unretained(this),
-                   token, expected_message_loop, desired_format,
+                   token, expected_task_runner, desired_format,
                    base::Passed(&image_data), image_dimensions));
     return;
   }
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(environment_settings_);
 
   auto iterator = ticket_to_screenshot_promise_map_.find(token);

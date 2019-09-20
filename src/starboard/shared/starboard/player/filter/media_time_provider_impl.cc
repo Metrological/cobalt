@@ -14,7 +14,7 @@
 
 #include "starboard/shared/starboard/player/filter/media_time_provider_impl.h"
 
-#include "starboard/log.h"
+#include "starboard/common/log.h"
 
 namespace starboard {
 namespace shared {
@@ -94,7 +94,8 @@ void MediaTimeProviderImpl::Seek(SbTime seek_to_time) {
 }
 
 SbTime MediaTimeProviderImpl::GetCurrentMediaTime(bool* is_playing,
-                                                  bool* is_eos_played) {
+                                                  bool* is_eos_played,
+                                                  bool* is_underflow) {
   SB_DCHECK(ended_cb_);
 
   ScopedLock scoped_lock(mutex_);
@@ -105,6 +106,7 @@ SbTime MediaTimeProviderImpl::GetCurrentMediaTime(bool* is_playing,
   *is_eos_played =
       is_video_end_of_stream_reached_ &&
       (!video_duration_.has_engaged() || current >= video_duration_.value());
+  *is_underflow = false;
 
   Schedule(ended_cb_);
   return current;

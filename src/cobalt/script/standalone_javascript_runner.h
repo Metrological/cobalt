@@ -15,9 +15,10 @@
 #ifndef COBALT_SCRIPT_STANDALONE_JAVASCRIPT_RUNNER_H_
 #define COBALT_SCRIPT_STANDALONE_JAVASCRIPT_RUNNER_H_
 
+#include <memory>
 #include <string>
 
-#include "base/file_path.h"
+#include "base/files/file_path.h"
 #include "cobalt/script/environment_settings.h"
 #include "cobalt/script/global_environment.h"
 #include "cobalt/script/javascript_engine.h"
@@ -44,11 +45,11 @@ class StandaloneJavascriptRunner {
   }
 
   // Executes input from stdin and echoes the result to stdout. Loops until EOF
-  // is encounterd (CTRL-D).
+  // is encountered (CTRL-D).
   void RunInteractive();
 
   // Read the file from disk and execute the script. Echos the result to stdout.
-  void ExecuteFile(const FilePath& file);
+  void ExecuteFile(const base::FilePath& file);
 
   const scoped_refptr<GlobalEnvironment>& global_environment() const {
     return global_environment_;
@@ -60,8 +61,8 @@ class StandaloneJavascriptRunner {
   void ExecuteAndPrintResult(const base::SourceLocation& source_location,
                              const std::string& script);
 
-  scoped_ptr<JavaScriptEngine> engine_;
-  scoped_ptr<EnvironmentSettings> environment_settings_;
+  std::unique_ptr<JavaScriptEngine> engine_;
+  std::unique_ptr<EnvironmentSettings> environment_settings_;
   scoped_refptr<GlobalEnvironment> global_environment_;
 };
 }  // namespace script

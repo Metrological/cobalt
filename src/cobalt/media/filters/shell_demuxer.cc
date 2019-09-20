@@ -19,15 +19,13 @@
 #include "base/bind.h"
 #include "base/callback.h"
 #include "base/callback_helpers.h"
-#include "base/debug/trace_event.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/message_loop.h"
-#include "base/stringprintf.h"
+#include "base/message_loop/message_loop.h"
+#include "base/strings/stringprintf.h"
 #include "base/task_runner_util.h"
-#include "base/time.h"
+#include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/media/base/bind_to_current_loop.h"
 #include "cobalt/media/base/data_source.h"
-#include "cobalt/media/base/shell_media_platform.h"
 #include "cobalt/media/base/starboard_utils.h"
 #include "cobalt/media/base/timestamp_constants.h"
 #include "starboard/types.h"
@@ -36,11 +34,7 @@ namespace cobalt {
 namespace media {
 
 ShellDemuxerStream::ShellDemuxerStream(ShellDemuxer* demuxer, Type type)
-    : demuxer_(demuxer),
-      type_(type),
-      last_buffer_timestamp_(kNoTimestamp),
-      stopped_(false),
-      total_buffer_size_(0) {
+    : demuxer_(demuxer), type_(type) {
   TRACE_EVENT0("media_stack", "ShellDemuxerStream::ShellDemuxerStream()");
   DCHECK(demuxer_);
 }
@@ -71,11 +65,10 @@ void ShellDemuxerStream::Read(const ReadCB& read_cb) {
     } else {
       // Do not pop EOS buffers, so that subsequent read requests also get EOS
       total_buffer_size_ -= buffer->data_size();
+      --total_buffer_count_;
       buffer_queue_.pop_front();
     }
-    read_cb.Run(
-        DemuxerStream::kOk,
-        ShellMediaPlatform::Instance()->ProcessBeforeLeavingDemuxer(buffer));
+    read_cb.Run(DemuxerStream::kOk, buffer);
   } else {
     TRACE_EVENT0("media_stack", "ShellDemuxerStream::Read() request queued.");
     read_queue_.push_back(read_cb);
@@ -100,9 +93,9 @@ DemuxerStream::Type ShellDemuxerStream::type() const { return type_; }
 void ShellDemuxerStream::EnableBitstreamConverter() { NOTIMPLEMENTED(); }
 
 void ShellDemuxerStream::EnqueueBuffer(scoped_refptr<DecoderBuffer> buffer) {
-  TRACE_EVENT1("media_stack", "ShellDemuxerStream::EnqueueBuffer()",
-               "timestamp", buffer->end_of_stream() ?
-                            -1 : buffer->timestamp().InMicroseconds());
+  TRACE_EVENT1(
+      "media_stack", "ShellDemuxerStream::EnqueueBuffer()", "timestamp",
+      buffer->end_of_stream() ? -1 : buffer->timestamp().InMicroseconds());
   base::AutoLock auto_lock(lock_);
   if (stopped_) {
     // it's possible due to pipelining both downstream and within the
@@ -131,14 +124,13 @@ void ShellDemuxerStream::EnqueueBuffer(scoped_refptr<DecoderBuffer> buffer) {
     DCHECK_EQ(buffer_queue_.size(), 0);
     ReadCB read_cb(read_queue_.front());
     read_queue_.pop_front();
-    read_cb.Run(
-        DemuxerStream::kOk,
-        ShellMediaPlatform::Instance()->ProcessBeforeLeavingDemuxer(buffer));
+    read_cb.Run(DemuxerStream::kOk, buffer);
   } else {
     // save the buffer for next read request
     buffer_queue_.push_back(buffer);
     if (!buffer->end_of_stream()) {
       total_buffer_size_ += buffer->data_size();
+      ++total_buffer_count_;
     }
   }
 }
@@ -153,6 +145,11 @@ size_t ShellDemuxerStream::GetTotalBufferSize() const {
   return total_buffer_size_;
 }
 
+size_t ShellDemuxerStream::GetTotalBufferCount() const {
+  base::AutoLock auto_lock(lock_);
+  return total_buffer_count_;
+}
+
 void ShellDemuxerStream::FlushBuffers() {
   TRACE_EVENT0("media_stack", "ShellDemuxerStream::FlushBuffers()");
   base::AutoLock auto_lock(lock_);
@@ -160,6 +157,7 @@ void ShellDemuxerStream::FlushBuffers() {
   DLOG_IF(WARNING, !read_queue_.empty()) << "Read requests should be empty";
   buffer_queue_.clear();
   total_buffer_size_ = 0;
+  total_buffer_count_ = 0;
   last_buffer_timestamp_ = kNoTimestamp;
 }
 
@@ -169,6 +167,7 @@ void ShellDemuxerStream::Stop() {
   base::AutoLock auto_lock(lock_);
   buffer_queue_.clear();
   total_buffer_size_ = 0;
+  total_buffer_count_ = 0;
   last_buffer_timestamp_ = kNoTimestamp;
   // fulfill any pending callbacks with EOS buffers set to end timestamp
   for (ReadQueue::iterator it = read_queue_.begin(); it != read_queue_.end();
@@ -185,7 +184,7 @@ void ShellDemuxerStream::Stop() {
 // ShellDemuxer
 //
 ShellDemuxer::ShellDemuxer(
-    const scoped_refptr<base::MessageLoopProxy>& message_loop,
+    const scoped_refptr<base::SingleThreadTaskRunner>& message_loop,
     DecoderBuffer::Allocator* buffer_allocator, DataSource* data_source,
     const scoped_refptr<MediaLog>& media_log)
     : message_loop_(message_loop),
@@ -237,13 +236,13 @@ void ShellDemuxer::Initialize(DemuxerHost* host,
     return;
   }
 
-  blocking_thread_.message_loop_proxy()->PostTask(
+  blocking_thread_.task_runner()->PostTask(
       FROM_HERE, base::Bind(&ShellDemuxer::ParseConfigBlocking,
                             base::Unretained(this), status_cb));
 }
 
 void ShellDemuxer::ParseConfigBlocking(const PipelineStatusCB& status_cb) {
-  DCHECK(blocking_thread_.message_loop_proxy()->BelongsToCurrentThread());
+  DCHECK(blocking_thread_.task_runner()->BelongsToCurrentThread());
   DCHECK(!parser_);
 
   // construct stream parser with error callback
@@ -289,7 +288,7 @@ void ShellDemuxer::ParseConfigBlocking(const PipelineStatusCB& status_cb) {
 
 void ShellDemuxer::ParseConfigDone(const PipelineStatusCB& status_cb,
                                    PipelineStatus status) {
-  DCHECK(blocking_thread_.message_loop_proxy()->BelongsToCurrentThread());
+  DCHECK(blocking_thread_.task_runner()->BelongsToCurrentThread());
 
   if (HasStopCalled()) {
     return;
@@ -308,8 +307,8 @@ void ShellDemuxer::ParseConfigDone(const PipelineStatusCB& status_cb,
 }
 
 void ShellDemuxer::Request(DemuxerStream::Type type) {
-  if (!blocking_thread_.message_loop_proxy()->BelongsToCurrentThread()) {
-    blocking_thread_.message_loop_proxy()->PostTask(
+  if (!blocking_thread_.task_runner()->BelongsToCurrentThread()) {
+    blocking_thread_.task_runner()->PostTask(
         FROM_HERE,
         base::Bind(&ShellDemuxer::Request, base::Unretained(this), type));
     return;
@@ -331,7 +330,7 @@ void ShellDemuxer::Request(DemuxerStream::Type type) {
   // make sure we got back an AU of the correct type
   DCHECK(au->GetType() == type);
 
-  const char* ALLOW_UNUSED event_type =
+  const char* ALLOW_UNUSED_TYPE event_type =
       type == DemuxerStream::AUDIO ? "audio" : "video";
   TRACE_EVENT2("media_stack", "ShellDemuxer::RequestTask()", "type", event_type,
                "timestamp", au->GetTimestamp().InMicroseconds());
@@ -368,19 +367,29 @@ void ShellDemuxer::AllocateBuffer() {
   if (requested_au_) {
     size_t total_buffer_size = audio_demuxer_stream_->GetTotalBufferSize() +
                                video_demuxer_stream_->GetTotalBufferSize();
+    size_t total_buffer_count = audio_demuxer_stream_->GetTotalBufferCount() +
+                                video_demuxer_stream_->GetTotalBufferCount();
 #if SB_API_VERSION >= 10
     int progressive_budget = SbMediaGetProgressiveBufferBudget(
         MediaVideoCodecToSbMediaVideoCodec(VideoConfig().codec()),
         VideoConfig().visible_rect().size().width(),
         VideoConfig().visible_rect().size().height(),
         VideoConfig().webm_color_metadata().BitsPerChannel);
+    int progressive_duration_cap_in_seconds =
+        SbMediaGetBufferGarbageCollectionDurationThreshold() / kSbTimeSecond;
 #else   // SB_API_VERSION >= 10
     int progressive_budget = COBALT_MEDIA_BUFFER_PROGRESSIVE_BUDGET;
+    int progressive_duration_cap_in_seconds =
+        COBALT_MEDIA_SOURCE_GARBAGE_COLLECTION_DURATION_THRESHOLD_IN_SECONDS;
 #endif  // SB_API_VERSION >= 10
-    if (total_buffer_size >= progressive_budget) {
+    const int kEstimatedBufferCountPerSeconds = 70;
+    int progressive_buffer_count_cap =
+        progressive_duration_cap_in_seconds * kEstimatedBufferCountPerSeconds;
+    if (total_buffer_size >= progressive_budget ||
+        total_buffer_count > progressive_buffer_count_cap) {
       // Retry after 100 milliseconds.
       const base::TimeDelta kDelay = base::TimeDelta::FromMilliseconds(100);
-      blocking_thread_.message_loop()->PostDelayedTask(
+      blocking_thread_.message_loop()->task_runner()->PostDelayedTask(
           FROM_HERE,
           base::Bind(&ShellDemuxer::AllocateBuffer, base::Unretained(this)),
           kDelay);
@@ -398,7 +407,7 @@ void ShellDemuxer::AllocateBuffer() {
       // As the buffer is full of media data, it is safe to delay 100
       // milliseconds.
       const base::TimeDelta kDelay = base::TimeDelta::FromMilliseconds(100);
-      blocking_thread_.message_loop()->PostDelayedTask(
+      blocking_thread_.message_loop()->task_runner()->PostDelayedTask(
           FROM_HERE,
           base::Bind(&ShellDemuxer::AllocateBuffer, base::Unretained(this)),
           kDelay);
@@ -407,12 +416,12 @@ void ShellDemuxer::AllocateBuffer() {
 }
 
 void ShellDemuxer::Download(scoped_refptr<DecoderBuffer> buffer) {
-  DCHECK(blocking_thread_.message_loop_proxy()->BelongsToCurrentThread());
+  DCHECK(blocking_thread_.task_runner()->BelongsToCurrentThread());
   // We need a requested_au_ or to have canceled this request and
   // are buffering to a new location for this to make sense
   DCHECK(requested_au_);
 
-  const char* ALLOW_UNUSED event_type =
+  const char* ALLOW_UNUSED_TYPE event_type =
       requested_au_->GetType() == DemuxerStream::AUDIO ? "audio" : "video";
   TRACE_EVENT2("media_stack", "ShellDemuxer::Download()", "type", event_type,
                "timestamp", requested_au_->GetTimestamp().InMicroseconds());
@@ -432,7 +441,7 @@ void ShellDemuxer::Download(scoped_refptr<DecoderBuffer> buffer) {
     return;
   }
 
-  if (!requested_au_->Read(reader_, buffer)) {
+  if (!requested_au_->Read(reader_.get(), buffer.get())) {
     DLOG(ERROR) << "au read failed";
     host_->OnDemuxerError(PIPELINE_ERROR_READ);
     return;
@@ -461,14 +470,9 @@ void ShellDemuxer::Download(scoped_refptr<DecoderBuffer> buffer) {
   // Notify host of each disjoint range.
   host_->OnBufferedTimeRangesChanged(buffered);
 
-  // Post the task with a delay to make the request loop a bit friendly to
-  // other tasks as otherwise IssueNextRequest(), Request(), AllocateBuffer(),
-  // and Download() can form a tight loop on the |blocking_thread_|.
-  const base::TimeDelta kDelay = base::TimeDelta::FromMilliseconds(5);
-  blocking_thread_.message_loop_proxy()->PostDelayedTask(
+  blocking_thread_.task_runner()->PostTask(
       FROM_HERE,
-      base::Bind(&ShellDemuxer::IssueNextRequest, base::Unretained(this)),
-      kDelay);
+      base::Bind(&ShellDemuxer::IssueNextRequest, base::Unretained(this)));
 }
 
 void ShellDemuxer::IssueNextRequest() {
@@ -518,7 +522,7 @@ void ShellDemuxer::IssueNextRequest() {
   // We cannot call Request() directly even if this function is also run on
   // |blocking_thread_| as otherwise it is possible that this function is
   // running in a tight loop and seek or stop request has no chance to kick in.
-  blocking_thread_.message_loop_proxy()->PostTask(
+  blocking_thread_.task_runner()->PostTask(
       FROM_HERE,
       base::Bind(&ShellDemuxer::Request, base::Unretained(this), type));
 }
@@ -555,7 +559,7 @@ bool ShellDemuxer::HasStopCalled() {
 }
 
 void ShellDemuxer::Seek(base::TimeDelta time, const PipelineStatusCB& cb) {
-  blocking_thread_.message_loop()->PostTask(
+  blocking_thread_.message_loop()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&ShellDemuxer::SeekTask, base::Unretained(this),
                             time, BindToCurrentLoop(cb)));
 }

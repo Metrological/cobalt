@@ -15,12 +15,13 @@
 #include "cobalt/xhr/xml_http_request.h"
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
 #include "base/compiler_specific.h"
-#include "base/string_number_conversions.h"
-#include "base/string_util.h"
-#include "base/time.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
+#include "base/time/time.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/base/source_location.h"
 #include "cobalt/base/tokens.h"
@@ -68,15 +69,15 @@ const char* kForbiddenMethods[] = {
 
 bool MethodNameToRequestType(const std::string& method,
                              net::URLFetcher::RequestType* request_type) {
-  if (LowerCaseEqualsASCII(method, "get")) {
+  if (base::LowerCaseEqualsASCII(method, "get")) {
     *request_type = net::URLFetcher::GET;
-  } else if (LowerCaseEqualsASCII(method, "post")) {
+  } else if (base::LowerCaseEqualsASCII(method, "post")) {
     *request_type = net::URLFetcher::POST;
-  } else if (LowerCaseEqualsASCII(method, "head")) {
+  } else if (base::LowerCaseEqualsASCII(method, "head")) {
     *request_type = net::URLFetcher::HEAD;
-  } else if (LowerCaseEqualsASCII(method, "delete")) {
+  } else if (base::LowerCaseEqualsASCII(method, "delete")) {
     *request_type = net::URLFetcher::DELETE_REQUEST;
-  } else if (LowerCaseEqualsASCII(method, "put")) {
+  } else if (base::LowerCaseEqualsASCII(method, "put")) {
     *request_type = net::URLFetcher::PUT;
   } else {
     return false;
@@ -89,6 +90,10 @@ const char* kStateNames[] = {"Unsent", "Opened", "HeadersReceived", "Loading",
                              "Done"};
 const char* kMethodNames[] = {"GET", "POST", "HEAD", "DELETE", "PUT"};
 
+#if __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wtautological-compare"
+#endif
 const char* RequestTypeToMethodName(net::URLFetcher::RequestType request_type) {
   if (request_type >= 0 && request_type < arraysize(kMethodNames)) {
     return kMethodNames[request_type];
@@ -106,11 +111,14 @@ const char* StateName(XMLHttpRequest::State state) {
     return "";
   }
 }
+#if __clang__
+#pragma clang diagnostic push
+#endif
 #endif  // defined(COBALT_BUILD_TYPE_GOLD)
 
 bool IsForbiddenMethod(const std::string& method) {
   for (size_t i = 0; i < arraysize(kForbiddenMethods); ++i) {
-    if (LowerCaseEqualsASCII(method, kForbiddenMethods[i])) {
+    if (base::LowerCaseEqualsASCII(method, kForbiddenMethods[i])) {
       return true;
     }
   }
@@ -182,7 +190,7 @@ XMLHttpRequest::XMLHttpRequest(script::EnvironmentSettings* settings)
 
 void XMLHttpRequest::Abort() {
   // https://www.w3.org/TR/2014/WD-XMLHttpRequest-20140130/#the-abort()-method
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   // Cancel any in-flight request and set error flag.
   TerminateRequest();
   bool abort_is_no_op =
@@ -200,14 +208,12 @@ void XMLHttpRequest::Abort() {
 // https://www.w3.org/TR/2014/WD-XMLHttpRequest-20140130/#the-open()-method
 void XMLHttpRequest::Open(const std::string& method, const std::string& url,
                           bool async,
-                          const base::optional<std::string>& username,
-                          const base::optional<std::string>& password,
+                          const base::Optional<std::string>& username,
+                          const base::Optional<std::string>& password,
                           script::ExceptionState* exception_state) {
   TRACK_MEMORY_SCOPE("XHR");
-  UNREFERENCED_PARAMETER(username);
-  UNREFERENCED_PARAMETER(password);
 
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   State previous_state = state_;
 
@@ -269,6 +275,12 @@ void XMLHttpRequest::SetRequestHeader(const std::string& header,
     return;
   }
 
+  if (!net::HttpUtil::IsValidHeaderName(header) ||
+      !net::HttpUtil::IsValidHeaderValue(value)) {
+    DLOG(WARNING) << "Rejecting invalid header " << header << " : " << value;
+    return;
+  }
+
   if (!net::HttpUtil::IsSafeHeader(header)) {
     DLOG(WARNING) << "Rejecting unsafe header " << header;
     return;
@@ -288,7 +300,7 @@ void XMLHttpRequest::SetRequestHeader(const std::string& header,
 void XMLHttpRequest::OverrideMimeType(const std::string& override_mime,
                                       script::ExceptionState* exception_state) {
   // https://www.w3.org/TR/2014/WD-XMLHttpRequest-20140130/#dom-xmlhttprequest-overridemimetype
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (state_ == kLoading || state_ == kDone) {
     DOMException::Raise(DOMException::kInvalidStateErr, exception_state);
     return;
@@ -313,11 +325,11 @@ void XMLHttpRequest::Send(script::ExceptionState* exception_state) {
   Send(base::nullopt, exception_state);
 }
 
-void XMLHttpRequest::Send(const base::optional<RequestBodyType>& request_body,
+void XMLHttpRequest::Send(const base::Optional<RequestBodyType>& request_body,
                           script::ExceptionState* exception_state) {
   TRACK_MEMORY_SCOPE("XHR");
   // https://www.w3.org/TR/2014/WD-XMLHttpRequest-20140130/#the-send()-method
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   // Step 1
   if (state_ != kOpened) {
     DOMException::Raise(DOMException::kInvalidStateErr, exception_state);
@@ -403,7 +415,7 @@ void XMLHttpRequest::Send(const base::optional<RequestBodyType>& request_body,
 
 void XMLHttpRequest::Fetch(const FetchUpdateCallbackArg& fetch_callback,
                            const FetchModeCallbackArg& fetch_mode_callback,
-                           const base::optional<RequestBodyType>& request_body,
+                           const base::Optional<RequestBodyType>& request_body,
                            script::ExceptionState* exception_state) {
   fetch_callback_.reset(
       new FetchUpdateCallbackArg::Reference(this, fetch_callback));
@@ -412,18 +424,18 @@ void XMLHttpRequest::Fetch(const FetchUpdateCallbackArg& fetch_callback,
   Send(request_body, exception_state);
 }
 
-base::optional<std::string> XMLHttpRequest::GetResponseHeader(
+base::Optional<std::string> XMLHttpRequest::GetResponseHeader(
     const std::string& header) {
   // https://www.w3.org/TR/2014/WD-XMLHttpRequest-20140130/#the-getresponseheader()-method
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   if (state_ == kUnsent || state_ == kOpened || error_) {
     return base::nullopt;
   }
 
   // Set-Cookie should be stripped from the response headers in OnDone().
-  if (LowerCaseEqualsASCII(header, "set-cookie") ||
-      LowerCaseEqualsASCII(header, "set-cookie2")) {
+  if (base::LowerCaseEqualsASCII(header, "set-cookie") ||
+      base::LowerCaseEqualsASCII(header, "set-cookie2")) {
     return base::nullopt;
   }
 
@@ -440,14 +452,14 @@ base::optional<std::string> XMLHttpRequest::GetResponseHeader(
 
 std::string XMLHttpRequest::GetAllResponseHeaders() {
   // https://www.w3.org/TR/2014/WD-XMLHttpRequest-20140130/#the-getallresponseheaders()-method
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   std::string output;
 
   if (state_ == kUnsent || state_ == kOpened || error_) {
     return output;
   }
 
-  void* iter = NULL;
+  size_t iter = 0;
   std::string name;
   std::string value;
 
@@ -468,7 +480,7 @@ const std::string& XMLHttpRequest::response_text(
                              exception_state);
   }
   if (error_ || (state_ != kLoading && state_ != kDone)) {
-    return EmptyString();
+    return base::EmptyString();
   }
 
   return response_body_.string();
@@ -499,7 +511,7 @@ scoped_refptr<dom::Document> XMLHttpRequest::response_xml(
   return GetDocumentResponseEntityBody();
 }
 
-base::optional<XMLHttpRequest::ResponseType> XMLHttpRequest::response(
+base::Optional<XMLHttpRequest::ResponseType> XMLHttpRequest::response(
     script::ExceptionState* exception_state) {
   // https://www.w3.org/TR/2014/WD-XMLHttpRequest-20140130/#response
   switch (response_type_) {
@@ -569,7 +581,7 @@ std::string XMLHttpRequest::response_type(
 
 void XMLHttpRequest::set_timeout(uint32 timeout) {
   // https://www.w3.org/TR/2014/WD-XMLHttpRequest-20140130/#the-timeout-attribute
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   timeout_ms_ = timeout;
   if (timeout_ms_ == 0) {
@@ -605,7 +617,7 @@ scoped_refptr<XMLHttpRequestUpload> XMLHttpRequest::upload() {
 }
 
 void XMLHttpRequest::OnURLFetchResponseStarted(const net::URLFetcher* source) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   http_status_ = source->GetResponseCode();
   // Don't handle a response without headers.
@@ -646,7 +658,7 @@ void XMLHttpRequest::OnURLFetchResponseStarted(const net::URLFetcher* source) {
   }
 
   // Reserve space for the content in the case of a regular XHR request.
-  DCHECK_EQ(response_body_.size(), 0);
+  DCHECK_EQ(response_body_.size(), 0u);
   if (!fetch_callback_) {
     const int64 content_length = http_response_headers_->GetContentLength();
 
@@ -660,7 +672,7 @@ void XMLHttpRequest::OnURLFetchResponseStarted(const net::URLFetcher* source) {
 
   // Further filter response headers as XHR's mode is cors
   if (is_cross_origin_) {
-    void* iter = NULL;
+    size_t iter = 0;
     std::string name, value;
     std::vector<std::pair<std::string, std::string> > header_names_to_discard;
     std::vector<std::string> expose_headers;
@@ -678,7 +690,7 @@ void XMLHttpRequest::OnURLFetchResponseStarted(const net::URLFetcher* source) {
   }
 
   if (is_data_url_) {
-    void* iter = NULL;
+    size_t iter = 0;
     std::string name, value;
     std::vector<std::pair<std::string, std::string> > header_names_to_discard;
     while (http_response_headers_->EnumerateHeaderLines(&iter, &name, &value)) {
@@ -696,13 +708,20 @@ void XMLHttpRequest::OnURLFetchResponseStarted(const net::URLFetcher* source) {
   UpdateProgress();
 }
 
-void XMLHttpRequest::OnURLFetchDownloadData(
-    const net::URLFetcher* source, scoped_ptr<std::string> download_data) {
+void XMLHttpRequest::OnURLFetchDownloadProgress(
+    const net::URLFetcher* source, int64_t /*current*/, int64_t /*total*/,
+    int64_t /*current_network_bytes*/) {
   TRACK_MEMORY_SCOPE("XHR");
-  UNREFERENCED_PARAMETER(source);
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK_NE(state_, kDone);
 
+  auto* download_data_writer =
+      base::polymorphic_downcast<CobaltURLFetcherStringWriter*>(
+          source->GetResponseWriter());
+  std::unique_ptr<std::string> download_data = download_data_writer->data();
+  if (!download_data.get() || download_data->empty()) {
+    return;
+  }
   // Preserve the response body only for regular XHR requests. Fetch requests
   // process the response in pieces, so do not need to keep the whole response.
   if (!fetch_callback_) {
@@ -710,6 +729,7 @@ void XMLHttpRequest::OnURLFetchDownloadData(
                           download_data->size());
   }
 
+  // Signal to JavaScript that new data is now available.
   ChangeState(kLoading);
 
   if (fetch_callback_) {
@@ -729,7 +749,7 @@ void XMLHttpRequest::OnURLFetchDownloadData(
 }
 
 void XMLHttpRequest::OnURLFetchComplete(const net::URLFetcher* source) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (source->GetResponseHeaders()) {
     if (source->GetResponseHeaders()->IsRedirect(NULL)) {
       // To do CORS Check and Send potential preflight, we used
@@ -740,6 +760,8 @@ void XMLHttpRequest::OnURLFetchComplete(const net::URLFetcher* source) {
       return;
     }
   }
+  // Ensure all fetched data is read and transfered to this XHR.
+  OnURLFetchDownloadProgress(source, 0, 0, 0);
   fetch_callback_.reset();
   fetch_mode_callback_.reset();
   const net::URLRequestStatus& status = source->GetStatus();
@@ -749,6 +771,14 @@ void XMLHttpRequest::OnURLFetchComplete(const net::URLFetcher* source) {
       return;
     }
 
+    // The request may have completed too quickly, before URLFetcher's upload
+    // progress timer had a chance to inform us upload is finished.
+    if (!upload_complete_ && upload_listener_) {
+      upload_complete_ = true;
+      FireProgressEvent(upload_, base::Tokens::progress());
+      FireProgressEvent(upload_, base::Tokens::load());
+      FireProgressEvent(upload_, base::Tokens::loadend());
+    }
     ChangeState(kDone);
     UpdateProgress();
     // Undo the ref we added in Send()
@@ -760,9 +790,7 @@ void XMLHttpRequest::OnURLFetchComplete(const net::URLFetcher* source) {
 
 // Reset some variables in case the XHR object is reused.
 void XMLHttpRequest::PrepareForNewRequest() {
-  response_body_.Clear();
   request_headers_.Clear();
-  response_array_buffer_reference_.reset();
   // Below are variables used for CORS.
   request_body_text_.clear();
   is_cross_origin_ = false;
@@ -772,12 +800,11 @@ void XMLHttpRequest::PrepareForNewRequest() {
   is_redirect_ = false;
 }
 
-void XMLHttpRequest::OnURLFetchUploadProgress(const net::URLFetcher* source,
+void XMLHttpRequest::OnURLFetchUploadProgress(const net::URLFetcher* /*source*/,
                                               int64 current_val,
                                               int64 total_val) {
   TRACK_MEMORY_SCOPE("XHR");
-  UNREFERENCED_PARAMETER(source);
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (upload_complete_) {
     return;
   }
@@ -821,6 +848,7 @@ void XMLHttpRequest::OnURLFetchUploadProgress(const net::URLFetcher* source,
 }
 
 void XMLHttpRequest::OnRedirect(const net::HttpResponseHeaders& headers) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   GURL new_url = url_fetcher_->GetURL();
   // Since we moved redirect from url_request to here, we also need to
   // handle redirecting too many times.
@@ -901,7 +929,7 @@ void XMLHttpRequest::TraceMembers(script::Tracer* tracer) {
 }
 
 XMLHttpRequest::~XMLHttpRequest() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   dom::GlobalStats::GetInstance()->Remove(this);
 }
 
@@ -923,7 +951,7 @@ void XMLHttpRequest::TerminateRequest() {
 void XMLHttpRequest::HandleRequestError(
     XMLHttpRequest::RequestErrorType request_error_type) {
   // https://www.w3.org/TR/XMLHttpRequest/#timeout-error
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DLOG_IF(INFO, verbose())
       << __FUNCTION__ << " (" << RequestErrorTypeName(request_error_type)
       << ") " << *this << std::endl
@@ -955,7 +983,7 @@ void XMLHttpRequest::HandleRequestError(
 }
 
 void XMLHttpRequest::OnTimeout() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (!stop_timeout_) {
     HandleRequestError(kTimeoutError);
   }
@@ -1041,7 +1069,9 @@ void XMLHttpRequest::UpdateProgress() {
 
 void XMLHttpRequest::IncrementActiveRequests() {
   if (active_requests_count_ == 0) {
-    PreventGarbageCollection();
+    prevent_gc_until_send_complete_.reset(
+        new script::GlobalEnvironment::ScopedPreventGarbageCollection(
+            settings_->global_environment(), this));
   }
   active_requests_count_++;
 }
@@ -1050,41 +1080,36 @@ void XMLHttpRequest::DecrementActiveRequests() {
   DCHECK_GT(active_requests_count_, 0);
   active_requests_count_--;
   if (active_requests_count_ == 0) {
-    AllowGarbageCollection();
+    bool is_active = (state_ == kOpened && sent_) ||
+                     state_ == kHeadersReceived || state_ == kLoading;
+    bool has_event_listeners =
+        GetAttributeEventListener(base::Tokens::readystatechange()) ||
+        GetAttributeEventListener(base::Tokens::progress()) ||
+        GetAttributeEventListener(base::Tokens::abort()) ||
+        GetAttributeEventListener(base::Tokens::error()) ||
+        GetAttributeEventListener(base::Tokens::load()) ||
+        GetAttributeEventListener(base::Tokens::timeout()) ||
+        GetAttributeEventListener(base::Tokens::loadend());
+
+    DCHECK_EQ((is_active && has_event_listeners), false);
+
+    prevent_gc_until_send_complete_.reset();
   }
-}
-
-void XMLHttpRequest::PreventGarbageCollection() {
-  settings_->global_environment()->PreventGarbageCollection(
-      make_scoped_refptr(this));
-}
-
-void XMLHttpRequest::AllowGarbageCollection() {
-  bool is_active = (state_ == kOpened && sent_) || state_ == kHeadersReceived ||
-                   state_ == kLoading;
-  bool has_event_listeners =
-      GetAttributeEventListener(base::Tokens::readystatechange()) ||
-      GetAttributeEventListener(base::Tokens::progress()) ||
-      GetAttributeEventListener(base::Tokens::abort()) ||
-      GetAttributeEventListener(base::Tokens::error()) ||
-      GetAttributeEventListener(base::Tokens::load()) ||
-      GetAttributeEventListener(base::Tokens::timeout()) ||
-      GetAttributeEventListener(base::Tokens::loadend());
-
-  DCHECK_EQ((is_active && has_event_listeners), false);
-
-  settings_->global_environment()->AllowGarbageCollection(
-      make_scoped_refptr(this));
 }
 
 void XMLHttpRequest::StartRequest(const std::string& request_body) {
   TRACK_MEMORY_SCOPE("XHR");
+
+  response_body_.Clear();
+  response_array_buffer_reference_.reset();
+
   network::NetworkModule* network_module =
       settings_->fetcher_factory()->network_module();
-  url_fetcher_.reset(net::URLFetcher::Create(request_url_, method_, this));
+  url_fetcher_ = net::URLFetcher::Create(request_url_, method_, this);
   url_fetcher_->SetRequestContext(network_module->url_request_context_getter());
-  // Don't cache the response, just send it to us in OnURLFetchDownloadData().
-  url_fetcher_->DiscardResponse();
+  auto* download_data_writer = new CobaltURLFetcherStringWriter();
+  url_fetcher_->SaveResponseWithWriter(
+      std::unique_ptr<net::URLFetcherResponseWriter>(download_data_writer));
   // Don't retry, let the caller deal with it.
   url_fetcher_->SetAutomaticallyRetryOn5xx(false);
   url_fetcher_->SetExtraRequestHeaders(request_headers_.ToString());
@@ -1188,7 +1213,7 @@ std::ostream& operator<<(std::ostream& out, const XMLHttpRequest& xhr) {
       response_text.as_string().c_str());
   out << xhr_out;
 #else
-  UNREFERENCED_PARAMETER(xhr);
+  SB_UNREFERENCED_PARAMETER(xhr);
 #endif
   return out;
 }
@@ -1210,8 +1235,8 @@ scoped_refptr<dom::Document> XMLHttpRequest::GetDocumentResponseEntityBody() {
       new dom::XMLDocument(settings_->window()->html_element_context());
   dom_parser::XMLDecoder xml_decoder(
       xml_document, xml_document, NULL, settings_->max_dom_element_depth(),
-      base::SourceLocation("[object XMLHttpRequest]", 1, 1), base::Closure(),
-      base::Bind(&XMLHttpRequest::XMLDecoderErrorCallback,
+      base::SourceLocation("[object XMLHttpRequest]", 1, 1),
+      base::Bind(&XMLHttpRequest::XMLDecoderLoadCompleteCallback,
                  base::Unretained(this)));
   has_xml_decoder_error_ = false;
   xml_decoder.DecodeChunk(response_body_.string().c_str(),
@@ -1227,8 +1252,9 @@ scoped_refptr<dom::Document> XMLHttpRequest::GetDocumentResponseEntityBody() {
   return xml_document;
 }
 
-void XMLHttpRequest::XMLDecoderErrorCallback(const std::string&) {
-  has_xml_decoder_error_ = true;
+void XMLHttpRequest::XMLDecoderLoadCompleteCallback(
+    const base::Optional<std::string>& error) {
+  if (error) has_xml_decoder_error_ = true;
 }
 
 }  // namespace xhr

@@ -15,14 +15,14 @@
 #ifndef COBALT_DOM_EVENT_TARGET_H_
 #define COBALT_DOM_EVENT_TARGET_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "base/callback.h"
+#include "base/location.h"
 #include "base/memory/ref_counted.h"
-#include "base/memory/scoped_vector.h"
 #include "base/memory/weak_ptr.h"
-#include "base/tracked_objects.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/base/token.h"
 #include "cobalt/base/tokens.h"
@@ -94,21 +94,38 @@ class EventTarget : public script::Wrappable,
   // won't raise any exception.  Any error will be silently ignored.
   virtual bool DispatchEvent(const scoped_refptr<Event>& event);
 
+  // This version of DispatchEvent is intended to be called inside C++ code.  It
+  // won't raise any exception.  Any error will be silently ignored.
+  void DispatchEventAndRunCallback(const scoped_refptr<Event>& event,
+                                   const base::Closure& dispatched_callback);
+
   // Creates a new event with the given name and calls DispatchEvent with it,
   // and runs dispatched_callback after finish.
-  void DispatchEventAndRunCallback(base::Token event_name,
-                                   const base::Closure& dispatched_callback);
+  void DispatchEventNameAndRunCallback(
+      base::Token event_name, const base::Closure& dispatched_callback);
+
+  // Posts a task on the current message loop to dispatch event by name. It
+  // does nothing if there is no current message loop.
+  void PostToDispatchEventName(const base::Location& location,
+                               base::Token event_name);
 
   // Posts a task on the current message loop to dispatch event. It does nothing
   // if there is no current message loop.
-  void PostToDispatchEvent(const tracked_objects::Location& location,
-                           base::Token event_name);
+  void PostToDispatchEvent(const base::Location& location,
+                           const scoped_refptr<Event>& event);
+
+  // Posts a task on the current message loop to dispatch event by name, and
+  // runs dispatched_callback after finish. It does nothing if there is no
+  // current message loop.
+  void PostToDispatchEventNameAndRunCallback(
+      const base::Location& location, base::Token event_name,
+      const base::Closure& dispatched_callback);
 
   // Posts a task on the current message loop to dispatch event, and runs
   // dispatched_callback after finish.  It does nothing if there is no current
   // message loop.
   void PostToDispatchEventAndRunCallback(
-      const tracked_objects::Location& location, base::Token event_name,
+      const base::Location& location, const scoped_refptr<Event>& event,
       const base::Closure& dispatched_callback);
 
   // Check if target has event listener (atrtibute or not attribute).
@@ -169,6 +186,7 @@ class EventTarget : public script::Wrappable,
   }
 
   const EventListenerScriptValue* onload() {
+    DLOG(INFO) << "onload called";
     return GetAttributeEventListener(base::Tokens::load());
   }
   void set_onload(const EventListenerScriptValue& event_listener) {
@@ -273,6 +291,13 @@ class EventTarget : public script::Wrappable,
     SetAttributeEventListener(base::Tokens::resize(), event_listener);
   }
 
+  const EventListenerScriptValue* onscroll() {
+    return GetAttributeEventListener(base::Tokens::scroll());
+  }
+  void set_onscroll(const EventListenerScriptValue& event_listener) {
+    SetAttributeEventListener(base::Tokens::scroll(), event_listener);
+  }
+
   const EventListenerScriptValue* ongotpointercapture() {
     return GetAttributeEventListener(base::Tokens::gotpointercapture());
   }
@@ -340,6 +365,7 @@ class EventTarget : public script::Wrappable,
   }
 
   const EventListenerScriptValue* onprogress() {
+    DLOG(INFO) << "onprogress called";
     return GetAttributeEventListener(base::Tokens::progress());
   }
   void set_onprogress(const EventListenerScriptValue& event_listener) {
@@ -453,24 +479,25 @@ class EventTarget : public script::Wrappable,
  private:
   struct EventListenerInfo {
     EventListenerInfo(base::Token type,
-                      scoped_ptr<GenericEventHandlerReference> listener,
+                      std::unique_ptr<GenericEventHandlerReference> listener,
                       bool use_capture, Type listener_type);
     ~EventListenerInfo();
 
     base::Token type;
-    scoped_ptr<GenericEventHandlerReference> listener;
+    std::unique_ptr<GenericEventHandlerReference> listener;
     bool use_capture;
     Type listener_type;
   };
-  typedef ScopedVector<EventListenerInfo> EventListenerInfos;
+  typedef std::vector<std::unique_ptr<EventListenerInfo>> EventListenerInfos;
 
   void SetAttributeEventListenerInternal(
-      base::Token type, scoped_ptr<GenericEventHandlerReference> event_handler);
+      base::Token type,
+      std::unique_ptr<GenericEventHandlerReference> event_handler);
   GenericEventHandlerReference* GetAttributeEventListenerInternal(
       base::Token type) const;
 
   void AddEventListenerInternal(
-      base::Token type, scoped_ptr<GenericEventHandlerReference> listener,
+      base::Token type, std::unique_ptr<GenericEventHandlerReference> listener,
       bool use_capture, Type listener_type);
 
   EventListenerInfos event_listener_infos_;

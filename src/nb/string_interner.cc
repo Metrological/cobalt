@@ -14,10 +14,12 @@
  * limitations under the License.
  */
 
+#include "starboard/client_porting/poem/string_leaks_poem.h"
+
 #include "nb/hash.h"
 #include "nb/string_interner.h"
 #include "starboard/client_porting/poem/string_poem.h"
-#include "starboard/string.h"
+#include "starboard/common/string.h"
 
 namespace nb {
 

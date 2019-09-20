@@ -15,12 +15,11 @@
 #ifndef COBALT_RENDERER_BACKEND_EGL_GRAPHICS_SYSTEM_H_
 #define COBALT_RENDERER_BACKEND_EGL_GRAPHICS_SYSTEM_H_
 
-#include <EGL/egl.h>
-
 #include "base/optional.h"
 #include "cobalt/renderer/backend/egl/resource_context.h"
 #include "cobalt/renderer/backend/egl/texture_data.h"
 #include "cobalt/renderer/backend/graphics_system.h"
+#include "cobalt/renderer/egl_and_gles.h"
 #include "cobalt/system_window/system_window.h"
 
 namespace cobalt {
@@ -36,15 +35,15 @@ class GraphicsSystemEGL : public GraphicsSystem {
 
   EGLDisplay GetDisplay() { return display_; }
 
-  scoped_ptr<Display> CreateDisplay(
+  std::unique_ptr<Display> CreateDisplay(
       system_window::SystemWindow* system_window) override;
 
-  scoped_ptr<GraphicsContext> CreateGraphicsContext() override;
+  std::unique_ptr<GraphicsContext> CreateGraphicsContext() override;
 
-  scoped_ptr<TextureDataEGL> AllocateTextureData(const math::Size& size,
-                                                 GLenum format);
-  scoped_ptr<RawTextureMemoryEGL> AllocateRawTextureMemory(size_t size_in_bytes,
-                                                           size_t alignment);
+  std::unique_ptr<TextureDataEGL> AllocateTextureData(const math::Size& size,
+                                                      GLenum format);
+  std::unique_ptr<RawTextureMemoryEGL> AllocateRawTextureMemory(
+      size_t size_in_bytes, size_t alignment);
 
  private:
   EGLDisplay display_;
@@ -61,7 +60,7 @@ class GraphicsSystemEGL : public GraphicsSystem {
 
   // A special graphics context which is used exclusively for mapping/unmapping
   // texture memory.
-  base::optional<ResourceContext> resource_context_;
+  base::Optional<ResourceContext> resource_context_;
 };
 
 }  // namespace backend

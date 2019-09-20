@@ -14,7 +14,7 @@
 
 #include "starboard/shared/starboard/player/job_thread.h"
 
-#include "starboard/log.h"
+#include "starboard/common/log.h"
 
 namespace starboard {
 namespace shared {
@@ -33,10 +33,12 @@ struct ThreadParam {
 
 }  // namespace
 
-JobThread::JobThread(const char* thread_name) {
+JobThread::JobThread(const char* thread_name,
+                     int64_t stack_size,
+                     SbThreadPriority priority) {
   ThreadParam thread_param(this);
   thread_ =
-      SbThreadCreate(0, kSbThreadPriorityNormal, kSbThreadNoAffinity, true,
+      SbThreadCreate(stack_size, priority, kSbThreadNoAffinity, true,
                      thread_name, &JobThread::ThreadEntryPoint, &thread_param);
   SB_DCHECK(SbThreadIsValid(thread_));
   ScopedLock scoped_lock(thread_param.mutex);

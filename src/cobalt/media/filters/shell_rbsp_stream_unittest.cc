@@ -15,10 +15,10 @@
 #include "cobalt/media/filters/shell_rbsp_stream.h"
 
 #include <list>
+#include <memory>
 
 #include "base/logging.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/stringprintf.h"
+#include "base/strings/stringprintf.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace cobalt {
@@ -78,9 +78,9 @@ class ShellRBSPStreamTest : public testing::Test {
   // after building a bitlist in various fun ways call this method to
   // create a buffer on the heap that can be passed to ShellRBSPStream
   // for deserialization.
-  scoped_array<uint8> SerializeToBuffer(const std::list<bool>& bitlist,
-                                        bool add_sequence_bytes,
-                                        size_t& buffer_size_out) {
+  std::unique_ptr<uint8[]> SerializeToBuffer(const std::list<bool>& bitlist,
+                                             bool add_sequence_bytes,
+                                             size_t& buffer_size_out) {
     // start by building a list of bytes, so we can add the
     // 00 00 => 00 00 03 sequence bytes
     std::list<uint8> bytelist;
@@ -138,7 +138,7 @@ class ShellRBSPStreamTest : public testing::Test {
       }
     }
     // alright we can make the final output buffer
-    scoped_array<uint8> buf(new uint8[bytelist.size()]);
+    std::unique_ptr<uint8[]> buf(new uint8[bytelist.size()]);
     int index = 0;
     for (std::list<uint8>::iterator it = bytelist.begin(); it != bytelist.end();
          it++) {
@@ -146,7 +146,7 @@ class ShellRBSPStreamTest : public testing::Test {
       index++;
     }
     buffer_size_out = bytelist.size();
-    return buf.Pass();
+    return std::move(buf);
   }
 };
 
@@ -166,10 +166,10 @@ TEST_F(ShellRBSPStreamTest, ReadUEV) {
   }
   // convert to buffer
   size_t fib_buffer_size = 0;
-  scoped_array<uint8> fib_buffer =
+  std::unique_ptr<uint8[]> fib_buffer =
       SerializeToBuffer(fibbits, true, fib_buffer_size);
   size_t fib_buffer_no_sequence_size;
-  scoped_array<uint8> fib_buffer_no_sequence =
+  std::unique_ptr<uint8[]> fib_buffer_no_sequence =
       SerializeToBuffer(fibbits, false, fib_buffer_no_sequence_size);
   ShellRBSPStream fib_stream(fib_buffer.get(), fib_buffer_size);
   ShellRBSPStream fib_stream_no_sequence(fib_buffer_no_sequence.get(),
@@ -178,29 +178,29 @@ TEST_F(ShellRBSPStreamTest, ReadUEV) {
   uint32 uev = 0;
   uint32 uev_n = 0;
   f_n_minus_2 = 0;
-  ASSERT_TRUE(fib_stream.ReadUEV(uev));
+  ASSERT_TRUE(fib_stream.ReadUEV(&uev));
   ASSERT_EQ(uev, f_n_minus_2);
-  ASSERT_TRUE(fib_stream_no_sequence.ReadUEV(uev_n));
+  ASSERT_TRUE(fib_stream_no_sequence.ReadUEV(&uev_n));
   ASSERT_EQ(uev_n, f_n_minus_2);
 
   f_n_minus_1 = 1;
-  ASSERT_TRUE(fib_stream.ReadUEV(uev));
+  ASSERT_TRUE(fib_stream.ReadUEV(&uev));
   ASSERT_EQ(uev, f_n_minus_1);
-  ASSERT_TRUE(fib_stream_no_sequence.ReadUEV(uev_n));
+  ASSERT_TRUE(fib_stream_no_sequence.ReadUEV(&uev_n));
   ASSERT_EQ(uev_n, f_n_minus_1);
 
   for (int i = 2; i < 47; i++) {
     uint32 f_n = f_n_minus_1 + f_n_minus_2;
-    ASSERT_TRUE(fib_stream.ReadUEV(uev));
+    ASSERT_TRUE(fib_stream.ReadUEV(&uev));
     ASSERT_EQ(uev, f_n);
-    ASSERT_TRUE(fib_stream_no_sequence.ReadUEV(uev_n));
+    ASSERT_TRUE(fib_stream_no_sequence.ReadUEV(&uev_n));
     ASSERT_EQ(uev_n, f_n);
     f_n_minus_2 = f_n_minus_1;
     f_n_minus_1 = f_n;
   }
   // subsequent call to ReadUEV should fail
-  ASSERT_FALSE(fib_stream.ReadUEV(uev));
-  ASSERT_FALSE(fib_stream_no_sequence.ReadUEV(uev_n));
+  ASSERT_FALSE(fib_stream.ReadUEV(&uev));
+  ASSERT_FALSE(fib_stream_no_sequence.ReadUEV(&uev_n));
 }
 
 TEST_F(ShellRBSPStreamTest, ReadSEV) {
@@ -222,10 +222,10 @@ TEST_F(ShellRBSPStreamTest, ReadSEV) {
   }
   // convert to buffers
   size_t lucas_seq_buffer_size = 0;
-  scoped_array<uint8> lucas_seq_buffer =
+  std::unique_ptr<uint8[]> lucas_seq_buffer =
       SerializeToBuffer(lucasbits, true, lucas_seq_buffer_size);
   size_t lucas_deseq_buffer_size = 0;
-  scoped_array<uint8> lucas_deseq_buffer =
+  std::unique_ptr<uint8[]> lucas_deseq_buffer =
       SerializeToBuffer(lucasbits, false, lucas_deseq_buffer_size);
   ShellRBSPStream lucas_seq_stream(lucas_seq_buffer.get(),
                                    lucas_seq_buffer_size);
@@ -235,18 +235,18 @@ TEST_F(ShellRBSPStreamTest, ReadSEV) {
   l_n_minus_1 = 2;
   int32 sev = 0;
   int32 sev_n = 0;
-  ASSERT_TRUE(lucas_seq_stream.ReadSEV(sev));
+  ASSERT_TRUE(lucas_seq_stream.ReadSEV(&sev));
   ASSERT_EQ(sev, 1);
-  ASSERT_TRUE(lucas_deseq_stream.ReadSEV(sev_n));
+  ASSERT_TRUE(lucas_deseq_stream.ReadSEV(&sev_n));
   ASSERT_EQ(sev_n, 1);
-  ASSERT_TRUE(lucas_seq_stream.ReadSEV(sev));
+  ASSERT_TRUE(lucas_seq_stream.ReadSEV(&sev));
   ASSERT_EQ(sev, -2);
-  ASSERT_TRUE(lucas_deseq_stream.ReadSEV(sev_n));
+  ASSERT_TRUE(lucas_deseq_stream.ReadSEV(&sev_n));
   ASSERT_EQ(sev_n, -2);
   for (int i = 2; i < 44; ++i) {
     int32 l_n = l_n_minus_1 + l_n_minus_2;
-    ASSERT_TRUE(lucas_seq_stream.ReadSEV(sev));
-    ASSERT_TRUE(lucas_deseq_stream.ReadSEV(sev_n));
+    ASSERT_TRUE(lucas_seq_stream.ReadSEV(&sev));
+    ASSERT_TRUE(lucas_deseq_stream.ReadSEV(&sev_n));
     if (i % 2) {
       ASSERT_EQ(-sev, l_n);
       ASSERT_EQ(-sev_n, l_n);
@@ -258,8 +258,8 @@ TEST_F(ShellRBSPStreamTest, ReadSEV) {
     l_n_minus_1 = l_n;
   }
   // subsequent calls to ReadSEV should fail
-  ASSERT_FALSE(lucas_seq_stream.ReadSEV(sev));
-  ASSERT_FALSE(lucas_deseq_stream.ReadSEV(sev_n));
+  ASSERT_FALSE(lucas_seq_stream.ReadSEV(&sev));
+  ASSERT_FALSE(lucas_deseq_stream.ReadSEV(&sev_n));
 }
 
 static const uint8 kTestRBSPExpGolombTooBig[] = {
@@ -292,13 +292,13 @@ TEST_F(ShellRBSPStreamTest, ReadUEVTooLarge) {
                               sizeof(kTestRBSPExpGolombTooBig));
   // first call should succeed
   uint32 uev = 0;
-  ASSERT_TRUE(uev_too_big.ReadUEV(uev));
+  ASSERT_TRUE(uev_too_big.ReadUEV(&uev));
   ASSERT_EQ(uev, 43689);
   // as should the second call
-  ASSERT_TRUE(uev_too_big.ReadUEV(uev));
+  ASSERT_TRUE(uev_too_big.ReadUEV(&uev));
   ASSERT_EQ(uev, 2147483648u);
   // third should fail
-  ASSERT_FALSE(uev_too_big.ReadUEV(uev));
+  ASSERT_FALSE(uev_too_big.ReadUEV(&uev));
 }
 
 TEST_F(ShellRBSPStreamTest, ReadSEVTooLarge) {
@@ -307,13 +307,13 @@ TEST_F(ShellRBSPStreamTest, ReadSEVTooLarge) {
                               sizeof(kTestRBSPExpGolombTooBig));
   // first call should succeed
   int32 sev = 0;
-  ASSERT_TRUE(sev_too_big.ReadSEV(sev));
+  ASSERT_TRUE(sev_too_big.ReadSEV(&sev));
   ASSERT_EQ(sev, 21845);
   // as should the second call
-  ASSERT_TRUE(sev_too_big.ReadSEV(sev));
+  ASSERT_TRUE(sev_too_big.ReadSEV(&sev));
   ASSERT_EQ(sev, -1073741824);
   // third should fail
-  ASSERT_FALSE(sev_too_big.ReadSEV(sev));
+  ASSERT_FALSE(sev_too_big.ReadSEV(&sev));
 }
 
 TEST_F(ShellRBSPStreamTest, ReadBit) {
@@ -327,28 +327,28 @@ TEST_F(ShellRBSPStreamTest, ReadBit) {
   }
   // build the buffer with sequence bits and without
   size_t sequence_buff_size = 0;
-  scoped_array<uint8> sequence_buff =
+  std::unique_ptr<uint8[]> sequence_buff =
       SerializeToBuffer(padded_ones, true, sequence_buff_size);
   ShellRBSPStream seq_stream(sequence_buff.get(), sequence_buff_size);
 
   size_t desequence_buff_size = 0;
-  scoped_array<uint8> desequence_buff =
+  std::unique_ptr<uint8[]> desequence_buff =
       SerializeToBuffer(padded_ones, false, desequence_buff_size);
   ShellRBSPStream deseq_stream(desequence_buff.get(), desequence_buff_size);
   for (std::list<bool>::iterator it = padded_ones.begin();
        it != padded_ones.end(); ++it) {
     uint8 bit = 0;
-    ASSERT_TRUE(seq_stream.ReadBit(bit));
-    ASSERT_EQ(*it, bit);
+    ASSERT_TRUE(seq_stream.ReadBit(&bit));
+    ASSERT_EQ(*it, static_cast<bool>(bit));
     uint8 deseq_bit = 0;
-    ASSERT_TRUE(deseq_stream.ReadBit(deseq_bit));
-    ASSERT_EQ(*it, deseq_bit);
+    ASSERT_TRUE(deseq_stream.ReadBit(&deseq_bit));
+    ASSERT_EQ(*it, static_cast<bool>(deseq_bit));
   }
 
   // there should be less than a byte in the either stream
   uint8 fail_byte = 0;
-  ASSERT_FALSE(seq_stream.ReadByte(fail_byte));
-  ASSERT_FALSE(deseq_stream.ReadByte(fail_byte));
+  ASSERT_FALSE(seq_stream.ReadByte(&fail_byte));
+  ASSERT_FALSE(deseq_stream.ReadByte(&fail_byte));
 }
 
 TEST_F(ShellRBSPStreamTest, ReadByte) {
@@ -362,15 +362,16 @@ TEST_F(ShellRBSPStreamTest, ReadByte) {
   }
   // deseqbuff will be identical due to dense packing of 01 pattern
   size_t aabuff_size = 0;
-  scoped_array<uint8> aabuff = SerializeToBuffer(aa_field, true, aabuff_size);
+  std::unique_ptr<uint8[]> aabuff =
+      SerializeToBuffer(aa_field, true, aabuff_size);
   ShellRBSPStream aa_stream(aabuff.get(), aabuff_size);
   for (int i = 0; i < 16; ++i) {
     uint8 aa = 0;
-    ASSERT_TRUE(aa_stream.ReadByte(aa));
+    ASSERT_TRUE(aa_stream.ReadByte(&aa));
     ASSERT_EQ(aa, 0xaa);
     // read the zero separator bit
     uint8 zero = 0;
-    ASSERT_TRUE(aa_stream.ReadBit(zero));
+    ASSERT_TRUE(aa_stream.ReadBit(&zero));
     ASSERT_EQ(zero, 0);
   }
 
@@ -394,61 +395,61 @@ TEST_F(ShellRBSPStreamTest, ReadByte) {
     }
   }
   size_t zseqbuff_size = 0;
-  scoped_array<uint8> zseqbuff =
+  std::unique_ptr<uint8[]> zseqbuff =
       SerializeToBuffer(zero_field, true, zseqbuff_size);
   ShellRBSPStream zseq_stream(zseqbuff.get(), zseqbuff_size);
   size_t zdseqbuff_size = 0;
-  scoped_array<uint8> zdseqbuff =
+  std::unique_ptr<uint8[]> zdseqbuff =
       SerializeToBuffer(zero_field, false, zdseqbuff_size);
   ShellRBSPStream zdseq_stream(zdseqbuff.get(), zdseqbuff_size);
   for (int i = 0; i < 24; ++i) {
     // read the leading 1 bit
     uint8 seq_bit = 0;
-    ASSERT_TRUE(zseq_stream.ReadBit(seq_bit));
+    ASSERT_TRUE(zseq_stream.ReadBit(&seq_bit));
     ASSERT_EQ(seq_bit, 1);
     uint8 dseq_bit = 0;
-    ASSERT_TRUE(zdseq_stream.ReadBit(dseq_bit));
+    ASSERT_TRUE(zdseq_stream.ReadBit(&dseq_bit));
     ASSERT_EQ(dseq_bit, 1);
     // read 4 zeros
     uint8 seq_byte = 0;
-    ASSERT_TRUE(zseq_stream.ReadByte(seq_byte));
+    ASSERT_TRUE(zseq_stream.ReadByte(&seq_byte));
     ASSERT_EQ(seq_byte, 0);
-    ASSERT_TRUE(zseq_stream.ReadByte(seq_byte));
+    ASSERT_TRUE(zseq_stream.ReadByte(&seq_byte));
     ASSERT_EQ(seq_byte, 0);
-    ASSERT_TRUE(zseq_stream.ReadByte(seq_byte));
+    ASSERT_TRUE(zseq_stream.ReadByte(&seq_byte));
     ASSERT_EQ(seq_byte, 0);
-    ASSERT_TRUE(zseq_stream.ReadByte(seq_byte));
+    ASSERT_TRUE(zseq_stream.ReadByte(&seq_byte));
     ASSERT_EQ(seq_byte, 0);
     uint8 dseq_byte = 0;
-    ASSERT_TRUE(zdseq_stream.ReadByte(dseq_byte));
+    ASSERT_TRUE(zdseq_stream.ReadByte(&dseq_byte));
     ASSERT_EQ(dseq_byte, 0);
-    ASSERT_TRUE(zdseq_stream.ReadByte(dseq_byte));
+    ASSERT_TRUE(zdseq_stream.ReadByte(&dseq_byte));
     ASSERT_EQ(dseq_byte, 0);
-    ASSERT_TRUE(zdseq_stream.ReadByte(dseq_byte));
+    ASSERT_TRUE(zdseq_stream.ReadByte(&dseq_byte));
     ASSERT_EQ(dseq_byte, 0);
-    ASSERT_TRUE(zdseq_stream.ReadByte(dseq_byte));
+    ASSERT_TRUE(zdseq_stream.ReadByte(&dseq_byte));
     ASSERT_EQ(dseq_byte, 0);
     // read the 3
-    ASSERT_TRUE(zseq_stream.ReadByte(seq_byte));
+    ASSERT_TRUE(zseq_stream.ReadByte(&seq_byte));
     ASSERT_EQ(seq_byte, 0x03);
-    ASSERT_TRUE(zdseq_stream.ReadByte(dseq_byte));
+    ASSERT_TRUE(zdseq_stream.ReadByte(&dseq_byte));
     ASSERT_EQ(dseq_byte, 0x03);
     // read the remaining 4 zeros
-    ASSERT_TRUE(zseq_stream.ReadByte(seq_byte));
+    ASSERT_TRUE(zseq_stream.ReadByte(&seq_byte));
     ASSERT_EQ(seq_byte, 0);
-    ASSERT_TRUE(zseq_stream.ReadByte(seq_byte));
+    ASSERT_TRUE(zseq_stream.ReadByte(&seq_byte));
     ASSERT_EQ(seq_byte, 0);
-    ASSERT_TRUE(zseq_stream.ReadByte(seq_byte));
+    ASSERT_TRUE(zseq_stream.ReadByte(&seq_byte));
     ASSERT_EQ(seq_byte, 0);
-    ASSERT_TRUE(zseq_stream.ReadByte(seq_byte));
+    ASSERT_TRUE(zseq_stream.ReadByte(&seq_byte));
     ASSERT_EQ(seq_byte, 0);
-    ASSERT_TRUE(zdseq_stream.ReadByte(dseq_byte));
+    ASSERT_TRUE(zdseq_stream.ReadByte(&dseq_byte));
     ASSERT_EQ(dseq_byte, 0);
-    ASSERT_TRUE(zdseq_stream.ReadByte(dseq_byte));
+    ASSERT_TRUE(zdseq_stream.ReadByte(&dseq_byte));
     ASSERT_EQ(dseq_byte, 0);
-    ASSERT_TRUE(zdseq_stream.ReadByte(dseq_byte));
+    ASSERT_TRUE(zdseq_stream.ReadByte(&dseq_byte));
     ASSERT_EQ(dseq_byte, 0);
-    ASSERT_TRUE(zdseq_stream.ReadByte(dseq_byte));
+    ASSERT_TRUE(zdseq_stream.ReadByte(&dseq_byte));
     ASSERT_EQ(dseq_byte, 0);
   }
 }
@@ -460,12 +461,12 @@ TEST_F(ShellRBSPStreamTest, ReadBits) {
     seventeen_ones.push_back(true);
   }
   size_t seventeen_ones_size = 0;
-  scoped_array<uint8> seventeen_ones_buff =
+  std::unique_ptr<uint8[]> seventeen_ones_buff =
       SerializeToBuffer(seventeen_ones, false, seventeen_ones_size);
   ShellRBSPStream seventeen_ones_stream(seventeen_ones_buff.get(),
                                         seventeen_ones_size);
   uint32 seventeen_ones_word = 0;
-  ASSERT_TRUE(seventeen_ones_stream.ReadBits(17, seventeen_ones_word));
+  ASSERT_TRUE(seventeen_ones_stream.ReadBits(17, &seventeen_ones_word));
   ASSERT_EQ(seventeen_ones_word, 0x0001ffff);
 
   // serialize all powers of two from 2^0 to 2^31
@@ -477,17 +478,17 @@ TEST_F(ShellRBSPStreamTest, ReadBits) {
     }
   }
   size_t pows_size = 0;
-  scoped_array<uint8> pows_buff = SerializeToBuffer(pows, true, pows_size);
+  std::unique_ptr<uint8[]> pows_buff = SerializeToBuffer(pows, true, pows_size);
   ShellRBSPStream pows_stream(pows_buff.get(), pows_size);
   // ReadBits(0) should succeed and not modify the value of the ref output or
   // internal bit iterator
   uint32 dont_touch = 0xfeedfeed;
-  ASSERT_TRUE(pows_stream.ReadBits(0, dont_touch));
+  ASSERT_TRUE(pows_stream.ReadBits(0, &dont_touch));
   ASSERT_EQ(dont_touch, 0xfeedfeed);
   // compare deserializations
   for (int i = 0; i < 32; ++i) {
     uint32 bits = 0;
-    ASSERT_TRUE(pows_stream.ReadBits(i + 1, bits));
+    ASSERT_TRUE(pows_stream.ReadBits(i + 1, &bits));
     ASSERT_EQ(bits, (uint32)(1 << i));
   }
 }
@@ -501,9 +502,10 @@ TEST_F(ShellRBSPStreamTest, SkipBytes) {
     }
   }
   size_t nines_size = 0;
-  scoped_array<uint8> nines_buff = SerializeToBuffer(nines, true, nines_size);
+  std::unique_ptr<uint8[]> nines_buff =
+      SerializeToBuffer(nines, true, nines_size);
   size_t nines_deseq_size = 0;
-  scoped_array<uint8> nines_deseq_buff =
+  std::unique_ptr<uint8[]> nines_deseq_buff =
       SerializeToBuffer(nines, false, nines_deseq_size);
   ShellRBSPStream nines_stream(nines_buff.get(), nines_size);
   ShellRBSPStream nines_deseq_stream(nines_deseq_buff.get(), nines_deseq_size);
@@ -513,17 +515,17 @@ TEST_F(ShellRBSPStreamTest, SkipBytes) {
     if (i % 2) {
       ASSERT_TRUE(nines_stream.SkipBytes(1));
       uint8 bit = 0;
-      ASSERT_TRUE(nines_stream.ReadBit(bit));
+      ASSERT_TRUE(nines_stream.ReadBit(&bit));
       uint32 ninebits = 0;
-      ASSERT_TRUE(nines_deseq_stream.ReadBits(9, ninebits));
+      ASSERT_TRUE(nines_deseq_stream.ReadBits(9, &ninebits));
       ASSERT_EQ(ninebits, i);
       ASSERT_EQ(ninebits & 1, bit);
     } else {
       ASSERT_TRUE(nines_deseq_stream.SkipBytes(1));
       uint8 bit = 0;
-      ASSERT_TRUE(nines_deseq_stream.ReadBit(bit));
+      ASSERT_TRUE(nines_deseq_stream.ReadBit(&bit));
       uint32 ninebits = 0;
-      ASSERT_TRUE(nines_stream.ReadBits(9, ninebits));
+      ASSERT_TRUE(nines_stream.ReadBits(9, &ninebits));
       ASSERT_EQ(ninebits, i);
       ASSERT_EQ(ninebits & 1, bit);
     }
@@ -540,49 +542,49 @@ TEST_F(ShellRBSPStreamTest, SkipBytes) {
     run_length.push_back(true);
   }
   size_t run_length_size = 0;
-  scoped_array<uint8> run_length_buff =
+  std::unique_ptr<uint8[]> run_length_buff =
       SerializeToBuffer(run_length, true, run_length_size);
   size_t run_length_deseq_size = 0;
-  scoped_array<uint8> run_length_deseq_buff =
+  std::unique_ptr<uint8[]> run_length_deseq_buff =
       SerializeToBuffer(run_length, false, run_length_deseq_size);
   ShellRBSPStream run_length_stream(run_length_buff.get(), run_length_size);
   ShellRBSPStream run_length_deseq_stream(run_length_deseq_buff.get(),
                                           run_length_deseq_size);
   // read first bit, skip first byte from each stream, read next bit
   uint8 bit = 0;
-  ASSERT_TRUE(run_length_stream.ReadBit(bit));
+  ASSERT_TRUE(run_length_stream.ReadBit(&bit));
   ASSERT_EQ(bit, 1);
   bit = 0;
-  ASSERT_TRUE(run_length_deseq_stream.ReadBit(bit));
+  ASSERT_TRUE(run_length_deseq_stream.ReadBit(&bit));
   ASSERT_EQ(bit, 1);
   ASSERT_TRUE(run_length_stream.SkipBytes(1));
   ASSERT_TRUE(run_length_deseq_stream.SkipBytes(1));
   bit = 0;
-  ASSERT_TRUE(run_length_stream.ReadBit(bit));
+  ASSERT_TRUE(run_length_stream.ReadBit(&bit));
   ASSERT_EQ(bit, 1);
   bit = 0;
-  ASSERT_TRUE(run_length_deseq_stream.ReadBit(bit));
+  ASSERT_TRUE(run_length_deseq_stream.ReadBit(&bit));
   ASSERT_EQ(bit, 1);
 
   for (int i = 2; i < 256; ++i) {
     // read first byte in seq stream, make sure it matches value
     uint8 byte = 0;
-    ASSERT_TRUE(run_length_stream.ReadByte(byte));
+    ASSERT_TRUE(run_length_stream.ReadByte(&byte));
     ASSERT_EQ(byte, i);
     // skip the rest of the byte field
     ASSERT_TRUE(run_length_stream.SkipBytes(i - 1));
     bit = 0;
     // read the separating one bit
-    ASSERT_TRUE(run_length_stream.ReadBit(bit));
+    ASSERT_TRUE(run_length_stream.ReadBit(&bit));
     ASSERT_EQ(bit, 1);
     // read last byte in deseq stream, so skip bytes first
     ASSERT_TRUE(run_length_deseq_stream.SkipBytes(i - 1));
     byte = 0;
-    ASSERT_TRUE(run_length_deseq_stream.ReadByte(byte));
+    ASSERT_TRUE(run_length_deseq_stream.ReadByte(&byte));
     ASSERT_EQ(byte, i);
     // read the separating one bit
     bit = 0;
-    ASSERT_TRUE(run_length_deseq_stream.ReadBit(bit));
+    ASSERT_TRUE(run_length_deseq_stream.ReadBit(&bit));
     ASSERT_EQ(bit, 1);
   }
 
@@ -604,10 +606,10 @@ TEST_F(ShellRBSPStreamTest, SkipBits) {
     }
   }
   size_t skip_ones_size = 0;
-  scoped_array<uint8> skip_ones_buff =
+  std::unique_ptr<uint8[]> skip_ones_buff =
       SerializeToBuffer(one_ohs, true, skip_ones_size);
   size_t skip_ohs_size = 0;
-  scoped_array<uint8> skip_ohs_buff =
+  std::unique_ptr<uint8[]> skip_ohs_buff =
       SerializeToBuffer(one_ohs, false, skip_ohs_size);
   ShellRBSPStream skip_ones(skip_ones_buff.get(), skip_ones_size);
   ShellRBSPStream skip_ohs(skip_ohs_buff.get(), skip_ohs_size);
@@ -617,7 +619,7 @@ TEST_F(ShellRBSPStreamTest, SkipBits) {
     // read the ones from the zeros stream
     for (int j = 0; j < i; ++j) {
       uint8 bit = 0;
-      ASSERT_TRUE(skip_ohs.ReadBit(bit));
+      ASSERT_TRUE(skip_ohs.ReadBit(&bit));
       ASSERT_EQ(bit, 1);
     }
     // skip the ohs
@@ -625,7 +627,7 @@ TEST_F(ShellRBSPStreamTest, SkipBits) {
     // read the ohs from the ones stream
     for (int j = 0; j < i; ++j) {
       uint8 bit = 0;
-      ASSERT_TRUE(skip_ones.ReadBit(bit));
+      ASSERT_TRUE(skip_ones.ReadBit(&bit));
       ASSERT_EQ(bit, 0);
     }
   }

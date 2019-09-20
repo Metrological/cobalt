@@ -5,6 +5,7 @@
 #ifndef COBALT_MEDIA_BASE_DECODER_BUFFER_H_
 #define COBALT_MEDIA_BASE_DECODER_BUFFER_H_
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -12,8 +13,7 @@
 #include "base/logging.h"
 #include "base/memory/aligned_memory.h"
 #include "base/memory/ref_counted.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/time.h"
+#include "base/time/time.h"
 #include "build/build_config.h"
 #include "cobalt/media/base/decrypt_config.h"
 #include "cobalt/media/base/demuxer_stream.h"
@@ -59,6 +59,16 @@ class MEDIA_EXPORT DecoderBuffer
   static scoped_refptr<DecoderBuffer> CopyFrom(Allocator* allocator, Type type,
                                                const uint8_t* data,
                                                size_t size);
+
+  // Create a DecoderBuffer whose |data_| is copied from |data| and |side_data_|
+  // is copied from |side_data|. Buffers will be padded and aligned as necessary
+  // Data pointers must not be NULL and sizes must be >= 0. The buffer's
+  // |is_key_frame_| will default to false.
+  static scoped_refptr<DecoderBuffer> CopyFrom(Allocator* allocator, Type type,
+                                               const uint8_t* data,
+                                               size_t data_size,
+                                               const uint8_t* side_data,
+                                               size_t side_data_size);
 
   // Create a DecoderBuffer indicating we've reached end of stream.
   //
@@ -114,6 +124,18 @@ class MEDIA_EXPORT DecoderBuffer
     allocations().ShrinkTo(static_cast<int>(size));
   }
 
+  bool has_side_data() const { return side_data_.get() != NULL; }
+
+  const uint8_t* side_data() const {
+    DCHECK(!end_of_stream());
+    return side_data_.get();
+  }
+
+  size_t side_data_size() const {
+    DCHECK(!end_of_stream());
+    return side_data_size_;
+  }
+
   // A discard window indicates the amount of data which should be discard from
   // this buffer after decoding.  The first value is the amount of the front and
   // the second the amount off the back.  A value of kInfiniteDuration for the
@@ -135,9 +157,9 @@ class MEDIA_EXPORT DecoderBuffer
     return decrypt_config_.get();
   }
 
-  void set_decrypt_config(scoped_ptr<DecryptConfig> decrypt_config) {
+  void set_decrypt_config(std::unique_ptr<DecryptConfig> decrypt_config) {
     DCHECK(!end_of_stream());
-    decrypt_config_ = decrypt_config.Pass();
+    decrypt_config_ = std::move(decrypt_config);
   }
 
   // If there's no data in this buffer, it represents end of stream.
@@ -185,12 +207,13 @@ class MEDIA_EXPORT DecoderBuffer
   // set to NULL and |buffer_size_| to 0.  |is_key_frame_| will default to
   // false.
   DecoderBuffer(Allocator* allocator, Type type, const uint8_t* data,
-                size_t size);
+                size_t size, const uint8_t* side_data, size_t side_data_size);
 
   // Allocates a buffer to copy the data in |allocations|.  Buffer will be
   // padded and aligned as necessary.  |is_key_frame_| will default to false.
   DecoderBuffer(Allocator* allocator, Type type,
-                Allocator::Allocations allocations);
+                Allocator::Allocations allocations, const uint8_t* side_data,
+                size_t side_data_size);
 
   virtual ~DecoderBuffer();
 
@@ -218,10 +241,13 @@ class MEDIA_EXPORT DecoderBuffer
   base::TimeDelta duration_;
 
   ScopedAllocatorPtr data_;
-  scoped_ptr<DecryptConfig> decrypt_config_;
+  std::unique_ptr<DecryptConfig> decrypt_config_;
   DiscardPadding discard_padding_;
-  base::TimeDelta splice_timestamp_;
-  bool is_key_frame_;
+  base::TimeDelta splice_timestamp_ = kNoTimestamp;
+  bool is_key_frame_ = false;
+
+  size_t side_data_size_ = 0;
+  std::unique_ptr<uint8_t[]> side_data_;
 
   DISALLOW_COPY_AND_ASSIGN(DecoderBuffer);
 };

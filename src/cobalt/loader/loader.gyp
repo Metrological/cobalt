@@ -14,6 +14,7 @@
 
 {
   'variables': {
+    'optimize_target_for_speed': 1,
     'sb_pedantic_warnings': 1,
   },
   'targets': [
@@ -23,6 +24,8 @@
       'sources': [
         'blob_fetcher.cc',
         'blob_fetcher.h',
+        'cobalt_url_fetcher_string_writer.cc',
+        'cobalt_url_fetcher_string_writer.h',
         'cache_fetcher.cc',
         'cache_fetcher.h',
         'cors_preflight.cc',
@@ -38,6 +41,8 @@
         'fetcher_factory.h',
         'fetcher.cc',
         'fetcher.h',
+        'fetcher_cache.cc',
+        'fetcher_cache.h',
         'file_fetcher.cc',
         'file_fetcher.h',
         'font/remote_typeface_cache.h',
@@ -84,10 +89,16 @@
         'mesh/projection_codec/projection_decoder.h',
         'net_fetcher.cc',
         'net_fetcher.h',
+        'resource_cache.cc',
         'resource_cache.h',
+        'switches.cc',
+        'switches.h',
         'sync_loader.cc',
         'sync_loader.h',
         'text_decoder.h',
+      ],
+      'includes': [
+        '<(DEPTH)/cobalt/renderer/renderer_parameters_setup.gypi',
       ],
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
@@ -95,8 +106,9 @@
         '<(DEPTH)/cobalt/loader/origin.gyp:origin',
         '<(DEPTH)/cobalt/network/network.gyp:network',
         '<(DEPTH)/cobalt/render_tree/render_tree.gyp:render_tree',
-	'<(DEPTH)/cobalt/renderer/test/png_utils/png_utils.gyp:png_utils',
-        '<(DEPTH)/googleurl/googleurl.gyp:googleurl',
+        '<(DEPTH)/cobalt/renderer/test/jpeg_utils/jpeg_utils.gyp:jpeg_utils',
+        '<(DEPTH)/cobalt/renderer/test/png_utils/png_utils.gyp:png_utils',
+        '<(DEPTH)/url/url.gyp:url',
         '<(DEPTH)/third_party/libjpeg/libjpeg.gyp:libjpeg',
         '<(DEPTH)/third_party/libpng/libpng.gyp:libpng',
         '<(DEPTH)/third_party/libwebp/libwebp.gyp:libwebp',
@@ -194,8 +206,12 @@
         '<(input_directory)/black_splash_screen.html',
         '<(input_directory)/cobalt_splash_screen.css',
         '<(input_directory)/cobalt_splash_screen.html',
+        '<(input_directory)/dialog.css',
+        '<(input_directory)/dialog.js',
         '<(input_directory)/equirectangular_40_40.msh',
         '<(input_directory)/splash_screen.js',
+        '<(input_directory)/unable_message.html.template',
+        '<(input_directory)/update_message.html.template',
         '<!@(["python", "<(DEPTH)/starboard/tools/find_private_files.py", "<(DEPTH)", "*.html", "cobalt/loader/embedded_resources"])',
       ],
       'actions': [

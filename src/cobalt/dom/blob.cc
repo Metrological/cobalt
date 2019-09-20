@@ -37,6 +37,8 @@ const void* DataStart(const Blob::BlobPart& part) {
     return view->RawData();
   } else if (part.IsType<scoped_refptr<Blob> >()) {
     return part.AsType<scoped_refptr<Blob> >()->data();
+  } else if (part.IsType<std::string>()) {
+    return part.AsType<std::string>().data();
   }
 
   return NULL;
@@ -52,6 +54,8 @@ size_t DataLength(const Blob::BlobPart& part) {
     return part.AsType<script::Handle<script::DataView> >()->ByteLength();
   } else if (part.IsType<scoped_refptr<Blob> >()) {
     return static_cast<size_t>(part.AsType<scoped_refptr<Blob> >()->size());
+  } else if (part.IsType<std::string>()) {
+    return static_cast<size_t>(part.AsType<std::string>().size());
   }
 
   return 0;
@@ -67,7 +71,7 @@ size_t TotalDataLength(const script::Sequence<Blob::BlobPart>& blob_parts) {
   return byte_length;
 }
 
-base::LazyInstance<BlobPropertyBag> empty_blob_property_bag =
+base::LazyInstance<BlobPropertyBag>::DestructorAtExit empty_blob_property_bag =
     LAZY_INSTANCE_INITIALIZER;
 
 }  // namespace

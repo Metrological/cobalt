@@ -103,6 +103,9 @@
 // the case should define the following quirk.
 #undef SB_HAS_QUIRK_THREAD_AFFINITY_UNSUPPORTED
 
+// Some platforms the mapped GL buffer memory is slow to read from.  Platforms
+// where this is the case should define the following quirk.
+#undef SB_HAS_QUIRK_GL_MAP_BUFFER_MEMORY_IS_SLOW_TO_READ
 // --- System Header Configuration -------------------------------------------
 
 // Any system headers listed here that are not provided by the platform will be
@@ -164,6 +167,10 @@
 // headers. It may be removed at some point in favor of a different solution.
 #undef SB_HAS_QUIRK_SOCKET_BSD_HEADERS
 
+// Some platforms don't support gmtime_r. Platforms where this is the case
+// should define the following quirk.
+#undef SB_HAS_QUIRK_NO_GMTIME_R
+
 // --- Compiler Configuration ------------------------------------------------
 
 // The platform's annotation for forcing a C function to be inlined.
@@ -195,6 +202,9 @@
 #undef SB_HAS_QUIRK_HASFEATURE_NOT_DEFINED_BUT_IT_IS
 
 // --- Extensions Configuration ----------------------------------------------
+
+// Do not use <unordered_map> and <unordered_set> for the hash table types.
+#define SB_HAS_STD_UNORDERED_HASH 0
 
 // GCC/Clang doesn't define a long long hash function, except for Android and
 // Game consoles.
@@ -269,10 +279,20 @@
 // The string form of SB_PATH_SEP_CHAR.
 #define SB_PATH_SEP_STRING ":"
 
+// Some operating systems constantly return zero values for creation, access
+// and modification time for files and directories. When this quirk is defined,
+// we need to ignore corresponded time values in applications as well as take
+// this fact into account in unit tests.
+#undef SB_HAS_QUIRK_FILESYSTEM_ZERO_FILEINFO_TIME
+
 // On some platforms the file system stores access times at a coarser
 // granularity than other times. When this quirk is defined, we assume the
 // access time is of 1 day precision.
 #undef SB_HAS_QUIRK_FILESYSTEM_COARSE_ACCESS_TIME
+
+// On some platforms the file system cannot access extremely long file names.
+// We do not need this feature on stub.
+#undef SB_HAS_QUIRK_HASH_FILE_NAME
 
 // --- Graphics Configuration ------------------------------------------------
 
@@ -317,9 +337,6 @@
 #define SB_HAS_SPEECH_SYNTHESIS 1
 
 // --- Media Configuration ---------------------------------------------------
-
-// Whether the current platform uses a media player that relies on a URL.
-#define SB_HAS_PLAYER_WITH_URL 0
 
 // After a seek is triggerred, the default behavior is to append video frames
 // from the last key frame before the seek time and append audio frames from the

@@ -30,9 +30,9 @@
 #include <unistd.h>
 #endif
 
+#include "starboard/common/log.h"
 #include "starboard/input.h"
 #include "starboard/key.h"
-#include "starboard/log.h"
 #include "starboard/memory.h"
 #include "starboard/shared/directfb/window_internal.h"
 #include "starboard/shared/posix/time_internal.h"
@@ -459,7 +459,8 @@ void ApplicationDirectFB::Teardown() {
       sigemptyset(&sigaction_config.sa_mask);
       sigaction_config.sa_flags = 0;
 
-      // Unblock SIGSEGV, which has been blocked earlier (perhaps by libdirectfb)
+      // Unblock SIGSEGV, which has been blocked earlier (perhaps by
+      // libdirectfb)
       sigset_t set;
       sigemptyset(&set);
       sigaddset(&set, SIGSEGV);
@@ -523,6 +524,9 @@ shared::starboard::Application::Event* ApplicationDirectFB::DFBEventToEvent(
 
     SbInputData* data = new SbInputData();
     SbMemorySet(data, 0, sizeof(*data));
+#if SB_API_VERSION >= 10
+    data->timestamp = SbTimeGetMonotonicNow();
+#endif  // SB_API_VERSION >= 10
     data->window = window_;
     SB_DCHECK(SbWindowIsValid(data->window));
     data->type = (event.type == DIET_KEYPRESS ? kSbInputEventTypePress

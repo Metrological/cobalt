@@ -32,11 +32,15 @@ namespace system_window {
 class SystemWindow {
  public:
   SystemWindow(base::EventDispatcher* event_dispatcher,
-               const base::optional<math::Size>& window_size);
+               const base::Optional<math::Size>& window_size);
   ~SystemWindow();
 
   // Returns the dimensions of the window.
   math::Size GetWindowSize() const;
+
+  // Gets the size of the diagonal length between opposing corners of the
+  // screen. This is queried from the window_.
+  float GetDiagonalSizeInches() const;
 
   // video pixel ratio = resolution of video output / resolution of window.  Its
   // value is usually 1.0.  Set it to a value greater than 1.0 allows the video

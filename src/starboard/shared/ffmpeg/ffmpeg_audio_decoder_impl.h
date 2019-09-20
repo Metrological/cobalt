@@ -20,6 +20,7 @@
 #include "starboard/common/ref_counted.h"
 #include "starboard/media.h"
 #include "starboard/shared/ffmpeg/ffmpeg_audio_decoder.h"
+#include "starboard/shared/ffmpeg/ffmpeg_audio_decoder_impl_interface.h"
 #include "starboard/shared/ffmpeg/ffmpeg_common.h"
 #include "starboard/shared/ffmpeg/ffmpeg_dispatch.h"
 #include "starboard/shared/internal_only.h"
@@ -31,15 +32,6 @@ namespace starboard {
 namespace shared {
 namespace ffmpeg {
 
-// For each version V that is supported, there will be an implementation of an
-// explicit specialization of the AudioDecoder class.
-template <int V>
-class AudioDecoderImpl : public AudioDecoder {
- public:
-  static AudioDecoder* Create(SbMediaAudioCodec audio_codec,
-                              const SbMediaAudioHeader& audio_header);
-};
-
 // Forward class declaration of the explicit specialization with value FFMPEG.
 template <>
 class AudioDecoderImpl<FFMPEG>;
@@ -50,12 +42,12 @@ class AudioDecoderImpl<FFMPEG> : public AudioDecoder,
                                  private starboard::player::JobQueue::JobOwner {
  public:
   AudioDecoderImpl(SbMediaAudioCodec audio_codec,
-                   const SbMediaAudioHeader& audio_header);
+                   const SbMediaAudioSampleInfo& audio_sample_info);
   ~AudioDecoderImpl() override;
 
   // From: AudioDecoder
   static AudioDecoder* Create(SbMediaAudioCodec audio_codec,
-                              const SbMediaAudioHeader& audio_header);
+                              const SbMediaAudioSampleInfo& audio_sample_info);
   bool is_valid() const override;
 
   // From: starboard::player::filter::AudioDecoder
@@ -84,7 +76,7 @@ class AudioDecoderImpl<FFMPEG> : public AudioDecoder,
 
   bool stream_ended_;
   std::queue<scoped_refptr<DecodedAudio> > decoded_audios_;
-  SbMediaAudioHeader audio_header_;
+  SbMediaAudioSampleInfo audio_sample_info_;
 };
 
 }  // namespace ffmpeg

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "cobalt/speech/url_fetcher_fake.h"
 
 #if defined(ENABLE_FAKE_MICROPHONE)
@@ -19,8 +21,10 @@
 #include "base/basictypes.h"
 #include "base/sys_byteorder.h"
 #include "cobalt/speech/google_streaming_api.pb.h"
+#include "net/base/io_buffer.h"
 #include "net/url_request/url_fetcher_delegate.h"
-#include "starboard/log.h"
+#include "net/url_request/url_fetcher_response_writer.h"
+#include "starboard/common/log.h"
 
 namespace cobalt {
 namespace speech {
@@ -142,6 +146,7 @@ void URLFetcherFake::SetRequestContext(
 }
 
 void URLFetcherFake::Start() {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (!is_chunked_upload_) {
     download_timer_.emplace();
     download_timer_->Start(
@@ -157,10 +162,20 @@ const net::URLRequestStatus& URLFetcherFake::GetStatus() const {
 int URLFetcherFake::GetResponseCode() const { return 200; }
 
 void URLFetcherFake::OnURLFetchDownloadData() {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   SB_DCHECK(!is_chunked_upload_);
-  std::string result = GetMockProtoResult(download_index_);
-  delegate_->OnURLFetchDownloadData(
-      this, make_scoped_ptr<std::string>(new std::string(result)));
+  std::string actual_response_string = GetMockProtoResult(download_index_);
+  int64_t response_size = actual_response_string.length();
+  if (response_data_writer_) {
+    response_data_writer_->Write(
+        scoped_refptr<net::WrappedIOBuffer>(
+            new net::WrappedIOBuffer(actual_response_string.data())),
+        static_cast<int>(response_size), net::CompletionOnceCallback());
+  } else {
+    DLOG(WARNING) << "No response writer, mock proto result will be lost";
+  }
+  delegate_->OnURLFetchDownloadProgress(this, response_size, response_size,
+                                        response_size);
   download_index_++;
   if (download_index_ ==
       static_cast<int>(SB_ARRAY_SIZE_INT(kRecognitionResults))) {

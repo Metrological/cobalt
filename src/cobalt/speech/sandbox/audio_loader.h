@@ -15,9 +15,11 @@
 #ifndef COBALT_SPEECH_SANDBOX_AUDIO_LOADER_H_
 #define COBALT_SPEECH_SANDBOX_AUDIO_LOADER_H_
 
+#include <memory>
 #include <string>
 
 #include "base/callback.h"
+#include "base/optional.h"
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/loader/loader.h"
 #include "cobalt/network/network_module.h"
@@ -35,12 +37,12 @@ class AudioLoader {
 
  private:
   void OnLoadingDone(const uint8* data, int size);
-  void OnLoadingError(const std::string& error);
+  void OnLoadingError(const base::Optional<std::string>& error);
 
   const DoneCallback done_callback_;
   network::NetworkModule* network_module_;
-  scoped_ptr<loader::FetcherFactory> fetcher_factory_;
-  scoped_ptr<loader::Loader> loader_;
+  std::unique_ptr<loader::FetcherFactory> fetcher_factory_;
+  std::unique_ptr<loader::Loader> loader_;
 };
 
 }  // namespace sandbox

@@ -45,7 +45,7 @@ class MediaKeys : public script::Wrappable,
   MediaKeys(const std::string& key_system,
             script::ScriptValueFactory* script_value_factory);
 
-  media::DrmSystem* drm_system() const { return drm_system_.get(); }
+  scoped_refptr<media::DrmSystem> drm_system() const { return drm_system_; }
 
   // Web API: MediaKeys.
 
@@ -75,7 +75,7 @@ class MediaKeys : public script::Wrappable,
   //   https://www.w3.org/TR/encrypted-media/#mediakeysession-interface
   //
   // Number of sessions is expected to be very small, typically one.
-  std::vector<scoped_refptr<MediaKeySession> > open_sessions_;
+  std::vector<scoped_refptr<MediaKeySession>> open_sessions_;
 
   DISALLOW_COPY_AND_ASSIGN(MediaKeys);
 };

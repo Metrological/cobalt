@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "cobalt/renderer/rasterizer/skia/software_rasterizer.h"
 
-#include "base/debug/trace_event.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/renderer/rasterizer/skia/cobalt_skia_type_conversions.h"
 #include "cobalt/renderer/rasterizer/skia/render_tree_node_visitor.h"
 #include "cobalt/renderer/rasterizer/skia/software_resource_provider.h"
@@ -43,16 +45,16 @@ class SoftwareScratchSurface : public RenderTreeNodeVisitor::ScratchSurface {
   sk_sp<SkSurface> surface_;
 };
 
-scoped_ptr<RenderTreeNodeVisitor::ScratchSurface> CreateScratchSurface(
+std::unique_ptr<RenderTreeNodeVisitor::ScratchSurface> CreateScratchSurface(
     const math::Size& size) {
   TRACE_EVENT2("cobalt::renderer", "CreateScratchSurface()", "width",
                size.width(), "height", size.height());
   sk_sp<SkSurface> sk_surface = CreateScratchSkSurface(size);
   if (!sk_surface) {
-    return scoped_ptr<RenderTreeNodeVisitor::ScratchSurface>();
+    return std::unique_ptr<RenderTreeNodeVisitor::ScratchSurface>();
   }
 
-  return scoped_ptr<RenderTreeNodeVisitor::ScratchSurface>(
+  return std::unique_ptr<RenderTreeNodeVisitor::ScratchSurface>(
       new SoftwareScratchSurface(sk_surface));
 }
 
@@ -70,7 +72,7 @@ class SoftwareRasterizer::Impl {
   render_tree::ResourceProvider* GetResourceProvider();
 
  private:
-  scoped_ptr<render_tree::ResourceProvider> resource_provider_;
+  std::unique_ptr<render_tree::ResourceProvider> resource_provider_;
 };
 
 SoftwareRasterizer::Impl::Impl(bool purge_skia_font_caches_on_destruction)
@@ -95,7 +97,8 @@ void SoftwareRasterizer::Impl::Submit(
     RenderTreeNodeVisitor visitor(
         render_target, &create_scratch_surface_function, base::Closure(),
         RenderTreeNodeVisitor::RenderImageFallbackFunction(),
-        RenderTreeNodeVisitor::RenderImageWithMeshFallbackFunction());
+        RenderTreeNodeVisitor::RenderImageWithMeshFallbackFunction(),
+        RenderTreeNodeVisitor::ConvertRenderTreeToImageCallback());
 
     // Finally, rasterize the render tree to the output canvas using the
     // rasterizer we just created.

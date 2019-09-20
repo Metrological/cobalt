@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
 #include <string>
 
 #include "base/bind.h"
 #include "base/callback.h"
-#include "base/memory/scoped_ptr.h"
+#include "base/optional.h"
 #include "base/threading/platform_thread.h"
 #include "cobalt/bindings/testing/utils.h"
 #include "cobalt/css_parser/parser.h"
+#include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/local_storage_database.h"
 #include "cobalt/dom/testing/gtest_workarounds.h"
 #include "cobalt/dom/window.h"
@@ -34,16 +36,18 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
+using cobalt::cssom::ViewportSize;
+using testing::InSequence;
+using testing::Mock;
+
 namespace cobalt {
 namespace dom {
 
-class MockErrorCallback : public base::Callback<void(const std::string&)> {
+class MockErrorCallback
+    : public base::Callback<void(const base::Optional<std::string>&)> {
  public:
-  MOCK_METHOD1(Run, void(const std::string&));
+  MOCK_METHOD1(Run, void(const base::Optional<std::string>&));
 };
-
-using ::testing::InSequence;
-using ::testing::Mock;
 
 class OnScreenKeyboardMockBridge : public OnScreenKeyboardBridge {
  public:
@@ -96,6 +100,20 @@ class OnScreenKeyboardMockBridge : public OnScreenKeyboardBridge {
     window_->on_screen_keyboard()->DispatchBlurEvent(last_ticket_);
     EXPECT_TRUE(promise->State() == cobalt::script::PromiseState::kFulfilled);
     last_ticket_ = -1;
+  }
+
+  bool SuggestionsSupported() const override {
+    // TODO: implement and test this.
+    SB_NOTIMPLEMENTED();
+    return false;
+  }
+
+  void UpdateSuggestions(const script::Sequence<std::string>& suggestions,
+                         int ticket) override {
+    SB_UNREFERENCED_PARAMETER(suggestions);
+    SB_UNREFERENCED_PARAMETER(ticket);
+    // TODO: implement and test this.
+    SB_NOTIMPLEMENTED();
   }
 
   bool IsShown() const override { return shown_; }
@@ -175,22 +193,23 @@ class OnScreenKeyboardTest : public ::testing::Test {
  public:
   OnScreenKeyboardTest()
       : environment_settings_(new script::EnvironmentSettings),
-        message_loop_(MessageLoop::TYPE_DEFAULT),
+        message_loop_(base::MessageLoop::TYPE_DEFAULT),
         css_parser_(css_parser::Parser::Create()),
         dom_parser_(new dom_parser::Parser(mock_error_callback_)),
         fetcher_factory_(new loader::FetcherFactory(NULL)),
-        loader_factory_(new loader::LoaderFactory(
-            fetcher_factory_.get(), NULL, base::kThreadPriority_Default)),
+        loader_factory_(
+            new loader::LoaderFactory("Test", fetcher_factory_.get(), NULL, 0,
+                                      base::ThreadPriority::DEFAULT)),
         local_storage_database_(NULL),
         url_("about:blank"),
         engine_(script::JavaScriptEngine::CreateEngine()),
         global_environment_(engine_->CreateGlobalEnvironment()),
         on_screen_keyboard_bridge_(new OnScreenKeyboardMockBridge()),
         window_(new Window(
-            1920, 1080, 1.f, base::kApplicationStateStarted, css_parser_.get(),
-            dom_parser_.get(), fetcher_factory_.get(), loader_factory_.get(),
-            NULL, NULL, NULL, NULL, NULL, NULL, &local_storage_database_, NULL,
-            NULL, NULL, NULL,
+            ViewportSize(1920, 1080), 1.f, base::kApplicationStateStarted,
+            css_parser_.get(), dom_parser_.get(), fetcher_factory_.get(),
+            loader_factory_.get(), NULL, NULL, NULL, NULL, NULL, NULL,
+            &local_storage_database_, NULL, NULL, NULL, NULL,
             global_environment_
                 ->script_value_factory() /* script_value_factory */,
             NULL, NULL, url_, "", "en-US", "en",
@@ -241,19 +260,19 @@ class OnScreenKeyboardTest : public ::testing::Test {
   Window* window() const { return window_.get(); }
 
  private:
-  const scoped_ptr<script::EnvironmentSettings> environment_settings_;
-  MessageLoop message_loop_;
+  const std::unique_ptr<script::EnvironmentSettings> environment_settings_;
+  base::MessageLoop message_loop_;
   MockErrorCallback mock_error_callback_;
-  scoped_ptr<css_parser::Parser> css_parser_;
-  scoped_ptr<dom_parser::Parser> dom_parser_;
-  scoped_ptr<loader::FetcherFactory> fetcher_factory_;
-  scoped_ptr<loader::LoaderFactory> loader_factory_;
+  std::unique_ptr<css_parser::Parser> css_parser_;
+  std::unique_ptr<dom_parser::Parser> dom_parser_;
+  std::unique_ptr<loader::FetcherFactory> fetcher_factory_;
+  std::unique_ptr<loader::LoaderFactory> loader_factory_;
   dom::LocalStorageDatabase local_storage_database_;
   GURL url_;
 
-  scoped_ptr<script::JavaScriptEngine> engine_;
+  std::unique_ptr<script::JavaScriptEngine> engine_;
   scoped_refptr<script::GlobalEnvironment> global_environment_;
-  scoped_ptr<OnScreenKeyboardMockBridge> on_screen_keyboard_bridge_;
+  std::unique_ptr<OnScreenKeyboardMockBridge> on_screen_keyboard_bridge_;
   scoped_refptr<Window> window_;
 };
 

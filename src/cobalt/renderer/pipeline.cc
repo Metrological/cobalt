@@ -12,18 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "cobalt/renderer/pipeline.h"
 
 #include "base/bind.h"
-#include "base/debug/trace_event.h"
-#include "base/file_path.h"
-#include "base/file_util.h"
+#include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/path_service.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/base/address_sanitizer.h"
 #include "cobalt/base/cobalt_paths.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/math/rect_f.h"
 #include "cobalt/render_tree/brush.h"
+#include "cobalt/render_tree/composition_node.h"
 #include "cobalt/render_tree/dump_render_tree_to_string.h"
 #include "cobalt/render_tree/rect_node.h"
 #include "nb/memory_scope.h"
@@ -59,11 +62,11 @@ const size_t kRasterizePeriodicTimerEntriesPerUpdate = 60;
 // occur manually when the animations expire.
 const size_t kRasterizeAnimationsTimerMaxEntries = 60;
 
-void DestructSubmissionOnMessageLoop(MessageLoop* message_loop,
-                                     scoped_ptr<Submission> submission) {
+void DestructSubmissionOnMessageLoop(base::MessageLoop* message_loop,
+                                     std::unique_ptr<Submission> submission) {
   TRACE_EVENT0("cobalt::renderer", "DestructSubmissionOnMessageLoop()");
-  if (MessageLoop::current() != message_loop) {
-    message_loop->DeleteSoon(FROM_HERE, submission.release());
+  if (base::MessageLoop::current() != message_loop) {
+    message_loop->task_runner()->DeleteSoon(FROM_HERE, submission.release());
   }
 }
 
@@ -75,7 +78,9 @@ Pipeline::Pipeline(const CreateRasterizerFunction& create_rasterizer_function,
                    bool submit_even_if_render_tree_is_unchanged,
                    ShutdownClearMode clear_on_shutdown_mode,
                    const Options& options)
-    : rasterizer_created_event_(true, false),
+    : rasterizer_created_event_(
+          base::WaitableEvent::ResetPolicy::MANUAL,
+          base::WaitableEvent::InitialState::NOT_SIGNALED),
       render_target_(render_target),
       graphics_context_(graphics_context),
       rasterizer_thread_("Rasterizer"),
@@ -111,7 +116,7 @@ Pipeline::Pipeline(const CreateRasterizerFunction& create_rasterizer_function,
           "The most recent time animations started playing."),
       animations_end_time_("Time.Renderer.Rasterize.Animations.End", 0,
                            "The most recent time animations ended playing."),
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
       ALLOW_THIS_IN_INITIALIZER_LIST(dump_current_render_tree_command_handler_(
           "dump_render_tree",
           base::Bind(&Pipeline::OnDumpCurrentRenderTree,
@@ -135,7 +140,7 @@ Pipeline::Pipeline(const CreateRasterizerFunction& create_rasterizer_function,
           "numbers are updated at the end of each animation (or every time a "
           "maximum number of frames are rendered), framerate statistics are "
           "printed to stdout.")),
-#endif
+#endif  // defined(ENABLE_DEBUGGER)
       clear_on_shutdown_mode_(clear_on_shutdown_mode),
       enable_fps_stdout_(options.enable_fps_stdout),
       enable_fps_overlay_(options.enable_fps_overlay),
@@ -145,13 +150,14 @@ Pipeline::Pipeline(const CreateRasterizerFunction& create_rasterizer_function,
   // rasterizer_thread_checker_ to be associated with the rasterizer thread,
   // so we detach it here and let it reattach itself to the rasterizer thread
   // when CalledOnValidThread() is called on rasterizer_thread_checker_ below.
-  rasterizer_thread_checker_.DetachFromThread();
+  DETACH_FROM_THREAD(rasterizer_thread_checker_);
 
-  rasterizer_thread_.StartWithOptions(
-      base::Thread::Options(MessageLoop::TYPE_DEFAULT, kRendererThreadStackSize,
-                            base::kThreadPriority_Highest));
+  base::Thread::Options thread_options(base::MessageLoop::TYPE_DEFAULT,
+                                       kRendererThreadStackSize);
+  thread_options.priority = base::ThreadPriority::HIGHEST;
+  rasterizer_thread_.StartWithOptions(thread_options);
 
-  rasterizer_thread_.message_loop()->PostTask(
+  rasterizer_thread_.message_loop()->task_runner()->PostTask(
       FROM_HERE,
       base::Bind(&Pipeline::InitializeRasterizerThread, base::Unretained(this),
                  create_rasterizer_function));
@@ -165,21 +171,23 @@ Pipeline::~Pipeline() {
   // thread as it clears itself out (e.g. it may ask the rasterizer thread to
   // delete textures).  We wait for this shutdown to complete before proceeding
   // to shutdown the rasterizer thread.
-  rasterizer_thread_.message_loop()->PostBlockingTask(
+  rasterizer_thread_.message_loop()->task_runner()->PostBlockingTask(
       FROM_HERE,
       base::Bind(&Pipeline::ShutdownSubmissionQueue, base::Unretained(this)));
 
-  // This potential reference to a render tree whose animations may have ended
-  // must be destroyed before we shutdown the rasterizer thread since it may
-  // contain references to render tree nodes and resources.
-  last_render_tree_ = NULL;
-  last_animated_render_tree_ = NULL;
-
   // Submit a shutdown task to the rasterizer thread so that it can shutdown
   // anything that must be shutdown from that thread.
-  rasterizer_thread_.message_loop()->PostTask(
+  rasterizer_thread_.message_loop()->task_runner()->PostBlockingTask(
       FROM_HERE,
       base::Bind(&Pipeline::ShutdownRasterizerThread, base::Unretained(this)));
+
+  // Finally shutdown the rasterizer. Do this after ShutdownRasterizerThread()
+  // has run, just in case it posted more tasks to the rasterizer thread. This
+  // will free the rasterizer after the posted tasks have executed (unless they
+  // were delayed tasks).
+  rasterizer_thread_.message_loop()->task_runner()->PostBlockingTask(
+      FROM_HERE,
+      base::Bind(&Pipeline::ShutdownRasterizer, base::Unretained(this)));
 
   rasterizer_thread_.Stop();
 }
@@ -193,54 +201,66 @@ void Pipeline::Submit(const Submission& render_tree_submission) {
   TRACE_EVENT0("cobalt::renderer", "Pipeline::Submit()");
 
   // Execute the actual set of the new render tree on the rasterizer tree.
-  rasterizer_thread_.message_loop()->PostTask(
+  rasterizer_thread_.message_loop()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&Pipeline::SetNewRenderTree, base::Unretained(this),
                             CollectAnimations(render_tree_submission)));
 }
 
 void Pipeline::Clear() {
   TRACE_EVENT0("cobalt::renderer", "Pipeline::Clear()");
-  rasterizer_thread_.message_loop()->PostBlockingTask(
+  rasterizer_thread_.message_loop()->task_runner()->PostBlockingTask(
       FROM_HERE,
       base::Bind(&Pipeline::ClearCurrentRenderTree, base::Unretained(this)));
 }
 
 void Pipeline::RasterizeToRGBAPixels(
     const scoped_refptr<render_tree::Node>& render_tree_root,
+    const base::Optional<math::Rect>& clip_rect,
     const RasterizationCompleteCallback& complete) {
   TRACK_MEMORY_SCOPE("Renderer");
   TRACE_EVENT0("cobalt::renderer", "Pipeline::RasterizeToRGBAPixels()");
 
-  if (MessageLoop::current() != rasterizer_thread_.message_loop()) {
-    rasterizer_thread_.message_loop()->PostTask(
+  if (base::MessageLoop::current() != rasterizer_thread_.message_loop()) {
+    rasterizer_thread_.message_loop()->task_runner()->PostTask(
         FROM_HERE,
         base::Bind(&Pipeline::RasterizeToRGBAPixels, base::Unretained(this),
-                   render_tree_root, complete));
+                   render_tree_root, clip_rect, complete));
     return;
   }
-  // Create a new target that is the same dimensions as the display target.
+
+  // The default render_rect is the the whole display target.
+  const math::Rect& render_rect =
+      clip_rect ? clip_rect.value() : math::Rect(render_target_->GetSize());
+
+  // Create a new target that is the same dimensions as the render_rect.
   scoped_refptr<backend::RenderTarget> offscreen_target =
       graphics_context_->CreateDownloadableOffscreenRenderTarget(
-          render_target_->GetSize());
+          render_rect.size());
+
+  // Offset the whole render tree to put the render_rect at the origin.
+  scoped_refptr<render_tree::Node> offset_tree_root =
+      new render_tree::CompositionNode(
+          render_tree_root.get(),
+          math::Vector2dF(-render_rect.x(), -render_rect.y()));
 
   scoped_refptr<render_tree::Node> animate_node =
-      new render_tree::animations::AnimateNode(render_tree_root);
+      new render_tree::animations::AnimateNode(offset_tree_root);
 
   Submission submission = Submission(animate_node);
   // Rasterize this submission into the newly created target.
-  RasterizeSubmissionToRenderTarget(submission, offscreen_target);
+  RasterizeSubmissionToRenderTarget(submission, offscreen_target, true);
 
   // Load the texture's pixel data into a CPU memory buffer and return it.
   complete.Run(graphics_context_->DownloadPixelDataAsRGBA(offscreen_target),
-               render_target_->GetSize());
+               render_rect.size());
 }
 
 void Pipeline::TimeFence(base::TimeDelta time_fence) {
   TRACK_MEMORY_SCOPE("Renderer");
   TRACE_EVENT0("cobalt::renderer", "Pipeline::TimeFence()");
 
-  if (MessageLoop::current() != rasterizer_thread_.message_loop()) {
-    rasterizer_thread_.message_loop()->PostTask(
+  if (base::MessageLoop::current() != rasterizer_thread_.message_loop()) {
+    rasterizer_thread_.message_loop()->task_runner()->PostTask(
         FROM_HERE,
         base::Bind(&Pipeline::TimeFence, base::Unretained(this), time_fence));
     return;
@@ -254,7 +274,7 @@ void Pipeline::TimeFence(base::TimeDelta time_fence) {
 }
 
 void Pipeline::SetNewRenderTree(const Submission& render_tree_submission) {
-  DCHECK(rasterizer_thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(rasterizer_thread_checker_);
   DCHECK(render_tree_submission.render_tree.get());
 
   TRACE_EVENT0("cobalt::renderer", "Pipeline::SetNewRenderTree()");
@@ -281,16 +301,17 @@ void Pipeline::SetNewRenderTree(const Submission& render_tree_submission) {
     COMPILE_ASSERT(COBALT_MINIMUM_FRAME_TIME_IN_MILLISECONDS > 0,
                    frame_time_must_be_positive);
     rasterize_timer_.emplace(
-        FROM_HERE, base::TimeDelta::FromMillisecondsD(
-                       COBALT_MINIMUM_FRAME_TIME_IN_MILLISECONDS),
-        base::Bind(&Pipeline::RasterizeCurrentTree, base::Unretained(this)),
-        true, true);
+        FROM_HERE,
+        base::TimeDelta::FromMillisecondsD(
+            COBALT_MINIMUM_FRAME_TIME_IN_MILLISECONDS),
+        base::BindRepeating(&Pipeline::RasterizeCurrentTree,
+                            base::Unretained(this)));
     rasterize_timer_->Reset();
   }
 }
 
 void Pipeline::ClearCurrentRenderTree() {
-  DCHECK(rasterizer_thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(rasterizer_thread_checker_);
   TRACE_EVENT0("cobalt::renderer", "Pipeline::ClearCurrentRenderTree()");
 
   ResetSubmissionQueue();
@@ -299,7 +320,7 @@ void Pipeline::ClearCurrentRenderTree() {
 
 void Pipeline::RasterizeCurrentTree() {
   TRACK_MEMORY_SCOPE("Renderer");
-  DCHECK(rasterizer_thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(rasterizer_thread_checker_);
   TRACE_EVENT0("cobalt::renderer", "Pipeline::RasterizeCurrentTree()");
 
   base::TimeTicks start_rasterize_time = base::TimeTicks::Now();
@@ -309,12 +330,24 @@ void Pipeline::RasterizeCurrentTree() {
   bool is_new_render_tree = submission.render_tree != last_render_tree_;
   bool has_render_tree_changed =
       !last_animations_expired_ || is_new_render_tree;
+  bool force_rasterize = submit_even_if_render_tree_is_unchanged_ ||
+      fps_overlay_update_pending_;
+
+  float maximum_frame_interval_milliseconds = graphics_context_ ?
+      graphics_context_->GetMaximumFrameIntervalInMilliseconds() : -1.0f;
+  if (maximum_frame_interval_milliseconds >= 0.0f) {
+    base::TimeDelta max_time_between_rasterize =
+        base::TimeDelta::FromMillisecondsD(maximum_frame_interval_milliseconds);
+    if (start_rasterize_time - last_rasterize_time_ >
+        max_time_between_rasterize) {
+      force_rasterize = true;
+    }
+  }
 
   // If our render tree hasn't changed from the one that was previously
   // rendered and it's okay on this system to not flip the display buffer
   // frequently, then we can just not do anything here.
-  if (fps_overlay_update_pending_ || submit_even_if_render_tree_is_unchanged_ ||
-      has_render_tree_changed) {
+  if (force_rasterize || has_render_tree_changed) {
     // Check whether the animations in the render tree that is being rasterized
     // are active.
     render_tree::animations::AnimateNode* animate_node =
@@ -322,8 +355,11 @@ void Pipeline::RasterizeCurrentTree() {
             submission.render_tree.get());
 
     // Rasterize the last submitted render tree.
-    bool did_rasterize =
-        RasterizeSubmissionToRenderTarget(submission, render_target_);
+    bool did_rasterize = RasterizeSubmissionToRenderTarget(
+        submission, render_target_, force_rasterize);
+    if (did_rasterize) {
+      last_rasterize_time_ = start_rasterize_time;
+    }
 
     bool animations_expired = animate_node->expiry() <= submission.time_offset;
     bool stat_tracked_animations_expired =
@@ -412,7 +448,8 @@ void Pipeline::UpdateRasterizeStats(bool did_rasterize,
 
 bool Pipeline::RasterizeSubmissionToRenderTarget(
     const Submission& submission,
-    const scoped_refptr<backend::RenderTarget>& render_target) {
+    const scoped_refptr<backend::RenderTarget>& render_target,
+    bool force_rasterize) {
   TRACE_EVENT0("cobalt::renderer",
                "Pipeline::RasterizeSubmissionToRenderTarget()");
 
@@ -436,14 +473,13 @@ bool Pipeline::RasterizeSubmissionToRenderTarget(
   // Some animations require a GL graphics context to be current.  Specifically,
   // a call to SbPlayerGetCurrentFrame() may be made to get the current video
   // frame to drive a video-as-an-animated-image.
-  rasterizer_->MakeCurrent();
+  rasterizer::Rasterizer::ScopedMakeCurrent scoped_make_current(
+      rasterizer_.get());
 
   render_tree::animations::AnimateNode::AnimateResults results =
       animate_node->Apply(submission.time_offset);
 
-  if (results.animated == last_animated_render_tree_ &&
-      !submit_even_if_render_tree_is_unchanged_ &&
-      !fps_overlay_update_pending_) {
+  if (results.animated == last_animated_render_tree_ && !force_rasterize) {
     return false;
   }
   last_animated_render_tree_ = results.animated;
@@ -454,7 +490,7 @@ bool Pipeline::RasterizeSubmissionToRenderTarget(
   math::RectF animated_bounds = results.get_animation_bounds_since.Run(
       last_render_time_ ? *last_render_time_ : base::TimeDelta());
   math::Rect rounded_bounds = math::RoundOut(animated_bounds);
-  base::optional<math::Rect> redraw_area;
+  base::Optional<math::Rect> redraw_area;
   if (previous_animated_area_) {
     redraw_area = math::UnionRects(rounded_bounds, *previous_animated_area_);
   }
@@ -462,8 +498,8 @@ bool Pipeline::RasterizeSubmissionToRenderTarget(
 
   scoped_refptr<render_tree::Node> submit_tree = results.animated->source();
   if (enable_fps_overlay_ && fps_overlay_) {
-    submit_tree =
-        fps_overlay_->AnnotateRenderTreeWithOverlay(results.animated->source());
+    submit_tree = fps_overlay_->AnnotateRenderTreeWithOverlay(
+        results.animated->source().get());
     fps_overlay_update_pending_ = false;
   }
 
@@ -485,25 +521,26 @@ bool Pipeline::RasterizeSubmissionToRenderTarget(
 void Pipeline::InitializeRasterizerThread(
     const CreateRasterizerFunction& create_rasterizer_function) {
   TRACE_EVENT0("cobalt::renderer", "Pipeline::InitializeRasterizerThread");
-  DCHECK(rasterizer_thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(rasterizer_thread_checker_);
   rasterizer_ = create_rasterizer_function.Run();
   rasterizer_created_event_.Signal();
 
   // Note that this is setup as high priority, but lower than the rasterizer
-  // thread's priority (kThreadPriority_Highest).  This is to ensure that
+  // thread's priority (ThreadPriority::HIGHEST).  This is to ensure that
   // we never interrupt the rasterizer in order to dispose render trees, but
   // at the same time we do want to prioritize cleaning them up to avoid
   // large queues of pending render tree disposals.
-  submission_disposal_thread_.StartWithOptions(
-      base::Thread::Options(MessageLoop::TYPE_DEFAULT, kRendererThreadStackSize,
-                            base::kThreadPriority_High));
+  base::Thread::Options options(base::MessageLoop::TYPE_DEFAULT,
+                                kRendererThreadStackSize);
+  options.priority = base::ThreadPriority::HIGHEST;
+  submission_disposal_thread_.StartWithOptions(options);
 
   ResetSubmissionQueue();
 }
 
 void Pipeline::ShutdownSubmissionQueue() {
   TRACE_EVENT0("cobalt::renderer", "Pipeline::ShutdownSubmissionQueue()");
-  DCHECK(rasterizer_thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(rasterizer_thread_checker_);
 
   // Clear out our time fence data, especially |post_fence_submission_| which
   // may refer to a render tree.
@@ -530,7 +567,7 @@ void Pipeline::ShutdownSubmissionQueue() {
 
 void Pipeline::ShutdownRasterizerThread() {
   TRACE_EVENT0("cobalt::renderer", "Pipeline::ShutdownRasterizerThread()");
-  DCHECK(rasterizer_thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(rasterizer_thread_checker_);
 
   // Shutdown the FPS overlay which may reference render trees.
   fps_overlay_ = base::nullopt;
@@ -543,19 +580,23 @@ void Pipeline::ShutdownRasterizerThread() {
     rasterizer_->Submit(
         new render_tree::RectNode(
             math::RectF(render_target_->GetSize()),
-            scoped_ptr<render_tree::Brush>(new render_tree::SolidColorBrush(
-                render_tree::ColorRGBA(0.0f, 0.0f, 0.0f, 1.0f)))),
+            std::unique_ptr<render_tree::Brush>(
+                new render_tree::SolidColorBrush(
+                    render_tree::ColorRGBA(0.0f, 0.0f, 0.0f, 1.0f)))),
         render_target_);
   }
 
-  // Finally, destroy the rasterizer.
-  rasterizer_.reset();
+  // This potential reference to a render tree whose animations may have ended
+  // must be destroyed before we shutdown the rasterizer thread since it may
+  // contain references to render tree nodes and resources.
+  last_render_tree_ = NULL;
+  last_animated_render_tree_ = NULL;
 }
 
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
 void Pipeline::OnDumpCurrentRenderTree(const std::string& message) {
-  if (MessageLoop::current() != rasterizer_thread_.message_loop()) {
-    rasterizer_thread_.message_loop()->PostTask(
+  if (base::MessageLoop::current() != rasterizer_thread_.message_loop()) {
+    rasterizer_thread_.message_loop()->task_runner()->PostTask(
         FROM_HERE, base::Bind(&Pipeline::OnDumpCurrentRenderTree,
                               base::Unretained(this), message));
     return;
@@ -578,23 +619,23 @@ void Pipeline::OnDumpCurrentRenderTree(const std::string& message) {
       animate_node->Apply(submission.time_offset);
 
   std::string tree_dump =
-      render_tree::DumpRenderTreeToString(results.animated->source());
+      render_tree::DumpRenderTreeToString(results.animated->source().get());
   if (message.empty() || message == "undefined") {
     // If no filename was specified, send output to the console.
     LOG(INFO) << tree_dump.c_str();
   } else {
     // If a filename was specified, dump the output to that file.
-    FilePath out_dir;
-    PathService::Get(paths::DIR_COBALT_DEBUG_OUT, &out_dir);
+    base::FilePath out_dir;
+    base::PathService::Get(paths::DIR_COBALT_DEBUG_OUT, &out_dir);
 
-    file_util::WriteFile(out_dir.Append(message), tree_dump.c_str(),
-                         tree_dump.length());
+    base::WriteFile(out_dir.Append(message), tree_dump.c_str(),
+                    tree_dump.length());
   }
 }
 
 void Pipeline::OnToggleFpsStdout(const std::string& message) {
-  if (MessageLoop::current() != rasterizer_thread_.message_loop()) {
-    rasterizer_thread_.message_loop()->PostTask(
+  if (base::MessageLoop::current() != rasterizer_thread_.message_loop()) {
+    rasterizer_thread_.message_loop()->task_runner()->PostTask(
         FROM_HERE, base::Bind(&Pipeline::OnToggleFpsStdout,
                               base::Unretained(this), message));
     return;
@@ -604,8 +645,8 @@ void Pipeline::OnToggleFpsStdout(const std::string& message) {
 }
 
 void Pipeline::OnToggleFpsOverlay(const std::string& message) {
-  if (MessageLoop::current() != rasterizer_thread_.message_loop()) {
-    rasterizer_thread_.message_loop()->PostTask(
+  if (base::MessageLoop::current() != rasterizer_thread_.message_loop()) {
+    rasterizer_thread_.message_loop()->task_runner()->PostTask(
         FROM_HERE, base::Bind(&Pipeline::OnToggleFpsOverlay,
                               base::Unretained(this), message));
     return;
@@ -614,7 +655,7 @@ void Pipeline::OnToggleFpsOverlay(const std::string& message) {
   enable_fps_overlay_ = !enable_fps_overlay_;
   fps_overlay_update_pending_ = enable_fps_overlay_;
 }
-#endif  // #if defined(ENABLE_DEBUG_CONSOLE)
+#endif  // #if defined(ENABLE_DEBUGGER)
 
 Submission Pipeline::CollectAnimations(
     const Submission& render_tree_submission) {
@@ -647,7 +688,7 @@ void PrintFPS(const base::CValCollectionTimerStatsFlushResults& results) {
 
 void Pipeline::FrameStatsOnFlushCallback(
     const base::CValCollectionTimerStatsFlushResults& flush_results) {
-  DCHECK(rasterizer_thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(rasterizer_thread_checker_);
 
   if (enable_fps_overlay_) {
     if (!fps_overlay_) {

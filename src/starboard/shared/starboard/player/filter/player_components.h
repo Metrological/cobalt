@@ -30,7 +30,6 @@
 #include "starboard/shared/starboard/player/filter/video_render_algorithm.h"
 #include "starboard/shared/starboard/player/filter/video_renderer_internal.h"
 #include "starboard/shared/starboard/player/filter/video_renderer_sink.h"
-#include "starboard/shared/starboard/player/job_queue.h"
 
 namespace starboard {
 namespace shared {
@@ -44,7 +43,7 @@ class PlayerComponents {
  public:
   struct AudioParameters {
     SbMediaAudioCodec audio_codec;
-    const SbMediaAudioHeader& audio_header;
+    const SbMediaAudioSampleInfo& audio_sample_info;
     SbDrmSystem drm_system;
   };
 
@@ -64,37 +63,11 @@ class PlayerComponents {
   static scoped_ptr<PlayerComponents> Create();
 
   scoped_ptr<AudioRenderer> CreateAudioRenderer(
-      const AudioParameters& audio_parameters) {
-    scoped_ptr<AudioDecoder> audio_decoder;
-    scoped_ptr<AudioRendererSink> audio_renderer_sink;
+      const AudioParameters& audio_parameters);
 
-    CreateAudioComponents(audio_parameters, &audio_decoder,
-                          &audio_renderer_sink);
-    if (!audio_decoder || !audio_renderer_sink) {
-      return scoped_ptr<AudioRenderer>();
-    }
-    int max_cached_frames, max_frames_per_append;
-    GetAudioRendererParams(&max_cached_frames, &max_frames_per_append);
-    return make_scoped_ptr(
-        new AudioRenderer(audio_decoder.Pass(), audio_renderer_sink.Pass(),
-                          audio_parameters.audio_header, max_cached_frames,
-                          max_frames_per_append));
-  }
   scoped_ptr<VideoRenderer> CreateVideoRenderer(
       const VideoParameters& video_parameters,
-      MediaTimeProvider* media_time_provider) {
-    scoped_ptr<VideoDecoder> video_decoder;
-    scoped_ptr<VideoRenderAlgorithm> video_render_algorithm;
-    scoped_refptr<VideoRendererSink> video_renderer_sink;
-    CreateVideoComponents(video_parameters, &video_decoder,
-                          &video_render_algorithm, &video_renderer_sink);
-    if (!video_decoder || !video_render_algorithm || !video_renderer_sink) {
-      return scoped_ptr<VideoRenderer>();
-    }
-    return make_scoped_ptr(
-        new VideoRenderer(video_decoder.Pass(), media_time_provider,
-                          video_render_algorithm.Pass(), video_renderer_sink));
-  }
+      MediaTimeProvider* media_time_provider);
 
 #if COBALT_BUILD_TYPE_GOLD
  private:
@@ -119,6 +92,17 @@ class PlayerComponents {
 
  protected:
   PlayerComponents() {}
+
+  void CreateStubAudioComponents(
+      const AudioParameters& audio_parameters,
+      scoped_ptr<AudioDecoder>* audio_decoder,
+      scoped_ptr<AudioRendererSink>* audio_renderer_sink);
+
+  void CreateStubVideoComponents(
+      const VideoParameters& video_parameters,
+      scoped_ptr<VideoDecoder>* video_decoder,
+      scoped_ptr<VideoRenderAlgorithm>* video_render_algorithm,
+      scoped_refptr<VideoRendererSink>* video_renderer_sink);
 
  private:
   SB_DISALLOW_COPY_AND_ASSIGN(PlayerComponents);

@@ -35,7 +35,6 @@ protocol::LogEntry::LogLevel SeverityToLogLevel(int severity) {
       return protocol::LogEntry::kInfo;
     case logging::LOG_WARNING:
     case logging::LOG_ERROR:
-    case logging::LOG_ERROR_REPORT:
       return protocol::LogEntry::kWarning;
     case logging::LOG_FATAL:
       return protocol::LogEntry::kSevere;
@@ -61,7 +60,7 @@ SessionDriver::SessionDriver(
 }
 
 void SessionDriver::RefreshWindowDriver() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   window_driver_ =
       create_window_driver_callback_.Run(window_driver_->window_id());
 }
@@ -73,7 +72,7 @@ SessionDriver::~SessionDriver() {
 }
 
 WindowDriver* SessionDriver::GetWindow(const protocol::WindowId& window_id) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (protocol::WindowId::IsCurrent(window_id) ||
       window_driver_->window_id() == window_id) {
     return window_driver_.get();
@@ -86,7 +85,7 @@ util::CommandResult<void> SessionDriver::Navigate(const GURL& url) {
   int retries = 0;
   util::CommandResult<void> result;
   do {
-    result = window_driver_->Navigate(url);
+    result = window_driver_->Navigate(std::move(url));
   } while (result.can_retry() && (retries++ < kMaxRetries));
   if (result.is_success()) {
     // TODO: Use timeout as specified by the webdriver client.
@@ -115,7 +114,7 @@ SessionDriver::GetWindowHandles() {
 }
 
 util::CommandResult<std::vector<std::string> > SessionDriver::GetLogTypes() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   typedef util::CommandResult<std::vector<std::string> > CommandResult;
 
   std::vector<std::string> log_types;
@@ -126,7 +125,7 @@ util::CommandResult<std::vector<std::string> > SessionDriver::GetLogTypes() {
 
 util::CommandResult<std::vector<protocol::LogEntry> > SessionDriver::GetLog(
     const protocol::LogType& type) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   typedef util::CommandResult<std::vector<protocol::LogEntry> > CommandResult;
   // Return an empty log vector for unsupported log types.
   CommandResult result((LogEntryVector()));
@@ -145,7 +144,7 @@ util::CommandResult<std::string> SessionDriver::GetAlertText() {
 
 util::CommandResult<void> SessionDriver::SwitchToWindow(
     const protocol::WindowId& window_id) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (window_id == window_driver_->window_id()) {
     return util::CommandResult<void>(protocol::Response::kSuccess);
   } else {
@@ -154,7 +153,7 @@ util::CommandResult<void> SessionDriver::SwitchToWindow(
 }
 
 protocol::WindowId SessionDriver::GetUniqueWindowId() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   std::string window_id = base::StringPrintf("window-%d", next_window_id_++);
   return protocol::WindowId(window_id);
 }

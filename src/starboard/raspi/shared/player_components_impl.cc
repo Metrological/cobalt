@@ -19,6 +19,7 @@
 #include "starboard/raspi/shared/gstreamer/gst_video_decoder.h"
 #include "starboard/raspi/shared/gstreamer/gst_audio_decoder.h"
 #include "starboard/raspi/shared/video_renderer_sink_impl.h"
+#include "starboard/shared/starboard/player/filter/adaptive_audio_decoder_internal.h"
 #include "starboard/shared/starboard/player/filter/audio_decoder_internal.h"
 #include "starboard/shared/starboard/player/filter/audio_renderer_sink_impl.h"
 #include "starboard/shared/starboard/player/filter/video_decoder_internal.h"
@@ -39,19 +40,49 @@ class PlayerComponentsImpl : public PlayerComponents {
       const AudioParameters& audio_parameters,
       scoped_ptr<AudioDecoder>* audio_decoder,
       scoped_ptr<AudioRendererSink>* audio_renderer_sink) override {
-    using AudioDecoderImpl = ::starboard::shared::gstreamer::AudioDecoder;
-
     SB_DCHECK(audio_decoder);
     SB_DCHECK(audio_renderer_sink);
 
-    scoped_ptr<AudioDecoderImpl> audio_decoder_impl(new AudioDecoderImpl(
-        audio_parameters.audio_codec, audio_parameters.audio_header));
-    if (audio_decoder_impl->is_valid()) {
+#if 0
+
+#if SB_API_VERSION >= 11
+    auto decoder_creator = [](const SbMediaAudioSampleInfo& audio_sample_info,
+                              SbDrmSystem drm_system) {
+      typedef ::starboard::shared::ffmpeg::AudioDecoder AudioDecoderImpl;
+
+      scoped_ptr<AudioDecoderImpl> audio_decoder_impl(
+          AudioDecoderImpl::Create(audio_sample_info.codec, audio_sample_info));
+      if (audio_decoder_impl && audio_decoder_impl->is_valid()) {
+        return audio_decoder_impl.PassAs<AudioDecoder>();
+      }
+      return scoped_ptr<AudioDecoder>();
+    };
+
+    audio_decoder->reset(
+        new AdaptiveAudioDecoder(audio_parameters.audio_sample_info,
+                                 audio_parameters.drm_system, decoder_creator));
+#else   // SB_API_VERSION >= 11
+    typedef ::starboard::shared::ffmpeg::AudioDecoder AudioDecoderImpl;
+
+    scoped_ptr<AudioDecoderImpl> audio_decoder_impl(AudioDecoderImpl::Create(
+        audio_parameters.audio_codec, audio_parameters.audio_sample_info));
+    if (audio_decoder_impl && audio_decoder_impl->is_valid()) {
       audio_decoder->reset(audio_decoder_impl.release());
     } else {
       audio_decoder->reset();
     }
+#endif  // SB_API_VERSION >= 11
+#else
+    typedef ::starboard::shared::gstreamer::AudioDecoder AudioDecoderImpl;
 
+    scoped_ptr<AudioDecoderImpl> audio_decoder_impl(new AudioDecoderImpl(
+            audio_parameters.audio_codec, audio_parameters.audio_sample_info));
+    if (audio_decoder_impl && audio_decoder_impl->is_valid()) {
+      audio_decoder->reset(audio_decoder_impl.release());
+    } else {
+      audio_decoder->reset();
+    }
+#endif
     audio_renderer_sink->reset(new AudioRendererSinkImpl);
   }
 
@@ -77,7 +108,7 @@ class PlayerComponentsImpl : public PlayerComponents {
     SB_DCHECK(max_cached_frames);
     SB_DCHECK(max_frames_per_append);
 
-    *max_cached_frames = 256 * 1024;
+    *max_cached_frames = 128 * 1024;
     *max_frames_per_append = 16384;
   }
 };
@@ -87,6 +118,13 @@ class PlayerComponentsImpl : public PlayerComponents {
 // static
 scoped_ptr<PlayerComponents> PlayerComponents::Create() {
   return make_scoped_ptr<PlayerComponents>(new PlayerComponentsImpl);
+}
+
+// static
+bool VideoDecoder::OutputModeSupported(SbPlayerOutputMode output_mode,
+                                       SbMediaVideoCodec codec,
+                                       SbDrmSystem drm_system) {
+  return output_mode == kSbPlayerOutputModePunchOut;
 }
 
 }  // namespace filter

@@ -30,11 +30,14 @@ namespace starboard {
 // Initialized from a language-specific file in a simple, CSV-style format.
 class LocalizedStrings {
  public:
+  enum MatchType { kNoMatch, kPrimaryMatch, kSecondaryMatch };
   explicit LocalizedStrings(const std::string& language);
 
   // Gets a localized string.
   std::string GetString(const std::string& id,
                         const std::string& fallback) const;
+
+  MatchType GetMatchType() const;
 
  private:
   typedef std::map<std::string, std::string> StringMap;
@@ -43,15 +46,12 @@ class LocalizedStrings {
   // Returns true if successful, false otherwise.
   bool LoadStrings(const std::string& language);
 
-  // Loads the strings from a specified file.
-  // Returns true if successful, false otherwise.
-  bool LoadStrings(SbFile file);
-
   // Loads a single string.
   // Returns true if successful, false otherwise.
   bool LoadSingleString(const std::string& message);
 
   StringMap strings_;
+  MatchType match_type_ = kNoMatch;
 };
 
 }  // namespace starboard

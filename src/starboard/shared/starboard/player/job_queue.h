@@ -18,9 +18,11 @@
 #include <functional>
 #include <map>
 
-#include "starboard/condition_variable.h"
-#include "starboard/mutex.h"
+#include "starboard/common/condition_variable.h"
+#include "starboard/common/log.h"
+#include "starboard/common/mutex.h"
 #include "starboard/shared/internal_only.h"
+#include "starboard/thread.h"
 #include "starboard/time.h"
 
 #ifndef __cplusplus
@@ -67,7 +69,11 @@ class JobQueue {
       SB_DCHECK(job_queue);
     }
     JobOwner(const JobOwner&) = delete;
-    ~JobOwner() { CancelPendingJobs(); }
+    ~JobOwner() {
+      if (job_queue_) {
+        CancelPendingJobs();
+      }
+    }
 
     bool BelongsToCurrentThread() const {
       return job_queue_->BelongsToCurrentThread();
@@ -146,7 +152,7 @@ class JobQueue {
   // be run.
   bool TryToRunOneJob(bool wait_for_next_job);
 
-  SbThreadId thread_id_;
+  const SbThreadId thread_id_;
   Mutex mutex_;
   ConditionVariable condition_;
   int64_t current_job_token_ = JobToken::kInvalidToken + 1;

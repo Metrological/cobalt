@@ -2,16 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#if defined(STARBOARD)
+#include "starboard/client_porting/poem/string_leaks_poem.h"
+#endif  // defined(STARBOARD)
+
 #include "sql/connection.h"
 
 #include <string.h>
 
-#include "base/file_path.h"
+#include "base/files/file_path.h"
 #include "base/logging.h"
 #include "base/metrics/histogram.h"
-#include "base/string_util.h"
-#include "base/stringprintf.h"
-#include "base/utf_string_conversions.h"
+#include "base/metrics/histogram_macros.h"
+#include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
+#include "base/strings/utf_string_conversions.h"
 #include "sql/statement.h"
 #include "third_party/sqlite/sqlite3.h"
 
@@ -120,15 +125,14 @@ Connection::Connection()
       exclusive_locking_(false),
       transaction_nesting_(0),
       needs_rollback_(false),
-      in_memory_(false),
-      error_delegate_(NULL) {
+      in_memory_(false) {
 }
 
 Connection::~Connection() {
   Close();
 }
 
-bool Connection::Open(const FilePath& path) {
+bool Connection::Open(const base::FilePath& path) {
 #if defined(OS_WIN)
   return OpenInternal(WideToUTF8(path.value()));
 #elif defined(OS_POSIX) || defined(OS_STARBOARD)
@@ -224,7 +228,7 @@ bool Connection::Raze() {
         << " page_size_ " << page_size_ << " is not a power of two.";
     const int kSqliteMaxPageSize = 32768;  // from sqliteLimit.h
     DCHECK_LE(page_size_, kSqliteMaxPageSize);
-    const std::string sql = StringPrintf("PRAGMA page_size=%d", page_size_);
+    const std::string sql = base::StringPrintf("PRAGMA page_size=%d", page_size_);
     if (!null_db.Execute(sql.c_str()))
       return false;
   }
@@ -636,13 +640,13 @@ bool Connection::OpenInternal(const std::string& file_name) {
         << " page_size_ " << page_size_ << " is not a power of two.";
     const int kSqliteMaxPageSize = 32768;  // from sqliteLimit.h
     DCHECK_LE(page_size_, kSqliteMaxPageSize);
-    const std::string sql = StringPrintf("PRAGMA page_size=%d", page_size_);
+    const std::string sql = base::StringPrintf("PRAGMA page_size=%d", page_size_);
     if (!ExecuteWithTimeout(sql.c_str(), kBusyTimeout))
       DLOG(FATAL) << "Could not set page size: " << GetErrorMessage();
   }
 
   if (cache_size_ != 0) {
-    const std::string sql = StringPrintf("PRAGMA cache_size=%d", cache_size_);
+    const std::string sql = base::StringPrintf("PRAGMA cache_size=%d", cache_size_);
     if (!ExecuteWithTimeout(sql.c_str(), kBusyTimeout))
       DLOG(FATAL) << "Could not set cache size: " << GetErrorMessage();
   }

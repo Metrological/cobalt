@@ -15,16 +15,15 @@
 #ifndef COBALT_AUDIO_AUDIO_BUFFER_SOURCE_NODE_H_
 #define COBALT_AUDIO_AUDIO_BUFFER_SOURCE_NODE_H_
 
+#include <memory>
 #include <vector>
 
+#include "base/message_loop/message_loop.h"
 #include "cobalt/audio/audio_buffer.h"
 #include "cobalt/audio/audio_node.h"
 #include "cobalt/base/tokens.h"
-#if defined(COBALT_MEDIA_SOURCE_2016)
+#include "cobalt/media/base/interleaved_sinc_resampler.h"
 #include "cobalt/media/base/shell_audio_bus.h"
-#else  // defined(COBALT_MEDIA_SOURCE_2016)
-#include "media/base/shell_audio_bus.h"
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
 
 namespace cobalt {
 namespace audio {
@@ -34,11 +33,8 @@ namespace audio {
 // degree of scheduling flexibility (can playback in rhythmically perfect ways).
 //   https://www.w3.org/TR/webaudio/#AudioBufferSourceNode
 class AudioBufferSourceNode : public AudioNode {
-#if defined(COBALT_MEDIA_SOURCE_2016)
+  typedef media::InterleavedSincResampler InterleavedSincResampler;
   typedef media::ShellAudioBus ShellAudioBus;
-#else   // defined(COBALT_MEDIA_SOURCE_2016)
-  typedef ::media::ShellAudioBus ShellAudioBus;
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
 
  public:
   explicit AudioBufferSourceNode(AudioContext* context);
@@ -77,9 +73,8 @@ class AudioBufferSourceNode : public AudioNode {
     SetAttributeEventListener(base::Tokens::ended(), event_listener);
   }
 
-  scoped_ptr<ShellAudioBus> PassAudioBusFromSource(int32 number_of_frames,
-                                                   SampleType sample_type,
-                                                   bool* finished) override;
+  std::unique_ptr<ShellAudioBus> PassAudioBusFromSource(
+      int32 number_of_frames, SampleType sample_type, bool* finished) override;
 
   DEFINE_WRAPPABLE_TYPE(AudioBufferSourceNode);
   void TraceMembers(script::Tracer* tracer) override;
@@ -88,6 +83,8 @@ class AudioBufferSourceNode : public AudioNode {
   ~AudioBufferSourceNode() override;
 
  private:
+  void RemoveBufferSource();
+
   enum State {
     kNone,
     kStarted,
@@ -96,11 +93,23 @@ class AudioBufferSourceNode : public AudioNode {
 
   scoped_refptr<AudioBuffer> buffer_;
 
+  scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
+
   State state_;
 
   // |read_index_| is a sample-frame index into out buffer representing the
   // current playback position.
   int32 read_index_;
+
+  // |interleaved_resampler_| is the InterleavedSincResampler object that will
+  // be used if resampling needs to occur.
+  std::unique_ptr<InterleavedSincResampler> interleaved_resampler_;
+
+  // |buffer_source_added_| indicates whether this AudioBufferSourceNode object
+  // has been added to AudioContext's |buffer_sources_|
+  bool buffer_source_added_;
+
+  const float sample_rate_;
 
   DISALLOW_COPY_AND_ASSIGN(AudioBufferSourceNode);
 };

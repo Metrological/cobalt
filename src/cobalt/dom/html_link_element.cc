@@ -15,19 +15,20 @@
 #include "cobalt/dom/html_link_element.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "base/bind.h"
-#include "base/debug/trace_event.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/cssom/css_parser.h"
 #include "cobalt/cssom/css_style_sheet.h"
 #include "cobalt/dom/csp_delegate.h"
 #include "cobalt/dom/document.h"
 #include "cobalt/dom/html_element_context.h"
 #include "cobalt/dom/window.h"
-#include "googleurl/src/gurl.h"
 #include "nb/memory_scope.h"
+#include "url/gurl.h"
 
 namespace cobalt {
 namespace dom {
@@ -49,7 +50,7 @@ bool IsRelContentCriticalResource(const std::string& rel) {
 }
 
 loader::RequestMode GetRequestMode(
-    const base::optional<std::string>& cross_origin_attribute) {
+    const base::Optional<std::string>& cross_origin_attribute) {
   // https://html.spec.whatwg.org/#cors-settings-attribute
   if (cross_origin_attribute) {
     if (*cross_origin_attribute == "use-credentials") {
@@ -82,8 +83,8 @@ void HTMLLinkElement::OnInsertedIntoDocument() {
   }
 }
 
-base::optional<std::string> HTMLLinkElement::cross_origin() const {
-  base::optional<std::string> cross_origin_attribute =
+base::Optional<std::string> HTMLLinkElement::cross_origin() const {
+  base::Optional<std::string> cross_origin_attribute =
       GetAttribute("crossOrigin");
   if (cross_origin_attribute &&
       (*cross_origin_attribute != "anonymous" &&
@@ -94,7 +95,7 @@ base::optional<std::string> HTMLLinkElement::cross_origin() const {
 }
 
 void HTMLLinkElement::set_cross_origin(
-    const base::optional<std::string>& value) {
+    const base::Optional<std::string>& value) {
   if (value) {
     SetAttribute("crossOrigin", *value);
   } else {
@@ -128,7 +129,7 @@ void HTMLLinkElement::Obtain() {
   TRACK_MEMORY_SCOPE("DOM");
   TRACE_EVENT0("cobalt::dom", "HTMLLinkElement::Obtain()");
   // Custom, not in any spec.
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   Document* document = node_document();
 
@@ -138,7 +139,7 @@ void HTMLLinkElement::Obtain() {
     return;
   }
 
-  DCHECK(MessageLoop::current());
+  DCHECK(base::MessageLoop::current());
   DCHECK(!loader_);
 
   // 1. If the href attribute's value is the empty string, then abort these
@@ -179,22 +180,18 @@ void HTMLLinkElement::Obtain() {
                               ? document->location()->GetOriginAsObject()
                               : loader::Origin();
 
-  loader_ = html_element_context()->loader_factory()
-                ->CreateLinkLoader(
-                    absolute_url_, origin, csp_callback, request_mode_,
-                    base::Bind(&HTMLLinkElement::OnLoadingDone,
-                               base::Unretained(this)),
-                    base::Bind(&HTMLLinkElement::OnLoadingError,
-                               base::Unretained(this)))
-                .Pass();
+  loader_ = html_element_context()->loader_factory()->CreateLinkLoader(
+      absolute_url_, origin, csp_callback, request_mode_,
+      base::Bind(&HTMLLinkElement::OnContentProduced, base::Unretained(this)),
+      base::Bind(&HTMLLinkElement::OnLoadingComplete, base::Unretained(this)));
 }
 
-void HTMLLinkElement::OnLoadingDone(const loader::Origin& last_url_origin,
-                                    scoped_ptr<std::string> content) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+void HTMLLinkElement::OnContentProduced(const loader::Origin& last_url_origin,
+                                        std::unique_ptr<std::string> content) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(content);
   TRACK_MEMORY_SCOPE("DOM");
-  TRACE_EVENT0("cobalt::dom", "HTMLLinkElement::OnLoadingDone()");
+  TRACE_EVENT0("cobalt::dom", "HTMLLinkElement::OnContentProduced()");
 
   // Get resource's final destination url from loader.
   fetched_last_url_origin_ = last_url_origin;
@@ -215,7 +212,7 @@ void HTMLLinkElement::OnLoadingDone(const loader::Origin& last_url_origin,
   // for any reason (e.g. DNS error, HTTP 404 response, a connection being
   // prematurely closed, unsupported Content-Type), queue a task to fire a
   // simple event named error at the link element.
-  PostToDispatchEvent(FROM_HERE, base::Tokens::load());
+  PostToDispatchEventName(FROM_HERE, base::Tokens::load());
 
   if (IsRelContentCriticalResource(rel())) {
     // The element must delay the load event of the element's document until all
@@ -223,16 +220,19 @@ void HTMLLinkElement::OnLoadingDone(const loader::Origin& last_url_origin,
     // complete.
     document->DecreaseLoadingCounterAndMaybeDispatchLoadEvent();
   }
-
-  MessageLoop::current()->PostTask(
-      FROM_HERE, base::Bind(&HTMLLinkElement::ReleaseLoader, this));
 }
 
-void HTMLLinkElement::OnLoadingError(const std::string& error) {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  TRACE_EVENT0("cobalt::dom", "HTMLLinkElement::OnLoadingError()");
+void HTMLLinkElement::OnLoadingComplete(
+    const base::Optional<std::string>& error) {
+  base::MessageLoop::current()->task_runner()->PostTask(
+      FROM_HERE, base::Bind(&HTMLLinkElement::ReleaseLoader, this));
 
-  LOG(ERROR) << error;
+  if (!error) return;
+
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  TRACE_EVENT0("cobalt::dom", "HTMLLinkElement::OnLoadingComplete()");
+
+  LOG(ERROR) << *error;
 
   // Once the attempts to obtain the resource and its critical subresources are
   // complete, the user agent must, if the loads were successful, queue a task
@@ -241,7 +241,7 @@ void HTMLLinkElement::OnLoadingError(const std::string& error) {
   // reason (e.g. DNS error, HTTP 404 response, a connection being prematurely
   // closed, unsupported Content-Type), queue a task to fire a simple event
   // named error at the link element.
-  PostToDispatchEvent(FROM_HERE, base::Tokens::error());
+  PostToDispatchEventName(FROM_HERE, base::Tokens::error());
 
   if (IsRelContentCriticalResource(rel())) {
     // The element must delay the load event of the element's document until all
@@ -249,9 +249,6 @@ void HTMLLinkElement::OnLoadingError(const std::string& error) {
     // complete.
     node_document()->DecreaseLoadingCounterAndMaybeDispatchLoadEvent();
   }
-
-  MessageLoop::current()->PostTask(
-      FROM_HERE, base::Bind(&HTMLLinkElement::ReleaseLoader, this));
 }
 
 void HTMLLinkElement::OnSplashscreenLoaded(Document* document,
@@ -278,7 +275,7 @@ void HTMLLinkElement::OnStylesheetLoaded(Document* document,
 }
 
 void HTMLLinkElement::ReleaseLoader() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(loader_);
   loader_.reset();
 }

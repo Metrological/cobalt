@@ -23,13 +23,24 @@ namespace switches {
 // message needs to be inserted to the help_map manually.
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
 
-const char kAudioDecoderStub[] = "audio_decoder_stub";
-const char kAudioDecoderStubHelp[] =
-    "Decode audio data using ShellRawAudioDecoderStub.";
-
 const char kDebugConsoleMode[] = "debug_console";
 const char kDebugConsoleModeHelp[] =
     "Switches different debug console modes: on | hud | off";
+
+#if defined(ENABLE_DEBUGGER)
+const char kRemoteDebuggingPort[] = "remote_debugging_port";
+const char kRemoteDebuggingPortHelp[] =
+    "Remote web debugger is served from the specified port. If 0, then the "
+    "remote web debugger is disabled.";
+
+    const char kWaitForWebDebugger[] = "wait_for_web_debugger";
+const char kWaitForWebDebuggerHelp[] =
+    "Waits for remote web debugger to connect before loading the page.  A "
+    "number may optionally be specified to indicate which in a sequence of "
+    "page loads should wait.  For example, if the startup URL is a loader and "
+    "that loader changes window.location to the URL of the actual app, then "
+    "specify 1 to debug the loader or 2 to debug the app.";
+#endif  // ENABLE_DEBUGGER
 
 const char kDisableImageAnimations[] = "disable_image_animations";
 const char kDisableImageAnimationsHelp[] =
@@ -43,6 +54,14 @@ const char kForceDeterministicRenderingHelp[] =
     "cached and re-used in situations where the cached glyph is approximately "
     "very similar, even if it is not exactly the same.  Setting this flag "
     "avoids that kind of behavior, allowing strict screen-diff tests to pass.";
+
+const char kDisableMediaCodecs[] = "disable_media_codecs";
+const char kDisableMediaCodecsHelp[] =
+    "Disables the semicolon-separated list of codecs that will be treated as "
+    "unsupported for media playback. Used for debugging and testing purposes."
+    "It uses sub-string match to determine whether a codec is disabled, for "
+    "example, setting the value to \"avc;hvc\" will disable any h264 and h265 "
+    "playbacks.";
 
 const char kDisableRasterizerCaching[] = "disable_rasterizer_caching";
 const char kDisableRasterizerCachingHelp[] =
@@ -62,9 +81,6 @@ const char kDisableSplashScreenOnReloadsHelp[] =
 
 const char kDisableWebDriver[] = "disable_webdriver";
 const char kDisableWebDriverHelp[] = "Do not create the WebDriver server.";
-
-const char kDisableWebmVp9[] = "disable_webm_vp9";
-const char kDisableWebmVp9Help[] = "Disable webm/vp9.";
 
 const char kExtraWebFileDir[] = "web_file_path";
 const char kExtraWebFileDirHelp[] =
@@ -97,31 +113,21 @@ const char kMinLogLevel[] = "min_log_level";
 const char kMinLogLevelHelp[] =
     "Set the minimum logging level: info|warning|error|fatal.";
 
-const char kNullAudioStreamer[] = "null_audio_streamer";
-const char kNullAudioStreamerHelp[] =
-    "Use the NullAudioStreamer. Audio will be decoded but will not play back. "
-    "No audio output library will be initialized or used.";
-
 const char kNullSavegame[] = "null_savegame";
 const char kNullSavegameHelp[] =
     "Setting NullSavegame will result in no data being read from previous "
     "sessions and no data being persisted to future sessions. It effectively "
     "makes the app run as if it has no local storage.";
 
-const char kPartialLayout[] = "partial_layout";
-const char kPartialLayoutHelp[] = "Switches partial layout: on | off";
+const char kDisablePartialLayout[] = "disable_partial_layout";
+const char kDisablePartialLayoutHelp[] =
+    "Causes layout to re-compute the boxes for the entire DOM rather than "
+    "re-using boxes for elements that have not been invalidated.";
 
 const char kProd[] = "prod";
 const char kProdHelp[] =
     "Several checks are not enabled by default in non-production(gold) build. "
     "Use this flag to simulate production build behavior.";
-
-const char kProxy[] = "proxy";
-const char kProxyHelp[] = "Specifies a proxy to use for network connections.";
-
-const char kRemoteDebuggingPort[] = "remote_debugging_port";
-const char kRemoteDebuggingPortHelp[] =
-    "Creates a remote debugging server and listens on the specified port.";
 
 const char kRequireCSP[] = "require_csp";
 const char kRequireCSPHelp[] =
@@ -155,20 +161,25 @@ const char kTimedTraceHelp[] =
     "for before ending and saving the results to disk.  Results will be saved"
     " to the file timed_trace.json in the log output directory.";
 
+const char kUserAgent[] = "user_agent";
+const char kUserAgentHelp[] =
+    "Specifies a custom user agent for device simulations. The expected "
+    "format is \"Mozilla/5.0 ('os_name_and_version') Cobalt/'cobalt_version'."
+    "'cobalt_build_version_number'-'build_configuration' (unlike Gecko) "
+    "'javascript_engine_version' 'rasterizer_type' 'starboard_version', "
+    "'network_operator'_'device_type'_'chipset_model_number'_'model_year'/"
+    "'firmware_version' ('brand', 'model', 'connection_type') 'aux_field'\".";
+
+const char kUserAgentOsNameVersion[] = "user_agent_os_name_version";
+const char kUserAgentOsNameVersionHelp[] =
+    "Specifies a custom 'os_name_and_version' user agent field with otherwise "
+    "default user agent fields. Example: \"X11; Linux x86_64\".";
+
 const char kUseTTS[] = "use_tts";
 const char kUseTTSHelp[] =
     "Enable text-to-speech functionality, for platforms that implement the "
     "speech synthesis API. If the platform doesn't have speech synthesis, "
     "TTSLogger will be used instead.";
-
-extern const char kVideoContainerSizeOverride[] =
-    "video_container_size_override";
-extern const char kVideoContainerSizeOverrideHelp[] =
-    "Set the video container size override";
-
-extern const char kVideoDecoderStub[] = "video_decoder_stub";
-extern const char kVideoDecoderStubHelp[] =
-    "Decode video data using ShellRawVideoDecoderStub.";
 
 const char kWebDriverListenIp[] = "webdriver_listen_ip";
 const char kWebDriverListenIpHelp[] =
@@ -179,11 +190,24 @@ const char kWebDriverPort[] = "webdriver_port";
 const char kWebDriverPortHelp[] =
     "Port that the WebDriver server should be listening on.";
 
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+const char kDisableOnScreenKeyboard[] = "disable_on_screen_keyboard";
+const char kDisableOnScreenKeyboardHelp[] =
+    "Disable the on screen keyboard for testing.";
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
 
 const char kDisableJavaScriptJit[] = "disable_javascript_jit";
 const char kDisableJavaScriptJitHelp[] =
     "Specifies that javascript jit should be disabled.";
+
+const char kDisableTimerResolutionLimit[] = "disable_timer_resolution_limit";
+const char kDisableTimerResolutionLimitHelp[] =
+    "By default, window.performance.now() will return values at a clamped "
+    "minimum resolution of 20us.  By specifying this flag, the limit will be "
+    "removed and the resolution will be 1us (or larger depending on the "
+    "platform.";
 
 const char kEnableMapToMeshRectanglar[] = "enable_map_to_mesh_rectangular";
 const char kEnableMapToMeshRectanglarHelp[] =
@@ -191,6 +215,20 @@ const char kEnableMapToMeshRectanglarHelp[] =
     "to accept the 'rectangular' keyword. Useful to get rectangular stereo "
     "video on platforms that do not support stereoscopy natively, letting the "
     "client apply a stereo mesh projection (one that differs for each eye).";
+
+const char kEncodedImageCacheSizeInBytes[] =
+    "encoded_image_cache_size_in_bytes";
+const char kEncodedImageCacheSizeInBytesHelp[] =
+    "Determines the capacity of the encoded image cache which manages encoded "
+    "images downloaded from a web page. The cache uses CPU memory.";
+
+const char kForceMigrationForStoragePartitioning[] =
+    "force_migration_for_storage_partitioning";
+const char kForceMigrationForStoragePartitioningHelp[] =
+    "Overrides the default storage migration policy when upgrading to "
+    "partitioned storage and forces data migration regardless of the"
+    "initial app url. The default policy is to migrate data only for"
+    "https://www.youtube.com/tv.";
 
 // If toggled, framerate statistics will be printed to stdout after each
 // animation completes, or after a maximum number of frames has been collected.
@@ -212,8 +250,8 @@ const char kHelpHelp[] = "Prints help information of cobalt command";
 const char kImageCacheSizeInBytes[] = "image_cache_size_in_bytes";
 const char kImageCacheSizeInBytesHelp[] =
     "Determines the capacity of the image cache which manages image "
-    "surfaces300 downloaded from a web page.  While it depends on the "
-    "platform, often (and ideally) these images are cached within GPU memory.";
+    "surfaces downloaded from a web page.  While it depends on the platform, "
+    "often (and ideally) these images are cached within GPU memory.";
 
 const char kInitialURL[] = "url";
 const char kInitialURLHelp[] =
@@ -247,6 +285,15 @@ const char kOffscreenTargetCacheSizeInBytesHelp[] =
     "allocated from this memory or multiple atlases of the frame size if the "
     "limit allows. It is recommended that enough memory be reserved for two "
     "RGBA atlases about a quarter of the frame size.";
+
+const char kProxy[] = "proxy";
+const char kProxyHelp[] =
+    "Specifies a proxy to use for network connections. "
+    "See comments in net::ProxyRules::ParseFromString() for more information. "
+    "If you do not explicitly provide a scheme when providing the proxy server "
+    "URL, it will default to HTTP.  So for example, for a HTTPS proxy you "
+    "would want to specify '--proxy=\"https=https://localhost:443\"' instead "
+    "of '--proxy=\"https=localhost:443\"'.";
 
 const char kQrCodeOverlay[] = "qr_code_overlay";
 const char kQrCodeOverlayHelp[] =
@@ -321,7 +368,9 @@ const char kVersion[] = "version";
 const char kVersionHelp[] = "Prints the current version of Cobalt";
 
 const char kViewport[] = "viewport";
-const char kViewportHelp[] = "Specifies the viewport size: width ['x' height]";
+const char kViewportHelp[] =
+    "Specifies the viewport size: "
+    "width ['x' height ['x' screen_diagonal_inches]]";
 
 const char kVideoPlaybackRateMultiplier[] = "video_playback_rate_multiplier";
 const char kVideoPlaybackRateMultiplierHelp[] =
@@ -333,39 +382,45 @@ std::string HelpMessage() {
   std::string help_message;
   std::map<const char*, const char*> help_map {
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
-    {kAudioDecoderStub, kAudioDecoderStubHelp},
-        {kDebugConsoleMode, kDebugConsoleModeHelp},
+    {kDebugConsoleMode, kDebugConsoleModeHelp},
+#if defined(ENABLE_DEBUGGER)
+        {kWaitForWebDebugger, kWaitForWebDebuggerHelp},
+#endif  // ENABLE_DEBUGGER
         {kDisableImageAnimations, kDisableImageAnimationsHelp},
         {kForceDeterministicRendering, kForceDeterministicRenderingHelp},
+        {kDisableMediaCodecs, kDisableMediaCodecsHelp},
         {kDisableRasterizerCaching, kDisableRasterizerCachingHelp},
         {kDisableSignIn, kDisableSignInHelp},
         {kDisableSplashScreenOnReloads, kDisableSplashScreenOnReloadsHelp},
         {kDisableWebDriver, kDisableWebDriverHelp},
-        {kDisableWebmVp9, kDisableWebmVp9Help},
         {kExtraWebFileDir, kExtraWebFileDirHelp},
         {kFakeMicrophone, kFakeMicrophoneHelp},
         {kIgnoreCertificateErrors, kIgnoreCertificateErrorsHelp},
         {kInputFuzzer, kInputFuzzerHelp}, {kMemoryTracker, kMemoryTrackerHelp},
         {kMinCompatibilityVersion, kMinCompatibilityVersionHelp},
-        {kMinLogLevel, kMinLogLevelHelp},
-        {kNullAudioStreamer, kNullAudioStreamerHelp},
-        {kNullSavegame, kNullSavegameHelp},
-        {kPartialLayout, kPartialLayoutHelp}, {kProd, kProdHelp},
-        {kProxy, kProxyHelp}, {kRemoteDebuggingPort, kRemoteDebuggingPortHelp},
+        {kMinLogLevel, kMinLogLevelHelp}, {kNullSavegame, kNullSavegameHelp},
+        {kDisablePartialLayout, kDisablePartialLayoutHelp}, {kProd, kProdHelp},
+        {kRemoteDebuggingPort, kRemoteDebuggingPortHelp},
         {kRequireCSP, kRequireCSPHelp},
         {kRequireHTTPSLocation, kRequireHTTPSLocationHelp},
         {kShutdownAfter, kShutdownAfterHelp},
         {kStubImageDecoder, kStubImageDecoderHelp},
         {kSuspendFuzzer, kSuspendFuzzerHelp}, {kTimedTrace, kTimedTraceHelp},
-        {kUseTTS, kUseTTSHelp},
-        {kVideoContainerSizeOverride, kVideoContainerSizeOverrideHelp},
-        {kVideoDecoderStub, kVideoDecoderStubHelp},
-        {kWebDriverListenIp, kWebDriverListenIpHelp},
+        {kUserAgent, kUserAgentHelp},
+        {kUserAgentOsNameVersion, kUserAgentOsNameVersionHelp},
+        {kUseTTS, kUseTTSHelp}, {kWebDriverListenIp, kWebDriverListenIpHelp},
         {kWebDriverPort, kWebDriverPortHelp},
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+        {kDisableOnScreenKeyboard, kDisableOnScreenKeyboardHelp},
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
 
         {kDisableJavaScriptJit, kDisableJavaScriptJitHelp},
+        {kDisableTimerResolutionLimit, kDisableTimerResolutionLimitHelp},
         {kEnableMapToMeshRectanglar, kEnableMapToMeshRectanglarHelp},
+        {kEncodedImageCacheSizeInBytes, kEncodedImageCacheSizeInBytesHelp},
+        {kForceMigrationForStoragePartitioning,
+         kForceMigrationForStoragePartitioningHelp},
         {kFPSPrint, kFPSPrintHelp}, {kFPSOverlay, kFPSOverlayHelp},
         {kHelp, kHelpHelp},
         {kImageCacheSizeInBytes, kImageCacheSizeInBytesHelp},
@@ -376,7 +431,7 @@ std::string HelpMessage() {
         {kMaxCobaltGpuUsage, kMaxCobaltGpuUsageHelp},
         {kOffscreenTargetCacheSizeInBytes,
          kOffscreenTargetCacheSizeInBytesHelp},
-        {kQrCodeOverlay, kQrCodeOverlayHelp},
+        {kProxy, kProxyHelp}, {kQrCodeOverlay, kQrCodeOverlayHelp},
         {kReduceCpuMemoryBy, kReduceCpuMemoryByHelp},
         {kReduceGpuMemoryBy, kReduceGpuMemoryByHelp},
         {kRemoteTypefaceCacheSizeInBytes, kRemoteTypefaceCacheSizeInBytesHelp},

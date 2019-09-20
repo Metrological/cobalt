@@ -15,9 +15,9 @@
 #ifndef COBALT_H5VCC_H5VCC_ACCESSIBILITY_H_
 #define COBALT_H5VCC_H5VCC_ACCESSIBILITY_H_
 
-#include "base/message_loop_proxy.h"
-#include "cobalt/accessibility/screen_reader.h"
-#include "cobalt/accessibility/tts_engine.h"
+#include <memory>
+
+#include "base/message_loop/message_loop.h"
 #include "cobalt/base/event_dispatcher.h"
 #include "cobalt/dom/window.h"
 #include "cobalt/script/callback_function.h"
@@ -37,6 +37,7 @@ class H5vccAccessibility : public script::Wrappable {
       base::EventDispatcher* event_dispatcher,
       const scoped_refptr<dom::Window>& window,
       dom::MutationObserverTaskManager* mutation_observer_task_manager);
+  ~H5vccAccessibility();
 
   bool high_contrast_text() const;
   void AddHighContrastTextListener(
@@ -56,12 +57,12 @@ class H5vccAccessibility : public script::Wrappable {
 
   void InternalOnApplicationEvent();
 
-  scoped_refptr<base::MessageLoopProxy> message_loop_proxy_;
+  scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
 
+  base::EventCallback on_application_event_callback_;
   base::EventDispatcher* event_dispatcher_;
-  scoped_ptr<H5vccAccessibilityCallbackReference> high_contrast_text_listener_;
-  scoped_ptr<accessibility::TTSEngine> tts_engine_;
-  scoped_ptr<accessibility::ScreenReader> screen_reader_;
+  std::unique_ptr<H5vccAccessibilityCallbackReference>
+      high_contrast_text_listener_;
 
   DISALLOW_COPY_AND_ASSIGN(H5vccAccessibility);
 };

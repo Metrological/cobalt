@@ -16,16 +16,16 @@
 
 #include <algorithm>
 #include <limits>
+#include <memory>
 
 #include "base/bind.h"
 #include "base/compiler_specific.h"
-#include "base/debug/trace_event.h"
 #include "base/guid.h"
 #include "base/lazy_instance.h"
 #include "base/logging.h"
-#include "base/message_loop_proxy.h"
+#include "base/message_loop/message_loop.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/base/tokens.h"
-#include "cobalt/base/user_log.h"
 #include "cobalt/cssom/map_to_mesh_function.h"
 #include "cobalt/dom/csp_delegate.h"
 #include "cobalt/dom/document.h"
@@ -41,31 +41,16 @@
 #include "cobalt/script/script_value_factory.h"
 #include "starboard/double.h"
 
-#if defined(COBALT_MEDIA_SOURCE_2016)
 #include "cobalt/dom/eme/media_encrypted_event.h"
 #include "cobalt/dom/eme/media_encrypted_event_init.h"
 #include "cobalt/media/base/media_log.h"
-#else  // defined(COBALT_MEDIA_SOURCE_2016)
-#include "cobalt/dom/media_key_complete_event.h"
-#include "cobalt/dom/media_key_error_event.h"
-#include "cobalt/dom/media_key_message_event.h"
-#include "cobalt/dom/media_key_needed_event.h"
-#include "media/base/filter_collection.h"
-#include "media/base/media_log.h"
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
 
 namespace cobalt {
 namespace dom {
 
-#if defined(COBALT_MEDIA_SOURCE_2016)
 using media::BufferedDataSource;
 using media::Ranges;
 using media::WebMediaPlayer;
-#else   // defined(COBALT_MEDIA_SOURCE_2016)
-using ::media::BufferedDataSource;
-using ::media::Ranges;
-using ::media::WebMediaPlayer;
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
 
 const char HTMLMediaElement::kMediaSourceUrlProtocol[] = "blob";
 const double HTMLMediaElement::kMaxTimeupdateEventFrequency = 0.25;
@@ -84,28 +69,8 @@ namespace {
 
 #endif  // LOG_MEDIA_ELEMENT_ACTIVITIES
 
-// This struct manages the user log information for HTMLMediaElement count.
-struct HTMLMediaElementCountLog {
-  HTMLMediaElementCountLog() : count(0) {
-    base::UserLog::Register(base::UserLog::kHTMLMediaElementCountIndex,
-                            "MediaElementCnt", &count, sizeof(count));
-  }
-  ~HTMLMediaElementCountLog() {
-    base::UserLog::Deregister(base::UserLog::kHTMLMediaElementCountIndex);
-  }
-
-  int count;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(HTMLMediaElementCountLog);
-};
-
-base::LazyInstance<HTMLMediaElementCountLog> html_media_element_count_log =
-    LAZY_INSTANCE_INITIALIZER;
-
-#if !SB_HAS(PLAYER_WITH_URL)
 loader::RequestMode GetRequestMode(
-    const base::optional<std::string>& cross_origin_attribute) {
+    const base::Optional<std::string>& cross_origin_attribute) {
   // https://html.spec.whatwg.org/#cors-settings-attribute
   if (cross_origin_attribute) {
     if (*cross_origin_attribute == "use-credentials") {
@@ -120,17 +85,24 @@ loader::RequestMode GetRequestMode(
   // "no-cors" request mode.
   return loader::kNoCORSMode;
 }
+
+#if SB_HAS(PLAYER_WITH_URL)
+bool ResourceNeedsUrlPlayer(const GURL& resource_url) {
+  if (resource_url.SchemeIs("data")) {
+    return true;
+  }
+  // Check if resource_url is an hls url. Hls url must contain "hls_variant"
+  return resource_url.spec().find("hls_variant") != std::string::npos;
+}
 #endif  // SB_HAS(PLAYER_WITH_URL)
 
-#if defined(COBALT_MEDIA_SOURCE_2016)
 bool OriginIsSafe(loader::RequestMode request_mode, const GURL& resource_url,
                   const loader::Origin& origin) {
 #if SB_HAS(PLAYER_WITH_URL)
-  UNREFERENCED_PARAMETER(request_mode);
-  UNREFERENCED_PARAMETER(resource_url);
-  UNREFERENCED_PARAMETER(origin);
-  return true;
-#else   // SB_HAS(PLAYER_WITH_URL)
+  if (ResourceNeedsUrlPlayer(resource_url)) {
+    return true;
+  }
+#endif  // SB_HAS(PLAYER_WITH_URL)
   if (resource_url.SchemeIs("blob")) {
     // Blob resources come from application and is same-origin.
     return true;
@@ -145,9 +117,7 @@ bool OriginIsSafe(loader::RequestMode request_mode, const GURL& resource_url,
     return true;
   }
   return false;
-#endif  // SB_HAS(PLAYER_WITH_URL)
 }
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
 
 }  // namespace
 
@@ -181,14 +151,12 @@ HTMLMediaElement::HTMLMediaElement(Document* document, base::Token tag_name)
       request_mode_(loader::kNoCORSMode) {
   TRACE_EVENT0("cobalt::dom", "HTMLMediaElement::HTMLMediaElement()");
   MLOG();
-  html_media_element_count_log.Get().count++;
 }
 
 HTMLMediaElement::~HTMLMediaElement() {
   TRACE_EVENT0("cobalt::dom", "HTMLMediaElement::~HTMLMediaElement()");
   MLOG();
   ClearMediaSource();
-  html_media_element_count_log.Get().count--;
 }
 
 scoped_refptr<MediaError> HTMLMediaElement::error() const {
@@ -209,8 +177,8 @@ void HTMLMediaElement::set_src(const std::string& src) {
   ScheduleLoad();
 }
 
-base::optional<std::string> HTMLMediaElement::cross_origin() const {
-  base::optional<std::string> cross_origin_attribute =
+base::Optional<std::string> HTMLMediaElement::cross_origin() const {
+  base::Optional<std::string> cross_origin_attribute =
       GetAttribute("crossOrigin");
   if (cross_origin_attribute &&
       (*cross_origin_attribute != "anonymous" &&
@@ -221,7 +189,7 @@ base::optional<std::string> HTMLMediaElement::cross_origin() const {
 }
 
 void HTMLMediaElement::set_cross_origin(
-    const base::optional<std::string>& value) {
+    const base::Optional<std::string>& value) {
   if (value) {
     SetAttribute("crossOrigin", *value);
   } else {
@@ -274,28 +242,32 @@ std::string HTMLMediaElement::CanPlayType(const std::string& mime_type,
                                           const std::string& key_system) {
   DCHECK(html_element_context()->can_play_type_handler());
 
-#if defined(COBALT_MEDIA_SOURCE_2016)
   DLOG_IF(ERROR, !key_system.empty())
       << "CanPlayType() only accepts one parameter but (" << key_system
       << ") is passed as a second parameter.";
-  std::string result =
-      html_element_context()->can_play_type_handler()->CanPlayType(mime_type,
-                                                                   "");
-  MLOG() << "(" << mime_type << ") => " << result;
-  LOG(INFO) << "HTMLMediaElement::canPlayType(" << mime_type << ") -> "
-            << result;
-#else   // defined(COBALT_MEDIA_SOURCE_2016)
-  std::string result =
-      html_element_context()->can_play_type_handler()->CanPlayType(mime_type,
-                                                                   key_system);
+  const bool kIsProgressive = true;
+  auto support_type =
+      html_element_context()->can_play_type_handler()->CanPlayType(
+          mime_type, key_system, kIsProgressive);
+  std::string result = "";
+  switch (support_type) {
+    case kSbMediaSupportTypeNotSupported:
+      result = "";
+      break;
+    case kSbMediaSupportTypeMaybe:
+      result = "maybe";
+      break;
+    case kSbMediaSupportTypeProbably:
+      result = "probably";
+      break;
+    default:
+      NOTREACHED();
+  }
   MLOG() << "(" << mime_type << ", " << key_system << ") => " << result;
   LOG(INFO) << "HTMLMediaElement::canPlayType(" << mime_type << ", "
             << key_system << ") -> " << result;
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
   return result;
 }
-
-#if defined(COBALT_MEDIA_SOURCE_2016)
 
 const EventTarget::EventListenerScriptValue* HTMLMediaElement::onencrypted()
     const {
@@ -358,143 +330,6 @@ script::Handle<script::Promise<void>> HTMLMediaElement::SetMediaKeys(
   return promise;
 }
 
-#else  // defined(COBALT_MEDIA_SOURCE_2016)
-
-namespace {
-
-void RaiseMediaKeyException(WebMediaPlayer::MediaKeyException exception,
-                            script::ExceptionState* exception_state) {
-  DCHECK_NE(exception, WebMediaPlayer::kMediaKeyExceptionNoError);
-  switch (exception) {
-    case WebMediaPlayer::kMediaKeyExceptionInvalidPlayerState:
-      DOMException::Raise(DOMException::kInvalidStateErr, exception_state);
-      break;
-    case WebMediaPlayer::kMediaKeyExceptionKeySystemNotSupported:
-      DOMException::Raise(DOMException::kNotSupportedErr, exception_state);
-      break;
-    case WebMediaPlayer::kMediaKeyExceptionNoError:
-      NOTREACHED();
-      break;
-  }
-}
-
-}  // namespace
-
-void HTMLMediaElement::GenerateKeyRequest(
-    const std::string& key_system,
-    const script::Handle<script::Uint8Array>& init_data,
-    script::ExceptionState* exception_state) {
-  MLOG() << key_system;
-  // https://dvcs.w3.org/hg/html-media/raw-file/eme-v0.1b/encrypted-media/encrypted-media.html#dom-generatekeyrequest
-  // 1. If the first argument is null, throw a SYNTAX_ERR.
-  if (key_system.empty()) {
-    MLOG() << "syntax error";
-    DOMException::Raise(DOMException::kSyntaxErr, exception_state);
-    return;
-  }
-
-  // 2. If networkState is NETWORK_EMPTY, throw an INVALID_STATE_ERR.
-  if (network_state_ == kNetworkEmpty || !player_) {
-    MLOG() << "invalid state error";
-    DOMException::Raise(DOMException::kInvalidStateErr, exception_state);
-    return;
-  }
-
-  // The rest is handled by WebMediaPlayer::GenerateKeyRequest().
-  WebMediaPlayer::MediaKeyException exception;
-
-  if (!init_data.IsEmpty()) {
-    exception =
-        player_->GenerateKeyRequest(key_system, init_data->Data(),
-                                    static_cast<unsigned>(init_data->Length()));
-  } else {
-    exception = player_->GenerateKeyRequest(key_system, NULL, 0);
-  }
-
-  if (exception != WebMediaPlayer::kMediaKeyExceptionNoError) {
-    MLOG() << "exception: " << exception;
-    RaiseMediaKeyException(exception, exception_state);
-  }
-}
-
-void HTMLMediaElement::AddKey(
-    const std::string& key_system,
-    const script::Handle<script::Uint8Array>& key,
-    const script::Handle<script::Uint8Array>& init_data,
-    const base::optional<std::string>& session_id,
-    script::ExceptionState* exception_state) {
-  MLOG() << key_system;
-  // https://dvcs.w3.org/hg/html-media/raw-file/eme-v0.1b/encrypted-media/encrypted-media.html#dom-addkey
-  // 1. If the first or second argument is null, throw a SYNTAX_ERR.
-  if (key_system.empty() || key.IsEmpty()) {
-    MLOG() << "syntax error";
-    DOMException::Raise(DOMException::kSyntaxErr, exception_state);
-    return;
-  }
-
-  // 2. If the second argument is an empty array, throw a TYPE_MISMATCH_ERR.
-  if (!key->Length()) {
-    MLOG() << "type mismatch error";
-    DOMException::Raise(DOMException::kTypeMismatchErr, exception_state);
-    return;
-  }
-
-  // 3. If networkState is NETWORK_EMPTY, throw an INVALID_STATE_ERR.
-  if (network_state_ == kNetworkEmpty || !player_) {
-    MLOG() << "invalid state error";
-    DOMException::Raise(DOMException::kInvalidStateErr, exception_state);
-    return;
-  }
-
-  // The rest is handled by WebMediaPlayer::AddKey().
-  WebMediaPlayer::MediaKeyException exception;
-
-  if (!init_data.IsEmpty()) {
-    exception = player_->AddKey(
-        key_system, key->Data(), static_cast<unsigned>(key->Length()),
-        init_data->Data(), static_cast<unsigned>(init_data->Length()),
-        session_id.value_or(""));
-  } else {
-    exception = player_->AddKey(key_system, key->Data(),
-                                static_cast<unsigned>(key->Length()), NULL, 0,
-                                session_id.value_or(""));
-  }
-
-  if (exception != WebMediaPlayer::kMediaKeyExceptionNoError) {
-    MLOG() << "exception: " << exception;
-    RaiseMediaKeyException(exception, exception_state);
-  }
-}
-
-void HTMLMediaElement::CancelKeyRequest(
-    const std::string& key_system,
-    const base::optional<std::string>& session_id,
-    script::ExceptionState* exception_state) {
-  // https://dvcs.w3.org/hg/html-media/raw-file/eme-v0.1b/encrypted-media/encrypted-media.html#dom-addkey
-  // 1. If the first argument is null, throw a SYNTAX_ERR.
-  if (key_system.empty()) {
-    MLOG() << "syntax error";
-    DOMException::Raise(DOMException::kSyntaxErr, exception_state);
-    return;
-  }
-
-  if (!player_) {
-    MLOG() << "invalid state error";
-    DOMException::Raise(DOMException::kInvalidStateErr, exception_state);
-    return;
-  }
-
-  // The rest is handled by WebMediaPlayer::CancelKeyRequest().
-  WebMediaPlayer::MediaKeyException exception =
-      player_->CancelKeyRequest(key_system, session_id.value_or(""));
-  if (exception != WebMediaPlayer::kMediaKeyExceptionNoError) {
-    MLOG() << "exception: " << exception;
-    RaiseMediaKeyException(exception, exception_state);
-  }
-}
-
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
-
 uint16_t HTMLMediaElement::ready_state() const {
   MLOG() << ready_state_;
   return static_cast<uint16_t>(ready_state_);
@@ -507,7 +342,7 @@ bool HTMLMediaElement::seeking() const {
 
 float HTMLMediaElement::current_time(
     script::ExceptionState* exception_state) const {
-  UNREFERENCED_PARAMETER(exception_state);
+  SB_UNREFERENCED_PARAMETER(exception_state);
 
   if (!player_) {
     MLOG() << 0 << " (because player is NULL)";
@@ -712,7 +547,7 @@ void HTMLMediaElement::set_controls(bool controls) {
 }
 
 float HTMLMediaElement::volume(script::ExceptionState* exception_state) const {
-  UNREFERENCED_PARAMETER(exception_state);
+  SB_UNREFERENCED_PARAMETER(exception_state);
   MLOG() << volume_;
   return volume_;
 }
@@ -767,12 +602,9 @@ void HTMLMediaElement::TraceMembers(script::Tracer* tracer) {
   tracer->Trace(played_time_ranges_);
   tracer->Trace(media_source_);
   tracer->Trace(error_);
-#if defined(COBALT_MEDIA_SOURCE_2016)
   tracer->Trace(media_keys_);
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
 }
 
-#if defined(COBALT_MEDIA_SOURCE_2016)
 void HTMLMediaElement::DurationChanged(double duration, bool request_seek) {
   MLOG() << "DurationChanged(" << duration << ", " << request_seek << ")";
 
@@ -788,7 +620,6 @@ void HTMLMediaElement::DurationChanged(double duration, bool request_seek) {
     Seek(static_cast<float>(duration));
   }
 }
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
 
 void HTMLMediaElement::ScheduleEvent(const scoped_refptr<Event>& event) {
   TRACE_EVENT0("cobalt::dom", "HTMLMediaElement::ScheduleEvent()");
@@ -830,15 +661,9 @@ void HTMLMediaElement::CreateMediaPlayer() {
   player_ =
       html_element_context()->web_media_player_factory()->CreateWebMediaPlayer(
           this);
-#if defined(COBALT_MEDIA_SOURCE_2016)
   if (media_keys_) {
     player_->SetDrmSystem(media_keys_->drm_system());
   }
-#else   // defined(COBALT_MEDIA_SOURCE_2016)
-  if (media_source_) {
-    media_source_->SetPlayer(player_.get());
-  }
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
   node_document()->OnDOMMutation();
   InvalidateLayoutBoxesOfNodeAndAncestors();
 }
@@ -1012,15 +837,11 @@ void HTMLMediaElement::LoadResource(const GURL& initial_url,
       NoneSupported("Media source is NULL.");
       return;
     }
-#if defined(COBALT_MEDIA_SOURCE_2016)
     if (!media_source_->AttachToElement(this)) {
       media_source_ = nullptr;
       NoneSupported("Unable to attach media source.");
       return;
     }
-#else   // defined(COBALT_MEDIA_SOURCE_2016)
-    media_source_->SetPlayer(player_.get());
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
     media_source_url_ = url;
   }
   // The resource fetch algorithm
@@ -1038,10 +859,14 @@ void HTMLMediaElement::LoadResource(const GURL& initial_url,
   if (url.is_empty()) {
     return;
   }
+
 #if SB_HAS(PLAYER_WITH_URL)
-  // TODO: Investigate if we have to support csp and sop for url player.
-  player_->LoadUrl(url);
-#else   // SB_HAS(PLAYER_WITH_URL)
+  if (ResourceNeedsUrlPlayer(url)) {
+    // TODO: Investigate if we have to support csp and sop for url player.
+    player_->LoadUrl(url);
+    return;
+  }
+#endif  // SB_HAS(PLAYER_WITH_URL)
   if (url.spec() == SourceURL()) {
     player_->LoadMediaSource();
   } else {
@@ -1050,14 +875,13 @@ void HTMLMediaElement::LoadResource(const GURL& initial_url,
         base::Unretained(node_document()->csp_delegate()), CspDelegate::kMedia);
     request_mode_ = GetRequestMode(GetAttribute("crossOrigin"));
     DCHECK(node_document()->location());
-    scoped_ptr<BufferedDataSource> data_source(
+    std::unique_ptr<BufferedDataSource> data_source(
         new media::FetcherBufferedDataSource(
-            base::MessageLoopProxy::current(), url, csp_callback,
+            base::MessageLoop::current()->task_runner(), url, csp_callback,
             html_element_context()->fetcher_factory()->network_module(),
             request_mode_, node_document()->location()->GetOriginAsObject()));
-    player_->LoadProgressive(url, data_source.Pass());
+    player_->LoadProgressive(url, std::move(data_source));
   }
-#endif  // SB_HAS(PLAYER_WITH_URL)
 }
 
 void HTMLMediaElement::ClearMediaPlayer() {
@@ -1112,6 +936,7 @@ void HTMLMediaElement::NoneSupported(const std::string& message) {
 
 void HTMLMediaElement::MediaLoadingFailed(WebMediaPlayer::NetworkState error,
                                           const std::string& message) {
+  DLOG(INFO) << "media loading failed";
   StopPeriodicTimers();
 
   if (error == WebMediaPlayer::kNetworkStateNetworkError &&
@@ -1124,6 +949,11 @@ void HTMLMediaElement::MediaLoadingFailed(WebMediaPlayer::NetworkState error,
     MediaEngineError(new MediaError(
         MediaError::kMediaErrDecode,
         message.empty() ? "Media loading failed with decode error." : message));
+  } else if (error == WebMediaPlayer::kNetworkStateCapabilityChangedError) {
+    MediaEngineError(new MediaError(
+        MediaError::kMediaErrCapabilityChanged,
+        message.empty() ? "Media loading failed with capability changed error."
+                        : message));
   } else if ((error == WebMediaPlayer::kNetworkStateFormatError ||
               error == WebMediaPlayer::kNetworkStateNetworkError) &&
              load_state_ == kLoadingFromSrcAttr) {
@@ -1282,7 +1112,7 @@ void HTMLMediaElement::SetReadyState(WebMediaPlayer::ReadyState state) {
     duration_ = player_->GetDuration();
 #if SB_HAS(PLAYER_WITH_URL)
     start_date_ = player_->GetStartDate();
-#endif
+#endif  // SB_HAS(PLAYER_WITH_URL)
     ScheduleOwnEvent(base::Tokens::durationchange());
     ScheduleOwnEvent(base::Tokens::loadedmetadata());
   }
@@ -1354,6 +1184,7 @@ void HTMLMediaElement::SetNetworkState(WebMediaPlayer::NetworkState state) {
     case WebMediaPlayer::kNetworkStateFormatError:
     case WebMediaPlayer::kNetworkStateNetworkError:
     case WebMediaPlayer::kNetworkStateDecodeError:
+    case WebMediaPlayer::kNetworkStateCapabilityChangedError:
       NOTREACHED() << "Passed SetNetworkState an error state";
       break;
   }
@@ -1365,6 +1196,7 @@ void HTMLMediaElement::SetNetworkError(WebMediaPlayer::NetworkState state,
     case WebMediaPlayer::kNetworkStateFormatError:
     case WebMediaPlayer::kNetworkStateNetworkError:
     case WebMediaPlayer::kNetworkStateDecodeError:
+    case WebMediaPlayer::kNetworkStateCapabilityChangedError:
       MediaLoadingFailed(state, message);
       break;
     case WebMediaPlayer::kNetworkStateEmpty:
@@ -1517,7 +1349,7 @@ void HTMLMediaElement::UpdatePlayState() {
 
     StartPlaybackProgressTimer();
     playing_ = true;
-    if (AsHTMLVideoElement() != NULL) {
+    if (AsHTMLVideoElement().get() != NULL) {
       dom_stat_tracker_->OnHtmlVideoElementPlaying();
     }
   } else {  // Should not be playing right now.
@@ -1773,17 +1605,17 @@ void HTMLMediaElement::SourceOpened(ChunkDemuxer* chunk_demuxer) {
   TRACE_EVENT0("cobalt::dom", "HTMLMediaElement::SourceOpened()");
   DCHECK(chunk_demuxer);
   BeginProcessingMediaPlayerCallback();
-#if defined(COBALT_MEDIA_SOURCE_2016)
   DCHECK(media_source_);
   media_source_->SetChunkDemuxerAndOpen(chunk_demuxer);
-#else   // defined(COBALT_MEDIA_SOURCE_2016)
-  SetSourceState(kMediaSourceReadyStateOpen);
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
   EndProcessingMediaPlayerCallback();
 }
 
 std::string HTMLMediaElement::SourceURL() const {
   return media_source_url_.spec();
+}
+
+std::string HTMLMediaElement::MaxVideoCapabilities() const {
+  return max_video_capabilities_;
 }
 
 bool HTMLMediaElement::PreferDecodeToTexture() {
@@ -1818,8 +1650,6 @@ bool HTMLMediaElement::PreferDecodeToTexture() {
   return false;
 #endif  // defined(ENABLE_MAP_TO_MESH)
 }
-
-#if defined(COBALT_MEDIA_SOURCE_2016)
 
 namespace {
 
@@ -1882,96 +1712,23 @@ void HTMLMediaElement::EncryptedMediaInitDataEncountered(
       new eme::MediaEncryptedEvent("encrypted", media_encrypted_event_init));
 }
 
-#else  // defined(COBALT_MEDIA_SOURCE_2016)
-
-void HTMLMediaElement::KeyAdded(const std::string& key_system,
-                                const std::string& session_id) {
-  MLOG() << key_system;
-  event_queue_.Enqueue(new MediaKeyCompleteEvent(key_system, session_id));
-}
-
-void HTMLMediaElement::KeyError(const std::string& key_system,
-                                const std::string& session_id,
-                                MediaKeyErrorCode error_code,
-                                uint16 system_code) {
-  MLOG() << key_system;
-  MediaKeyError::Code code;
-  switch (error_code) {
-    case kUnknownError:
-      code = MediaKeyError::kMediaKeyerrUnknown;
-      break;
-    case kClientError:
-      code = MediaKeyError::kMediaKeyerrClient;
-      break;
-    case kServiceError:
-      code = MediaKeyError::kMediaKeyerrService;
-      break;
-    case kOutputError:
-      code = MediaKeyError::kMediaKeyerrOutput;
-      break;
-    case kHardwareChangeError:
-      code = MediaKeyError::kMediaKeyerrHardwarechange;
-      break;
-    case kDomainError:
-      code = MediaKeyError::kMediaKeyerrDomain;
-      break;
-  }
-  event_queue_.Enqueue(
-      new MediaKeyErrorEvent(key_system, session_id, code, system_code));
-}
-
-void HTMLMediaElement::KeyMessage(const std::string& key_system,
-                                  const std::string& session_id,
-                                  const unsigned char* message,
-                                  unsigned int message_length,
-                                  const std::string& default_url) {
-  MLOG() << key_system;
-  auto* global_environment =
-      html_element_context()->script_runner()->GetGlobalEnvironment();
-  script::Handle<script::Uint8Array> array_copy =
-      script::Uint8Array::New(global_environment, message, message_length);
-  event_queue_.Enqueue(new MediaKeyMessageEvent(key_system, session_id,
-                                                array_copy, default_url));
-}
-
-void HTMLMediaElement::KeyNeeded(const std::string& key_system,
-                                 const std::string& session_id,
-                                 const unsigned char* init_data,
-                                 unsigned int init_data_length) {
-  MLOG() << key_system;
-  auto* global_environment =
-      html_element_context()->script_runner()->GetGlobalEnvironment();
-  script::Handle<script::Uint8Array> array_copy =
-      script::Uint8Array::New(global_environment, init_data, init_data_length);
-  event_queue_.Enqueue(
-      new MediaKeyNeededEvent(key_system, session_id, array_copy));
-}
-
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
-
 void HTMLMediaElement::ClearMediaSource() {
-#if defined(COBALT_MEDIA_SOURCE_2016)
   if (media_source_) {
     media_source_->Close();
     media_source_ = NULL;
   }
-#else   // defined(COBALT_MEDIA_SOURCE_2016)
-  SetSourceState(kMediaSourceReadyStateClosed);
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
 }
 
-#if !defined(COBALT_MEDIA_SOURCE_2016)
-void HTMLMediaElement::SetSourceState(MediaSourceReadyState ready_state) {
-  MLOG() << ready_state;
-  if (!media_source_) {
+void HTMLMediaElement::SetMaxVideoCapabilities(
+    const std::string& max_video_capabilities,
+    script::ExceptionState* exception_state) {
+  if (GetAttribute("src").value_or("").length() > 0) {
+    LOG(WARNING) << "Cannot set maxmium capabilities after src is defined.";
+    DOMException::Raise(DOMException::kInvalidStateErr, exception_state);
     return;
   }
-  media_source_->SetReadyState(ready_state);
-  if (ready_state == kMediaSourceReadyStateClosed) {
-    media_source_ = NULL;
-  }
+  max_video_capabilities_ = max_video_capabilities;
 }
-#endif  // !defined(COBALT_MEDIA_SOURCE_2016)
 
 }  // namespace dom
 }  // namespace cobalt

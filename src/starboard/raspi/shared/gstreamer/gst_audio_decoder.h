@@ -7,6 +7,8 @@
 #include "starboard/shared/starboard/player/job_queue.h"
 #include "starboard/thread.h"
 
+typedef SbMediaAudioSampleInfo SbMediaAudioHeader;
+
 namespace starboard {
 namespace shared {
 namespace gstreamer {

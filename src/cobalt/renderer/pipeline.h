@@ -15,16 +15,17 @@
 #ifndef COBALT_RENDERER_PIPELINE_H_
 #define COBALT_RENDERER_PIPELINE_H_
 
+#include <memory>
 #include <string>
 
 #include "base/memory/ref_counted.h"
-#include "base/memory/scoped_ptr.h"
 #include "base/optional.h"
 #include "base/synchronization/waitable_event.h"
 #include "base/threading/thread.h"
 #include "base/threading/thread_checker.h"
-#include "base/timer.h"
+#include "base/timer/timer.h"
 #include "cobalt/base/c_val_collection_timer_stats.h"
+#include "cobalt/math/rect.h"
 #include "cobalt/render_tree/animations/animate_node.h"
 #include "cobalt/render_tree/node.h"
 #include "cobalt/renderer/backend/graphics_context.h"
@@ -32,6 +33,10 @@
 #include "cobalt/renderer/rasterizer/rasterizer.h"
 #include "cobalt/renderer/submission.h"
 #include "cobalt/renderer/submission_queue.h"
+
+#if defined(ENABLE_DEBUGGER)
+#include "cobalt/debug/console/command_manager.h"
+#endif  // defined(ENABLE_DEBUGGER)
 
 namespace cobalt {
 namespace renderer {
@@ -47,9 +52,9 @@ namespace renderer {
 // refresh rate.
 class Pipeline {
  public:
-  typedef base::Callback<scoped_ptr<rasterizer::Rasterizer>()>
+  typedef base::Callback<std::unique_ptr<rasterizer::Rasterizer>()>
       CreateRasterizerFunction;
-  typedef base::Callback<void(scoped_array<uint8>, const math::Size&)>
+  typedef base::Callback<void(std::unique_ptr<uint8[]>, const math::Size&)>
       RasterizationCompleteCallback;
 
   enum ShutdownClearMode {
@@ -92,6 +97,7 @@ class Pipeline {
   // will be called with the pixel data and the dimensions of the image.
   void RasterizeToRGBAPixels(
       const scoped_refptr<render_tree::Node>& render_tree_root,
+      const base::Optional<math::Rect>& clip_rect,
       const RasterizationCompleteCallback& complete);
 
   // Inserts a fence that ensures the rasterizer rasterizes up until the
@@ -132,7 +138,8 @@ class Pipeline {
   // Returns true only if a rasterization actually took place.
   bool RasterizeSubmissionToRenderTarget(
       const Submission& render_tree_submission,
-      const scoped_refptr<backend::RenderTarget>& render_target);
+      const scoped_refptr<backend::RenderTarget>& render_target,
+      bool force_rasterize);
 
   // Updates the rasterizer timer stats according to the |start_time| and
   // |end_time| of the most recent rasterize call.
@@ -156,11 +163,16 @@ class Pipeline {
   // needs to be shutdown from there.
   void ShutdownRasterizerThread();
 
-#if defined(ENABLE_DEBUG_CONSOLE)
+  // This method releases the rasterizer. This is exposed separately from
+  // ShutdownRasterizerThread() so it can be executed after tasks that may
+  // be posted by ShutdownRasterizerThread().
+  void ShutdownRasterizer() { rasterizer_.reset(); }
+
+#if defined(ENABLE_DEBUGGER)
   void OnDumpCurrentRenderTree(const std::string&);
   void OnToggleFpsStdout(const std::string&);
   void OnToggleFpsOverlay(const std::string&);
-#endif  // defined(ENABLE_DEBUG_CONSOLE)
+#endif  // defined(ENABLE_DEBUGGER)
 
   // Render trees may contain a number of AnimateNodes (or none).  In order
   // to optimize for applying the animations on the rasterizer thread, this
@@ -195,10 +207,10 @@ class Pipeline {
   // as possible, it is up to the rasterizer to pace the pipeline.  The timer
   // is used to manage the repeated posting of the rasterize task call and
   // to make proper shutdown easier.
-  base::optional<base::Timer> rasterize_timer_;
+  base::Optional<base::RepeatingTimer> rasterize_timer_;
 
   // ThreadChecker for use by the rasterizer_thread_ defined below.
-  base::ThreadChecker rasterizer_thread_checker_;
+  THREAD_CHECKER(rasterizer_thread_checker_);
 
   // The thread that all rasterization will take place within.
   base::Thread rasterizer_thread_;
@@ -206,7 +218,7 @@ class Pipeline {
   // The rasterizer object that will run on the rasterizer_thread_ and is
   // effectively the last stage of the pipeline, responsible for rasterizing
   // the final render tree and submitting it to the render target.
-  scoped_ptr<rasterizer::Rasterizer> rasterizer_;
+  std::unique_ptr<rasterizer::Rasterizer> rasterizer_;
 
   // A thread whose only purpose is to destroy submissions/render trees.
   // This is important because destroying a render tree can take some time,
@@ -215,7 +227,7 @@ class Pipeline {
 
   // Manages a queue of render tree submissions that are to be rendered in
   // the future.
-  base::optional<SubmissionQueue> submission_queue_;
+  base::Optional<SubmissionQueue> submission_queue_;
 
   // If true, we will submit the current render tree to the rasterizer every
   // frame, even if it hasn't changed.
@@ -230,9 +242,9 @@ class Pipeline {
   // Keeps track of the area of the screen that animations previously existed
   // within, so that we can know which regions of the screens would be dirty
   // next frame.
-  base::optional<math::Rect> previous_animated_area_;
+  base::Optional<math::Rect> previous_animated_area_;
   // The submission time used during the last render tree render.
-  base::optional<base::TimeDelta> last_render_time_;
+  base::Optional<base::TimeDelta> last_render_time_;
   // Keep track of whether the last rendered tree had active animations. This
   // allows us to skip rasterizing that render tree if we see it again and it
   // did have expired animations.
@@ -272,16 +284,16 @@ class Pipeline {
   // The most recent time animations ended playing.
   base::CVal<int64, base::CValPublic> animations_end_time_;
 
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
   // Dumps the current render tree to the console.
-  base::ConsoleCommandManager::CommandHandler
+  debug::console::ConsoleCommandManager::CommandHandler
       dump_current_render_tree_command_handler_;
 
-  base::ConsoleCommandManager::CommandHandler
+  debug::console::ConsoleCommandManager::CommandHandler
       toggle_fps_stdout_command_handler_;
-  base::ConsoleCommandManager::CommandHandler
+  debug::console::ConsoleCommandManager::CommandHandler
       toggle_fps_overlay_command_handler_;
-#endif
+#endif  // defined(ENABLE_DEBUGGER)
 
   // If true, Pipeline's destructor will clear its render target to black on
   // shutdown.
@@ -295,22 +307,28 @@ class Pipeline {
   // FPS statistics from the last animation.
   bool enable_fps_overlay_;
 
-  base::optional<FpsOverlay> fps_overlay_;
+  base::Optional<FpsOverlay> fps_overlay_;
 
   // True if the overlay has been updated and it needs to be re-rasterized.
   bool fps_overlay_update_pending_;
 
   // Time fence data that records if a time fence is active, at what time, and
   // what submission if any is waiting to be queued once we pass the time fence.
-  base::optional<base::TimeDelta> time_fence_;
-  base::optional<Submission> post_fence_submission_;
-  base::optional<base::TimeTicks> post_fence_receipt_time_;
+  base::Optional<base::TimeDelta> time_fence_;
+  base::Optional<Submission> post_fence_submission_;
+  base::Optional<base::TimeTicks> post_fence_receipt_time_;
 
   // Information about the current timeline.  Each incoming submission
   // identifies with a particular timeline, and if that ever changes, we assume
   // a discontinuity in animations and reset our submission queue, possibly
   // with new configuration parameters specified in the new |TimelineInfo|.
   Submission::TimelineInfo current_timeline_info_;
+
+  // This timestamp represents the last time the pipeline rasterized a
+  // render tree to render_target_. This is different from last_render_time_
+  // which is specific to the current submission and is reset whenever a new
+  // render tree is submitted.
+  base::TimeTicks last_rasterize_time_;
 };
 
 }  // namespace renderer

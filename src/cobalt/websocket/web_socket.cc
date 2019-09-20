@@ -19,20 +19,22 @@
 #include <vector>
 
 #include "base/logging.h"
-#include "base/string_number_conversions.h"
-#include "base/string_piece.h"
-#include "base/string_util.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_piece.h"
+#include "base/strings/string_split.h"
+#include "base/strings/string_util.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/dom/document.h"
 #include "cobalt/dom/dom_settings.h"
 #include "cobalt/dom/window.h"
 #include "cobalt/script/global_environment.h"
 #include "cobalt/websocket/close_event.h"
-#include "googleurl/src/gurl.h"
-#include "googleurl/src/url_canon.h"
-#include "googleurl/src/url_constants.h"
-#include "net/base/net_util.h"
+#include "net/base/port_util.h"
+#include "net/base/url_util.h"
 #include "net/websockets/websocket_errors.h"
+#include "url/gurl.h"
+#include "url/url_canon.h"
+#include "url/url_constants.h"
 
 namespace {
 
@@ -45,23 +47,24 @@ bool IsURLAbsolute(cobalt::dom::DOMSettings* dom_settings,
   // This is a requirement for calling spec()
   DCHECK(dom_settings->base_url().is_valid());
 
-  url_canon::RawCanonOutputT<char> whitespace_buffer;
+  url::RawCanonOutputT<char> whitespace_buffer;
   int relative_length;
-  const char* relative =
-      RemoveURLWhitespace(url.c_str(), static_cast<int>(url.size()),
-                          &whitespace_buffer, &relative_length);
+  bool potentially_dangling_markup;
+  const char* relative = RemoveURLWhitespace(
+      url.c_str(), static_cast<int>(url.size()), &whitespace_buffer,
+      &relative_length, &potentially_dangling_markup);
 
-  url_parse::Component relative_component;
+  url::Component relative_component;
 
   const std::string& base_url(dom_settings->base_url().spec());
-  url_parse::Parsed parsed;
+  url::Parsed parsed;
 
-  url_parse::ParseStandardURL(base_url.c_str(),
-                              static_cast<int>(base_url.length()), &parsed);
+  url::ParseStandardURL(base_url.c_str(), static_cast<int>(base_url.length()),
+                        &parsed);
 
   bool is_relative;
-  url_canon::IsRelativeURL(base_url.c_str(), parsed, relative, relative_length,
-                           true, &is_relative, &relative_component);
+  url::IsRelativeURL(base_url.c_str(), parsed, relative, relative_length, true,
+                     &is_relative, &relative_component);
 
   return !is_relative;
 }
@@ -182,7 +185,7 @@ WebSocket::WebSocket(script::EnvironmentSettings* settings,
 
 WebSocket::~WebSocket() {
   if (impl_) {
-    impl_->SetWebSocketEventDelegate(NULL);
+    impl_->ResetWebSocketEventDelegate();
   }
 }
 
@@ -201,14 +204,15 @@ WebSocket::WebSocket(script::EnvironmentSettings* settings,
                      const std::string& sub_protocol_list,
                      script::ExceptionState* exception_state)
     : require_network_module_(true) {
-  std::vector<std::string> sub_protocols;
-  Tokenize(sub_protocol_list, kComma, &sub_protocols);
+  std::vector<std::string> sub_protocols =
+      base::SplitString(sub_protocol_list, kComma, base::KEEP_WHITESPACE,
+                        base::SPLIT_WANT_NONEMPTY);
   Initialize(settings, url, sub_protocols, exception_state);
 }
 
 void WebSocket::set_binary_type(const std::string& binary_type,
                                 script::ExceptionState* exception_state) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   // Per spec:
   // "On setting, if the new value is either the string "blob" or the string
   // "arraybuffer", then set the IDL attribute to this new value.
@@ -225,7 +229,7 @@ void WebSocket::set_binary_type(const std::string& binary_type,
 
 // Implements spec at https://www.w3.org/TR/websockets/#dom-websocket-close.
 void WebSocket::Close(script::ExceptionState* exception_state) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   const std::string empty_reason;
   Close(net::kWebSocketNormalClosure, empty_reason, exception_state);
@@ -234,7 +238,7 @@ void WebSocket::Close(script::ExceptionState* exception_state) {
 // Implements spec at https://www.w3.org/TR/websockets/#dom-websocket-close.
 void WebSocket::Close(const uint16 code,
                       script::ExceptionState* exception_state) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   const std::string empty_reason;
   Close(code, empty_reason, exception_state);
@@ -243,7 +247,7 @@ void WebSocket::Close(const uint16 code,
 // Implements spec at https://www.w3.org/TR/websockets/#dom-websocket-close.
 void WebSocket::Close(const uint16 code, const std::string& reason,
                       script::ExceptionState* exception_state) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   // Per spec @ https://www.w3.org/TR/websockets/#dom-websocket-close
   // "If reason is longer than 123 bytes, then throw a SyntaxError exception and
@@ -256,7 +260,8 @@ void WebSocket::Close(const uint16 code, const std::string& reason,
     return;
   }
 
-  if (!net::IsValidCloseStatusCode(code)) {
+  if (net::WebSocketErrorToNetError(static_cast<net::WebSocketError>(code)) ==
+      net::ERR_UNEXPECTED) {
     dom::DOMException::Raise(dom::DOMException::kInvalidAccessErr,
                              exception_state);
     return;
@@ -299,7 +304,7 @@ bool WebSocket::CheckReadyState(script::ExceptionState* exception_state) {
 // Implements spec at https://www.w3.org/TR/websockets/#dom-websocket-send.
 void WebSocket::Send(const std::string& data,
                      script::ExceptionState* exception_state) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(impl_);
   if (!CheckReadyState(exception_state)) {
     return;
@@ -315,7 +320,7 @@ void WebSocket::Send(const std::string& data,
 // Implements spec at https://www.w3.org/TR/websockets/#dom-websocket-send.
 void WebSocket::Send(const scoped_refptr<dom::Blob>& data,
                      script::ExceptionState* exception_state) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(impl_);
   if (!CheckReadyState(exception_state)) {
     return;
@@ -336,7 +341,7 @@ void WebSocket::Send(const scoped_refptr<dom::Blob>& data,
 // Implements spec at https://www.w3.org/TR/websockets/#dom-websocket-send.
 void WebSocket::Send(const script::Handle<script::ArrayBuffer>& data,
                      script::ExceptionState* exception_state) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(impl_);
   if (!CheckReadyState(exception_state)) {
     return;
@@ -356,7 +361,7 @@ void WebSocket::Send(const script::Handle<script::ArrayBuffer>& data,
 // Implements spect at https://www.w3.org/TR/websockets/#dom-websocket-send.
 void WebSocket::Send(const script::Handle<script::ArrayBufferView>& data,
                      script::ExceptionState* exception_state) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(impl_);
   if (!CheckReadyState(exception_state)) {
     return;
@@ -421,12 +426,11 @@ void WebSocket::Initialize(script::EnvironmentSettings* settings,
                            const std::string& url,
                            const std::vector<std::string>& sub_protocols,
                            script::ExceptionState* exception_state) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   buffered_amount_ = 0;
   binary_type_ = dom::MessageEvent::kBlob;
   is_secure_ = false;
   port_ = -1;
-  preventing_gc_ = false;
   SetReadyState(kConnecting);
 
   settings_ = base::polymorphic_downcast<dom::DOMSettings*>(settings);
@@ -521,7 +525,7 @@ void WebSocket::Initialize(script::EnvironmentSettings* settings,
     return;
   }
 
-  if (!net::IsPortAllowedByDefault(GetPort())) {
+  if (!net::IsPortAllowedForScheme(GetPort(), resolved_url_.scheme())) {
     std::string error_message = "Connecting to port " + GetPortAsString() +
                                 " using websockets is not allowed.";
     dom::DOMException::Raise(dom::DOMException::kSecurityErr, error_message,
@@ -564,14 +568,14 @@ dom::CspDelegate* WebSocket::csp_delegate() const {
 
 void WebSocket::Connect(const GURL& url,
                         const std::vector<std::string>& sub_protocols) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(settings_);
 
   GURL origin_gurl = settings_->base_url().GetOrigin();
   const std::string& origin = origin_gurl.possibly_invalid_spec();
 
-  impl_ =
-      make_scoped_refptr(new WebSocketImpl(settings_->network_module(), this));
+  impl_ = base::WrapRefCounted(
+      new WebSocketImpl(settings_->network_module(), this));
 
   impl_->Connect(origin, url, sub_protocols);
 }
@@ -642,44 +646,32 @@ void WebSocket::PotentiallyAllowGarbageCollection() {
       NOTREACHED() << "Invalid ready_state: " << ready_state();
   }
 
-  if (prevent_gc != preventing_gc_) {
+  if (prevent_gc != (prevent_gc_while_listening_ != NULL)) {
     if (prevent_gc) {
-      PreventGarbageCollection();
+      prevent_gc_while_listening_.reset(
+          new script::GlobalEnvironment::ScopedPreventGarbageCollection(
+              settings_->global_environment(), this));
     } else {
-      AllowGarbageCollection();
+      // Note: the fall through in this switch statement is on purpose.
+      switch (ready_state_) {
+        case kConnecting:
+          DCHECK(!HasOnOpenListener());
+        case kOpen:
+          DCHECK(!HasOnMessageListener());
+        case kClosing:
+          DCHECK(!HasOnErrorListener());
+          DCHECK(!HasOnCloseListener());
+        default:
+          break;
+      }
+
+      prevent_gc_while_listening_.reset();
     }
 
-    // The above function calls should change |preventing_gc_|.
-    DCHECK_EQ(prevent_gc, preventing_gc_);
+    // The above function calls should change |(prevent_gc_while_listening_ !=
+    // NULL)|.
+    DCHECK_EQ(prevent_gc, (prevent_gc_while_listening_ != NULL));
   }
-}
-
-void WebSocket::PreventGarbageCollection() {
-  settings_->global_environment()->PreventGarbageCollection(
-      make_scoped_refptr(this));
-  DCHECK(!preventing_gc_);
-  preventing_gc_ = true;
-}
-
-void WebSocket::AllowGarbageCollection() {
-  DCHECK(preventing_gc_);
-
-  // Note: the fall through in this switch statement is on purpose.
-  switch (ready_state_) {
-    case kConnecting:
-      DCHECK(!HasOnOpenListener());
-    case kOpen:
-      DCHECK(!HasOnMessageListener());
-    case kClosing:
-      DCHECK(!HasOnErrorListener());
-      DCHECK(!HasOnCloseListener());
-    default:
-      break;
-  }
-
-  preventing_gc_ = false;
-  settings_->global_environment()->AllowGarbageCollection(
-      make_scoped_refptr(this));
 }
 
 }  // namespace websocket

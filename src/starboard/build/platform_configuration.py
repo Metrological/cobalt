@@ -106,7 +106,7 @@ class PlatformConfiguration(object):
 
     Args:
       application_name: The name of the application to load, in a canonical
-                        filesystem-friendly form.
+        filesystem-friendly form.
 
     Returns:
       An instance of ApplicationConfiguration defined for the application being
@@ -141,6 +141,20 @@ class PlatformConfiguration(object):
 
     assert self._application_configuration
     return self._application_configuration
+
+  def SetupPlatformTools(self, build_number):
+    """Install tools, SDKs, etc.
+
+    needed to build for the platform.
+
+    Installs tools needed to build for this platform, possibly downloading
+    and/or interacting with the user to do so. Raises a RuntimeError if the
+    tools can't be installed or something is wrong that will prevent building.
+
+    Args:
+      build_number: The number identifying this build, generated at GYP time.
+    """
+    pass
 
   def GetIncludes(self):
     """Get a list of absolute paths to gypi files to include in order.
@@ -220,7 +234,7 @@ class PlatformConfiguration(object):
         # Which JavaScript engine to use.  Currently, both SpiderMonkey 45 and
         # V8 are supported.  Note that V8 can only be used on platforms that
         # support JIT.
-        'javascript_engine': 'mozjs-45',
+        'javascript_engine': 'v8',
 
         # Disable JIT and run in interpreter-only mode by default. It can be
         # set to 1 to run in JIT mode.  For SpiderMonkey in particular, we
@@ -228,7 +242,7 @@ class PlatformConfiguration(object):
         # execution and lower memory usage.  Setting this to 0 for engine that
         # requires JIT, or 1 on a platform that does not support JIT, is a
         # usage error.
-        'cobalt_enable_jit': 0,
+        'cobalt_enable_jit': 1,
 
         # TODO: Remove these compatibility variables.
         'cobalt_config': config_name,
@@ -278,8 +292,9 @@ class PlatformConfiguration(object):
         os.path.join(self.GetLauncherPath(), 'launcher.py'))
     try:
       return imp.load_source('launcher', module_path)
-    except (IOError, ImportError, RuntimeError):
-      logging.warning('Unable to load launcher from %s.', module_path)
+    except (IOError, ImportError, RuntimeError) as error:
+      logging.error('Unable to load launcher module from %s.', module_path)
+      logging.error(error)
       return None
 
   def GetTestEnvVariables(self):
@@ -293,6 +308,18 @@ class PlatformConfiguration(object):
       A list of initialized starboard.tools.testing.TestFilter objects.
     """
     return []
+
+  def GetDeployPathPatterns(self):
+    """Gets deployment paths patterns for files to be included for deployement.
+
+    Example: ['deploy/*.exe', 'content/*']
+
+    Returns:
+      A list of path wildcard patterns within the PRODUCT_DIR
+      (src/out/<PLATFORM>_<CONFIG>) that need to be deployed in order for the
+      platform launcher to run target executable(s).
+    """
+    raise NotImplementedError()
 
   def GetTestTargets(self):
     """Gets all tests to be run in a unit test run.

@@ -65,13 +65,19 @@ TEST(Semaphore, ThreadTakes) {
 class ThreadTakesWaitSemaphore : public AbstractTestThread {
  public:
   explicit ThreadTakesWaitSemaphore(SbTime wait_us)
-      : wait_us_(wait_us), result_signaled_(false),
+      : thread_started_(false), wait_us_(wait_us), result_signaled_(false),
         result_wait_time_(0) {}
   void Run() override {
+    thread_started_ = true;
     SbTime start_time = SbTimeGetMonotonicNow();
     result_signaled_ = semaphore_.TakeWait(wait_us_);
     result_wait_time_ = SbTimeGetMonotonicNow() - start_time;
   }
+
+  // Use a volatile bool to signal when the thread has started executing
+  // instead of a semaphore since some platforms may take a relatively long
+  // time after signalling the semaphore to return from the Put.
+  volatile bool thread_started_;
 
   SbTime wait_us_;
   Semaphore semaphore_;
@@ -79,19 +85,24 @@ class ThreadTakesWaitSemaphore : public AbstractTestThread {
   SbTime result_wait_time_;
 };
 
-TEST(Semaphore, ThreadTakesWait_PutBeforeTimeExpires) {
-  SbTime wait_time = kSbTimeMillisecond * 80;
-  ThreadTakesWaitSemaphore thread(wait_time);
-  thread.Start();
+TEST(Semaphore, FLAKY_ThreadTakesWait_PutBeforeTimeExpires) {
+  SbTime timeout_time = kSbTimeMillisecond * 250;
+  SbTime wait_time = kSbTimeMillisecond;
+  ThreadTakesWaitSemaphore thread(timeout_time);
 
-  SbThreadSleep(wait_time / 2);
+  // Create thread and wait for it to start executing.
+  thread.Start();
+  while (!thread.thread_started_) {
+    SbThreadSleep(kSbTimeMillisecond);
+  }
+
+  SbThreadSleep(wait_time);
   thread.semaphore_.Put();
 
   thread.Join();
 
   EXPECT_TRUE(thread.result_signaled_);
-  EXPECT_NEAR(thread.result_wait_time_ * 1.0, wait_time * 0.5,
-              kSbTimeMillisecond * 10.0);  // Error threshold
+  EXPECT_LT(thread.result_wait_time_, timeout_time);
 }
 
 double IsDoubleNear(double first, double second, double diff_threshold) {
@@ -111,9 +122,18 @@ TEST(Semaphore, ThreadTakesWait_TimeExpires) {
   for (int i = 0; i < attempts; ++i) {
     SbTime wait_time = kSbTimeMillisecond * 20;
     ThreadTakesWaitSemaphore thread(wait_time);
-    thread.Start();
 
-    SbThreadSleep(wait_time * 2);
+    // Create thread and wait for it to start executing.
+    thread.Start();
+    while (!thread.thread_started_) {
+      SbThreadSleep(kSbTimeMillisecond);
+    }
+
+    // It is possible for the thread to be preempted just before processing
+    // Semaphore::TakeWait, so sleep for an extra amount of time to avoid the
+    // semaphore being legitimately signalled during the wait time (because
+    // the thread started TakeWait late).
+    SbThreadSleep(wait_time * 5);
     thread.semaphore_.Put();
 
     thread.Join();

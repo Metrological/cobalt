@@ -14,15 +14,13 @@
 
 #include "cobalt/renderer/rasterizer/egl/textured_mesh_renderer.h"
 
-#include <GLES2/gl2.h>
-#include <GLES2/gl2ext.h>
-
 #include <string>
 #include <vector>
 
-#include "base/stringprintf.h"
+#include "base/strings/stringprintf.h"
 #include "cobalt/math/size.h"
 #include "cobalt/renderer/backend/egl/utils.h"
+#include "cobalt/renderer/egl_and_gles.h"
 #include "third_party/glm/glm/gtc/type_ptr.hpp"
 
 namespace cobalt {
@@ -35,7 +33,8 @@ TexturedMeshRenderer::TexturedMeshRenderer(
     : graphics_context_(graphics_context) {}
 
 TexturedMeshRenderer::~TexturedMeshRenderer() {
-  graphics_context_->MakeCurrent();
+  backend::GraphicsContextEGL::ScopedMakeCurrent scoped_make_current(
+      graphics_context_);
   if (quad_vbo_) {
     GL_CALL(glDeleteBuffers(1, &quad_vbo_.value()));
   }
@@ -47,7 +46,7 @@ TexturedMeshRenderer::~TexturedMeshRenderer() {
 
 namespace {
 void ConvertContentRegionToScaleTranslateVector(
-    const math::Rect* content_region, const math::Size& texture_size,
+    const math::RectF* content_region, const math::Size& texture_size,
     float* out_vec4) {
   if (!content_region) {
     // If no content region is provided, use the identity matrix.
@@ -78,9 +77,14 @@ const float kIdentityColorMatrix[16] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
                                         0.0f, 0.0f, 0.0f, 1.0f};
 
 // Used for YUV images.
+const float kBT601FullRangeColorMatrix[16] = {
+    1.0f, 0.0f,   1.402f, -0.701,  1.0f, -0.34414f, -0.71414f, 0.529f,
+    1.0f, 1.772f, 0.0f,   -0.886f, 0.0f, 0.0f,      0.0f,      1.f};
+
+// Used for YUV images.
 const float kBT709ColorMatrix[16] = {
     1.164f, 0.0f,   1.793f, -0.96925f, 1.164f, -0.213f, -0.533f, 0.30025f,
-    1.164f, 2.112f, 0.0f,   -1.12875f, 0.0f,   0.0f,    0.0f,    1.0};
+    1.164f, 2.112f, 0.0f,   -1.12875f, 0.0f,   0.0f,    0.0f,    1.0f};
 
 // Used for 10bit unnormalized YUV images.
 const float k10BitBT2020ColorMatrix[16] = {64 * 1.163746465f,
@@ -105,6 +109,9 @@ const float* GetColorMatrixForImageType(
   switch (type) {
     case TexturedMeshRenderer::Image::RGBA: {
       return kIdentityColorMatrix;
+    } break;
+    case TexturedMeshRenderer::Image::YUV_3PLANE_BT601_FULL_RANGE: {
+      return kBT601FullRangeColorMatrix;
     } break;
     case TexturedMeshRenderer::Image::YUV_2PLANE_BT709:
     case TexturedMeshRenderer::Image::YUV_3PLANE_BT709:
@@ -150,9 +157,8 @@ void TexturedMeshRenderer::RenderVBO(uint32 vbo, int num_vertices, uint32 mode,
     if (image.type == Image::YUV_UYVY_422_BT709) {
       // For UYVY, wrap mode is handled within the fragment shader, ensure here
       // that it is always set to GL_REPEAT.
-      GL_CALL(glTexParameteri(
-          image.textures[0].texture->GetTarget(), GL_TEXTURE_WRAP_S,
-          GL_REPEAT));
+      GL_CALL(glTexParameteri(image.textures[0].texture->GetTarget(),
+                              GL_TEXTURE_WRAP_S, GL_REPEAT));
     }
 
     GL_CALL(glUniform1i(blit_program.texture_uniforms[i], i));
@@ -221,16 +227,16 @@ uint32 TexturedMeshRenderer::GetQuadVBO() {
 // static
 uint32 TexturedMeshRenderer::CreateVertexShader(
     const std::vector<TextureInfo>& textures) {
-  uint32 blit_vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+  uint32 blit_vertex_shader = GL_CALL_SIMPLE(glCreateShader(GL_VERTEX_SHADER));
   std::string blit_vertex_shader_source =
       "attribute vec3 a_position;"
       "attribute vec2 a_tex_coord;";
   for (unsigned int i = 0; i < textures.size(); ++i) {
-    blit_vertex_shader_source +=
-        StringPrintf("varying vec2 v_tex_coord_%s;", textures[i].name.c_str());
+    blit_vertex_shader_source += base::StringPrintf(
+        "varying vec2 v_tex_coord_%s;", textures[i].name.c_str());
   }
   for (unsigned int i = 0; i < textures.size(); ++i) {
-    blit_vertex_shader_source += StringPrintf(
+    blit_vertex_shader_source += base::StringPrintf(
         "uniform vec4 scale_translate_%s;", textures[i].name.c_str());
   }
   blit_vertex_shader_source +=
@@ -240,7 +246,7 @@ uint32 TexturedMeshRenderer::CreateVertexShader(
       "                    vec4(a_position.xyz, 1.0);";
   for (unsigned int i = 0; i < textures.size(); ++i) {
     const char* texture_name = textures[i].name.c_str();
-    blit_vertex_shader_source += StringPrintf(
+    blit_vertex_shader_source += base::StringPrintf(
         "  v_tex_coord_%s = "
         "      a_tex_coord * scale_translate_%s.xy + scale_translate_%s.zw;",
         texture_name, texture_name, texture_name);
@@ -261,7 +267,8 @@ uint32 TexturedMeshRenderer::CreateVertexShader(
 namespace {
 
 uint32 CompileShader(const std::string& shader_source) {
-  uint32 blit_fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+  uint32 blit_fragment_shader =
+      GL_CALL_SIMPLE(glCreateShader(GL_FRAGMENT_SHADER));
 
   int shader_source_length = shader_source.size();
   const char* shader_source_c_str = shader_source.c_str();
@@ -275,7 +282,8 @@ uint32 CompileShader(const std::string& shader_source) {
     const GLsizei kMaxLogLength = 2048;
     GLsizei log_length = 0;
     GLchar log[kMaxLogLength];
-    glGetShaderInfoLog(blit_fragment_shader, kMaxLogLength, &log_length, log);
+    GL_CALL_SIMPLE(glGetShaderInfoLog(blit_fragment_shader, kMaxLogLength,
+                                      &log_length, log));
     DLOG(ERROR) << "shader error: " << log;
     DLOG(ERROR) << "shader source:\n" << shader_source;
   }
@@ -311,13 +319,13 @@ uint32 TexturedMeshRenderer::CreateFragmentShader(
 
   blit_fragment_shader_source += "precision mediump float;";
   for (unsigned int i = 0; i < textures.size(); ++i) {
-    blit_fragment_shader_source +=
-        StringPrintf("varying vec2 v_tex_coord_%s;", textures[i].name.c_str());
+    blit_fragment_shader_source += base::StringPrintf(
+        "varying vec2 v_tex_coord_%s;", textures[i].name.c_str());
   }
   for (unsigned int i = 0; i < textures.size(); ++i) {
     blit_fragment_shader_source +=
-        StringPrintf("uniform %s texture_%s;", sampler_info.type.c_str(),
-                     textures[i].name.c_str());
+        base::StringPrintf("uniform %s texture_%s;", sampler_info.type.c_str(),
+                           textures[i].name.c_str());
   }
   blit_fragment_shader_source +=
       "uniform mat4 to_rgb_color_matrix;"
@@ -328,7 +336,7 @@ uint32 TexturedMeshRenderer::CreateFragmentShader(
     if (i > 0) {
       blit_fragment_shader_source += ", ";
     }
-    blit_fragment_shader_source += StringPrintf(
+    blit_fragment_shader_source += base::StringPrintf(
         "texture2D(texture_%s, v_tex_coord_%s).%s", textures[i].name.c_str(),
         textures[i].name.c_str(), textures[i].components.c_str());
     components_used += textures[i].components.length();
@@ -355,7 +363,7 @@ uint32 TexturedMeshRenderer::CreateUYVYFragmentShader(uint32 texture_target,
   blit_fragment_shader_source += "precision mediump float;";
   blit_fragment_shader_source += "varying vec2 v_tex_coord_uyvy;";
   blit_fragment_shader_source +=
-      StringPrintf("uniform %s texture_uyvy;", sampler_info.type.c_str());
+      base::StringPrintf("uniform %s texture_uyvy;", sampler_info.type.c_str());
 
   // The fragment shader below manually performs horizontal linear interpolation
   // filtering of color values.  Specifically it needs to interpolate the UV
@@ -429,7 +437,7 @@ TexturedMeshRenderer::ProgramInfo TexturedMeshRenderer::MakeBlitProgram(
 
   // Create the blit program.
   // Setup shaders used when blitting the current texture.
-  result.gl_program_id = glCreateProgram();
+  result.gl_program_id = GL_CALL_SIMPLE(glCreateProgram());
 
   uint32 blit_vertex_shader = CreateVertexShader(textures);
   GL_CALL(glAttachShader(result.gl_program_id, blit_vertex_shader));
@@ -443,32 +451,33 @@ TexturedMeshRenderer::ProgramInfo TexturedMeshRenderer::MakeBlitProgram(
 
   GL_CALL(glLinkProgram(result.gl_program_id));
 
-  result.mvp_transform_uniform = glGetUniformLocation(
-      result.gl_program_id, "model_view_projection_transform");
+  result.mvp_transform_uniform = GL_CALL_SIMPLE(glGetUniformLocation(
+      result.gl_program_id, "model_view_projection_transform"));
   for (unsigned int i = 0; i < textures.size(); ++i) {
     std::string scale_translate_uniform_name =
-        StringPrintf("scale_translate_%s", textures[i].name.c_str());
-    result.texcoord_scale_translate_uniforms[i] = glGetUniformLocation(
-        result.gl_program_id, scale_translate_uniform_name.c_str());
-    DCHECK_EQ(GL_NO_ERROR, glGetError());
+        base::StringPrintf("scale_translate_%s", textures[i].name.c_str());
+    result.texcoord_scale_translate_uniforms[i] =
+        GL_CALL_SIMPLE(glGetUniformLocation(
+            result.gl_program_id, scale_translate_uniform_name.c_str()));
+    DCHECK_EQ(GL_NO_ERROR, GL_CALL_SIMPLE(glGetError()));
 
     std::string texture_uniform_name =
-        StringPrintf("texture_%s", textures[i].name.c_str());
-    result.texture_uniforms[i] = glGetUniformLocation(
-        result.gl_program_id, texture_uniform_name.c_str());
-    DCHECK_EQ(GL_NO_ERROR, glGetError());
+        base::StringPrintf("texture_%s", textures[i].name.c_str());
+    result.texture_uniforms[i] = GL_CALL_SIMPLE(glGetUniformLocation(
+        result.gl_program_id, texture_uniform_name.c_str()));
+    DCHECK_EQ(GL_NO_ERROR, GL_CALL_SIMPLE(glGetError()));
 
     std::string texture_size_name =
-        StringPrintf("texture_size_%s", textures[i].name.c_str());
-    result.texture_size_uniforms[i] =
-        glGetUniformLocation(result.gl_program_id, texture_size_name.c_str());
-    DCHECK_EQ(GL_NO_ERROR, glGetError());
+        base::StringPrintf("texture_size_%s", textures[i].name.c_str());
+    result.texture_size_uniforms[i] = GL_CALL_SIMPLE(
+        glGetUniformLocation(result.gl_program_id, texture_size_name.c_str()));
+    DCHECK_EQ(GL_NO_ERROR, GL_CALL_SIMPLE(glGetError()));
   }
 
   // Upload the color matrix right away since it won't change from draw to draw.
   GL_CALL(glUseProgram(result.gl_program_id));
-  uint32 to_rgb_color_matrix_uniform =
-      glGetUniformLocation(result.gl_program_id, "to_rgb_color_matrix");
+  uint32 to_rgb_color_matrix_uniform = GL_CALL_SIMPLE(
+      glGetUniformLocation(result.gl_program_id, "to_rgb_color_matrix"));
   GL_CALL(glUniformMatrix4fv(to_rgb_color_matrix_uniform, 1, GL_FALSE,
                              color_matrix));
   GL_CALL(glUseProgram(0));
@@ -483,13 +492,13 @@ TexturedMeshRenderer::ProgramInfo TexturedMeshRenderer::GetBlitProgram(
     const Image& image) {
   Image::Type type = image.type;
   uint32 texture_target = image.textures[0].texture->GetTarget();
-  base::optional<int32> texture_wrap_s;
+  base::Optional<int32> texture_wrap_s;
   if (type == Image::YUV_UYVY_422_BT709) {
     texture_wrap_s.emplace();
-    GL_CALL(glBindTexture(
-        texture_target, image.textures[0].texture->gl_handle()));
-    GL_CALL(glGetTexParameteriv(texture_target,
-                                GL_TEXTURE_WRAP_S, &(*texture_wrap_s)));
+    GL_CALL(
+        glBindTexture(texture_target, image.textures[0].texture->gl_handle()));
+    GL_CALL(glGetTexParameteriv(texture_target, GL_TEXTURE_WRAP_S,
+                                &(*texture_wrap_s)));
     GL_CALL(glBindTexture(texture_target, 0));
   }
 
@@ -534,7 +543,7 @@ TexturedMeshRenderer::ProgramInfo TexturedMeshRenderer::GetBlitProgram(
           default:
             NOTREACHED();
         }
-#else  // SB_API_VERSION >= 7
+#else   // SB_API_VERSION >= 7
         texture_infos.push_back(TextureInfo("y", "a"));
         texture_infos.push_back(TextureInfo("uv", "ba"));
 #endif  // SB_API_VERSION >= 7
@@ -542,8 +551,9 @@ TexturedMeshRenderer::ProgramInfo TexturedMeshRenderer::GetBlitProgram(
             color_matrix, texture_infos,
             CreateFragmentShader(texture_target, texture_infos));
       } break;
-      case Image::YUV_3PLANE_10BIT_BT2020:
-      case Image::YUV_3PLANE_BT709: {
+      case Image::YUV_3PLANE_BT601_FULL_RANGE:
+      case Image::YUV_3PLANE_BT709:
+      case Image::YUV_3PLANE_10BIT_BT2020: {
         std::vector<TextureInfo> texture_infos;
 #if SB_API_VERSION >= 7 && defined(GL_RED_EXT)
         if (image.textures[0].texture->GetFormat() == GL_RED_EXT) {
@@ -573,9 +583,9 @@ TexturedMeshRenderer::ProgramInfo TexturedMeshRenderer::GetBlitProgram(
       case Image::YUV_UYVY_422_BT709: {
         std::vector<TextureInfo> texture_infos;
         texture_infos.push_back(TextureInfo("uyvy", "rgba"));
-        result = MakeBlitProgram(color_matrix, texture_infos,
-                                 CreateUYVYFragmentShader(texture_target,
-                                                          *texture_wrap_s));
+        result = MakeBlitProgram(
+            color_matrix, texture_infos,
+            CreateUYVYFragmentShader(texture_target, *texture_wrap_s));
       } break;
       default: { NOTREACHED(); }
     }

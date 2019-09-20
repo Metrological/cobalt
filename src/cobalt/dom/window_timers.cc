@@ -15,10 +15,11 @@
 #include "cobalt/dom/window_timers.h"
 
 #include <limits>
+#include <memory>
 
 #include "base/bind.h"
 #include "base/bind_helpers.h"
-#include "base/debug/trace_event.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/dom/global_stats.h"
 #include "nb/memory_scope.h"
 
@@ -35,11 +36,17 @@ int WindowTimers::SetTimeout(const TimerCallbackArg& handler, int timeout) {
     return 0;
   }
 
-  scoped_ptr<base::Timer> timer(new base::OneShotTimer<TimerInfo>());
-  timer->Start(FROM_HERE, base::TimeDelta::FromMilliseconds(timeout),
-               base::Bind(&WindowTimers::RunTimerCallback,
-                          base::Unretained(this), handle));
-  timers_[handle] = new TimerInfo(owner_, timer.Pass(), handler);
+  if (callbacks_active_) {
+    auto* timer = new base::OneShotTimer();
+    timer->Start(FROM_HERE, base::TimeDelta::FromMilliseconds(timeout),
+                 base::Bind(&WindowTimers::RunTimerCallback,
+                            base::Unretained(this), handle));
+    timers_[handle] = new TimerInfo(
+        owner_, std::unique_ptr<base::internal::TimerBase>(timer), handler);
+  } else {
+    timers_[handle] = nullptr;
+  }
+
   return handle;
 }
 
@@ -54,17 +61,31 @@ int WindowTimers::SetInterval(const TimerCallbackArg& handler, int timeout) {
     return 0;
   }
 
-  scoped_ptr<base::Timer> timer(new base::RepeatingTimer<TimerInfo>());
-  timer->Start(FROM_HERE, base::TimeDelta::FromMilliseconds(timeout),
-               base::Bind(&WindowTimers::RunTimerCallback,
-                          base::Unretained(this), handle));
-  timers_[handle] = new TimerInfo(owner_, timer.Pass(), handler);
+  if (callbacks_active_) {
+    auto* timer(new base::RepeatingTimer());
+    timer->Start(FROM_HERE, base::TimeDelta::FromMilliseconds(timeout),
+                 base::Bind(&WindowTimers::RunTimerCallback,
+                            base::Unretained(this), handle));
+    timers_[handle] = new TimerInfo(
+        owner_, std::unique_ptr<base::internal::TimerBase>(timer), handler);
+  } else {
+    timers_[handle] = nullptr;
+  }
+
   return handle;
 }
 
 void WindowTimers::ClearInterval(int handle) { timers_.erase(handle); }
 
 void WindowTimers::ClearAllIntervalsAndTimeouts() { timers_.clear(); }
+
+void WindowTimers::DisableCallbacks() {
+  callbacks_active_ = false;
+  // Immediately cancel any pending timers.
+  for (auto& timer_entry : timers_) {
+    timer_entry.second = nullptr;
+  }
+}
 
 int WindowTimers::GetFreeTimerHandle() {
   int next_timer_index = current_timer_index_;
@@ -88,6 +109,8 @@ int WindowTimers::GetFreeTimerHandle() {
 
 void WindowTimers::RunTimerCallback(int handle) {
   TRACE_EVENT0("cobalt::dom", "WindowTimers::RunTimerCallback");
+  DCHECK(callbacks_active_)
+      << "All timer callbacks should have already been cancelled.";
   Timers::iterator timer = timers_.find(handle);
   DCHECK(timer != timers_.end());
 

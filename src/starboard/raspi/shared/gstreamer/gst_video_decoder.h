@@ -73,6 +73,7 @@ public:
     SbDecodeTarget GetCurrentDecodeTarget() override {
       return kSbDecodeTargetInvalid;
     }
+    size_t GetMaxNumberOfCachedFrames() const override { return 12; }
 
 private:
     bool TryToDeliverOneFrame();

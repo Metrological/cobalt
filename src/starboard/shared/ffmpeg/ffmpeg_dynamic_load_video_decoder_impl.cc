@@ -20,7 +20,7 @@
 #include "starboard/memory.h"
 #include "starboard/player.h"
 #include "starboard/shared/ffmpeg/ffmpeg_dispatch.h"
-#include "starboard/shared/ffmpeg/ffmpeg_video_decoder_impl.h"
+#include "starboard/shared/ffmpeg/ffmpeg_video_decoder_impl_interface.h"
 
 namespace starboard {
 namespace shared {
@@ -34,7 +34,6 @@ VideoDecoder* VideoDecoder::Create(
         decode_target_graphics_context_provider) {
   FFMPEGDispatch* ffmpeg = FFMPEGDispatch::GetInstance();
   if (!ffmpeg || !ffmpeg->is_valid()) {
-    SB_NOTREACHED();
     return NULL;
   }
 
@@ -54,7 +53,7 @@ VideoDecoder* VideoDecoder::Create(
           video_codec, output_mode, decode_target_graphics_context_provider);
       break;
     default:
-      SB_NOTREACHED() << "Unsupported FFMPEG version " << std::hex
+      SB_LOG(WARNING) << "Unsupported FFMPEG version " << std::hex
                       << ffmpeg->avutil_version();
       break;
   }

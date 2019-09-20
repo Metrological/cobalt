@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkFontMgr_cobalt.h"
 
 #include "SkData.h"
@@ -19,7 +21,8 @@
 #include "SkStream.h"
 #include "SkString.h"
 #include "SkTSearch.h"
-#include "base/debug/trace_event.h"
+#include "base/memory/ptr_util.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkFontConfigParser_cobalt.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkFreeType_cobalt.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkTypeface_cobalt.h"
@@ -46,11 +49,14 @@ SkFontMgr_Cobalt::SkFontMgr_Cobalt(
   }
 
   // Only attempt to load the system font families if the system directories
-  // have been populated.
+  // have been populated and if the system font directory is not equal to the
+  // cobalt directory.
   if (system_font_config_directory != NULL &&
       *system_font_config_directory != '\0' &&
       system_font_files_directory != NULL &&
-      *system_font_files_directory != '\0') {
+      *system_font_files_directory != '\0' &&
+      (0 != SbStringCompareAll(cobalt_font_files_directory,
+                               system_font_files_directory))) {
     TRACE_EVENT0("cobalt::renderer", "LoadSystemFontFamilies");
     ParseConfigAndBuildFamilies(system_font_config_directory,
                                 system_font_files_directory,
@@ -224,7 +230,7 @@ SkTypeface* SkFontMgr_Cobalt::onMatchFamilyStyleCharacter(
 
 SkTypeface* SkFontMgr_Cobalt::onCreateFromData(SkData* data,
                                                int face_index) const {
-  scoped_ptr<SkStreamAsset> stream(
+  std::unique_ptr<SkStreamAsset> stream(
       new SkMemoryStream(data->data(), data->size()));
   return createFromStream(stream.get(), face_index);
 }
@@ -443,8 +449,10 @@ SkFontMgr_Cobalt::StyleSetArray* SkFontMgr_Cobalt::GetMatchingFallbackFamilies(
   // this is the first time that this tag has been encountered, then create and
   // populate the fallback families now.
   if (language_fallback_families == NULL) {
-    language_fallback_families_array_.push_back(new StyleSetArray);
-    language_fallback_families = *language_fallback_families_array_.rbegin();
+    language_fallback_families_array_.push_back(
+        base::WrapUnique(new StyleSetArray));
+    language_fallback_families =
+        language_fallback_families_array_.rbegin()->get();
 
     for (StyleSetArray::iterator iter = fallback_families_.begin();
          iter != fallback_families_.end(); ++iter) {

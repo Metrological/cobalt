@@ -88,8 +88,13 @@ typedef enum SbFileError {
   kSbFileErrorNotAFile = -13,
   kSbFileErrorNotEmpty = -14,
   kSbFileErrorInvalidUrl = -15,
+#if SB_API_VERSION >= 11
+  kSbFileErrorIO = -16,
+  kSbFileErrorMax = -17,
+#else
   // Put new entries here and increment kSbFileErrorMax.
   kSbFileErrorMax = -16,
+#endif
 } SbFileError;
 
 // This explicit mapping matches both FILE_ on Windows and SEEK_ on Linux.
@@ -252,7 +257,7 @@ SB_EXPORT bool SbFileCanOpen(const char* path, int flags);
 SB_EXPORT int SbFileModeStringToFlags(const char* mode);
 
 // Reads |size| bytes (or until EOF is reached) from |file| into |data|,
-// starting from the beginning of the file.
+// starting at the file's current position.
 //
 // The return value specifies the number of bytes read or |-1| if there was
 // an error. Note that, unlike |SbFileRead|, this function does make a best
@@ -372,6 +377,10 @@ class ScopedFile {
     bool success = GetInfo(&file_info);
     return (success ? file_info.size : -1);
   }
+
+  // disallow copy and move operations
+  ScopedFile(const ScopedFile&) = delete;
+  ScopedFile& operator=(const ScopedFile&) = delete;
 
  private:
   SbFile file_;

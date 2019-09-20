@@ -14,12 +14,11 @@
 
 #include "cobalt/renderer/backend/egl/texture_data_cpu.h"
 
-#include <GLES2/gl2.h>
-#include <GLES2/gl2ext.h>
-
 #include "base/memory/aligned_memory.h"
 #include "cobalt/renderer/backend/egl/graphics_context.h"
 #include "cobalt/renderer/backend/egl/utils.h"
+#include "cobalt/renderer/egl_and_gles.h"
+#include "starboard/memory.h"
 
 namespace cobalt {
 namespace renderer {
@@ -42,19 +41,39 @@ GLuint UploadPixelDataToNewTexture(GraphicsContextEGL* graphics_context,
     DCHECK(bgra_supported);
   }
 
-  DCHECK_EQ(size.width() * BytesPerPixelForGLFormat(format), pitch_in_bytes);
+  std::unique_ptr<uint8_t, base::AlignedFreeDeleter>
+      buffer_for_pitch_adjustment;
+  auto width_in_bytes = size.width() * BytesPerPixelForGLFormat(format);
+  if (width_in_bytes != pitch_in_bytes) {
+    // In case the source image data is not packed tightly, we must reformat it
+    // such that the pitch matches the width before passing it to glTexImage2D.
+    buffer_for_pitch_adjustment.reset(static_cast<uint8_t*>(
+        base::AlignedAlloc(width_in_bytes * size.height(), 8)));
+    for (int i = 0; i < size.height(); ++i) {
+      SbMemoryCopy(buffer_for_pitch_adjustment.get() + i * width_in_bytes,
+                   data + i * pitch_in_bytes, width_in_bytes);
+    }
+    data = reinterpret_cast<uint8_t*>(buffer_for_pitch_adjustment.get());
+  }
+
+  GLint original_texture_alignment;
+  GL_CALL(glGetIntegerv(GL_UNPACK_ALIGNMENT, &original_texture_alignment));
+  GL_CALL(glPixelStorei(GL_UNPACK_ALIGNMENT, 1));
 
   // Copy pixel data over from the user provided source data into the OpenGL
   // driver to be used as a texture from now on.
-  glTexImage2D(GL_TEXTURE_2D, 0, format, size.width(), size.height(), 0, format,
-               GL_UNSIGNED_BYTE, data);
-  if (glGetError() != GL_NO_ERROR) {
+  GL_CALL_SIMPLE(glTexImage2D(GL_TEXTURE_2D, 0, format, size.width(),
+                              size.height(), 0, format, GL_UNSIGNED_BYTE,
+                              data));
+  if (GL_CALL_SIMPLE(glGetError()) != GL_NO_ERROR) {
     LOG(ERROR) << "Error calling glTexImage2D(size = (" << size.width() << ", "
                << size.height() << "))";
     GL_CALL(glDeleteTextures(1, &texture_handle));
     // 0 is considered by GL to be an invalid handle.
     texture_handle = 0;
   }
+
+  GL_CALL(glPixelStorei(GL_UNPACK_ALIGNMENT, original_texture_alignment));
 
   GL_CALL(glBindTexture(GL_TEXTURE_2D, 0));
 
@@ -82,7 +101,7 @@ bool TextureDataCPU::CreationError() { return memory_.get() == NULL; }
 
 RawTextureMemoryCPU::RawTextureMemoryCPU(size_t size_in_bytes, size_t alignment)
     : size_in_bytes_(size_in_bytes) {
-  memory_ = scoped_ptr_malloc<uint8_t, base::ScopedPtrAlignedFree>(
+  memory_ = std::unique_ptr<uint8_t, base::AlignedFreeDeleter>(
       static_cast<uint8_t*>(base::AlignedAlloc(size_in_bytes, alignment)));
 }
 

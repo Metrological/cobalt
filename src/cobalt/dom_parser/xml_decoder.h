@@ -15,11 +15,11 @@
 #ifndef COBALT_DOM_PARSER_XML_DECODER_H_
 #define COBALT_DOM_PARSER_XML_DECODER_H_
 
+#include <memory>
 #include <string>
 
 #include "base/callback.h"
 #include "base/memory/ref_counted.h"
-#include "base/memory/scoped_ptr.h"
 #include "base/threading/thread_checker.h"
 #include "cobalt/base/source_location.h"
 #include "cobalt/dom/node.h"
@@ -42,8 +42,7 @@ class XMLDecoder : public loader::Decoder {
              const scoped_refptr<dom::Node>& reference_node,
              const int dom_max_element_depth,
              const base::SourceLocation& input_location,
-             const base::Closure& done_callback,
-             const base::Callback<void(const std::string&)>& error_callback);
+             const loader::Decoder::OnCompleteFunction& load_complete_callback);
 
   ~XMLDecoder();
 
@@ -59,10 +58,10 @@ class XMLDecoder : public loader::Decoder {
  private:
   // This subclass is responsible for providing the handlers for the interface
   // of libxml2's SAX parser.
-  scoped_ptr<LibxmlXMLParserWrapper> libxml_xml_parser_wrapper_;
+  std::unique_ptr<LibxmlXMLParserWrapper> libxml_xml_parser_wrapper_;
 
-  base::ThreadChecker thread_checker_;
-  const base::Closure done_callback_;
+  THREAD_CHECKER(thread_checker_);
+  const loader::Decoder::OnCompleteFunction load_complete_callback_;
 
   DISALLOW_COPY_AND_ASSIGN(XMLDecoder);
 };

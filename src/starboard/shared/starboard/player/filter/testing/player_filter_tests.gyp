@@ -19,16 +19,22 @@
       'type': '<(gtest_target_type)',
       'sources': [
         '<(DEPTH)/starboard/common/test_main.cc',
+        '<(DEPTH)/starboard/shared/starboard/player/filter/testing/adaptive_audio_decoder_test.cc',
         '<(DEPTH)/starboard/shared/starboard/player/filter/testing/audio_decoder_test.cc',
         '<(DEPTH)/starboard/shared/starboard/player/filter/testing/audio_renderer_internal_test.cc',
         '<(DEPTH)/starboard/shared/starboard/player/filter/testing/media_time_provider_impl_test.cc',
         '<(DEPTH)/starboard/shared/starboard/player/filter/testing/video_decoder_test.cc',
-        '<(DEPTH)/starboard/shared/starboard/player/video_dmp_common.cc',
-        '<(DEPTH)/starboard/shared/starboard/player/video_dmp_common.h',
-        '<(DEPTH)/starboard/shared/starboard/player/video_dmp_reader.cc',
-        '<(DEPTH)/starboard/shared/starboard/player/video_dmp_reader.h',
         '<(DEPTH)/starboard/testing/fake_graphics_context_provider.cc',
         '<(DEPTH)/starboard/testing/fake_graphics_context_provider.h',
+      ],
+      'conditions': [
+        ['gl_type != "none"', {
+          'dependencies': [
+            # This is needed because VideoDecoderTest depends on
+            # FakeGraphicsContextProvider which depends on EGL and GLES.
+            '<(DEPTH)/starboard/egl_and_gles/egl_and_gles.gyp:egl_and_gles',
+          ],
+        }],
       ],
       'defines': [
         # This allows the tests to include internal only header files.
@@ -36,36 +42,12 @@
       ],
       'dependencies': [
         '<@(cobalt_platform_dependencies)',
+        '<(DEPTH)/starboard/shared/starboard/player/player.gyp:video_dmp',
+        '<(DEPTH)/starboard/shared/starboard/player/player.gyp:player_copy_test_data',
         '<(DEPTH)/starboard/starboard.gyp:starboard',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
-        'player_filter_tests_copy_test_data',
       ],
-    },
-    {
-      'target_name': 'player_filter_tests_copy_test_data',
-      'type': 'none',
-      'variables': {
-        'content_test_input_files': ['<!@(python <(DEPTH)/starboard/build/list_dmp_files.py "starboard/shared/starboard/player/testdata")'],
-        'content_test_output_subdir': 'starboard/shared/starboard/player/testdata',
-      },
-      'actions' : [
-        {
-          # This action requires depot_tools to be in path
-          # (https://cobalt.googlesource.com/depot_tools).
-          'action_name': 'player_filter_tests_download_test_data',
-          'action': [ 'download_from_google_storage',
-                      '--no_resume',
-                      '--no_auth',
-                      '--num_threads', '8',
-                      '--bucket', 'cobalt-static-storage',
-                      '-d', '<(DEPTH)/starboard/shared/starboard/player/testdata',
-          ],
-          'inputs': [],
-          'outputs': ['<!@(python <(DEPTH)/starboard/build/list_dmp_files.py "starboard/shared/starboard/player/testdata")'],
-        },
-      ],
-      'includes': ['<(DEPTH)/starboard/build/copy_test_data.gypi'],
     },
     {
       'target_name': 'player_filter_tests_deploy',

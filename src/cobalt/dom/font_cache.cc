@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "cobalt/dom/font_cache.h"
 
 namespace cobalt {
@@ -34,7 +36,7 @@ FontCache::RequestedRemoteTypefaceInfo::RequestedRemoteTypefaceInfo(
           new loader::font::CachedRemoteTypefaceReferenceWithCallbacks(
               cached_remote_typeface, typeface_load_event_callback,
               typeface_load_event_callback)),
-      request_timer_(new base::Timer(false, false)) {
+      request_timer_(new base::OneShotTimer()) {
   request_timer_->Start(FROM_HERE,
                         base::TimeDelta::FromMilliseconds(kRequestTimerDelay),
                         typeface_load_event_callback);
@@ -54,8 +56,8 @@ FontCache::FontCache(render_tree::ResourceProvider** resource_provider,
       last_inactive_process_time_(base::TimeTicks::Now()),
       document_location_(document_location) {}
 
-void FontCache::SetFontFaceMap(scoped_ptr<FontFaceMap> font_face_map) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+void FontCache::SetFontFaceMap(std::unique_ptr<FontFaceMap> font_face_map) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   // If nothing has changed, then there's nothing to update. Just return.
   if (*font_face_map == *font_face_map_) {
     return;
@@ -65,7 +67,7 @@ void FontCache::SetFontFaceMap(scoped_ptr<FontFaceMap> font_face_map) {
   // mappings as a result of the font face map changing.
   font_list_map_.clear();
 
-  font_face_map_ = font_face_map.Pass();
+  font_face_map_ = std::move(font_face_map);
 
   // Generate a set of the urls contained within the new font face map.
   std::set<GURL> new_url_set;
@@ -93,7 +95,7 @@ void FontCache::SetFontFaceMap(scoped_ptr<FontFaceMap> font_face_map) {
 }
 
 void FontCache::PurgeCachedResources() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   requested_remote_typeface_cache_.clear();
 
   // Remove all font lists that are unreferenced outside of the cache and reset
@@ -123,7 +125,7 @@ void FontCache::PurgeCachedResources() {
 }
 
 void FontCache::ProcessInactiveFontListsAndFonts() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   base::TimeTicks current_time = base::TimeTicks::Now();
   if ((current_time - last_inactive_process_time_).InMilliseconds() >
       kInactiveProcessTimeIntervalMs) {
@@ -135,9 +137,9 @@ void FontCache::ProcessInactiveFontListsAndFonts() {
 
 const scoped_refptr<dom::FontList>& FontCache::GetFontList(
     const FontListKey& font_list_key) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   FontListInfo& font_list_info = font_list_map_[font_list_key];
-  if (font_list_info.font_list == NULL) {
+  if (font_list_info.font_list.get() == NULL) {
     font_list_info.font_list = new FontList(this, font_list_key);
   }
   return font_list_info.font_list;
@@ -145,12 +147,12 @@ const scoped_refptr<dom::FontList>& FontCache::GetFontList(
 
 const scoped_refptr<render_tree::Font>& FontCache::GetFontFromTypefaceAndSize(
     const scoped_refptr<render_tree::Typeface>& typeface, float size) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   FontKey font_key(typeface->GetId(), size);
   // Check to see if the font is already in the cache. If it is not, then
   // create it from the typeface and size and add it to the cache.
   FontInfo& cached_font_info = font_map_[font_key];
-  if (cached_font_info.font == NULL) {
+  if (cached_font_info.font.get() == NULL) {
     cached_font_info.font = typeface->CreateFontWithSize(size);
   }
   return cached_font_info.font;
@@ -159,7 +161,7 @@ const scoped_refptr<render_tree::Font>& FontCache::GetFontFromTypefaceAndSize(
 scoped_refptr<render_tree::Font> FontCache::TryGetFont(
     const std::string& family, render_tree::FontStyle style, float size,
     FontListFont::State* state) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   FontFaceMap::iterator font_face_map_iterator = font_face_map_->find(family);
   if (font_face_map_iterator != font_face_map_->end()) {
     // Retrieve the font face style set entry that most closely matches the
@@ -186,7 +188,7 @@ scoped_refptr<render_tree::Font> FontCache::TryGetFont(
       } else {
         scoped_refptr<render_tree::Font> font =
             TryGetLocalFontByFaceName(source_iterator->GetName(), size, state);
-        if (font != NULL) {
+        if (font.get() != NULL) {
           return font;
         }
       }
@@ -202,14 +204,14 @@ scoped_refptr<render_tree::Font> FontCache::TryGetFont(
 FontCache::CharacterFallbackTypefaceMap&
 FontCache::GetCharacterFallbackTypefaceMap(
     const render_tree::FontStyle& style) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   return character_fallback_typeface_maps_[CharacterFallbackKey(style)];
 }
 
 const scoped_refptr<render_tree::Typeface>&
 FontCache::GetCharacterFallbackTypeface(int32 utf32_character,
                                         const render_tree::FontStyle& style) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(resource_provider());
   return GetCachedLocalTypeface(
       resource_provider()->GetCharacterFallbackTypeface(utf32_character, style,
@@ -217,7 +219,7 @@ FontCache::GetCharacterFallbackTypeface(int32 utf32_character,
 }
 
 scoped_refptr<render_tree::GlyphBuffer> FontCache::CreateGlyphBuffer(
-    const char16* text_buffer, int32 text_length, bool is_rtl,
+    const base::char16* text_buffer, int32 text_length, bool is_rtl,
     FontList* font_list) {
   DCHECK(resource_provider());
   return resource_provider()->CreateGlyphBuffer(
@@ -225,8 +227,9 @@ scoped_refptr<render_tree::GlyphBuffer> FontCache::CreateGlyphBuffer(
       font_list);
 }
 
-float FontCache::GetTextWidth(const char16* text_buffer, int32 text_length,
-                              bool is_rtl, FontList* font_list,
+float FontCache::GetTextWidth(const base::char16* text_buffer,
+                              int32 text_length, bool is_rtl,
+                              FontList* font_list,
                               render_tree::FontVector* maybe_used_fonts) {
   DCHECK(resource_provider());
   return resource_provider()->GetTextWidth(
@@ -318,7 +321,7 @@ const scoped_refptr<render_tree::Typeface>& FontCache::GetCachedLocalTypeface(
   // it is not, then add the passed in typeface to the cache.
   scoped_refptr<render_tree::Typeface>& cached_typeface =
       local_typeface_map_[typeface->GetId()];
-  if (cached_typeface == NULL) {
+  if (cached_typeface.get() == NULL) {
     cached_typeface = typeface;
   }
   return cached_typeface;
@@ -329,7 +332,7 @@ scoped_refptr<render_tree::Font> FontCache::TryGetRemoteFont(
   // Retrieve the font from the remote typeface cache, potentially triggering a
   // load.
   scoped_refptr<loader::font::CachedRemoteTypeface> cached_remote_typeface =
-      remote_typeface_cache_->CreateCachedResource(
+      remote_typeface_cache_->GetOrCreateCachedResource(
           url, document_location_ ? document_location_->GetOriginAsObject()
                                   : loader::Origin());
 
@@ -359,7 +362,7 @@ scoped_refptr<render_tree::Font> FontCache::TryGetRemoteFont(
 
   scoped_refptr<render_tree::Typeface> typeface =
       cached_remote_typeface->TryGetResource();
-  if (typeface != NULL) {
+  if (typeface.get() != NULL) {
     *state = FontListFont::kLoadedState;
     return GetFontFromTypefaceAndSize(typeface, size);
   } else {
@@ -423,7 +426,7 @@ scoped_refptr<render_tree::Font> FontCache::TryGetLocalFontByFaceName(
 }
 
 void FontCache::OnRemoteTypefaceLoadEvent(const GURL& url) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   RequestedRemoteTypefaceMap::iterator requested_remote_typeface_iterator =
       requested_remote_typeface_cache_.find(url);
   if (requested_remote_typeface_iterator !=

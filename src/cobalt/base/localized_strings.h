@@ -22,7 +22,7 @@
 
 namespace base {
 
-// A Singleton that stores the localized string table used by the app.
+// A base::Singleton that stores the localized string table used by the app.
 class LocalizedStrings {
  public:
   static LocalizedStrings* GetInstance();
@@ -33,19 +33,23 @@ class LocalizedStrings {
   // Gets a localized string.
   std::string GetString(const std::string& id, const std::string& fallback);
 
- protected:
-  // Loads the strings for a particular language.
-  void LoadStrings(const std::string& language);
-
  private:
-  typedef std::map<std::string, std::string> StringContainer;
+  typedef std::map<std::string, std::string> StringMap;
 
-  friend struct DefaultSingletonTraits<LocalizedStrings>;
+  friend struct base::DefaultSingletonTraits<LocalizedStrings>;
 
   LocalizedStrings();
   ~LocalizedStrings();
 
-  StringContainer strings_;
+  // Loads the strings for a particular language.
+  // Returns true if successful, false otherwise.
+  bool LoadStrings(const std::string& language);
+
+  // Loads a single string.
+  // Returns true if successful, false otherwise.
+  bool LoadSingleString(const std::string& message);
+
+  StringMap strings_;
 
   DISALLOW_COPY_AND_ASSIGN(LocalizedStrings);
 };

@@ -61,7 +61,7 @@
         ],
       },
       'dependencies': [
-        '<(DEPTH)/starboard/egl_and_gles/egl_and_gles.gyp:egl_and_gles',
+        '<(DEPTH)/starboard/starboard_headers_only.gyp:starboard_headers_only',
       ],
     }, {
       'variables': {
@@ -78,6 +78,11 @@
           'SK_BUILD_FOR_WIN32',
         ],
       },
+    }],
+    ['clang == 1', {
+      'cflags': [
+        '-Wno-tautological-compare',
+      ],
     }],
   ],
 

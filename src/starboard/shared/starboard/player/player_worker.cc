@@ -16,10 +16,10 @@
 
 #include <string>
 
+#include "starboard/common/condition_variable.h"
+#include "starboard/common/mutex.h"
 #include "starboard/common/reset_and_return.h"
-#include "starboard/condition_variable.h"
 #include "starboard/memory.h"
-#include "starboard/mutex.h"
 
 namespace starboard {
 namespace shared {
@@ -30,6 +30,13 @@ namespace {
 
 using std::placeholders::_1;
 using std::placeholders::_2;
+using std::placeholders::_3;
+
+#ifdef SB_MEDIA_PLAYER_THREAD_STACK_SIZE
+const int kPlayerStackSize = SB_MEDIA_PLAYER_THREAD_STACK_SIZE;
+#else
+const int kPlayerStackSize = 0;
+#endif
 
 // 8 ms is enough to ensure that DoWritePendingSamples() is called twice for
 // every frame in HFR.
@@ -47,6 +54,46 @@ struct ThreadParam {
 };
 
 }  // namespace
+
+PlayerWorker* PlayerWorker::CreateInstance(
+    SbMediaAudioCodec audio_codec,
+    SbMediaVideoCodec video_codec,
+    scoped_ptr<Handler> handler,
+    UpdateMediaInfoCB update_media_info_cb,
+    SbPlayerDecoderStatusFunc decoder_status_func,
+    SbPlayerStatusFunc player_status_func,
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+    SbPlayerErrorFunc player_error_func,
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
+    SbPlayer player,
+    void* context) {
+
+  PlayerWorker* ret = new PlayerWorker(audio_codec, video_codec, handler.Pass(),
+                                       update_media_info_cb,
+                                       decoder_status_func, player_status_func,
+#if SB_HAS(PLAYER_ERROR_MESSAGE)
+                                       player_error_func,
+#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
+                                       player, context);
+
+  if (ret && SbThreadIsValid(ret->thread_)) {
+    return ret;
+  }
+  delete ret;
+  return nullptr;
+}
+
+PlayerWorker::~PlayerWorker() {
+  if (SbThreadIsValid(thread_)) {
+    job_queue_->Schedule(std::bind(&PlayerWorker::DoStop, this));
+    SbThreadJoin(thread_, NULL);
+    thread_ = kSbThreadInvalid;
+
+    // Now the whole pipeline has been torn down and no callback will be called.
+    // The caller can ensure that upon the return of SbPlayerDestroy() all side
+    // effects are gone.
+  }
+}
 
 PlayerWorker::PlayerWorker(SbMediaAudioCodec audio_codec,
                            SbMediaVideoCodec video_codec,
@@ -77,9 +124,9 @@ PlayerWorker::PlayerWorker(SbMediaAudioCodec audio_codec,
   SB_DCHECK(update_media_info_cb_);
 
   ThreadParam thread_param(this);
-  thread_ = SbThreadCreate(0, kSbThreadPriorityHigh, kSbThreadNoAffinity, true,
-                           "player_worker", &PlayerWorker::ThreadEntryPoint,
-                           &thread_param);
+  thread_ = SbThreadCreate(kPlayerStackSize, kSbThreadPriorityHigh,
+                           kSbThreadNoAffinity, true, "player_worker",
+                           &PlayerWorker::ThreadEntryPoint, &thread_param);
   if (!SbThreadIsValid(thread_)) {
     SB_DLOG(ERROR) << "Failed to create thread in PlayerWorker constructor.";
     return;
@@ -91,24 +138,16 @@ PlayerWorker::PlayerWorker(SbMediaAudioCodec audio_codec,
   SB_DCHECK(job_queue_);
 }
 
-PlayerWorker::~PlayerWorker() {
-  job_queue_->Schedule(std::bind(&PlayerWorker::DoStop, this));
-  SbThreadJoin(thread_, NULL);
-  thread_ = kSbThreadInvalid;
-
-  // Now the whole pipeline has been torn down and no callback will be called.
-  // The caller can ensure that upon the return of SbPlayerDestroy() all side
-  // effects are gone.
-}
-
-void PlayerWorker::UpdateMediaInfo(SbTime time, int dropped_video_frames) {
-  update_media_info_cb_(time, dropped_video_frames, ticket_);
+void PlayerWorker::UpdateMediaInfo(SbTime time,
+                                   int dropped_video_frames,
+                                   bool underflow) {
+  update_media_info_cb_(time, dropped_video_frames, ticket_, underflow);
 }
 
 void PlayerWorker::UpdatePlayerState(SbPlayerState player_state) {
 #if SB_HAS(PLAYER_ERROR_MESSAGE)
-  SB_DCHECK(!error_occurred_) << "Player state should not update after error.";
   if (error_occurred_) {
+    SB_LOG(WARNING) << "Player state is updated after an error.";
     return;
   }
 #else   // SB_HAS(PLAYER_ERROR_MESSAGE)
@@ -178,11 +217,11 @@ void PlayerWorker::DoInit() {
   update_player_error_cb =
       std::bind(&PlayerWorker::UpdatePlayerError, this, _1, _2);
 #endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
-  if (handler_->Init(player_,
-                     std::bind(&PlayerWorker::UpdateMediaInfo, this, _1, _2),
-                     std::bind(&PlayerWorker::player_state, this),
-                     std::bind(&PlayerWorker::UpdatePlayerState, this, _1),
-                     update_player_error_cb)) {
+  if (handler_->Init(
+          player_, std::bind(&PlayerWorker::UpdateMediaInfo, this, _1, _2, _3),
+          std::bind(&PlayerWorker::player_state, this),
+          std::bind(&PlayerWorker::UpdatePlayerState, this, _1),
+          update_player_error_cb)) {
     UpdatePlayerState(kSbPlayerStateInitialized);
   } else {
 #if SB_HAS(PLAYER_ERROR_MESSAGE)

@@ -12,16 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "cobalt/dom/html_element.h"
 
 #include "base/basictypes.h"
-#include "base/memory/scoped_vector.h"
-#include "base/message_loop.h"
+#include "base/message_loop/message_loop.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/cssom/css_computed_style_data.h"
 #include "cobalt/cssom/css_declared_style_data.h"
 #include "cobalt/cssom/keyword_value.h"
 #include "cobalt/cssom/testing/mock_css_parser.h"
+#include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/document.h"
 #include "cobalt/dom/dom_rect_list.h"
 #include "cobalt/dom/dom_stat_tracker.h"
@@ -37,32 +39,40 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-using ::testing::Return;
-using ::testing::_;
+using cobalt::cssom::ViewportSize;
+using testing::Return;
+using testing::_;
 
 namespace cobalt {
 namespace dom {
 
 namespace {
 
+ViewportSize kViewSize(320, 240);
+
 // Useful for using base::Bind() along with GMock actions.
 ACTION_P(InvokeCallback0, callback) {
-  UNREFERENCED_PARAMETER(args);
-  UNREFERENCED_PARAMETER(arg0);
-  UNREFERENCED_PARAMETER(arg1);
-  UNREFERENCED_PARAMETER(arg2);
-  UNREFERENCED_PARAMETER(arg3);
-  UNREFERENCED_PARAMETER(arg4);
-  UNREFERENCED_PARAMETER(arg5);
-  UNREFERENCED_PARAMETER(arg6);
-  UNREFERENCED_PARAMETER(arg7);
-  UNREFERENCED_PARAMETER(arg8);
-  UNREFERENCED_PARAMETER(arg9);
+  SB_UNREFERENCED_PARAMETER(args);
+  SB_UNREFERENCED_PARAMETER(arg0);
+  SB_UNREFERENCED_PARAMETER(arg1);
+  SB_UNREFERENCED_PARAMETER(arg2);
+  SB_UNREFERENCED_PARAMETER(arg3);
+  SB_UNREFERENCED_PARAMETER(arg4);
+  SB_UNREFERENCED_PARAMETER(arg5);
+  SB_UNREFERENCED_PARAMETER(arg6);
+  SB_UNREFERENCED_PARAMETER(arg7);
+  SB_UNREFERENCED_PARAMETER(arg8);
+  SB_UNREFERENCED_PARAMETER(arg9);
   callback.Run();
 }
 
 const char kFooBarDeclarationString[] = "foo: bar;";
 const char kDisplayInlineDeclarationString[] = "display: inline;";
+const char* kHtmlElementTagNames[] = {
+  // "audio", "script", and "video" are excluded since they need more setup.
+  "a", "body", "br", "div", "head", "h1", "html", "img", "link",
+  "meta", "p", "span", "style", "title"
+};
 
 class MockLayoutBoxes : public LayoutBoxes {
  public:
@@ -75,6 +85,7 @@ class MockLayoutBoxes : public LayoutBoxes {
   MOCK_CONST_METHOD0(GetBorderEdgeTop, float());
   MOCK_CONST_METHOD0(GetBorderEdgeWidth, float());
   MOCK_CONST_METHOD0(GetBorderEdgeHeight, float());
+  MOCK_CONST_METHOD0(GetBorderEdgeOffsetFromContainingBlock, math::Vector2dF());
 
   MOCK_CONST_METHOD0(GetBorderLeftWidth, float());
   MOCK_CONST_METHOD0(GetBorderTopWidth, float());
@@ -82,10 +93,19 @@ class MockLayoutBoxes : public LayoutBoxes {
   MOCK_CONST_METHOD0(GetMarginEdgeWidth, float());
   MOCK_CONST_METHOD0(GetMarginEdgeHeight, float());
 
-  MOCK_CONST_METHOD0(GetPaddingEdgeLeft, float());
-  MOCK_CONST_METHOD0(GetPaddingEdgeTop, float());
+  MOCK_CONST_METHOD0(GetPaddingEdgeOffset, math::Vector2dF());
   MOCK_CONST_METHOD0(GetPaddingEdgeWidth, float());
   MOCK_CONST_METHOD0(GetPaddingEdgeHeight, float());
+  MOCK_CONST_METHOD0(GetPaddingEdgeOffsetFromContainingBlock,
+                     math::Vector2dF());
+
+  MOCK_CONST_METHOD0(GetContentEdgeOffset, math::Vector2dF());
+  MOCK_CONST_METHOD0(GetContentEdgeWidth, float());
+  MOCK_CONST_METHOD0(GetContentEdgeHeight, float());
+  MOCK_CONST_METHOD0(GetContentEdgeOffsetFromContainingBlock,
+                     math::Vector2dF());
+
+  MOCK_CONST_METHOD1(GetScrollArea, math::RectF(dom::Directionality));
 
   MOCK_METHOD0(InvalidateSizes, void());
   MOCK_METHOD0(InvalidateCrossReferences, void());
@@ -128,7 +148,7 @@ class HTMLElementTest : public ::testing::Test {
                        HTMLElement* html_element);
 
   cssom::testing::MockCSSParser css_parser_;
-  scoped_ptr<DomStatTracker> dom_stat_tracker_;
+  std::unique_ptr<DomStatTracker> dom_stat_tracker_;
   HTMLElementContext html_element_context_;
   scoped_refptr<Document> document_;
 };
@@ -154,12 +174,13 @@ HTMLElementTest::CreateHTMLElementTreeWithMockLayoutBoxes(
             ->AsHTMLElement());
     DCHECK(child_html_element);
     child_html_element->css_computed_style_declaration()->SetData(
-        make_scoped_refptr(new cssom::CSSComputedStyleData()));
+        base::WrapRefCounted(new cssom::CSSComputedStyleData()));
 
     if (parent_html_element) {
       // Set layout boxes for all elements that have a child.
-      scoped_ptr<MockLayoutBoxes> layout_boxes(new MockLayoutBoxes);
-      parent_html_element->set_layout_boxes(layout_boxes.PassAs<LayoutBoxes>());
+      std::unique_ptr<MockLayoutBoxes> layout_boxes(new MockLayoutBoxes);
+      parent_html_element->set_layout_boxes(
+          std::unique_ptr<LayoutBoxes>(layout_boxes.release()));
 
       parent_html_element->AppendChild(child_html_element);
     }
@@ -176,9 +197,9 @@ HTMLElementTest::CreateHTMLElementTreeWithMockLayoutBoxes(
     scoped_refptr<Element> child_element =
         parent_element->first_element_child();
     if (child_element) {
-      scoped_ptr<MockLayoutBoxes> layout_boxes(new MockLayoutBoxes);
+      std::unique_ptr<MockLayoutBoxes> layout_boxes(new MockLayoutBoxes);
       parent_element->AsHTMLElement()->set_layout_boxes(
-          layout_boxes.PassAs<LayoutBoxes>());
+          std::unique_ptr<LayoutBoxes>(layout_boxes.release()));
     }
     parent_element = child_element;
   }
@@ -188,31 +209,48 @@ HTMLElementTest::CreateHTMLElementTreeWithMockLayoutBoxes(
 }
 
 TEST_F(HTMLElementTest, Dir) {
-  scoped_refptr<HTMLElement> html_element =
-      document_->CreateElement("div")->AsHTMLElement();
-  EXPECT_EQ("", html_element->dir());
+  for (size_t i = 0; i < arraysize(kHtmlElementTagNames); ++i) {
+    scoped_refptr<HTMLElement> html_element =
+        document_->CreateElement(kHtmlElementTagNames[i])->AsHTMLElement();
+    EXPECT_EQ("", html_element->dir());
 
-  html_element->set_dir("invalid");
-  EXPECT_EQ("", html_element->dir());
+    html_element->set_dir("invalid");
+    EXPECT_EQ("", html_element->dir());
 
-  html_element->set_dir("ltr");
-  EXPECT_EQ("ltr", html_element->dir());
+    html_element->set_dir("ltr");
+    EXPECT_EQ("ltr", html_element->dir());
 
-  html_element->set_dir("rtl");
-  EXPECT_EQ("rtl", html_element->dir());
+    html_element->set_dir("rtl");
+    EXPECT_EQ("rtl", html_element->dir());
 
-  // Value "auto" is not supported.
-  html_element->set_dir("auto");
-  EXPECT_EQ("", html_element->dir());
+    // Value "auto" is not supported.
+    html_element->set_dir("auto");
+    EXPECT_EQ("", html_element->dir());
+
+    html_element->SetAttribute("Dir", "rtl");
+    EXPECT_EQ("rtl", html_element->dir());
+
+    html_element->RemoveAttribute("diR");
+    EXPECT_EQ("", html_element->dir());
+  }
 }
 
 TEST_F(HTMLElementTest, TabIndex) {
-  scoped_refptr<HTMLElement> html_element =
-      document_->CreateElement("div")->AsHTMLElement();
-  EXPECT_EQ(0, html_element->tab_index());
+  for (size_t i = 0; i < arraysize(kHtmlElementTagNames); ++i) {
+    scoped_refptr<HTMLElement> html_element =
+        document_->CreateElement(kHtmlElementTagNames[i])->AsHTMLElement();
 
-  html_element->set_tab_index(-1);
-  EXPECT_EQ(-1, html_element->tab_index());
+    EXPECT_EQ(0, html_element->tab_index());
+
+    html_element->set_tab_index(-1);
+    EXPECT_EQ(-1, html_element->tab_index());
+
+    html_element->SetAttribute("tabIndex", "-2");
+    EXPECT_EQ(-2, html_element->tab_index());
+
+    html_element->RemoveAttribute("Tabindex");
+    EXPECT_EQ(0, html_element->tab_index());
+  }
 }
 
 TEST_F(HTMLElementTest, Focus) {
@@ -220,7 +258,7 @@ TEST_F(HTMLElementTest, Focus) {
   testing::StubWindow window;
   document_->set_window(window.window());
   // Give the document initial computed style.
-  document_->SetViewport(math::Size(320, 240));
+  document_->SetViewport(kViewSize);
 
   scoped_refptr<HTMLElement> html_element_1 =
       document_->CreateElement("div")->AsHTMLElement();
@@ -272,7 +310,7 @@ TEST_F(HTMLElementTest, Blur) {
   testing::StubWindow window;
   document_->set_window(window.window());
   // Give the document initial computed style.
-  document_->SetViewport(math::Size(320, 240));
+  document_->SetViewport(kViewSize);
 
   scoped_refptr<HTMLElement> html_element =
       document_->CreateElement("div")->AsHTMLElement();
@@ -293,7 +331,7 @@ TEST_F(HTMLElementTest, RemoveActiveElementShouldRunBlur) {
   testing::StubWindow window;
   document_->set_window(window.window());
   // Give the document initial computed style.
-  document_->SetViewport(math::Size(320, 240));
+  document_->SetViewport(kViewSize);
 
   scoped_refptr<HTMLElement> html_element =
       document_->CreateElement("div")->AsHTMLElement();
@@ -313,9 +351,10 @@ TEST_F(HTMLElementTest, LayoutBoxesGetter) {
   scoped_refptr<HTMLElement> html_element =
       document_->CreateElement("div")->AsHTMLElement();
 
-  scoped_ptr<MockLayoutBoxes> mock_layout_boxes(new MockLayoutBoxes);
+  std::unique_ptr<MockLayoutBoxes> mock_layout_boxes(new MockLayoutBoxes);
   MockLayoutBoxes* saved_mock_layout_boxes_ptr = mock_layout_boxes.get();
-  html_element->set_layout_boxes(mock_layout_boxes.PassAs<LayoutBoxes>());
+  html_element->set_layout_boxes(
+      std::unique_ptr<LayoutBoxes>(mock_layout_boxes.release()));
   DCHECK(mock_layout_boxes.get() == NULL);
 
   EXPECT_CALL(*base::polymorphic_downcast<MockLayoutBoxes*>(
@@ -351,8 +390,9 @@ TEST_F(HTMLElementTest, ClientTop) {
   // 1. If the element has no associated CSS layout box, return zero.
   EXPECT_FLOAT_EQ(html_element->client_top(), 0.0f);
 
-  scoped_ptr<MockLayoutBoxes> layout_boxes(new MockLayoutBoxes);
-  html_element->set_layout_boxes(layout_boxes.PassAs<LayoutBoxes>());
+  std::unique_ptr<MockLayoutBoxes> layout_boxes(new MockLayoutBoxes);
+  html_element->set_layout_boxes(
+      std::unique_ptr<LayoutBoxes>(layout_boxes.release()));
 
   // 1. If the CSS layout box is inline, return zero.
   EXPECT_CALL(*base::polymorphic_downcast<MockLayoutBoxes*>(
@@ -385,8 +425,9 @@ TEST_F(HTMLElementTest, ClientLeft) {
   // 1. If the element has no associated CSS layout box, return zero.
   EXPECT_FLOAT_EQ(html_element->client_left(), 0.0f);
 
-  scoped_ptr<MockLayoutBoxes> layout_boxes(new MockLayoutBoxes);
-  html_element->set_layout_boxes(layout_boxes.PassAs<LayoutBoxes>());
+  std::unique_ptr<MockLayoutBoxes> layout_boxes(new MockLayoutBoxes);
+  html_element->set_layout_boxes(
+      std::unique_ptr<LayoutBoxes>(layout_boxes.release()));
 
   // 1. If the CSS layout box is inline, return zero.
   EXPECT_CALL(*base::polymorphic_downcast<MockLayoutBoxes*>(
@@ -526,8 +567,8 @@ TEST_F(HTMLElementTest, OffsetParent) {
   DCHECK(GetFirstChildAtDepth(root_html_element, 1)->AsHTMLBodyElement());
   EXPECT_FALSE(GetFirstChildAtDepth(root_html_element, 1)->offset_parent());
 
-  scoped_refptr<cssom::CSSComputedStyleData> computed_style_relative =
-      make_scoped_refptr(new cssom::CSSComputedStyleData());
+  scoped_refptr<cssom::MutableCSSComputedStyleData> computed_style_relative(
+      new cssom::MutableCSSComputedStyleData());
   computed_style_relative->set_position(cssom::KeywordValue::GetRelative());
   GetFirstChildAtDepth(root_html_element, 2)
       ->css_computed_style_declaration()
@@ -539,8 +580,8 @@ TEST_F(HTMLElementTest, OffsetParent) {
 
   // Return null if the element's computed value of the 'position' property is
   // 'fixed'.
-  scoped_refptr<cssom::CSSComputedStyleData> computed_style_fixed =
-      make_scoped_refptr(new cssom::CSSComputedStyleData());
+  scoped_refptr<cssom::MutableCSSComputedStyleData> computed_style_fixed(
+      new cssom::MutableCSSComputedStyleData());
   computed_style_fixed->set_position(cssom::KeywordValue::GetFixed());
   GetFirstChildAtDepth(root_html_element, 3)
       ->css_computed_style_declaration()
@@ -600,8 +641,8 @@ TEST_F(HTMLElementTest, OffsetTop) {
   // ancestors.
   EXPECT_CALL(*base::polymorphic_downcast<MockLayoutBoxes*>(
                   GetFirstChildAtDepth(root_html_element, 1)->layout_boxes()),
-              GetPaddingEdgeTop())
-      .WillOnce(Return(20.0f));
+              GetPaddingEdgeOffset())
+      .WillOnce(Return(math::Vector2d(20.0f, 20.0f)));
   EXPECT_CALL(*base::polymorphic_downcast<MockLayoutBoxes*>(
                   GetFirstChildAtDepth(root_html_element, 2)->layout_boxes()),
               GetBorderEdgeTop())
@@ -649,8 +690,8 @@ TEST_F(HTMLElementTest, OffsetLeft) {
   // ancestors.
   EXPECT_CALL(*base::polymorphic_downcast<MockLayoutBoxes*>(
                   GetFirstChildAtDepth(root_html_element, 1)->layout_boxes()),
-              GetPaddingEdgeLeft())
-      .WillOnce(Return(20.0f));
+              GetPaddingEdgeOffset())
+      .WillOnce(Return(math::Vector2dF(20.0f, 20.0f)));
   EXPECT_CALL(*base::polymorphic_downcast<MockLayoutBoxes*>(
                   GetFirstChildAtDepth(root_html_element, 2)->layout_boxes()),
               GetBorderEdgeLeft())
@@ -669,8 +710,9 @@ TEST_F(HTMLElementTest, OffsetWidth) {
   // and terminate this algorithm.
   EXPECT_FLOAT_EQ(html_element->offset_width(), 0.0f);
 
-  scoped_ptr<MockLayoutBoxes> layout_boxes(new MockLayoutBoxes);
-  html_element->set_layout_boxes(layout_boxes.PassAs<LayoutBoxes>());
+  std::unique_ptr<MockLayoutBoxes> layout_boxes(new MockLayoutBoxes);
+  html_element->set_layout_boxes(
+      std::unique_ptr<LayoutBoxes>(layout_boxes.release()));
 
   // 2. Return the border edge width of the first CSS layout box associated with
   // the element, ignoring any transforms that apply to the element and its
@@ -692,8 +734,9 @@ TEST_F(HTMLElementTest, OffsetHeight) {
   // and terminate this algorithm.
   EXPECT_FLOAT_EQ(html_element->offset_height(), 0.0f);
 
-  scoped_ptr<MockLayoutBoxes> layout_boxes(new MockLayoutBoxes);
-  html_element->set_layout_boxes(layout_boxes.PassAs<LayoutBoxes>());
+  std::unique_ptr<MockLayoutBoxes> layout_boxes(new MockLayoutBoxes);
+  html_element->set_layout_boxes(
+      std::unique_ptr<LayoutBoxes>(layout_boxes.release()));
 
   // 2. Return the border edge height of the first CSS layout box associated
   // with the element, ignoring any transforms that apply to the element and its

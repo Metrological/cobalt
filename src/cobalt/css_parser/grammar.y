@@ -14,6 +14,8 @@
 
 // This file contains a definition of CSS grammar.
 
+%require "3.0"
+
 // A reentrant parser.
 %define api.pure full
 
@@ -71,6 +73,9 @@
 // WARNING: Every time a new name token is introduced, it should be added
 //          to |identifier_token| rule below.
 %token kAllToken                              // all
+%token kAlignContentToken                     // align-content
+%token kAlignItemsToken                       // align-items
+%token kAlignSelfToken                        // align-self
 %token kAnimationDelayToken                   // animation-delay
 %token kAnimationDirectionToken               // animation-direction
 %token kAnimationDurationToken                // animation-duration
@@ -116,12 +121,21 @@
 %token kContentToken                          // content
 %token kDisplayToken                          // display
 %token kFilterToken                           // filter
+%token kFlexToken                             // flex
+%token kFlexBasisToken                        // flex-basis
+%token kFlexDirectionToken                    // flex-direction
+%token kFlexFlowToken                         // flex-flow
+%token kFlexGrowToken                         // flex-grow
+%token kFlexShrinkToken                       // flex-shrink
+%token kFlexWrapToken                         // flex-wrap
 %token kFontToken                             // font
 %token kFontFamilyToken                       // font-family
 %token kFontSizeToken                         // font-size
 %token kFontStyleToken                        // font-style
 %token kFontWeightToken                       // font-weight
 %token kHeightToken                           // height
+%token kIntersectionObserverRootMarginToken   // intersection-observer-root-margin
+%token kJustifyContentToken                   // justify-content
 %token kLeftToken                             // left
 %token kLineHeightToken                       // line-height
 %token kMarginBottomToken                     // margin-bottom
@@ -134,6 +148,7 @@
 %token kMinHeightToken                        // min-height
 %token kMinWidthToken                         // min-width
 %token kOpacityToken                          // opacity
+%token kOrderToken                            // order
 %token kOutlineToken                          // outline
 %token kOutlineColorToken                     // outline-color
 %token kOutlineStyleToken                     // outline-style
@@ -170,6 +185,7 @@
 %token kVisibilityToken                       // visibility
 %token kWhiteSpacePropertyToken               // white-space
 %token kWidthToken                            // width
+%token kWordWrapToken                         // word-wrap
 %token kZIndexToken                           // z-index
 
 // Property value tokens.
@@ -194,7 +210,11 @@
 %token kClipToken                       // clip
 %token kClosestCornerToken              // closest-corner
 %token kClosestSideToken                // closest-side
+%token kCollapseToken                   // collapse
+%token kColumnToken                     // column
+%token kColumnReverseToken              // column-reverse
 %token kContainToken                    // contain
+// %token kContentToken                 // content - also property name token
 %token kCoverToken                      // cover
 %token kCursiveToken                    // cursive
 %token kEaseInOutToken                  // ease-in-out
@@ -209,6 +229,9 @@
 %token kFarthestCornerToken             // farthest-corner
 %token kFarthestSideToken               // farthest-side
 %token kFixedToken                      // fixed
+// %token kFlexToken                    // flex - also property name token
+%token kFlexEndToken                    // flex-end
+%token kFlexStartToken                  // flex-start
 %token kForwardsToken                   // forwards
 %token kFromToken                       // from
 %token kFuchsiaToken                    // fuchsia
@@ -220,6 +243,7 @@
 %token kInitialToken                    // initial
 %token kInlineBlockToken                // inline-block
 %token kInlineToken                     // inline
+%token kInlineFlexToken                 // inline-flex
 %token kInsetToken                      // inset
 %token kItalicToken                     // italic
 %token kLimeToken                       // lime
@@ -234,7 +258,7 @@
 %token kNoneToken                       // none
 %token kNoRepeatToken                   // no-repeat
 %token kNormalToken                     // normal
-%token kNoWrapToken                     // nowrap
+%token kNowrapToken                     // nowrap
 %token kObliqueToken                    // oblique
 %token kOliveToken                      // olive
 %token kPreToken                        // pre
@@ -249,16 +273,22 @@
 %token kRelativeToken                   // relative
 %token kReverseToken                    // reverse
 // %token kRightToken                   // right - also property name token
+%token kRowToken                        // row
+%token kRowReverseToken                 // row-reverse
 %token kSansSerifToken                  // sans-serif
+%token kScrollToken                     // scroll
 %token kSerifToken                      // serif
 %token kSilverToken                     // silver
 %token kSolidToken                      // solid
+%token kSpaceAroundToken                // space-around
+%token kSpaceBetweenToken               // space-between
 %token kStartToken                      // start
 %token kStaticToken                     // static
 %token kStepEndToken                    // step-end
 %token kStepStartToken                  // step-start
 %token kStereoscopicLeftRightToken      // stereoscopic-left-right
 %token kStereoscopicTopBottomToken      // stereoscopic-top-bottom
+%token kStretchToken                    // stretch
 %token kTealToken                       // teal
 %token kToToken                         // to
 // %token kTopToken                     // top - also property name token
@@ -266,6 +296,8 @@
 %token kUppercaseToken                  // uppercase
 %token kVisibleToken                    // visible
 %token kWhiteToken                      // white
+%token kWrapToken                       // wrap
+%token kWrapReverseToken                // wrap-reverse
 %token kYellowToken                     // yellow
 
 // Pseudo-class name tokens.
@@ -385,6 +417,8 @@
 %token kRGBFunctionToken                // rgb(
 %token kRGBAFunctionToken               // rgba(
 %token kCobaltMtmFunctionToken          // -cobalt-mtm(
+%token kCobaltUiNavFocusTransformFunctionToken     // -cobalt-ui-nav-focus-transform(
+%token kCobaltUiNavSpotlightTransformFunctionToken // -cobalt-ui-nav-spotlight-transform(
 
 // Tokens with a string value.
 %token <string> kStringToken            // "...", '...'
@@ -467,7 +501,10 @@
 %destructor { SafeRelease($$); } <percentage>
 
 %union { cssom::LengthValue* length; }
-%type <length> length positive_length absolute_or_relative_length
+%type <length> absolute_or_relative_length
+               length
+               positive_length
+               non_negative_absolute_or_relative_length
 %destructor { SafeRelease($$); } <length>
 
 %union { cssom::RatioValue* ratio; }
@@ -485,9 +522,9 @@
                      font_family_specific_name_no_single_identifier
 %destructor { SafeRelease($$); } <string_value>
 
-// base::TimeDelta's internal value.  One can construct a base::TimeDelta from
-// this value using the function base::TimeDelta::FromInternalValue().  We use
-// it instead of base::TimeDelta because base::TimeDelta does not have a
+// ::base::TimeDelta's internal value.  One can construct a ::base::TimeDelta from
+// this value using the function ::base::TimeDelta::FromInternalValue().  We use
+// it instead of ::base::TimeDelta because ::base::TimeDelta does not have a
 // trivial constructor and thus cannot be used in a union.
 %union { int64 time; }
 %type <time> time time_with_units_required
@@ -504,7 +541,10 @@
 // exposed by cssom::CSSRuleStyleDeclaration (semantics is
 // always preserved).
 %union { cssom::PropertyValue* property_value; }
-%type <property_value> animation_delay_property_value
+%type <property_value> align_content_property_value
+                       align_items_property_value
+                       align_self_property_value
+                       animation_delay_property_value
                        animation_direction_list_element
                        animation_direction_property_value
                        animation_duration_property_value
@@ -526,6 +566,7 @@
                        background_size_property_list_element
                        background_size_property_value
                        background_size_property_value_without_common_values
+                       baseline_stretch_property_value
                        border_color_property_value
                        border_radius_element
                        border_radius_element_with_common_values
@@ -540,6 +581,17 @@
                        common_values_without_errors
                        content_property_value
                        display_property_value
+                       filter_property_value
+                       flex_basis_element
+                       flex_basis_keywords
+                       flex_basis_property_value
+                       flex_direction
+                       flex_direction_property_value
+                       flex_factor_property_value
+                       flex_single_flex_basis_element
+                       flex_start_end_center_property_value
+                       flex_wrap
+                       flex_wrap_property_value
                        font_face_local_src
                        font_face_src_list_element
                        font_face_src_property_value
@@ -552,6 +604,8 @@
                        font_weight_exclusive_property_value
                        font_weight_property_value
                        height_property_value
+                       intersection_observer_root_margin_property_value
+                       justify_content_property_value
                        length_percent_property_value
                        line_height_property_value
                        line_style
@@ -566,6 +620,7 @@
                        maybe_background_size_property_value
                        offset_property_value
                        opacity_property_value
+                       order_property_value
                        orientation_media_feature_keyword_value
                        overflow_property_value
                        overflow_wrap_property_value
@@ -576,9 +631,10 @@
                        positive_length_percent_property_value
                        radial_gradient_params
                        scan_media_feature_keyword_value
+                       space_between_around_property_value
                        text_align_property_value
+                       text_decoration_line
                        text_decoration_line_property_value
-                       text_decoration_property_value
                        text_indent_property_value
                        text_overflow_property_value
                        text_shadow_property_value
@@ -600,7 +656,6 @@
                        white_space_property_value
                        width_property_value
                        z_index_property_value
-                       filter_property_value
 %destructor { SafeRelease($$); } <property_value>
 
 %union { std::vector<float>* number_matrix; }
@@ -776,6 +831,7 @@
                       comma_separated_font_family_name_list
                       comma_separated_text_shadow_list
                       comma_separated_unicode_range_list
+                      intersection_observer_root_margin_property_list
                       validated_two_position_list_elements
 %destructor { delete $$; } <property_list>
 
@@ -876,9 +932,25 @@
                                     border_or_outline_property_list
 %destructor { delete $$; } <border_or_outline_shorthand>
 
+%union { FlexShorthand* flex_shorthand; }
+%type <flex_shorthand> flex_property_value
+                       flex_single_property_value
+                       flex_three_property_values
+                       flex_two_property_values
+%destructor { delete $$; } <flex_shorthand>
+
+%union { FlexFlowShorthand* flex_flow_shorthand; }
+%type <flex_flow_shorthand> flex_flow_property_value flex_flow_property_list
+%destructor { delete $$; } <flex_flow_shorthand>
+
 %union { ShadowPropertyInfo* shadow_info; }
 %type <shadow_info> box_shadow_list text_shadow_list
 %destructor { delete $$; } <shadow_info>
+
+%union { TextDecorationShorthand* text_decoration_shorthand; }
+%type <text_decoration_shorthand> text_decoration_property_value text_decoration_property_list
+%destructor { delete $$; } <text_decoration_shorthand>
+
 
 %union { cssom::RadialGradientValue::SizeKeyword size_keyword; }
 %type <size_keyword> circle_with_size_keyword
@@ -1142,8 +1214,8 @@ media_query:
   }
   // @media (name:value)... {}
   | media_feature_list {
-    scoped_ptr<cssom::MediaFeatures> media_features($1);
-    $$ = AddRef(new cssom::MediaQuery(true, media_features.Pass()));
+    std::unique_ptr<cssom::MediaFeatures> media_features($1);
+    $$ = AddRef(new cssom::MediaQuery(true, std::move(media_features)));
   }
   // @media mediatype {}
   | evaluated_media_type maybe_whitespace {
@@ -1152,8 +1224,8 @@ media_query:
   // @media mediatype and (name:value)... {}
   | evaluated_media_type maybe_whitespace kMediaAndToken maybe_whitespace
     media_feature_list {
-    scoped_ptr<cssom::MediaFeatures> media_features($5);
-    $$ = AddRef(new cssom::MediaQuery($1, media_features.Pass()));
+    std::unique_ptr<cssom::MediaFeatures> media_features($5);
+    $$ = AddRef(new cssom::MediaQuery($1, std::move(media_features)));
   }
   // When an unknown media feature, an unknown media feature value, a malformed
   // media query, or unexpected tokens is found, the media query must be
@@ -1215,7 +1287,7 @@ keyframe_rule_list:
 
 keyframe_rule:
     keyframe_selector style_declaration_block {
-    scoped_ptr<std::vector<float> > offsets($1);
+    std::unique_ptr<std::vector<float> > offsets($1);
 
     scoped_refptr<cssom::CSSRuleStyleDeclaration> style(
         MakeScopedRefPtrAndRelease($2));
@@ -1271,6 +1343,18 @@ identifier_token:
   | kAllToken {
     $$ = TrivialStringPiece::FromCString(
             cssom::GetPropertyName(cssom::kAllProperty));
+  }
+  | kAlignContentToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kAlignContentProperty));
+  }
+  | kAlignItemsToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kAlignItemsProperty));
+  }
+  | kAlignSelfToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kAlignSelfProperty));
   }
   | kAnimationDelayToken {
     $$ = TrivialStringPiece::FromCString(
@@ -1452,6 +1536,34 @@ identifier_token:
     $$ = TrivialStringPiece::FromCString(
             cssom::GetPropertyName(cssom::kFilterProperty));
   }
+  | kFlexToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kFlexProperty));
+  }
+  | kFlexBasisToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kFlexBasisProperty));
+  }
+  | kFlexDirectionToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kFlexDirectionProperty));
+  }
+  | kFlexFlowToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kFlexFlowProperty));
+  }
+  | kFlexGrowToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kFlexGrowProperty));
+  }
+  | kFlexShrinkToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kFlexShrinkProperty));
+  }
+  | kFlexWrapToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kFlexWrapProperty));
+  }
   | kFontToken {
     $$ = TrivialStringPiece::FromCString(
             cssom::GetPropertyName(cssom::kFontProperty));
@@ -1464,6 +1576,10 @@ identifier_token:
     $$ = TrivialStringPiece::FromCString(
             cssom::GetPropertyName(cssom::kFontSizeProperty));
   }
+  | kFontStyleToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kFontStyleProperty));
+  }
   | kFontWeightToken {
     $$ = TrivialStringPiece::FromCString(
             cssom::GetPropertyName(cssom::kFontWeightProperty));
@@ -1471,6 +1587,14 @@ identifier_token:
   | kHeightToken {
     $$ = TrivialStringPiece::FromCString(
             cssom::GetPropertyName(cssom::kHeightProperty));
+  }
+  | kIntersectionObserverRootMarginToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kIntersectionObserverRootMarginProperty));
+  }
+  | kJustifyContentToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kJustifyContentProperty));
   }
   | kLeftToken {
     $$ = TrivialStringPiece::FromCString(
@@ -1519,6 +1643,10 @@ identifier_token:
   | kOpacityToken {
     $$ = TrivialStringPiece::FromCString(
             cssom::GetPropertyName(cssom::kOpacityProperty));
+  }
+  | kOrderToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kOrderProperty));
   }
   | kOutlineToken {
     $$ = TrivialStringPiece::FromCString(
@@ -1604,6 +1732,10 @@ identifier_token:
     $$ = TrivialStringPiece::FromCString(
             cssom::GetPropertyName(cssom::kTextOverflowProperty));
   }
+  | kTextShadowToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kTextShadowProperty));
+  }
   | kTextTransformToken {
     $$ = TrivialStringPiece::FromCString(
             cssom::GetPropertyName(cssom::kTextTransformProperty));
@@ -1659,6 +1791,10 @@ identifier_token:
   | kWidthToken {
     $$ = TrivialStringPiece::FromCString(
             cssom::GetPropertyName(cssom::kWidthProperty));
+  }
+  | kWordWrapToken {
+    $$ = TrivialStringPiece::FromCString(
+            cssom::GetPropertyName(cssom::kWordWrapProperty));
   }
   | kZIndexToken {
     $$ = TrivialStringPiece::FromCString(
@@ -1723,9 +1859,19 @@ identifier_token:
   | kClosestSideToken {
     $$ = TrivialStringPiece::FromCString(cssom::kClosestSideKeywordName);
   }
+  | kCollapseToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kCollapseKeywordName);
+  }
+  | kColumnToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kColumnKeywordName);
+  }
+  | kColumnReverseToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kColumnReverseKeywordName);
+  }
   | kContainToken {
     $$ = TrivialStringPiece::FromCString(cssom::kContainKeywordName);
   }
+  // A rule for kContentToken is already defined for the matching property name.
   | kCoverToken {
     $$ = TrivialStringPiece::FromCString(cssom::kCoverKeywordName);
   }
@@ -1753,6 +1899,9 @@ identifier_token:
   | kEndToken {
     $$ = TrivialStringPiece::FromCString(cssom::kEndKeywordName);
   }
+  | kEquirectangularToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kEquirectangularKeywordName);
+  }
   | kFantasyToken {
     $$ = TrivialStringPiece::FromCString(cssom::kFantasyKeywordName);
   }
@@ -1764,6 +1913,13 @@ identifier_token:
   }
   | kFixedToken {
     $$ = TrivialStringPiece::FromCString(cssom::kFixedKeywordName);
+  }
+  // A rule for kFlexToken is already defined for the matching property name.
+  | kFlexEndToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kFlexEndKeywordName);
+  }
+  | kFlexStartToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kFlexStartKeywordName);
   }
   | kForwardsToken {
     $$ = TrivialStringPiece::FromCString(cssom::kForwardsKeywordName);
@@ -1797,6 +1953,9 @@ identifier_token:
   }
   | kInlineToken {
     $$ = TrivialStringPiece::FromCString(cssom::kInlineKeywordName);
+  }
+  | kInlineFlexToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kInlineFlexKeywordName);
   }
   | kInsetToken {
     $$ = TrivialStringPiece::FromCString(cssom::kInsetKeywordName);
@@ -1837,8 +1996,8 @@ identifier_token:
   | kNormalToken {
     $$ = TrivialStringPiece::FromCString(cssom::kNormalKeywordName);
   }
-  | kNoWrapToken {
-    $$ = TrivialStringPiece::FromCString(cssom::kNoWrapKeywordName);
+  | kNowrapToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kNowrapKeywordName);
   }
   | kObliqueToken {
     $$ = TrivialStringPiece::FromCString(cssom::kObliqueKeywordName);
@@ -1876,8 +2035,18 @@ identifier_token:
   | kReverseToken {
     $$ = TrivialStringPiece::FromCString(cssom::kReverseKeywordName);
   }
+  // A rule for kRightToken is already defined for the matching property name.
+  | kRowToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kRowKeywordName);
+  }
+  | kRowReverseToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kRowReverseKeywordName);
+  }
   | kSansSerifToken {
     $$ = TrivialStringPiece::FromCString(cssom::kSansSerifKeywordName);
+  }
+  | kScrollToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kScrollKeywordName);
   }
   | kSerifToken {
     $$ = TrivialStringPiece::FromCString(cssom::kSerifKeywordName);
@@ -1887,6 +2056,12 @@ identifier_token:
   }
   | kSolidToken {
     $$ = TrivialStringPiece::FromCString(cssom::kSolidKeywordName);
+  }
+  | kSpaceAroundToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kSpaceAroundKeywordName);
+  }
+  | kSpaceBetweenToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kSpaceBetweenKeywordName);
   }
   | kStartToken {
     $$ = TrivialStringPiece::FromCString(cssom::kStartKeywordName);
@@ -1908,6 +2083,9 @@ identifier_token:
     $$ = TrivialStringPiece::FromCString(
              cssom::kStereoscopicTopBottomKeywordName);
   }
+  | kStretchToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kStretchKeywordName);
+  }
   | kTealToken {
     $$ = TrivialStringPiece::FromCString(cssom::kTealKeywordName);
   }
@@ -1926,6 +2104,12 @@ identifier_token:
   }
   | kWhiteToken {
     $$ = TrivialStringPiece::FromCString(cssom::kWhiteKeywordName);
+  }
+  | kWrapToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kWrapKeywordName);
+  }
+  | kWrapReverseToken {
+    $$ = TrivialStringPiece::FromCString(cssom::kWrapReverseKeywordName);
   }
   | kYellowToken {
     $$ = TrivialStringPiece::FromCString(cssom::kYellowKeywordName);
@@ -2023,7 +2207,7 @@ id_selector_token:
     $$ = new cssom::IdSelector($1.ToString());
   }
   | kHexToken {
-    if (IsAsciiDigit(*$1.begin)) {
+    if (::base::IsAsciiDigit(*$1.begin)) {
       YYERROR;
     }
     $$ = new cssom::IdSelector($1.ToString());
@@ -2075,11 +2259,11 @@ pseudo_class_token:
   // represented by its argument.
   //   https://www.w3.org/TR/selectors4/#negation-pseudo
   | ':' kNotFunctionToken compound_selector_token ')' {
-    scoped_ptr<cssom::CompoundSelector> compound_selector($3);
+    std::unique_ptr<cssom::CompoundSelector> compound_selector($3);
     if (compound_selector) {
-      scoped_ptr<cssom::NotPseudoClass> not_pseudo_class(new
+      std::unique_ptr<cssom::NotPseudoClass> not_pseudo_class(new
           cssom::NotPseudoClass());
-      not_pseudo_class->set_selector(compound_selector.Pass());
+      not_pseudo_class->set_selector(std::move(compound_selector));
       $$ = not_pseudo_class.release();
     } else {
       parser_impl->LogWarning(@1, "unsupported selector within :not()");
@@ -2141,22 +2325,22 @@ simple_selector_token:
 //   https://www.w3.org/TR/selectors4/#compound
 compound_selector_token:
     simple_selector_token {
-    scoped_ptr<cssom::SimpleSelector> simple_selector($1);
+    std::unique_ptr<cssom::SimpleSelector> simple_selector($1);
 
     if (simple_selector) {
       $$ = new cssom::CompoundSelector();
-      $$->AppendSelector(simple_selector.Pass());
+      $$->AppendSelector(std::move(simple_selector));
     } else {
       $$ = NULL;
     }
   }
   | compound_selector_token simple_selector_token {
-    scoped_ptr<cssom::CompoundSelector> compound_selector($1);
-    scoped_ptr<cssom::SimpleSelector> simple_selector($2);
+    std::unique_ptr<cssom::CompoundSelector> compound_selector($1);
+    std::unique_ptr<cssom::SimpleSelector> simple_selector($2);
 
     if (compound_selector && simple_selector) {
       $$ = compound_selector.release();
-      $$->AppendSelector(simple_selector.Pass());
+      $$->AppendSelector(std::move(simple_selector));
     } else {
       $$ = NULL;
     }
@@ -2186,24 +2370,24 @@ combinator:
 //   https://www.w3.org/TR/selectors4/#complex
 complex_selector:
     compound_selector_token {
-    scoped_ptr<cssom::CompoundSelector> compound_selector($1);
+    std::unique_ptr<cssom::CompoundSelector> compound_selector($1);
 
     if (compound_selector) {
       $$ = new cssom::ComplexSelector();
-      $$->AppendSelector(compound_selector.Pass());
+      $$->AppendSelector(std::move(compound_selector));
     } else {
       $$ = NULL;
     }
   }
   | complex_selector combinator compound_selector_token {
-    scoped_ptr<cssom::ComplexSelector> complex_selector($1);
-    scoped_ptr<cssom::Combinator> combinator($2);
-    scoped_ptr<cssom::CompoundSelector> compound_selector($3);
+    std::unique_ptr<cssom::ComplexSelector> complex_selector($1);
+    std::unique_ptr<cssom::Combinator> combinator($2);
+    std::unique_ptr<cssom::CompoundSelector> compound_selector($3);
 
     if (complex_selector && compound_selector) {
       $$ = complex_selector.release();
-      $$->AppendCombinatorAndSelector(combinator.Pass(),
-          compound_selector.Pass());
+      $$->AppendCombinatorAndSelector(std::move(combinator),
+          std::move(compound_selector));
     } else {
       $$ = NULL;
     }
@@ -2215,22 +2399,22 @@ complex_selector:
 //   https://www.w3.org/TR/selectors4/#selector-list
 selector_list:
     complex_selector {
-    scoped_ptr<cssom::ComplexSelector> complex_selector($1);
+    std::unique_ptr<cssom::ComplexSelector> complex_selector($1);
 
     if (complex_selector) {
       $$ = new cssom::Selectors();
-      $$->push_back(complex_selector.release());
+      $$->emplace_back(complex_selector.release());
     } else {
       $$ = NULL;
     }
   }
   | selector_list comma complex_selector {
-    scoped_ptr<cssom::Selectors> selector_list($1);
-    scoped_ptr<cssom::ComplexSelector> complex_selector($3);
+    std::unique_ptr<cssom::Selectors> selector_list($1);
+    std::unique_ptr<cssom::ComplexSelector> complex_selector($3);
 
     if (selector_list && complex_selector) {
       $$ = selector_list.release();
-      $$->push_back(complex_selector.release());
+      $$->emplace_back(complex_selector.release());
     } else {
       $$ = NULL;
     }
@@ -2367,6 +2551,20 @@ length:
   | absolute_or_relative_length { $$ = $1; }
   ;
 
+// Any valid non negative length value or number value.
+//   https://www.w3.org/TR/css3-values/#lengths
+non_negative_absolute_or_relative_length:
+    absolute_or_relative_length {
+    scoped_refptr<cssom::LengthValue> length(MakeScopedRefPtrAndRelease($1));
+    DCHECK(length);
+    if (length->value() < 0) {
+      parser_impl->LogError(@1, "length value must not be negative");
+      YYERROR;
+    }
+    $$ = AddRef(length.get());
+  }
+  ;
+
 absolute_or_relative_length:
   // Relative lengths.
   //   https://www.w3.org/TR/css3-values/#relative-lengths
@@ -2396,7 +2594,7 @@ positive_length:
   length {
     scoped_refptr<cssom::LengthValue> length(MakeScopedRefPtrAndRelease($1));
     if (length && length->value() < 0) {
-      parser_impl->LogError(@1, "negative values of length are illegal");
+      parser_impl->LogError(@1, "length value must not be negative");
       YYERROR;
     }
     $$ = AddRef(length.get());
@@ -2453,8 +2651,8 @@ angle:
 //   https://www.w3.org/TR/css3-values/#time
 time:
     number {
-    $$ = base::TimeDelta::FromMilliseconds(
-             static_cast<int64>($1 * base::Time::kMillisecondsPerSecond)).
+    $$ = ::base::TimeDelta::FromMilliseconds(
+             static_cast<int64>($1 * ::base::Time::kMillisecondsPerSecond)).
              ToInternalValue();
     if ($1 != 0) {
       parser_impl->LogWarning(
@@ -2466,12 +2664,12 @@ time:
 
 time_with_units_required:
   maybe_sign_token kSecondsToken maybe_whitespace {
-    $$ = base::TimeDelta::FromMilliseconds(
-             static_cast<int64>($1 * $2 * base::Time::kMillisecondsPerSecond)).
+    $$ = ::base::TimeDelta::FromMilliseconds(
+             static_cast<int64>($1 * $2 * ::base::Time::kMillisecondsPerSecond)).
              ToInternalValue();
   }
   | maybe_sign_token kMillisecondsToken maybe_whitespace {
-    $$ = base::TimeDelta::FromMilliseconds(static_cast<int64>($1 * $2)).
+    $$ = ::base::TimeDelta::FromMilliseconds(static_cast<int64>($1 * $2)).
              ToInternalValue();
   }
   ;
@@ -2649,12 +2847,12 @@ background_property_element:
   | background_image_property_list_element {
     scoped_refptr<cssom::PropertyValue> image(MakeScopedRefPtrAndRelease($1));
     if (!$<background_shorthand_layer>0->background_image) {
-      scoped_ptr<cssom::PropertyListValue::Builder>
+      std::unique_ptr<cssom::PropertyListValue::Builder>
           background_image_builder(new cssom::PropertyListValue::Builder());
       background_image_builder->reserve(1);
       background_image_builder->push_back(image);
       $<background_shorthand_layer>0->background_image =
-          new cssom::PropertyListValue(background_image_builder.Pass());
+          new cssom::PropertyListValue(std::move(background_image_builder));
     } else {
       parser_impl->LogError(
           @1, "background-image value declared twice in background.");
@@ -2675,7 +2873,7 @@ maybe_background_size_property_value:
 background_position_and_size_shorthand_property_value:
     validated_position_property
     maybe_background_size_property_value {
-    scoped_ptr<BackgroundShorthandLayer> shorthand_layer(
+    std::unique_ptr<BackgroundShorthandLayer> shorthand_layer(
         new BackgroundShorthandLayer());
 
     shorthand_layer->background_position = MakeScopedRefPtrAndRelease($1);
@@ -2689,7 +2887,7 @@ background_position_and_size_shorthand_property_value:
 
 background_repeat_shorthand_property_value:
     background_repeat_property_value_without_common_values {
-    scoped_ptr<BackgroundShorthandLayer> shorthand_layer(
+    std::unique_ptr<BackgroundShorthandLayer> shorthand_layer(
         new BackgroundShorthandLayer());
     shorthand_layer->background_repeat = MakeScopedRefPtrAndRelease($1);
     $$ = shorthand_layer.release();
@@ -2704,15 +2902,15 @@ background_position_and_repeat_combination:
   | background_repeat_shorthand_property_value
   | background_position_and_size_shorthand_property_value
     background_repeat_shorthand_property_value {
-    scoped_ptr<BackgroundShorthandLayer> shorthand_layer($1);
-    scoped_ptr<BackgroundShorthandLayer> non_overlapped($2);
+    std::unique_ptr<BackgroundShorthandLayer> shorthand_layer($1);
+    std::unique_ptr<BackgroundShorthandLayer> non_overlapped($2);
     shorthand_layer->IntegrateNonOverlapped(*non_overlapped);
     $$ = shorthand_layer.release();
   }
   | background_repeat_shorthand_property_value
     background_position_and_size_shorthand_property_value {
-    scoped_ptr<BackgroundShorthandLayer> shorthand_layer($1);
-    scoped_ptr<BackgroundShorthandLayer> non_overlapped($2);
+    std::unique_ptr<BackgroundShorthandLayer> shorthand_layer($1);
+    std::unique_ptr<BackgroundShorthandLayer> non_overlapped($2);
     shorthand_layer->IntegrateNonOverlapped(*non_overlapped);
     $$ = shorthand_layer.release();
   }
@@ -2742,8 +2940,8 @@ final_background_layer:
   }
   | final_background_layer_without_position_and_repeat
     background_position_and_repeat_combination {
-    scoped_ptr<BackgroundShorthandLayer> shorthand($1);
-    scoped_ptr<BackgroundShorthandLayer> background_values($2);
+    std::unique_ptr<BackgroundShorthandLayer> shorthand($1);
+    std::unique_ptr<BackgroundShorthandLayer> background_values($2);
     if (!shorthand->IsBackgroundPropertyOverlapped(*background_values.get())) {
       shorthand->IntegrateNonOverlapped(*background_values.get());
       $$ = shorthand.release();
@@ -2770,7 +2968,7 @@ background_property_value:
   | common_values {
     // Replicate the common value into each of the properties that background
     // is a shorthand for.
-    scoped_ptr<BackgroundShorthandLayer> background(
+    std::unique_ptr<BackgroundShorthandLayer> background(
         new BackgroundShorthandLayer());
     background->background_color = $1;
     background->background_image = $1;
@@ -2802,12 +3000,12 @@ color_stop:
 comma_separated_color_stop_list:
     color_stop comma color_stop {
     $$ = new cssom::ColorStopList();
-    $$->push_back($1);
-    $$->push_back($3);
+    $$->emplace_back($1);
+    $$->emplace_back($3);
   }
   | comma_separated_color_stop_list comma color_stop {
     $$ = $1;
-    $$->push_back($3);
+    $$->emplace_back($3);
   }
   ;
 
@@ -2867,20 +3065,20 @@ side_or_corner:
 
 linear_gradient_params:
     comma_separated_color_stop_list {
-    scoped_ptr<cssom::ColorStopList> color_stop_list($1);
+    std::unique_ptr<cssom::ColorStopList> color_stop_list($1);
     // If the first argument to the linear gradient function is omitted, it
     // defaults to 'to bottom'.
     $$ = AddRef(new cssom::LinearGradientValue(
-             cssom::LinearGradientValue::kBottom, color_stop_list->Pass()));
+             cssom::LinearGradientValue::kBottom, std::move(*color_stop_list)));
   }
   | angle comma comma_separated_color_stop_list {
-    scoped_ptr<cssom::ColorStopList> color_stop_list($3);
-    $$ = AddRef(new cssom::LinearGradientValue($1, color_stop_list->Pass()));
+    std::unique_ptr<cssom::ColorStopList> color_stop_list($3);
+    $$ = AddRef(new cssom::LinearGradientValue($1, std::move(*color_stop_list)));
   }
   | kToToken kWhitespaceToken maybe_whitespace side_or_corner comma
     comma_separated_color_stop_list {
-    scoped_ptr<cssom::ColorStopList> color_stop_list($6);
-    $$ = AddRef(new cssom::LinearGradientValue($4, color_stop_list->Pass()));
+    std::unique_ptr<cssom::ColorStopList> color_stop_list($6);
+    $$ = AddRef(new cssom::LinearGradientValue($4, std::move(*color_stop_list)));
   }
   ;
 
@@ -2913,25 +3111,25 @@ circle_with_size_keyword:
 // circle explicitly. Negative values are invalid.
 circle_with_positive_length:
     positive_length {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value(
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value(
        new cssom::PropertyListValue::Builder());
     property_value->reserve(1);
     property_value->push_back(MakeScopedRefPtrAndRelease($1));
-    $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
   }
   | positive_length kCircleToken maybe_whitespace {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value(
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value(
        new cssom::PropertyListValue::Builder());
     property_value->reserve(1);
     property_value->push_back(MakeScopedRefPtrAndRelease($1));
-    $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
   }
   | kCircleToken maybe_whitespace positive_length {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value(
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value(
        new cssom::PropertyListValue::Builder());
     property_value->reserve(1);
     property_value->push_back(MakeScopedRefPtrAndRelease($3));
-    $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
   }
   ;
 
@@ -2955,30 +3153,30 @@ maybe_ellipse_with_size_keyword:
 ellipse_with_2_positive_length_percents:
     positive_length_percent_property_value
     positive_length_percent_property_value {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value(
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value(
         new cssom::PropertyListValue::Builder());
     property_value->reserve(2);
     property_value->push_back(MakeScopedRefPtrAndRelease($1));
     property_value->push_back(MakeScopedRefPtrAndRelease($2));
-    $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
   }
   | positive_length_percent_property_value
     positive_length_percent_property_value kEllipseToken maybe_whitespace {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value(
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value(
         new cssom::PropertyListValue::Builder());
     property_value->reserve(2);
     property_value->push_back(MakeScopedRefPtrAndRelease($1));
     property_value->push_back(MakeScopedRefPtrAndRelease($2));
-    $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
   }
   | kEllipseToken maybe_whitespace positive_length_percent_property_value
     positive_length_percent_property_value {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value(
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value(
         new cssom::PropertyListValue::Builder());
     property_value->reserve(2);
     property_value->push_back(MakeScopedRefPtrAndRelease($3));
     property_value->push_back(MakeScopedRefPtrAndRelease($4));
-    $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
   }
   ;
 
@@ -2999,77 +3197,77 @@ maybe_at_position:
 radial_gradient_params:
     circle_with_positive_length maybe_at_position comma
     comma_separated_color_stop_list {
-    scoped_ptr<cssom::ColorStopList> color_stop_list($4);
+    std::unique_ptr<cssom::ColorStopList> color_stop_list($4);
     $$ = AddRef(
         new cssom::RadialGradientValue(cssom::RadialGradientValue::kCircle,
                                        MakeScopedRefPtrAndRelease($1),
                                        MakeScopedRefPtrAndRelease($2),
-                                       color_stop_list->Pass()));
+                                       std::move(*color_stop_list)));
   }
   | ellipse_with_2_positive_length_percents maybe_at_position comma
     comma_separated_color_stop_list {
-    scoped_ptr<cssom::ColorStopList> color_stop_list($4);
+    std::unique_ptr<cssom::ColorStopList> color_stop_list($4);
     $$ = AddRef(
         new cssom::RadialGradientValue(cssom::RadialGradientValue::kEllipse,
                                        MakeScopedRefPtrAndRelease($1),
                                        MakeScopedRefPtrAndRelease($2),
-                                       color_stop_list->Pass()));
+                                       std::move(*color_stop_list)));
   }
   | circle_with_size_keyword maybe_at_position comma
     comma_separated_color_stop_list {
-    scoped_ptr<cssom::ColorStopList> color_stop_list($4);
+    std::unique_ptr<cssom::ColorStopList> color_stop_list($4);
     $$ = AddRef(
         new cssom::RadialGradientValue(cssom::RadialGradientValue::kCircle,
                                        $1,
                                        MakeScopedRefPtrAndRelease($2),
-                                       color_stop_list->Pass()));
+                                       std::move(*color_stop_list)));
   }
   | maybe_ellipse_with_size_keyword maybe_at_position comma
     comma_separated_color_stop_list {
-    scoped_ptr<cssom::ColorStopList> color_stop_list($4);
+    std::unique_ptr<cssom::ColorStopList> color_stop_list($4);
     $$ = AddRef(
         new cssom::RadialGradientValue(cssom::RadialGradientValue::kEllipse,
                                        $1,
                                        MakeScopedRefPtrAndRelease($2),
-                                       color_stop_list->Pass()));
+                                       std::move(*color_stop_list)));
   }
   | kCircleToken maybe_whitespace maybe_at_position comma
     comma_separated_color_stop_list {
-    scoped_ptr<cssom::ColorStopList> color_stop_list($5);
+    std::unique_ptr<cssom::ColorStopList> color_stop_list($5);
     $$ = AddRef(new cssom::RadialGradientValue(
             cssom::RadialGradientValue::kCircle,
             cssom::RadialGradientValue::kFarthestCorner,
             MakeScopedRefPtrAndRelease($3),
-            color_stop_list->Pass()));
+            std::move(*color_stop_list)));
   }
   | kEllipseToken maybe_whitespace maybe_at_position comma
     comma_separated_color_stop_list {
-    scoped_ptr<cssom::ColorStopList> color_stop_list($5);
+    std::unique_ptr<cssom::ColorStopList> color_stop_list($5);
     $$ = AddRef(new cssom::RadialGradientValue(
             cssom::RadialGradientValue::kEllipse,
             cssom::RadialGradientValue::kFarthestCorner,
             MakeScopedRefPtrAndRelease($3),
-            color_stop_list->Pass()));
+            std::move(*color_stop_list)));
   }
   | at_position comma comma_separated_color_stop_list {
     // If no size or shape is specified, the ending shape defaults to an ellipse
     // and the size defaults to 'farthest-corner'.
-    scoped_ptr<cssom::ColorStopList> color_stop_list($3);
+    std::unique_ptr<cssom::ColorStopList> color_stop_list($3);
     $$ = AddRef(new cssom::RadialGradientValue(
             cssom::RadialGradientValue::kEllipse,
             cssom::RadialGradientValue::kFarthestCorner,
             MakeScopedRefPtrAndRelease($1),
-            color_stop_list->Pass()));
+            std::move(*color_stop_list)));
   }
   | comma_separated_color_stop_list {
     // If position is omitted as well, it defaults to 'center', indicated by
     // passing in NULL.
-    scoped_ptr<cssom::ColorStopList> color_stop_list($1);
+    std::unique_ptr<cssom::ColorStopList> color_stop_list($1);
     $$ = AddRef(new cssom::RadialGradientValue(
             cssom::RadialGradientValue::kEllipse,
             cssom::RadialGradientValue::kFarthestCorner,
             NULL,
-            color_stop_list->Pass()));
+            std::move(*color_stop_list)));
   }
   ;
 
@@ -3103,9 +3301,9 @@ comma_separated_background_image_list:
 //   https://www.w3.org/TR/css3-background/#the-background-image
 background_image_property_value:
   comma_separated_background_image_list {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
     $$ = property_value
-         ? AddRef(new cssom::PropertyListValue(property_value.Pass()))
+         ? AddRef(new cssom::PropertyListValue(std::move(property_value)))
          : NULL;
   }
   | common_values
@@ -3132,14 +3330,14 @@ position_list_element:
 
 position_list:
     position_list_element {
-    scoped_ptr<PositionParseStructure> position_info(
+    std::unique_ptr<PositionParseStructure> position_info(
         new PositionParseStructure());
     position_info->PushBackElement(MakeScopedRefPtrAndRelease($1));
     $$ = position_info.release();
   }
   | position_list
     position_list_element {
-    scoped_ptr<PositionParseStructure> position_info($1);
+    std::unique_ptr<PositionParseStructure> position_info($1);
     scoped_refptr<cssom::PropertyValue> element(MakeScopedRefPtrAndRelease($2));
     if (position_info &&
         !position_info->PushBackElement(element)) {
@@ -3153,8 +3351,8 @@ position_list:
 
 validated_position_property:
     position_list {
-    scoped_ptr<PositionParseStructure> position_info($1);
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value;
+    std::unique_ptr<PositionParseStructure> position_info($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value;
 
     if (!position_info) {
       // No-ops.
@@ -3173,7 +3371,7 @@ validated_position_property:
     }
 
     $$ = property_value
-         ? AddRef(new cssom::PropertyListValue(property_value.Pass()))
+         ? AddRef(new cssom::PropertyListValue(std::move(property_value)))
          : NULL;
   }
   ;
@@ -3203,36 +3401,36 @@ background_repeat_element:
 
 background_repeat_property_value_without_common_values:
     background_repeat_element {
-    scoped_ptr<cssom::PropertyListValue::Builder> builder(
+    std::unique_ptr<cssom::PropertyListValue::Builder> builder(
         new cssom::PropertyListValue::Builder());
     builder->reserve(2);
     builder->push_back(MakeScopedRefPtrAndRelease($1));
     builder->push_back($1);
-    $$ = AddRef(new cssom::PropertyListValue(builder.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(builder)));
   }
   | background_repeat_element background_repeat_element {
-    scoped_ptr<cssom::PropertyListValue::Builder> builder(
+    std::unique_ptr<cssom::PropertyListValue::Builder> builder(
         new cssom::PropertyListValue::Builder());
     builder->reserve(2);
     builder->push_back(MakeScopedRefPtrAndRelease($1));
     builder->push_back(MakeScopedRefPtrAndRelease($2));
-    $$ = AddRef(new cssom::PropertyListValue(builder.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(builder)));
   }
   | kRepeatXToken maybe_whitespace {
-    scoped_ptr<cssom::PropertyListValue::Builder> builder(
+    std::unique_ptr<cssom::PropertyListValue::Builder> builder(
         new cssom::PropertyListValue::Builder());
     builder->reserve(2);
     builder->push_back(cssom::KeywordValue::GetRepeat().get());
     builder->push_back(cssom::KeywordValue::GetNoRepeat().get());
-    $$ = AddRef(new cssom::PropertyListValue(builder.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(builder)));
   }
   | kRepeatYToken maybe_whitespace {
-    scoped_ptr<cssom::PropertyListValue::Builder> builder(
+    std::unique_ptr<cssom::PropertyListValue::Builder> builder(
         new cssom::PropertyListValue::Builder());
     builder->reserve(2);
     builder->push_back(cssom::KeywordValue::GetNoRepeat().get());
     builder->push_back(cssom::KeywordValue::GetRepeat().get());
-    $$ = AddRef(new cssom::PropertyListValue(builder.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(builder)));
   }
   ;
 
@@ -3268,9 +3466,9 @@ background_size_property_list:
 //   https://www.w3.org/TR/css3-background/#the-background-size
 background_size_property_value_without_common_values:
     background_size_property_list {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
     $$ = property_value
-         ? AddRef(new cssom::PropertyListValue(property_value.Pass()))
+         ? AddRef(new cssom::PropertyListValue(std::move(property_value)))
          : NULL;
   }
   | kContainToken maybe_whitespace {
@@ -3294,7 +3492,7 @@ border_color_property_list:
     $$ = new cssom::PropertyListValue::Builder();
   }
   | border_color_property_list color {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
     property_value->push_back(MakeScopedRefPtrAndRelease($2));
     $$ = property_value.release();
   }
@@ -3302,20 +3500,20 @@ border_color_property_list:
 
 border_color_property_value:
     border_color_property_list {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
     if (property_value->size() > 0u &&
         property_value->size() <= 4u) {
-      $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+      $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
     } else {
       parser_impl->LogWarning(@1, "invalid number of border color values");
       $$ = NULL;
     }
   }
   | common_values {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value(
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value(
         new cssom::PropertyListValue::Builder());
     property_value->push_back($1);
-    $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
   }
   ;
 
@@ -3344,7 +3542,7 @@ border_style_property_list:
     $$ = new cssom::PropertyListValue::Builder();
   }
   | border_style_property_list line_style {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
     property_value->push_back(MakeScopedRefPtrAndRelease($2));
     $$ = property_value.release();
   }
@@ -3352,20 +3550,20 @@ border_style_property_list:
 
 border_style_property_value:
     border_style_property_list {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
     if (property_value->size() > 0u &&
         property_value->size() <= 4u) {
-      $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+      $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
     } else {
       parser_impl->LogWarning(@1, "invalid number of border style values");
       $$ = NULL;
     }
   }
   | common_values {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value(
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value(
         new cssom::PropertyListValue::Builder());
     property_value->push_back($1);
-    $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
   }
   ;
 
@@ -3385,7 +3583,7 @@ border_width_property_list:
     $$ = new cssom::PropertyListValue::Builder();
   }
   | border_width_property_list border_width_element {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
     property_value->push_back(MakeScopedRefPtrAndRelease($2));
     $$ = property_value.release();
   }
@@ -3393,20 +3591,20 @@ border_width_property_list:
 
 border_width_property_value:
     border_width_property_list  {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
     if (property_value->size() > 0u &&
         property_value->size() <= 4u) {
-      $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+      $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
     } else {
       parser_impl->LogWarning(@1, "invalid number of border width values");
       $$ = NULL;
     }
   }
   | common_values {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value(
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value(
         new cssom::PropertyListValue::Builder());
     property_value->push_back($1);
-    $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
   }
   ;
 
@@ -3468,12 +3666,13 @@ border_or_outline_property_list:
 // various properties define the style ('border-style'), color ('border-color'),
 // and thickness ('border-width') of the border.
 //   https://www.w3.org/TR/css3-background/#borders
+//   https://www.w3.org/TR/CSS21/ui.html#propdef-outline
 border_or_outline_property_value:
     border_or_outline_property_list
   | common_values {
     // Replicate the common value into each of the properties that border is a
     // shorthand for.
-    scoped_ptr<BorderOrOutlineShorthand> border(new BorderOrOutlineShorthand());
+    std::unique_ptr<BorderOrOutlineShorthand> border(new BorderOrOutlineShorthand());
     border->color = $1;
     border->style = $1;
     border->width = $1;
@@ -3497,7 +3696,7 @@ border_radius_property_list:
     $$ = new cssom::PropertyListValue::Builder();
   }
   | border_radius_property_list border_radius_element {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
     property_value->push_back(MakeScopedRefPtrAndRelease($2));
     $$ = property_value.release();
   }
@@ -3505,20 +3704,20 @@ border_radius_property_list:
 
 border_radius_property_value:
     border_radius_property_list {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
     if (property_value->size() > 0u &&
         property_value->size() <= 4u) {
-      $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+      $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
     } else {
       parser_impl->LogWarning(@1, "invalid number of border radius values");
       $$ = NULL;
     }
   }
   | common_values {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value(
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value(
         new cssom::PropertyListValue::Builder());
     property_value->push_back($1);
-    $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
   }
   ;
 
@@ -3567,7 +3766,7 @@ box_shadow_list:
 
 validated_box_shadow_list:
     box_shadow_list {
-    scoped_ptr<ShadowPropertyInfo> shadow_property_info($1);
+    std::unique_ptr<ShadowPropertyInfo> shadow_property_info($1);
     if (!shadow_property_info->IsShadowPropertyValid(kBoxShadow)) {
       parser_impl->LogWarning(@1, "invalid box shadow property.");
       $$ = NULL;
@@ -3602,8 +3801,8 @@ comma_separated_box_shadow_list:
 box_shadow_property_value:
     comma_separated_box_shadow_list {
     if ($1) {
-      scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
-      $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+      std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
+      $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
     }
   }
   | kNoneToken maybe_whitespace {
@@ -3641,11 +3840,17 @@ display_property_value:
     kBlockToken maybe_whitespace {
     $$ = AddRef(cssom::KeywordValue::GetBlock().get());
   }
+  | kFlexToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetFlex().get());
+  }
   | kInlineToken maybe_whitespace {
     $$ = AddRef(cssom::KeywordValue::GetInline().get());
   }
   | kInlineBlockToken maybe_whitespace {
     $$ = AddRef(cssom::KeywordValue::GetInlineBlock().get());
+  }
+  | kInlineFlexToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetInlineFlex().get());
   }
   | kNoneToken maybe_whitespace {
     $$ = AddRef(cssom::KeywordValue::GetNone().get());
@@ -3700,9 +3905,9 @@ comma_separated_font_face_src_list:
 //   https://www.w3.org/TR/css3-fonts/#src-desc
 font_face_src_property_value:
     comma_separated_font_face_src_list {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
     $$ = property_value
-         ? AddRef(new cssom::PropertyListValue(property_value.Pass()))
+         ? AddRef(new cssom::PropertyListValue(std::move(property_value)))
          : NULL;
   }
   | common_values
@@ -3797,7 +4002,7 @@ font_family_property_value:
     } else if ($1 == cssom::kInitialKeywordName) {
       $$ = AddRef(cssom::KeywordValue::GetInitial().get());
     } else {
-      scoped_ptr<cssom::PropertyListValue::Builder>
+      std::unique_ptr<cssom::PropertyListValue::Builder>
           builder(new cssom::PropertyListValue::Builder());
 
       // Generic families are defined in all CSS implementations.
@@ -3816,19 +4021,19 @@ font_family_property_value:
         builder->push_back(new cssom::StringValue($1.ToString()));
       }
 
-      $$ = AddRef(new cssom::PropertyListValue(builder.Pass()));
+      $$ = AddRef(new cssom::PropertyListValue(std::move(builder)));
     }
   }
   | font_family_specific_name_no_single_identifier {
-    scoped_ptr<cssom::PropertyListValue::Builder>
+    std::unique_ptr<cssom::PropertyListValue::Builder>
         builder(new cssom::PropertyListValue::Builder());
     builder->push_back(MakeScopedRefPtrAndRelease($1));
-    $$ = AddRef(new cssom::PropertyListValue(builder.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(builder)));
   }
   | comma_separated_font_family_name_list comma font_family_name {
-    scoped_ptr<cssom::PropertyListValue::Builder> builder($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> builder($1);
     builder->push_back(MakeScopedRefPtrAndRelease($3));
-    $$ = AddRef(new cssom::PropertyListValue(builder.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(builder)));
   }
   | errors {
     parser_impl->LogError(@1, "unsupported property value for font-family");
@@ -3980,12 +4185,12 @@ font_property_value:
     optional_font_value_list positive_length_percent_property_value
         comma_separated_font_family_name_list {
     // Font shorthand properties without a non-normal weight value.
-    scoped_ptr<FontShorthand> font($1);
+    std::unique_ptr<FontShorthand> font($1);
 
     font->font_size = MakeScopedRefPtrAndRelease($2);
 
-    scoped_ptr<cssom::PropertyListValue::Builder> builder($3);
-    font->font_family = new cssom::PropertyListValue(builder.Pass());
+    std::unique_ptr<cssom::PropertyListValue::Builder> builder($3);
+    font->font_family = new cssom::PropertyListValue(std::move(builder));
 
     $$ = font.release();
   }
@@ -3996,7 +4201,7 @@ font_property_value:
     // preceding without expression are not simply combined into a single
     // maybe_font_weight_exclusive_property_value as a result of Bison having
     // parsing conflicts when the weight value appears in that form.
-    scoped_ptr<FontShorthand> font($1);
+    std::unique_ptr<FontShorthand> font($1);
 
     if (!font->font_weight) {
       font->font_weight = MakeScopedRefPtrAndRelease($2);
@@ -4007,15 +4212,15 @@ font_property_value:
 
     font->font_size = MakeScopedRefPtrAndRelease($3);
 
-    scoped_ptr<cssom::PropertyListValue::Builder> builder($4);
-    font->font_family = new cssom::PropertyListValue(builder.Pass());
+    std::unique_ptr<cssom::PropertyListValue::Builder> builder($4);
+    font->font_family = new cssom::PropertyListValue(std::move(builder));
 
     $$ = font.release();
   }
   | common_values_without_errors {
     // Replicate the common value into each of the properties that font
     // is a shorthand for.
-    scoped_ptr<FontShorthand> font(new FontShorthand());
+    std::unique_ptr<FontShorthand> font(new FontShorthand());
     font->font_style = $1;
     font->font_weight = $1;
     font->font_size = $1;
@@ -4034,10 +4239,77 @@ height_property_value:
   | common_values
   ;
 
+intersection_observer_root_margin_property_list:
+    // If there is only one component value, it applies to all sides.
+    length_percent_property_value {
+    $$ = new cssom::PropertyListValue::Builder();
+    $$->reserve(4);
+    auto all_margins = MakeScopedRefPtrAndRelease($1);
+    $$->push_back(all_margins);
+    $$->push_back(all_margins);
+    $$->push_back(all_margins);
+    $$->push_back(all_margins);
+  }
+    // If there are two values, the top and bottom margins are set to the first
+    // value and the right and left margins are set to the second.
+  | length_percent_property_value
+    length_percent_property_value {
+    $$ = new cssom::PropertyListValue::Builder();
+    $$->reserve(4);
+    auto top_and_bottom_margins = MakeScopedRefPtrAndRelease($1);
+    auto right_and_left_margins = MakeScopedRefPtrAndRelease($2);
+    $$->push_back(top_and_bottom_margins);
+    $$->push_back(right_and_left_margins);
+    $$->push_back(top_and_bottom_margins);
+    $$->push_back(right_and_left_margins);
+  }
+    // If there are three values, the top is set to the first value, the left
+    // and right are set to the second, and the bottom is set to the third.
+  | length_percent_property_value
+    length_percent_property_value
+    length_percent_property_value {
+    $$ = new cssom::PropertyListValue::Builder();
+    $$->reserve(4);
+    auto right_and_left_margins = MakeScopedRefPtrAndRelease($2);
+    $$->push_back(MakeScopedRefPtrAndRelease($1));
+    $$->push_back(right_and_left_margins);
+    $$->push_back(MakeScopedRefPtrAndRelease($3));
+    $$->push_back(right_and_left_margins);
+  }
+    // If there are four values, they apply to the top, right, bottom, and left,
+    // respectively.
+  | length_percent_property_value
+    length_percent_property_value
+    length_percent_property_value
+    length_percent_property_value {
+    $$ = new cssom::PropertyListValue::Builder();
+    $$->reserve(4);
+    $$->push_back(MakeScopedRefPtrAndRelease($1));
+    $$->push_back(MakeScopedRefPtrAndRelease($2));
+    $$->push_back(MakeScopedRefPtrAndRelease($3));
+    $$->push_back(MakeScopedRefPtrAndRelease($4));
+  }
+  ;
+
+// Specifies the margin of the root element of Intersection Observer.
+//   https://www.w3.org/TR/intersection-observer/#dom-intersectionobserver-rootmargin-slot
+intersection_observer_root_margin_property_value:
+  intersection_observer_root_margin_property_list {
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
+    $$ = property_value
+         ? AddRef(new cssom::PropertyListValue(std::move(property_value)))
+         : NULL;
+  }
+  ;
+
 // Specifies the minimum content height of boxes.
 //   https://www.w3.org/TR/CSS21/visudet.html#propdef-min-height
+//   https://www.w3.org/TR/css-sizing-3/#min-size-properties
 min_height_property_value:
-    positive_length_percent_property_value
+    kAutoToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetAuto().get());
+  }
+  | positive_length_percent_property_value
   | common_values
   ;
 
@@ -4156,11 +4428,18 @@ opacity_property_value:
   ;
 
 // Specifies whether content of a block container element is clipped when it
-// overflows the element's box.
+// overflows the element's box and whether a scrolling mechanism should be
+// provided.
 //   https://www.w3.org/TR/CSS2/visufx.html#overflow
 overflow_property_value:
-    kHiddenToken maybe_whitespace {
+    kAutoToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetAuto().get());
+  }
+  | kHiddenToken maybe_whitespace {
     $$ = AddRef(cssom::KeywordValue::GetHidden().get());
+  }
+  | kScrollToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetScroll().get());
   }
   | kVisibleToken maybe_whitespace {
     $$ = AddRef(cssom::KeywordValue::GetVisible().get());
@@ -4324,22 +4603,72 @@ text_align_property_value:
 
 // This property specifies what line decorations.
 //   https://www.w3.org/TR/css-text-decor-3/#text-decoration-line
-text_decoration_line_property_value:
+text_decoration_line:
     kNoneToken maybe_whitespace {
     $$ = AddRef(cssom::KeywordValue::GetNone().get());
   }
   | kLineThroughToken maybe_whitespace {
     $$ = AddRef(cssom::KeywordValue::GetLineThrough().get());
   }
+  ;
+
+text_decoration_line_property_value:
+    text_decoration_line
   | common_values
+  ;
+
+// One element of the text-decoration shorthand property.
+//   https://www.w3.org/TR/css-text-decor-3/#text-decoration
+text_decoration_property_element:
+    text_decoration_line {
+    scoped_refptr<cssom::PropertyValue> line(
+        MakeScopedRefPtrAndRelease($1));
+    if (!$<text_decoration_shorthand>0->line) {
+      $<text_decoration_shorthand>0->line = line;
+    } else {
+      parser_impl->LogError(@1,
+          "text-decoration-line value declared twice in text-decoration.");
+      $<text_decoration_shorthand>0->error = true;
+    }
+  }
+  | color {
+    scoped_refptr<cssom::PropertyValue> color(
+        MakeScopedRefPtrAndRelease($1));
+    if (!$<text_decoration_shorthand>0->color) {
+      $<text_decoration_shorthand>0->color = color;
+    } else {
+      parser_impl->LogError(@1,
+          "color value declared twice in text-decoration.");
+      $<text_decoration_shorthand>0->error = true;
+    }
+  }
+  ;
+
+text_decoration_property_list:
+    %empty {
+    $$ = new TextDecorationShorthand();
+  }
+  | text_decoration_property_list text_decoration_property_element {
+    $$ = $1;
+  }
   ;
 
 // Text decoration is a shorthand for setting 'text-decoration-line',
 // 'text-decoration-color', and 'text-decoration-style' in one declaration.
-// TODO: Redirect text decoration to text decoration line for now and
-// change it when fully implement text decoration.
 //   https://www.w3.org/TR/css-text-decor-3/#text-decoration
-text_decoration_property_value: text_decoration_line_property_value;
+text_decoration_property_value:
+    text_decoration_property_list
+  | common_values {
+    // Replicate the common value into each of the properties that flex_ flow is
+    // a shorthand for.
+    std::unique_ptr<TextDecorationShorthand> text_decoration(
+        new TextDecorationShorthand());
+    text_decoration->line = $1;
+    text_decoration->color = $1;
+    $$ = text_decoration.release();
+  }
+  ;
+
 
 // This property specifies the indentation applied to lines of inline content in
 // a block.
@@ -4402,7 +4731,7 @@ text_shadow_list:
 
 validated_text_shadow_list:
     text_shadow_list {
-    scoped_ptr<ShadowPropertyInfo> shadow_property_info($1);
+    std::unique_ptr<ShadowPropertyInfo> shadow_property_info($1);
     if (!shadow_property_info->IsShadowPropertyValid(kTextShadow)) {
       parser_impl->LogWarning(@1, "invalid text shadow property.");
       $$ = NULL;
@@ -4435,8 +4764,8 @@ comma_separated_text_shadow_list:
 text_shadow_property_value:
     comma_separated_text_shadow_list {
     if ($1) {
-      scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
-      $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+      std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
+      $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
     }
   }
   | kNoneToken maybe_whitespace {
@@ -4463,34 +4792,34 @@ transform_function:
   // Specifies an arbitrary affine 2D transformation.
     kMatrixFunctionToken maybe_whitespace number comma number comma number
       comma number comma number comma number ')' maybe_whitespace {
-    $<transform_functions>0->push_back(
+    $<transform_functions>0->emplace_back(
         new cssom::MatrixFunction($3, $5, $7, $9, $11, $13));
   }
   // Specifies a 2D rotation around the z-axis.
   //   https://www.w3.org/TR/css3-transforms/#funcdef-rotate
   | kRotateFunctionToken maybe_whitespace angle ')'
       maybe_whitespace {
-    $<transform_functions>0->push_back(new cssom::RotateFunction($3));
+    $<transform_functions>0->emplace_back(new cssom::RotateFunction($3));
   }
   // Specifies a 2D scale operation by the scaling vector.
   //   https://www.w3.org/TR/css3-transforms/#funcdef-scale
   | kScaleFunctionToken maybe_whitespace scale_function_parameters ')'
       maybe_whitespace {
-    $<transform_functions>0->push_back($3);
+    $<transform_functions>0->emplace_back($3);
   }
   // Specifies a 2D scale operation using the [sx, 1] scaling vector, where sx
   // is given as the parameter.
   //   https://www.w3.org/TR/css3-transforms/#funcdef-scalex
   | kScaleXFunctionToken maybe_whitespace number ')'
       maybe_whitespace {
-    $<transform_functions>0->push_back(new cssom::ScaleFunction($3, 1.0f));
+    $<transform_functions>0->emplace_back(new cssom::ScaleFunction($3, 1.0f));
   }
   // Specifies a 2D scale operation using the [1, sy] scaling vector, where sy
   // is given as the parameter.
   //   https://www.w3.org/TR/css3-transforms/#funcdef-scaley
   | kScaleYFunctionToken maybe_whitespace number ')'
       maybe_whitespace {
-    $<transform_functions>0->push_back(new cssom::ScaleFunction(1.0f, $3));
+    $<transform_functions>0->emplace_back(new cssom::ScaleFunction(1.0f, $3));
   }
   // Specifies a 2D translation by the vector [tx, ty], where tx is the first
   // translation-value parameter and ty is the optional second translation-value
@@ -4499,9 +4828,9 @@ transform_function:
   | kTranslateFunctionToken maybe_whitespace length_percent_property_value ')'
       maybe_whitespace {
     if ($3) {
-      $<transform_functions>0->push_back(new cssom::TranslateFunction(
+      $<transform_functions>0->emplace_back(new cssom::TranslateFunction(
           cssom::TranslateFunction::kXAxis, MakeScopedRefPtrAndRelease($3)));
-      $<transform_functions>0->push_back(new cssom::TranslateFunction(
+      $<transform_functions>0->emplace_back(new cssom::TranslateFunction(
           cssom::TranslateFunction::kYAxis,
           scoped_refptr<cssom::LengthValue>(
               new cssom::LengthValue(0, cssom::kPixelsUnit))));
@@ -4510,9 +4839,9 @@ transform_function:
   | kTranslateFunctionToken maybe_whitespace length_percent_property_value comma
     length_percent_property_value ')' maybe_whitespace {
     if ($3 && $5) {
-      $<transform_functions>0->push_back(new cssom::TranslateFunction(
+      $<transform_functions>0->emplace_back(new cssom::TranslateFunction(
           cssom::TranslateFunction::kXAxis, MakeScopedRefPtrAndRelease($3)));
-      $<transform_functions>0->push_back(new cssom::TranslateFunction(
+      $<transform_functions>0->emplace_back(new cssom::TranslateFunction(
           cssom::TranslateFunction::kYAxis, MakeScopedRefPtrAndRelease($5)));
     }
   }
@@ -4521,7 +4850,7 @@ transform_function:
   | kTranslateXFunctionToken maybe_whitespace length_percent_property_value ')'
       maybe_whitespace {
     if ($3) {
-      $<transform_functions>0->push_back(new cssom::TranslateFunction(
+      $<transform_functions>0->emplace_back(new cssom::TranslateFunction(
           cssom::TranslateFunction::kXAxis, MakeScopedRefPtrAndRelease($3)));
     }
   }
@@ -4530,7 +4859,7 @@ transform_function:
   | kTranslateYFunctionToken maybe_whitespace length_percent_property_value ')'
       maybe_whitespace {
     if ($3) {
-      $<transform_functions>0->push_back(new cssom::TranslateFunction(
+      $<transform_functions>0->emplace_back(new cssom::TranslateFunction(
           cssom::TranslateFunction::kYAxis, MakeScopedRefPtrAndRelease($3)));
     }
   }
@@ -4540,9 +4869,35 @@ transform_function:
   | kTranslateZFunctionToken maybe_whitespace length ')'
       maybe_whitespace {
     if ($3) {
-      $<transform_functions>0->push_back(new cssom::TranslateFunction(
+      $<transform_functions>0->emplace_back(new cssom::TranslateFunction(
           cssom::TranslateFunction::kZAxis, MakeScopedRefPtrAndRelease($3)));
     }
+  }
+  // This Cobalt-specific transform function for hybrid navigation tracks
+  // interaction with the navigation item when it is focused. This function
+  // queries the closest hybrid navigation focus item (i.e. this element or
+  // an ancestor element with tabindex set appropriately). If that navigation
+  // item does not have focus, or the system does not provide interaction
+  // animations, then this transform function will evaluate to identity.
+  | kCobaltUiNavFocusTransformFunctionToken maybe_whitespace ')'
+      maybe_whitespace {
+    $<transform_functions>0->emplace_back(
+        new cssom::CobaltUiNavFocusTransformFunction);
+  }
+  // This Cobalt-specific transform function for hybrid navigation tracks
+  // the direction in which focus is moving. This can be used to provide
+  // feedback about user input that is too small to result in a focus
+  // change. The transform function queries the closest hybrid navigation
+  // focus item (i.e. this element or an ancestor element with tabindex
+  // set appropriately). If the closest hybrid navigation focus item does
+  // not have focus, or the platform does not provide focus movement
+  // information, then this transform function will evaluate to the zero
+  // scale. Otherwise the transform will evaluate to a translation ranging
+  // from -50% to +50% in the X and Y directions.
+  | kCobaltUiNavSpotlightTransformFunctionToken maybe_whitespace ')'
+      maybe_whitespace {
+    $<transform_functions>0->emplace_back(
+        new cssom::CobaltUiNavSpotlightTransformFunction);
   }
   ;
 
@@ -4565,14 +4920,14 @@ transform_property_value:
     $$ = AddRef(cssom::KeywordValue::GetNone().get());
   }
   | transform_list {
-    scoped_ptr<cssom::TransformFunctionListValue::Builder>
+    std::unique_ptr<cssom::TransformFunctionListValue::Builder>
         transform_functions($1);
     $$ = transform_functions->size() == 0u ? NULL :
             AddRef(new cssom::TransformFunctionListValue(
-                transform_functions->Pass()));
+                std::move(*transform_functions)));
   }
   | transform_list errors {
-    scoped_ptr<cssom::TransformFunctionListValue::Builder>
+    std::unique_ptr<cssom::TransformFunctionListValue::Builder>
         transform_functions($1);
     parser_impl->LogWarning(@2, "invalid transform function");
     $$ = NULL;
@@ -4582,7 +4937,7 @@ transform_property_value:
 
 validated_two_position_list_elements:
     position_list_element position_list_element {
-    scoped_ptr<PositionParseStructure> position_info(
+    std::unique_ptr<PositionParseStructure> position_info(
         new PositionParseStructure());
     position_info->PushBackElement(MakeScopedRefPtrAndRelease($1));
     if (position_info->PushBackElement(MakeScopedRefPtrAndRelease($2)) &&
@@ -4601,22 +4956,22 @@ validated_two_position_list_elements:
 //   https://www.w3.org/TR/css3-transforms/#propdef-transform-origin
 transform_origin_property_value:
     position_list_element {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value(
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value(
         new cssom::PropertyListValue::Builder());
     property_value->push_back(MakeScopedRefPtrAndRelease($1));
-    $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+    $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
   }
   | validated_two_position_list_elements {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
     $$ = property_value
-         ? AddRef(new cssom::PropertyListValue(property_value.Pass()))
+         ? AddRef(new cssom::PropertyListValue(std::move(property_value)))
          : NULL;
   }
   | validated_two_position_list_elements length {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
     if (property_value) {
       property_value->push_back(MakeScopedRefPtrAndRelease($2));
-      $$ = AddRef(new cssom::PropertyListValue(property_value.Pass()));
+      $$ = AddRef(new cssom::PropertyListValue(std::move(property_value)));
     } else {
       $$ = NULL;
     }
@@ -4646,7 +5001,10 @@ vertical_align_property_value:
 // are rendered.
 //   https://www.w3.org/TR/CSS21/visufx.html#propdef-visibility
 visibility_property_value:
-    kHiddenToken maybe_whitespace {
+   kCollapseToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetCollapse().get());
+  }
+  | kHiddenToken maybe_whitespace {
     $$ = AddRef(cssom::KeywordValue::GetHidden().get());
   }
   | kVisibleToken maybe_whitespace {
@@ -4659,19 +5017,19 @@ visibility_property_value:
 comma_separated_time_list:
     time {
     $$ = new cssom::TimeListValue::Builder();
-    $$->push_back(base::TimeDelta::FromInternalValue($1));
+    $$->push_back(::base::TimeDelta::FromInternalValue($1));
   }
   | comma_separated_time_list comma time {
     $$ = $1;
-    $$->push_back(base::TimeDelta::FromInternalValue($3));
+    $$->push_back(::base::TimeDelta::FromInternalValue($3));
   }
   ;
 
 time_list_property_value:
     comma_separated_time_list {
-    scoped_ptr<cssom::ListValue<base::TimeDelta>::Builder> time_list($1);
+    std::unique_ptr<cssom::ListValue<::base::TimeDelta>::Builder> time_list($1);
     $$ = time_list
-         ? AddRef(new cssom::TimeListValue(time_list.Pass()))
+         ? AddRef(new cssom::TimeListValue(std::move(time_list)))
          : NULL;
   }
   | common_values
@@ -4757,11 +5115,11 @@ comma_separated_single_timing_function_list:
 
 timing_function_list_property_value:
     comma_separated_single_timing_function_list {
-    scoped_ptr<cssom::TimingFunctionListValue::Builder>
+    std::unique_ptr<cssom::TimingFunctionListValue::Builder>
         timing_function_list($1);
     $$ = timing_function_list
          ? AddRef(new cssom::TimingFunctionListValue(
-               timing_function_list.Pass()))
+               std::move(timing_function_list)))
          : NULL;
   }
   | common_values
@@ -4803,9 +5161,9 @@ comma_separated_animation_direction_list:
 
 animation_direction_property_value:
     comma_separated_animation_direction_list {
-    scoped_ptr<cssom::PropertyListValue::Builder> direction_list($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> direction_list($1);
     $$ = direction_list
-         ? AddRef(new cssom::PropertyListValue(direction_list.Pass()))
+         ? AddRef(new cssom::PropertyListValue(std::move(direction_list)))
          : NULL;
   }
   | common_values_without_errors
@@ -4853,9 +5211,9 @@ comma_separated_animation_fill_mode_list:
 
 animation_fill_mode_property_value:
     comma_separated_animation_fill_mode_list {
-    scoped_ptr<cssom::PropertyListValue::Builder> fill_mode_list($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> fill_mode_list($1);
     $$ = fill_mode_list
-         ? AddRef(new cssom::PropertyListValue(fill_mode_list.Pass()))
+         ? AddRef(new cssom::PropertyListValue(std::move(fill_mode_list)))
          : NULL;
   }
   | common_values_without_errors
@@ -4892,9 +5250,9 @@ comma_separated_animation_iteration_count_list:
 
 animation_iteration_count_property_value:
     comma_separated_animation_iteration_count_list {
-    scoped_ptr<cssom::PropertyListValue::Builder> iteration_count_list($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> iteration_count_list($1);
     $$ = iteration_count_list
-         ? AddRef(new cssom::PropertyListValue(iteration_count_list.Pass()))
+         ? AddRef(new cssom::PropertyListValue(std::move(iteration_count_list)))
          : NULL;
   }
   | common_values_without_errors
@@ -4930,9 +5288,9 @@ comma_separated_animation_name_list:
 
 animation_name_property_value:
     comma_separated_animation_name_list {
-    scoped_ptr<cssom::PropertyListValue::Builder> name_list($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> name_list($1);
     $$ = name_list
-         ? AddRef(new cssom::PropertyListValue(name_list.Pass()))
+         ? AddRef(new cssom::PropertyListValue(std::move(name_list)))
          : NULL;
   }
   | common_values_without_errors
@@ -4987,10 +5345,10 @@ single_animation_element:
   | time_with_units_required {
     if (!$<single_animation>0->duration) {
       // The first time encountered sets the duration.
-      $<single_animation>0->duration = base::TimeDelta::FromInternalValue($1);
+      $<single_animation>0->duration = ::base::TimeDelta::FromInternalValue($1);
     } else if (!$<single_animation>0->delay) {
       // The second time encountered sets the delay.
-      $<single_animation>0->delay = base::TimeDelta::FromInternalValue($1);
+      $<single_animation>0->delay = ::base::TimeDelta::FromInternalValue($1);
     } else {
       parser_impl->LogWarning(
           @1, "time value declared too many times in animation.");
@@ -5029,8 +5387,8 @@ single_non_empty_animation:
 
 comma_separated_animation_list:
     single_non_empty_animation {
-    scoped_ptr<SingleAnimationShorthand> single_animation($1);
-    scoped_ptr<AnimationShorthandBuilder> animation_builder(
+    std::unique_ptr<SingleAnimationShorthand> single_animation($1);
+    std::unique_ptr<AnimationShorthandBuilder> animation_builder(
         new AnimationShorthandBuilder());
 
     if (!single_animation->error) {
@@ -5055,7 +5413,7 @@ comma_separated_animation_list:
     $$ = animation_builder.release();
   }
   | comma_separated_animation_list comma single_non_empty_animation {
-    scoped_ptr<SingleAnimationShorthand> single_animation($3);
+    std::unique_ptr<SingleAnimationShorthand> single_animation($3);
     $$ = $1;
 
     if (!single_animation->error) {
@@ -5078,35 +5436,35 @@ comma_separated_animation_list:
 //   https://www.w3.org/TR/2013/WD-css3-animations-20130219/#animation-shorthand-property
 animation_property_value:
     comma_separated_animation_list {
-    scoped_ptr<AnimationShorthandBuilder> animation_builder($1);
+    std::unique_ptr<AnimationShorthandBuilder> animation_builder($1);
 
     if (animation_builder->empty()) {
       YYERROR;
     }
 
-    scoped_ptr<AnimationShorthand> animation(new AnimationShorthand());
+    std::unique_ptr<AnimationShorthand> animation(new AnimationShorthand());
 
     animation->delay_list = new cssom::TimeListValue(
-        animation_builder->delay_list_builder.Pass());
+        std::move(animation_builder->delay_list_builder));
     animation->direction_list = new cssom::PropertyListValue(
-        animation_builder->direction_list_builder.Pass());
+        std::move(animation_builder->direction_list_builder));
     animation->duration_list = new cssom::TimeListValue(
-        animation_builder->duration_list_builder.Pass());
+        std::move(animation_builder->duration_list_builder));
     animation->fill_mode_list = new cssom::PropertyListValue(
-        animation_builder->fill_mode_list_builder.Pass());
+        std::move(animation_builder->fill_mode_list_builder));
     animation->iteration_count_list = new cssom::PropertyListValue(
-        animation_builder->iteration_count_list_builder.Pass());
+        std::move(animation_builder->iteration_count_list_builder));
     animation->name_list = new cssom::PropertyListValue(
-        animation_builder->name_list_builder.Pass());
+        std::move(animation_builder->name_list_builder));
     animation->timing_function_list = new cssom::TimingFunctionListValue(
-        animation_builder->timing_function_list_builder.Pass());
+        std::move(animation_builder->timing_function_list_builder));
 
     $$ = animation.release();
   }
   | common_values_without_errors {
     // Replicate the common value into each of the properties that animation
     // is a shorthand for.
-    scoped_ptr<AnimationShorthand> animation(new AnimationShorthand());
+    std::unique_ptr<AnimationShorthand> animation(new AnimationShorthand());
     animation->delay_list = $1;
     animation->direction_list = $1;
     animation->duration_list = $1;
@@ -5139,7 +5497,7 @@ comma_separated_animatable_property_name_list:
   }
   | comma_separated_animatable_property_name_list comma
     animatable_property_token maybe_whitespace {
-    scoped_ptr<cssom::PropertyKeyListValue::Builder> property_name_list($1);
+    std::unique_ptr<cssom::PropertyKeyListValue::Builder> property_name_list($1);
     if (property_name_list) {
       property_name_list->push_back($3);
     }
@@ -5158,9 +5516,9 @@ transition_property_property_value:
     $$ = AddRef(cssom::KeywordValue::GetNone().get());
   }
   | comma_separated_animatable_property_name_list {
-    scoped_ptr<cssom::PropertyKeyListValue::Builder> property_name_list($1);
+    std::unique_ptr<cssom::PropertyKeyListValue::Builder> property_name_list($1);
     $$ = property_name_list
-         ? AddRef(new cssom::PropertyKeyListValue(property_name_list.Pass()))
+         ? AddRef(new cssom::PropertyKeyListValue(std::move(property_name_list)))
          : NULL;
   }
   | common_values_without_errors
@@ -5192,10 +5550,10 @@ single_transition_element:
   | time {
     if (!$<single_transition>0->duration) {
       // The first time encountered sets the duration.
-      $<single_transition>0->duration = base::TimeDelta::FromInternalValue($1);
+      $<single_transition>0->duration = ::base::TimeDelta::FromInternalValue($1);
     } else if (!$<single_transition>0->delay) {
       // The second time encountered sets the delay.
-      $<single_transition>0->delay = base::TimeDelta::FromInternalValue($1);
+      $<single_transition>0->delay = ::base::TimeDelta::FromInternalValue($1);
     } else {
       parser_impl->LogWarning(
           @1, "time value declared twice in transition.");
@@ -5234,8 +5592,8 @@ single_non_empty_transition:
 
 comma_separated_transition_list:
     single_non_empty_transition {
-    scoped_ptr<SingleTransitionShorthand> single_transition($1);
-    scoped_ptr<TransitionShorthandBuilder> transition_builder(
+    std::unique_ptr<SingleTransitionShorthand> single_transition($1);
+    std::unique_ptr<TransitionShorthandBuilder> transition_builder(
         new TransitionShorthandBuilder());
 
     if (!single_transition->error) {
@@ -5254,7 +5612,7 @@ comma_separated_transition_list:
     $$ = transition_builder.release();
   }
   | comma_separated_transition_list comma single_non_empty_transition {
-    scoped_ptr<SingleTransitionShorthand> single_transition($3);
+    std::unique_ptr<SingleTransitionShorthand> single_transition($3);
     $$ = $1;
 
     if (!single_transition->error) {
@@ -5273,7 +5631,7 @@ comma_separated_transition_list:
 //   https://www.w3.org/TR/css3-transitions/#transition
 transition_property_value:
     comma_separated_transition_list {
-    scoped_ptr<TransitionShorthandBuilder> transition_builder($1);
+    std::unique_ptr<TransitionShorthandBuilder> transition_builder($1);
 
     // Before proceeding, check that 'none' is not specified if the
     // number of transition statements is larger than 1, as per the
@@ -5290,7 +5648,7 @@ transition_property_value:
       }
     }
 
-    scoped_ptr<TransitionShorthand> transition(new TransitionShorthand());
+    std::unique_ptr<TransitionShorthand> transition(new TransitionShorthand());
 
     if (property_list_builder.empty() ||
         (property_list_builder.size() == 1 &&
@@ -5298,19 +5656,19 @@ transition_property_value:
       transition->property_list = cssom::KeywordValue::GetNone();
     } else {
       transition->property_list = new cssom::PropertyKeyListValue(
-          transition_builder->property_list_builder.Pass());
+          std::move(transition_builder->property_list_builder));
     }
     if (!transition_builder->duration_list_builder->empty()) {
       transition->duration_list = new cssom::TimeListValue(
-          transition_builder->duration_list_builder.Pass());
+          std::move(transition_builder->duration_list_builder));
     }
     if (!transition_builder->timing_function_list_builder->empty()) {
       transition->timing_function_list = new cssom::TimingFunctionListValue(
-          transition_builder->timing_function_list_builder.Pass());
+          std::move(transition_builder->timing_function_list_builder));
     }
     if (!transition_builder->delay_list_builder->empty()) {
       transition->delay_list = new cssom::TimeListValue(
-          transition_builder->delay_list_builder.Pass());
+          std::move(transition_builder->delay_list_builder));
     }
 
     $$ = transition.release();
@@ -5318,7 +5676,7 @@ transition_property_value:
   | common_values_without_errors {
     // Replicate the common value into each of the properties that transition
     // is a shorthand for.
-    scoped_ptr<TransitionShorthand> transition(new TransitionShorthand());
+    std::unique_ptr<TransitionShorthand> transition(new TransitionShorthand());
     transition->property_list = $1;
     transition->duration_list = $1;
     transition->timing_function_list = $1;
@@ -5329,9 +5687,9 @@ transition_property_value:
 
 unicode_range_property_value:
     comma_separated_unicode_range_list {
-    scoped_ptr<cssom::PropertyListValue::Builder> property_value($1);
+    std::unique_ptr<cssom::PropertyListValue::Builder> property_value($1);
     $$ = property_value
-         ? AddRef(new cssom::PropertyListValue(property_value.Pass()))
+         ? AddRef(new cssom::PropertyListValue(std::move(property_value)))
          : NULL;
   }
   | common_values
@@ -5355,8 +5713,8 @@ white_space_property_value:
     kNormalToken maybe_whitespace {
     $$ = AddRef(cssom::KeywordValue::GetNormal().get());
   }
-  | kNoWrapToken maybe_whitespace {
-    $$ = AddRef(cssom::KeywordValue::GetNoWrap().get());
+  | kNowrapToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetNowrap().get());
   }
   | kPreToken maybe_whitespace {
     $$ = AddRef(cssom::KeywordValue::GetPre().get());
@@ -5372,6 +5730,8 @@ white_space_property_value:
 
 // Specifies the content width of boxes.
 //   https://www.w3.org/TR/CSS21/visudet.html#the-width-property
+// The 'width' property.
+//   https://www.w3.org/TR/CSS21/visudet.html#propdef-width
 width_property_value:
     positive_length_percent_property_value
   | auto
@@ -5380,8 +5740,12 @@ width_property_value:
 
 // Specifies the minimum content width of boxes.
 //   https://www.w3.org/TR/CSS2/visudet.html#propdef-min-width
+//   https://www.w3.org/TR/css-sizing-3/#min-size-properties
 min_width_property_value:
-    positive_length_percent_property_value
+    kAutoToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetAuto().get());
+  }
+  | positive_length_percent_property_value
   | common_values
   ;
 
@@ -5405,6 +5769,361 @@ z_index_property_value:
     $$ = AddRef(new cssom::IntegerValue($1));
   }
   | auto
+  | common_values
+  ;
+
+// Properties for FlexBox.
+//   https://www.w3.org/TR/css-flexbox-1
+
+// FlexBox property Keyword combinations: flex-start | flex-end | center
+flex_start_end_center_property_value:
+    kFlexStartToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetFlexStart().get());
+  }
+  | kFlexEndToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetFlexEnd().get());
+  }
+  | kCenterToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetCenter().get());
+  }
+  ;
+
+// FlexBox property Keyword combinations: space-between | space-around
+space_between_around_property_value:
+    kSpaceBetweenToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetSpaceBetween().get());
+  }
+  | kSpaceAroundToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetSpaceAround().get());
+  }
+  ;
+
+// FlexBox property Keyword combinations: baseline | stretch
+baseline_stretch_property_value:
+    kBaselineToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetBaseline().get());
+  }
+  | kStretchToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetStretch().get());
+  }
+  ;
+
+// Flexbox property justify-content.
+// flex-start | flex-end | center | space-between | space-around
+//   https://www.w3.org/TR/css-flexbox-1/#justify-content-property
+justify_content_property_value:
+    flex_start_end_center_property_value
+  | space_between_around_property_value
+  | common_values
+  ;
+
+// Flexbox property align-content.
+// flex-start | flex-end | center | space-between | space-around | stretch
+//   https://www.w3.org/TR/css-flexbox-1/#align-content-property
+align_content_property_value:
+    flex_start_end_center_property_value
+  | space_between_around_property_value
+  | kStretchToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetStretch().get());
+  }
+  | common_values
+  ;
+
+// Flexbox property align-items.
+// flex-start | flex-end | center | baseline | stretch
+//   https://www.w3.org/TR/css-flexbox-1/#align-items-property
+align_items_property_value:
+    flex_start_end_center_property_value
+  | baseline_stretch_property_value
+  | common_values
+  ;
+
+// Flexbox property align-self.
+// auto | flex-start | flex-end | center | baseline | stretch
+//   https://www.w3.org/TR/css-flexbox-1/#align-items-property
+align_self_property_value:
+    kAutoToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetAuto().get());
+  }
+  | flex_start_end_center_property_value
+  | baseline_stretch_property_value
+  | common_values
+  ;
+
+// Keywords for the flex-basis property.
+flex_basis_keywords:
+    kContentToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetContent().get());
+  }
+  | kAutoToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetAuto().get());
+  }
+  ;
+
+// Flexbox property flex-basis.
+// content | <‘width’>
+//   https://www.w3.org/TR/css-flexbox-1/#flex-basis-property
+// Or keyword auto
+//   https://www.w3.org/TR/css-flexbox-1/#valdef-flex-basis-auto
+flex_basis_property_value:
+    flex_basis_keywords
+  | positive_length_percent_property_value
+  | common_values
+  ;
+
+// A flex basis element in a flex shortcut, except for the unitless zero width
+// value.
+flex_basis_element:
+    flex_basis_keywords
+  | non_negative_absolute_or_relative_length {
+    $$ = $1;
+  }
+  | positive_percentage {
+    $$ = $1;
+  }
+  ;
+
+// Flex property element that is a flex-basis when it appears alone.
+flex_single_flex_basis_element:
+    kContentToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetContent().get());
+  }
+  | non_negative_absolute_or_relative_length {
+    $$ = $1;
+  }
+  | positive_percentage {
+    $$ = $1;
+  }
+  ;
+
+// Flexbox Shorthand property flex
+//   https://www.w3.org/TR/css-flexbox-1/#flex-property
+flex_single_property_value:
+    flex_single_flex_basis_element {
+    // One single flex property element as a flex-basis value.
+    std::unique_ptr<FlexShorthand> flex(new FlexShorthand());
+    flex->grow = cssom::KeywordValue::GetInitial();
+    flex->shrink = cssom::KeywordValue::GetInitial();
+    flex->basis = MakeScopedRefPtrAndRelease($1);
+    $$ = flex.release();
+  }
+  | non_negative_number {
+    // Shorthand 'flex: <positive number>' expands to
+    // 'flex: <positive-number> 1 0'.
+    //   https://www.w3.org/TR/css-flexbox-1/#flex-common
+    std::unique_ptr<FlexShorthand> flex(new FlexShorthand());
+    flex->grow = new cssom::NumberValue($1);
+    flex->shrink = new cssom::NumberValue(1);
+    flex->basis = new cssom::LengthValue(0, cssom::kPixelsUnit);
+    $$ = flex.release();
+  }
+  | kAutoToken maybe_whitespace {
+    // The keyword auto expands to 1 1 auto.
+    //   https://www.w3.org/TR/css-flexbox-1/#flex-common
+    std::unique_ptr<FlexShorthand> flex(new FlexShorthand());
+    flex->grow = new cssom::NumberValue(1);
+    flex->shrink = new cssom::NumberValue(1);
+    flex->basis = cssom::KeywordValue::GetAuto();
+    $$ = flex.release();
+  }
+  | kNoneToken maybe_whitespace {
+    // The keyword none expands to 0 0 auto.
+    //   https://www.w3.org/TR/css-flexbox-1/#valdef-flex-none
+    std::unique_ptr<FlexShorthand> flex(new FlexShorthand());
+    flex->grow = new cssom::NumberValue(0);
+    flex->shrink = new cssom::NumberValue(0);
+    flex->basis = cssom::KeywordValue::GetAuto();
+    $$ = flex.release();
+  }
+  ;
+
+flex_two_property_values:
+    non_negative_number non_negative_number {
+    // Two flex factors.
+    std::unique_ptr<FlexShorthand> flex(new FlexShorthand());
+    flex->grow = new cssom::NumberValue($1);
+    flex->shrink = new cssom::NumberValue($2);
+    $$ = flex.release();
+  }
+  | non_negative_number flex_basis_element {
+    // One flex factor and one flex basis.
+    std::unique_ptr<FlexShorthand> flex(new FlexShorthand());
+    flex->grow = new cssom::NumberValue($1);
+    flex->basis = MakeScopedRefPtrAndRelease($2);
+    $$ = flex.release();
+  }
+  | flex_basis_element non_negative_number {
+    // One flex basis and one flex factor.
+    std::unique_ptr<FlexShorthand> flex(new FlexShorthand());
+    flex->grow = new cssom::NumberValue($2);
+    flex->basis = MakeScopedRefPtrAndRelease($1);
+    $$ = flex.release();
+  }
+  ;
+
+flex_three_property_values:
+    non_negative_number non_negative_number flex_basis_element {
+    // Two flex factors and a flex basis.
+    std::unique_ptr<FlexShorthand> flex(new FlexShorthand());
+    flex->grow = new cssom::NumberValue($1);
+    flex->shrink= new cssom::NumberValue($2);
+    flex->basis = MakeScopedRefPtrAndRelease($3);
+    $$ = flex.release();
+  }
+  | flex_basis_element non_negative_number non_negative_number {
+    // One flex basis and two flex factors.
+    std::unique_ptr<FlexShorthand> flex(new FlexShorthand());
+    flex->grow = new cssom::NumberValue($2);
+    flex->shrink= new cssom::NumberValue($3);
+    flex->basis = MakeScopedRefPtrAndRelease($1);
+    $$ = flex.release();
+  }
+  | non_negative_number non_negative_number non_negative_number {
+    // A unitless zero that is not already preceded by two flex factors must be
+    // interpreted as a flex factor.
+    //   https://www.w3.org/TR/css-flexbox-1/#flex-property
+    if ($3 != 0) {
+      parser_impl->LogError(
+          @1, "non-zero flex basis is not allowed without unit identifier");
+      YYERROR;
+    }
+    std::unique_ptr<FlexShorthand> flex(new FlexShorthand());
+    flex->grow = new cssom::NumberValue($1);
+    flex->shrink= new cssom::NumberValue($2);
+    flex->basis = new cssom::LengthValue($3, cssom::kPixelsUnit);
+    $$ = flex.release();
+  }
+  ;
+
+flex_property_value:
+    flex_single_property_value {
+    std::unique_ptr<FlexShorthand> flex($1);
+    $$ = flex.release();
+  }
+  | flex_two_property_values {
+    $$ = $1;
+  }
+  | flex_three_property_values
+  | common_values {
+    // Replicate the common value into each of the properties that flex is a
+    // shorthand for.
+    std::unique_ptr<FlexShorthand> flex(new FlexShorthand());
+    flex->grow = $1;
+    flex->shrink= $1;
+    flex->basis = $1;
+    $$ = flex.release();
+  }
+  ;
+
+// Flexbox property flex-grow and flex-shrink
+//   https://www.w3.org/TR/css-flexbox-1/#flex-grow-property
+//   https://www.w3.org/TR/css-flexbox-1/#flex-shrink-property
+flex_factor_property_value:
+    non_negative_number {
+    $$ = AddRef(new cssom::NumberValue($1));
+  }
+  | common_values
+  ;
+
+// Flexbox property order
+//   https://www.w3.org/TR/css-flexbox-1/#order-property
+order_property_value:
+    integer {
+    $$ = AddRef(new cssom::IntegerValue($1));
+  }
+  | common_values
+  ;
+
+// Flexbox property flex-direction.
+// row | row-reverse | column | column-reverse
+//   https://www.w3.org/TR/css-flexbox-1/#flex-direction-property
+flex_direction:
+    kRowToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetRow().get());
+  }
+  | kRowReverseToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetRowReverse().get());
+  }
+  | kColumnToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetColumn().get());
+  }
+  | kColumnReverseToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetColumnReverse().get());
+  }
+  ;
+
+// Flexbox property flex-grow and flex-direction
+//  https://www.w3.org/TR/css-flexbox-1/#flex-direction-property
+flex_direction_property_value:
+    flex_direction
+  | common_values
+  ;
+
+// One element of the flex-flow shorthand property.
+//   https://www.w3.org/TR/css-flexbox-1/#flex-flow-property
+flex_flow_property_element:
+    flex_direction {
+    scoped_refptr<cssom::PropertyValue> direction(
+        MakeScopedRefPtrAndRelease($1));
+    if (!$<flex_flow_shorthand>0->direction) {
+      $<flex_flow_shorthand>0->direction = direction;
+    } else {
+      parser_impl->LogError(@1, "flex-direction value declared twice in flex.");
+      $<flex_flow_shorthand>0->error = true;
+    }
+  }
+  | flex_wrap {
+    scoped_refptr<cssom::PropertyValue> wrap(
+        MakeScopedRefPtrAndRelease($1));
+    if (!$<flex_flow_shorthand>0->wrap) {
+      $<flex_flow_shorthand>0->wrap = wrap;
+    } else {
+      parser_impl->LogError(@1, "flex-wrap value declared twice in flex.");
+      $<flex_flow_shorthand>0->error = true;
+    }
+  }
+  ;
+
+flex_flow_property_list:
+    %empty {
+    $$ = new FlexFlowShorthand();
+  }
+  | flex_flow_property_list flex_flow_property_element {
+    $$ = $1;
+  }
+  ;
+
+// Flexbox Shorthand property flex-flow
+//   https://www.w3.org/TR/css-flexbox-1/#flex-flow-property
+flex_flow_property_value:
+    flex_flow_property_list
+  | common_values {
+    // Replicate the common value into each of the properties that flex_ flow is
+    // a shorthand for.
+    std::unique_ptr<FlexFlowShorthand> flex_flow(new FlexFlowShorthand());
+    flex_flow->direction = $1;
+    flex_flow->wrap = $1;
+    $$ = flex_flow.release();
+  }
+  ;
+
+// Flexbox property flex-wrap.
+// nowrap | wrap | wrap-reverse
+//   https://www.w3.org/TR/css-flexbox-1/#flex-wrap-property
+flex_wrap:
+    kNowrapToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetNowrap().get());
+  }
+  | kWrapToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetWrap().get());
+  }
+  | kWrapReverseToken maybe_whitespace {
+    $$ = AddRef(cssom::KeywordValue::GetWrapReverse().get());
+  }
+  ;
+
+flex_wrap_property_value:
+    flex_wrap
   | common_values
   ;
 
@@ -5463,6 +6182,24 @@ animatable_property_token:
 //   https://www.w3.org/TR/css3-syntax/#consume-a-declaration0
 maybe_declaration:
     %empty { $$ = NULL; }
+  | kAlignContentToken maybe_whitespace colon align_content_property_value
+      maybe_important {
+    $$ = $4 ? new PropertyDeclaration(cssom::kAlignContentProperty,
+                                      MakeScopedRefPtrAndRelease($4), $5)
+            : NULL;
+  }
+  | kAlignItemsToken maybe_whitespace colon align_items_property_value
+      maybe_important {
+    $$ = $4 ? new PropertyDeclaration(cssom::kAlignItemsProperty,
+                                      MakeScopedRefPtrAndRelease($4), $5)
+            : NULL;
+  }
+  | kAlignSelfToken maybe_whitespace colon align_self_property_value
+      maybe_important {
+    $$ = $4 ? new PropertyDeclaration(cssom::kAlignSelfProperty,
+                                      MakeScopedRefPtrAndRelease($4), $5)
+            : NULL;
+  }
   | kAnimationDelayToken maybe_whitespace colon
       animation_delay_property_value maybe_important {
     $$ = $4 ? new PropertyDeclaration(cssom::kAnimationDelayProperty,
@@ -5507,10 +6244,10 @@ maybe_declaration:
   }
   | kAnimationToken maybe_whitespace colon
       animation_property_value maybe_important {
-    scoped_ptr<AnimationShorthand> animation($4);
+    std::unique_ptr<AnimationShorthand> animation($4);
     DCHECK(animation);
 
-    scoped_ptr<PropertyDeclaration> property_declaration(
+    std::unique_ptr<PropertyDeclaration> property_declaration(
         new PropertyDeclaration($5));
 
     // Unpack the animation shorthand property values.
@@ -5547,10 +6284,10 @@ maybe_declaration:
   }
   | kBackgroundToken maybe_whitespace colon background_property_value
       maybe_important {
-    scoped_ptr<BackgroundShorthandLayer> background($4);
+    std::unique_ptr<BackgroundShorthandLayer> background($4);
     if (background && !background->error) {
       background->ReplaceNullWithInitialValues();
-      scoped_ptr<PropertyDeclaration> property_declaration(
+      std::unique_ptr<PropertyDeclaration> property_declaration(
           new PropertyDeclaration($5));
 
       // Unpack the background shorthand property values.
@@ -5612,10 +6349,10 @@ maybe_declaration:
   }
   | kBorderToken maybe_whitespace colon border_or_outline_property_value
       maybe_important {
-    scoped_ptr<BorderOrOutlineShorthand> border($4);
+    std::unique_ptr<BorderOrOutlineShorthand> border($4);
     DCHECK(border);
     if (!border->error) {
-      scoped_ptr<PropertyDeclaration> property_declaration(
+      std::unique_ptr<PropertyDeclaration> property_declaration(
           new PropertyDeclaration($5));
 
       // Unpack border color.
@@ -5680,10 +6417,10 @@ maybe_declaration:
   }
   | kBorderBottomToken maybe_whitespace colon border_or_outline_property_value
       maybe_important {
-    scoped_ptr<BorderOrOutlineShorthand> border($4);
+    std::unique_ptr<BorderOrOutlineShorthand> border($4);
     DCHECK(border);
     if (!border->error) {
-      scoped_ptr<PropertyDeclaration> property_declaration(
+      std::unique_ptr<PropertyDeclaration> property_declaration(
           new PropertyDeclaration($5));
 
       // Unpack border bottom.
@@ -5730,7 +6467,7 @@ maybe_declaration:
       shorthand_to_longhand.Assign4BordersBasedOnPropertyList(
             property_list_value);
 
-      scoped_ptr<PropertyDeclaration> property_declaration(
+      std::unique_ptr<PropertyDeclaration> property_declaration(
           new PropertyDeclaration($5));
 
       // Unpack border color.
@@ -5758,10 +6495,10 @@ maybe_declaration:
   }
   | kBorderLeftToken maybe_whitespace colon border_or_outline_property_value
       maybe_important {
-    scoped_ptr<BorderOrOutlineShorthand> border($4);
+    std::unique_ptr<BorderOrOutlineShorthand> border($4);
     DCHECK(border);
     if (!border->error) {
-      scoped_ptr<PropertyDeclaration> property_declaration(
+      std::unique_ptr<PropertyDeclaration> property_declaration(
           new PropertyDeclaration($5));
 
       // Unpack border left.
@@ -5808,7 +6545,7 @@ maybe_declaration:
       shorthand_to_longhand.Assign4BordersBasedOnPropertyList(
             property_list_value);
 
-      scoped_ptr<PropertyDeclaration> property_declaration(
+      std::unique_ptr<PropertyDeclaration> property_declaration(
           new PropertyDeclaration($5));
 
       // Unpack border radius.
@@ -5836,10 +6573,10 @@ maybe_declaration:
   }
   | kBorderRightToken maybe_whitespace colon border_or_outline_property_value
       maybe_important {
-    scoped_ptr<BorderOrOutlineShorthand> border($4);
+    std::unique_ptr<BorderOrOutlineShorthand> border($4);
     DCHECK(border);
     if (!border->error) {
-      scoped_ptr<PropertyDeclaration> property_declaration(
+      std::unique_ptr<PropertyDeclaration> property_declaration(
           new PropertyDeclaration($5));
 
       // Unpack border right.
@@ -5886,7 +6623,7 @@ maybe_declaration:
       shorthand_to_longhand.Assign4BordersBasedOnPropertyList(
             property_list_value);
 
-      scoped_ptr<PropertyDeclaration> property_declaration(
+      std::unique_ptr<PropertyDeclaration> property_declaration(
           new PropertyDeclaration($5));
 
       // Unpack border style.
@@ -5914,10 +6651,10 @@ maybe_declaration:
   }
   | kBorderTopToken maybe_whitespace colon border_or_outline_property_value
       maybe_important {
-    scoped_ptr<BorderOrOutlineShorthand> border($4);
+    std::unique_ptr<BorderOrOutlineShorthand> border($4);
     DCHECK(border);
     if (!border->error) {
-      scoped_ptr<PropertyDeclaration> property_declaration(
+      std::unique_ptr<PropertyDeclaration> property_declaration(
           new PropertyDeclaration($5));
 
       // Unpack border top.
@@ -5976,7 +6713,7 @@ maybe_declaration:
         shorthand_to_longhand.Assign4BordersBasedOnPropertyList(
             property_list_value);
 
-        scoped_ptr<PropertyDeclaration> property_declaration(
+        std::unique_ptr<PropertyDeclaration> property_declaration(
             new PropertyDeclaration($5));
 
         // Unpack border width.
@@ -6038,11 +6775,90 @@ maybe_declaration:
                                       MakeScopedRefPtrAndRelease($4), $5)
             : NULL;
   }
+  | kFlexToken maybe_whitespace colon flex_property_value
+      maybe_important {
+    std::unique_ptr<FlexShorthand> flex($4);
+    DCHECK(flex);
+    if (!flex->error) {
+      flex->ReplaceNullWithInitialValues();
+      std::unique_ptr<PropertyDeclaration> property_declaration(
+          new PropertyDeclaration($5));
+
+      // Unpack flex.
+      property_declaration->property_values.push_back(
+          PropertyDeclaration::PropertyKeyValuePair(
+              cssom::kFlexGrowProperty, flex->grow));
+      property_declaration->property_values.push_back(
+          PropertyDeclaration::PropertyKeyValuePair(
+              cssom::kFlexShrinkProperty, flex->shrink));
+      property_declaration->property_values.push_back(
+          PropertyDeclaration::PropertyKeyValuePair(
+              cssom::kFlexBasisProperty, flex->basis));
+
+      $$ = property_declaration.release();
+    } else {
+      parser_impl->LogWarning(@1, "invalid flex");
+      $$ = NULL;
+    }
+  }
+  | kFlexBasisToken maybe_whitespace colon flex_basis_property_value
+      maybe_important {
+    $$ = $4 ? new PropertyDeclaration(cssom::kFlexBasisProperty,
+                                      MakeScopedRefPtrAndRelease($4), $5)
+            : NULL;
+  }
+  | kFlexDirectionToken maybe_whitespace colon flex_direction_property_value
+      maybe_important {
+    $$ = $4 ? new PropertyDeclaration(cssom::kFlexDirectionProperty,
+                                      MakeScopedRefPtrAndRelease($4), $5)
+            : NULL;
+  }
+  | kFlexFlowToken maybe_whitespace colon flex_flow_property_value
+      maybe_important {
+    std::unique_ptr<FlexFlowShorthand> flex_flow($4);
+    DCHECK(flex_flow);
+    if (!flex_flow->error) {
+      flex_flow->ReplaceNullWithInitialValues();
+      std::unique_ptr<PropertyDeclaration> property_declaration(
+          new PropertyDeclaration($5));
+
+      // Unpack flex-flow.
+      property_declaration->property_values.push_back(
+          PropertyDeclaration::PropertyKeyValuePair(
+              cssom::kFlexDirectionProperty, flex_flow->direction));
+      property_declaration->property_values.push_back(
+          PropertyDeclaration::PropertyKeyValuePair(
+              cssom::kFlexWrapProperty, flex_flow->wrap));
+
+      $$ = property_declaration.release();
+    } else {
+      parser_impl->LogWarning(@1, "invalid flex-flow");
+      $$ = NULL;
+    }
+  }
+  | kFlexGrowToken maybe_whitespace colon flex_factor_property_value
+      maybe_important {
+    $$ = $4 ? new PropertyDeclaration(cssom::kFlexGrowProperty,
+                                      MakeScopedRefPtrAndRelease($4), $5)
+            : NULL;
+  }
+  | kFlexShrinkToken maybe_whitespace colon flex_factor_property_value
+      maybe_important {
+    $$ = $4 ? new PropertyDeclaration(cssom::kFlexShrinkProperty,
+                                      MakeScopedRefPtrAndRelease($4), $5)
+            : NULL;
+  }
+  | kFlexWrapToken maybe_whitespace colon flex_wrap_property_value
+      maybe_important {
+    $$ = $4 ? new PropertyDeclaration(cssom::kFlexWrapProperty,
+                                      MakeScopedRefPtrAndRelease($4), $5)
+            : NULL;
+  }
   | kFontToken maybe_whitespace colon font_property_value maybe_important {
-    scoped_ptr<FontShorthand> font($4);
+    std::unique_ptr<FontShorthand> font($4);
     DCHECK(font);
 
-    scoped_ptr<PropertyDeclaration> property_declaration(
+    std::unique_ptr<PropertyDeclaration> property_declaration(
         new PropertyDeclaration($5));
 
     if (!font->error) {
@@ -6099,6 +6915,18 @@ maybe_declaration:
                                       MakeScopedRefPtrAndRelease($4), $5)
             : NULL;
   }
+  | kIntersectionObserverRootMarginToken maybe_whitespace colon
+      intersection_observer_root_margin_property_value maybe_important {
+    $$ = $4 ? new PropertyDeclaration(cssom::kIntersectionObserverRootMarginProperty,
+                                      MakeScopedRefPtrAndRelease($4), $5)
+            : NULL;
+  }
+  | kJustifyContentToken maybe_whitespace colon justify_content_property_value
+      maybe_important {
+    $$ = $4 ? new PropertyDeclaration(cssom::kJustifyContentProperty,
+                                      MakeScopedRefPtrAndRelease($4), $5)
+            : NULL;
+  }
   | kLeftToken maybe_whitespace colon offset_property_value
       maybe_important {
     $$ = $4 ? new PropertyDeclaration(cssom::kLeftProperty,
@@ -6136,9 +6964,9 @@ maybe_declaration:
             : NULL;
   }
   | kMarginToken maybe_whitespace colon margin_property_value maybe_important {
-    scoped_ptr<MarginOrPaddingShorthand> margin($4);
+    std::unique_ptr<MarginOrPaddingShorthand> margin($4);
     if (margin) {
-      scoped_ptr<PropertyDeclaration> property_declaration(
+      std::unique_ptr<PropertyDeclaration> property_declaration(
           new PropertyDeclaration($5));
 
       property_declaration->property_values.push_back(
@@ -6189,12 +7017,18 @@ maybe_declaration:
                                       MakeScopedRefPtrAndRelease($4), $5)
             : NULL;
   }
+  | kOrderToken maybe_whitespace colon order_property_value
+      maybe_important {
+    $$ = $4 ? new PropertyDeclaration(cssom::kOrderProperty,
+                                      MakeScopedRefPtrAndRelease($4), $5)
+            : NULL;
+  }
   | kOutlineToken maybe_whitespace colon border_or_outline_property_value
       maybe_important {
-    scoped_ptr<BorderOrOutlineShorthand> outline($4);
+    std::unique_ptr<BorderOrOutlineShorthand> outline($4);
     DCHECK(outline);
     if (!outline->error) {
-      scoped_ptr<PropertyDeclaration> property_declaration(
+      std::unique_ptr<PropertyDeclaration> property_declaration(
           new PropertyDeclaration($5));
 
       // Unpack outline color.
@@ -6274,9 +7108,9 @@ maybe_declaration:
   }
   | kPaddingToken maybe_whitespace colon padding_property_value
       maybe_important {
-    scoped_ptr<MarginOrPaddingShorthand> padding($4);
+    std::unique_ptr<MarginOrPaddingShorthand> padding($4);
     if (padding) {
-      scoped_ptr<PropertyDeclaration> property_declaration(
+      std::unique_ptr<PropertyDeclaration> property_declaration(
           new PropertyDeclaration($5));
 
       property_declaration->property_values.push_back(
@@ -6335,9 +7169,26 @@ maybe_declaration:
   }
   | kTextDecorationToken maybe_whitespace colon text_decoration_property_value
       maybe_important {
-    $$ = $4 ? new PropertyDeclaration(cssom::kTextDecorationLineProperty,
-                                      MakeScopedRefPtrAndRelease($4), $5)
-            : NULL;
+    std::unique_ptr<TextDecorationShorthand> text_decoration($4);
+    DCHECK(text_decoration);
+    if (!text_decoration->error) {
+      text_decoration->ReplaceNullWithInitialValues();
+      std::unique_ptr<PropertyDeclaration> property_declaration(
+          new PropertyDeclaration($5));
+
+      // Unpack text-decoration.
+      property_declaration->property_values.push_back(
+          PropertyDeclaration::PropertyKeyValuePair(
+              cssom::kTextDecorationLineProperty, text_decoration->line));
+      property_declaration->property_values.push_back(
+          PropertyDeclaration::PropertyKeyValuePair(
+              cssom::kTextDecorationColorProperty, text_decoration->color));
+
+      $$ = property_declaration.release();
+    } else {
+      parser_impl->LogWarning(@1, "invalid text-decoration");
+      $$ = NULL;
+    }
   }
   | kTextDecorationColorToken maybe_whitespace colon
       color_property_value maybe_important {
@@ -6389,10 +7240,10 @@ maybe_declaration:
   }
   | kTransitionToken maybe_whitespace colon
       transition_property_value maybe_important {
-    scoped_ptr<TransitionShorthand> transition($4);
+    std::unique_ptr<TransitionShorthand> transition($4);
     DCHECK(transition);
 
-    scoped_ptr<PropertyDeclaration> property_declaration(
+    std::unique_ptr<PropertyDeclaration> property_declaration(
         new PropertyDeclaration($5));
 
     // Unpack the transition shorthand property values.
@@ -6469,6 +7320,13 @@ maybe_declaration:
                                       MakeScopedRefPtrAndRelease($4), $5)
             : NULL;
   }
+  | kWordWrapToken maybe_whitespace colon overflow_wrap_property_value
+      maybe_important {
+    // NOTE: word-wrap is treated as an alias for overflow-wrap
+    $$ = $4 ? new PropertyDeclaration(cssom::kOverflowWrapProperty,
+                                      MakeScopedRefPtrAndRelease($4), $5)
+            : NULL;
+  }
   | kZIndexToken maybe_whitespace colon z_index_property_value
       maybe_important {
     $$ = $4 ? new PropertyDeclaration(cssom::kZIndexProperty,
@@ -6481,8 +7339,8 @@ maybe_declaration:
 
     // Do not warn about non-standard or non-WebKit properties.
     if (property_name[0] != '-') {
-      base::AutoLock lock(non_trivial_static_fields.Get().lock);
-      base::hash_set<std::string>& properties_warned_about =
+      ::base::AutoLock lock(non_trivial_static_fields.Get().lock);
+      ::base::hash_set<std::string>& properties_warned_about =
           non_trivial_static_fields.Get().properties_warned_about;
 
       if (properties_warned_about.find(property_name) ==
@@ -6508,7 +7366,7 @@ style_declaration_list:
     maybe_declaration {
     $$ = AddRef(new cssom::CSSDeclaredStyleData());
 
-    scoped_ptr<PropertyDeclaration> property_declaration($1);
+    std::unique_ptr<PropertyDeclaration> property_declaration($1);
     if (property_declaration) {
       property_declaration->Apply($$);
       for (size_t i = 0;
@@ -6524,7 +7382,7 @@ style_declaration_list:
   | style_declaration_list semicolon maybe_declaration {
     $$ = $1;
 
-    scoped_ptr<PropertyDeclaration> property_declaration($3);
+    std::unique_ptr<PropertyDeclaration> property_declaration($3);
     if (property_declaration) {
       property_declaration->Apply($$);
       for (size_t i = 0;
@@ -6543,7 +7401,7 @@ font_face_declaration_list:
     maybe_declaration {
     $$ = AddRef(new cssom::CSSFontFaceDeclarationData());
 
-    scoped_ptr<PropertyDeclaration> property_declaration($1);
+    std::unique_ptr<PropertyDeclaration> property_declaration($1);
     if (property_declaration) {
       property_declaration->Apply($$);
     }
@@ -6551,7 +7409,7 @@ font_face_declaration_list:
   | font_face_declaration_list semicolon maybe_declaration {
     $$ = $1;
 
-    scoped_ptr<PropertyDeclaration> property_declaration($3);
+    std::unique_ptr<PropertyDeclaration> property_declaration($3);
     if (property_declaration) {
       property_declaration->Apply($$);
     }
@@ -6583,12 +7441,12 @@ rule_list_block:
 //   https://www.w3.org/TR/css3-syntax/#style-rule
 style_rule:
     selector_list style_declaration_block {
-    scoped_ptr<cssom::Selectors> selectors($1);
+    std::unique_ptr<cssom::Selectors> selectors($1);
     scoped_refptr<cssom::CSSRuleStyleDeclaration> style =
         MakeScopedRefPtrAndRelease($2);
 
     if (selectors) {
-      $$ = AddRef(new cssom::CSSStyleRule(selectors->Pass(), style));
+      $$ = AddRef(new cssom::CSSStyleRule(std::move(*selectors), style));
     } else {
       $$ = NULL;
     }
@@ -6698,7 +7556,7 @@ entry_point:
   }
   // Parses a single non-shorthand property value.
   | kPropertyValueEntryPointToken maybe_whitespace maybe_declaration {
-    scoped_ptr<PropertyDeclaration> property_declaration($3);
+    std::unique_ptr<PropertyDeclaration> property_declaration($3);
     if (property_declaration != NULL) {
       if (property_declaration->property_values.size() != 1) {
         parser_impl->LogError(
@@ -6725,7 +7583,7 @@ entry_point:
   // This is Cobalt's equivalent of a "list of component values".
   | kPropertyIntoDeclarationDataEntryPointToken maybe_whitespace
         maybe_declaration {
-    scoped_ptr<PropertyDeclaration> property_declaration($3);
+    std::unique_ptr<PropertyDeclaration> property_declaration($3);
     if (property_declaration != NULL) {
       if (property_declaration->is_important) {
         parser_impl->LogError(
@@ -6746,8 +7604,8 @@ filter_property_value:
     $$ = AddRef(cssom::KeywordValue::GetNone().get());
   }
   | filter_function_list {
-    scoped_ptr<cssom::FilterFunctionListValue::Builder> property_value($1);
-    $$ = AddRef(new cssom::FilterFunctionListValue(property_value->Pass()));
+    std::unique_ptr<cssom::FilterFunctionListValue::Builder> property_value($1);
+    $$ = AddRef(new cssom::FilterFunctionListValue(std::move(*property_value)));
   }
   | common_values
   ;
@@ -6756,7 +7614,7 @@ filter_function_list:
   // TODO: Parse list of filter_function's. This only parses one-element lists.
     filter_function {
     $$ = new cssom::FilterFunctionListValue::Builder();
-    $$->push_back($1);
+    $$->emplace_back($1);
   }
   ;
 
@@ -6773,9 +7631,9 @@ cobalt_mtm_filter_function:
     cobalt_mtm_function_name maybe_whitespace cobalt_map_to_mesh_spec comma angle
         angle comma cobalt_mtm_transform_function maybe_cobalt_mtm_stereo_mode
         ')' maybe_whitespace {
-    scoped_ptr<cssom::MapToMeshFunction::MeshSpec>
+    std::unique_ptr<cssom::MapToMeshFunction::MeshSpec>
         mesh_spec($3);
-    scoped_ptr<glm::mat4> transform($8);
+    std::unique_ptr<glm::mat4> transform($8);
     scoped_refptr<cssom::KeywordValue> stereo_mode =
         MakeScopedRefPtrAndRelease($9);
 
@@ -6783,7 +7641,7 @@ cobalt_mtm_filter_function:
       YYERROR;
     } else {
       $$ = new cssom::MapToMeshFunction(
-          mesh_spec.Pass(),
+          std::move(mesh_spec),
           $5,
           $6,
           *transform,
@@ -6814,13 +7672,13 @@ cobalt_map_to_mesh_spec:
   }
   | url cobalt_mtm_resolution_matched_mesh_list {
     scoped_refptr<cssom::PropertyValue> url = MakeScopedRefPtrAndRelease($1);
-    scoped_ptr<cssom::MapToMeshFunction::ResolutionMatchedMeshListBuilder>
+    std::unique_ptr<cssom::MapToMeshFunction::ResolutionMatchedMeshListBuilder>
         resolution_matched_mesh_urls($2);
 
     $$ = new cssom::MapToMeshFunction::MeshSpec(
         cssom::MapToMeshFunction::kUrls,
         url,
-        resolution_matched_mesh_urls->Pass());
+        std::move(*resolution_matched_mesh_urls));
   }
   ;
 
@@ -6836,7 +7694,7 @@ cobalt_mtm_resolution_matched_mesh_list:
   // Specifies a different mesh for a particular image resolution.
   | cobalt_mtm_resolution_matched_mesh_list cobalt_mtm_resolution_matched_mesh {
     $$ = $1;
-    $$->push_back($2);
+    $$->emplace_back($2);
   }
   ;
 
@@ -6855,7 +7713,7 @@ cobalt_mtm_transform_function:
   // Specifies an arbitrary affine 3D transformation, currently the only
   // supported transform in MTM.
     kMatrix3dFunctionToken maybe_whitespace number_matrix ')' maybe_whitespace {
-    scoped_ptr<std::vector<float> > matrix($3);
+    std::unique_ptr<std::vector<float> > matrix($3);
     if (matrix == NULL || matrix->size() !=  16) {
       parser_impl->LogError(
           @3,

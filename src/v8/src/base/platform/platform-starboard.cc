@@ -20,10 +20,11 @@
 
 #include "src/base/timezone-cache.h"
 
-#include "starboard/condition_variable.h"
+#include "starboard/common/condition_variable.h"
+#include "starboard/common/log.h"
+#include "starboard/common/string.h"
 #include "starboard/configuration.h"
 #include "starboard/memory.h"
-#include "starboard/string.h"
 #include "starboard/time.h"
 
 namespace v8 {
@@ -334,7 +335,7 @@ int OS::SNPrintF(char* str, int length, const char* format, ...) {
 }
 
 int OS::VSNPrintF(char* str, int length, const char* format, va_list args) {
-  int n = vsnprintf(str, length, format, args);
+  int n = SbStringFormat(str, length, format, args);
   if (n < 0 || n >= length) {
     // If the length is zero, the assignment fails.
     if (length > 0) str[length - 1] = '\0';
@@ -402,8 +403,8 @@ void Thread::set_name(const char* name) {
 
 void Thread::Start() {
   data_->thread_ =
-      SbThreadCreate(stack_size_, kSbThreadNoPriority, kSbInvalidInt, true,
-                     name_, ThreadEntry, this);
+      SbThreadCreate(stack_size_, kSbThreadNoPriority, kSbThreadNoAffinity,
+                     true, name_, ThreadEntry, this);
 }
 
 void Thread::Join() { SbThreadJoin(data_->thread_, nullptr); }

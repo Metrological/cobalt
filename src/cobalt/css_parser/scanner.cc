@@ -14,9 +14,13 @@
 
 #include "cobalt/css_parser/scanner.h"
 
+#if defined(OS_STARBOARD)
+#include "starboard/client_porting/poem/stdlib_poem.h"
+#endif
+
 #include <limits>
 
-#include "base/string_util.h"
+#include "base/strings/string_util.h"
 #include "cobalt/base/compiler.h"
 #include "cobalt/css_parser/grammar.h"
 #include "cobalt/css_parser/string_pool.h"
@@ -213,8 +217,8 @@ inline bool IsCssEscape(char character) {
 }
 
 inline bool IsIdentifierStartAfterDash(const char* character_iterator) {
-  return IsAsciiAlpha(character_iterator[0]) || character_iterator[0] == '_' ||
-         character_iterator[0] < 0 ||
+  return base::IsAsciiAlpha(character_iterator[0]) ||
+         character_iterator[0] == '_' || character_iterator[0] < 0 ||
          (character_iterator[0] == '\\' && IsCssEscape(character_iterator[1]));
 }
 
@@ -237,12 +241,12 @@ bool CheckAndSkipEscape(const char* input_iterator,
     return false;
   }
 
-  if (IsHexDigit(*input_iterator)) {
+  if (base::IsHexDigit(*input_iterator)) {
     int length(6);
 
     do {
       ++input_iterator;
-    } while (IsHexDigit(*input_iterator) && --length > 0);
+    } while (base::IsHexDigit(*input_iterator) && --length > 0);
 
     // Optional space after the escape sequence.
     if (cssom::IsWhiteSpace(*input_iterator)) {
@@ -654,7 +658,7 @@ Token Scanner::ScanFromIdentifierStart(TokenValue* token_value) {
 }
 
 Token Scanner::ScanFromDot(TokenValue* token_value) {
-  if (!IsAsciiDigit(input_iterator_[1])) {
+  if (!base::IsAsciiDigit(input_iterator_[1])) {
     ++input_iterator_;
     return '.';
   }
@@ -666,22 +670,29 @@ Token Scanner::ScanFromNumber(TokenValue* token_value) {
   number.begin = input_iterator_;
 
   // Negative numbers are handled in the grammar.
-  // Scientific notation is required by the standard but is not supported
-  // neither by WebKit nor Blink.
   bool dot_seen(false);
+  double integer_part(0);
+  double fractional_part(0);
+  int fractional_digits(0);
   while (true) {
-    if (!IsAsciiDigit(input_iterator_[0])) {
+    if (base::IsAsciiDigit(input_iterator_[0])) {
+      if (dot_seen) {
+        ++fractional_digits;
+        fractional_part = (fractional_part * 10) + (input_iterator_[0] - '0');
+      } else {
+        integer_part = (integer_part * 10) + (input_iterator_[0] - '0');
+      }
+    } else {
       // Only one dot is allowed for a number,
       // and it must be followed by a digit.
       if (input_iterator_[0] != '.' || dot_seen ||
-          !IsAsciiDigit(input_iterator_[1])) {
+          !base::IsAsciiDigit(input_iterator_[1])) {
         break;
       }
       dot_seen = true;
     }
     ++input_iterator_;
   }
-  number.end = input_iterator_;
 
   if (UNLIKELY(parsing_mode_ == kNthChildMode) && !dot_seen &&
       IsAsciiAlphaCaselessEqual(*input_iterator_, 'n')) {
@@ -696,20 +707,37 @@ Token Scanner::ScanFromNumber(TokenValue* token_value) {
     return kNthToken;
   }
 
-  char* number_end(const_cast<char*>(number.end));
-  // We parse into |double| for two reasons:
-  //   - C++03 doesn't have std::strtof() function;
-  //   - |float|'s significand is not large enough to represent |int| precisely.
-  // |number_end| is used by std::strtod() as a pure output parameter - it's
-  // input value is not used. std::strtod() may parse more of the number than
-  // we expect, e.g. in the case of scientific notation or hexadecimal format.
-  // In these cases (number_end != number.end), return an invalid number token.
-  double real_as_double(std::strtod(number.begin, &number_end));
+  // Handle numbers in scientific notation.
+  bool is_scientific(false);
+  double exponent_part(0);
+  int exponent_sign(1);
+  if (IsAsciiAlphaCaselessEqual(input_iterator_[0], 'e')) {
+    int exponent_prefix(1);
+    if (input_iterator_[1] == '-') exponent_sign = -1;
+    if (input_iterator_[1] == '-' || input_iterator_[1] == '+') {
+      ++exponent_prefix;
+    }
+    if (base::IsAsciiDigit(input_iterator_[exponent_prefix])) {
+      is_scientific = true;
+      input_iterator_ = input_iterator_ + exponent_prefix;
+    }
+    while (base::IsAsciiDigit(input_iterator_[0])) {
+      exponent_part = (exponent_part * 10) + (input_iterator_[0] - '0');
+      ++input_iterator_;
+    }
+  }
 
-  if (number_end != number.end ||
-      real_as_double != real_as_double ||  // n != n if and only if it's NaN.
-      real_as_double == std::numeric_limits<float>::infinity() ||
-      real_as_double > std::numeric_limits<float>::max()) {
+  number.end = input_iterator_;
+
+  // Compute the number from its parts collected above according to:
+  // https://www.w3.org/TR/css-syntax-3/#convert-a-string-to-a-number
+  // We parse into |double| because |float|'s significand is not large enough
+  // to represent |int| precisely.
+  double real_as_double =
+      integer_part + fractional_part * pow(10, -fractional_digits);
+  if (is_scientific) real_as_double *= pow(10, exponent_sign * exponent_part);
+
+  if (real_as_double > std::numeric_limits<float>::max()) {
     token_value->string.begin = number.begin;
     token_value->string.end = number.end;
     return kInvalidNumberToken;
@@ -740,7 +768,8 @@ Token Scanner::ScanFromNumber(TokenValue* token_value) {
     return kPercentageToken;
   }
 
-  if (!dot_seen && real_as_double <= std::numeric_limits<int>::max()) {
+  if (!dot_seen && !is_scientific &&
+      real_as_double <= std::numeric_limits<int>::max()) {
     token_value->integer = static_cast<int>(real_as_double);
     return kIntegerToken;
   }
@@ -921,12 +950,12 @@ Token Scanner::ScanFromExclamationMark(TokenValue* /*token_value*/) {
 Token Scanner::ScanFromHashmark(TokenValue* token_value) {
   ++input_iterator_;
 
-  if (IsAsciiDigit(*input_iterator_)) {
+  if (base::IsAsciiDigit(*input_iterator_)) {
     // This must be a valid hex number token.
     token_value->string.begin = input_iterator_;
     do {
       ++input_iterator_;
-    } while (IsHexDigit(*input_iterator_));
+    } while (base::IsHexDigit(*input_iterator_));
     token_value->string.end = input_iterator_;
     return kHexToken;
   } else if (IsInputIteratorAtIdentifierStart()) {
@@ -940,7 +969,7 @@ Token Scanner::ScanFromHashmark(TokenValue* token_value) {
     // Check whether the identifier is also a valid hex number.
     for (const char* hex_iterator = token_value->string.begin;
          hex_iterator != token_value->string.end; ++hex_iterator) {
-      if (!IsHexDigit(*hex_iterator)) {
+      if (!base::IsHexDigit(*hex_iterator)) {
         return kIdSelectorToken;
       }
     }
@@ -1137,8 +1166,8 @@ bool Scanner::TryScanUnicodeRange(TrivialIntPair* value) {
   int start_value = 0;
   bool range_set = false;
 
-  while (IsHexDigit(*input_iterator_) && length > 0) {
-    start_value = start_value * 16 + HexDigitToInt(*input_iterator_);
+  while (base::IsHexDigit(*input_iterator_) && length > 0) {
+    start_value = start_value * 16 + base::HexDigitToInt(*input_iterator_);
     ++input_iterator_;
     --length;
   }
@@ -1156,15 +1185,15 @@ bool Scanner::TryScanUnicodeRange(TrivialIntPair* value) {
     range_set = true;
   } else if (length < 6) {
     // At least one hex digit.
-    if (input_iterator_[0] == '-' && IsHexDigit(input_iterator_[1])) {
+    if (input_iterator_[0] == '-' && base::IsHexDigit(input_iterator_[1])) {
       // Followed by a dash and a hex digit.
       ++input_iterator_;
       length = 6;
       end_value = 0;
       do {
-        end_value = end_value * 16 + HexDigitToInt(*input_iterator_);
+        end_value = end_value * 16 + base::HexDigitToInt(*input_iterator_);
         ++input_iterator_;
-      } while (--length > 0 && IsHexDigit(*input_iterator_));
+      } while (--length > 0 && base::IsHexDigit(*input_iterator_));
     }
     range_set = true;
   }
@@ -1241,12 +1270,12 @@ UChar32 Scanner::ScanEscape() {
   UChar32 character(0);
 
   ++input_iterator_;
-  if (IsHexDigit(*input_iterator_)) {
+  if (base::IsHexDigit(*input_iterator_)) {
     int length(6);
 
     do {
-      character = (character << 4) + HexDigitToInt(*input_iterator_++);
-    } while (--length > 0 && IsHexDigit(*input_iterator_));
+      character = (character << 4) + base::HexDigitToInt(*input_iterator_++);
+    } while (--length > 0 && base::IsHexDigit(*input_iterator_));
 
     // Characters above 0x10ffff are not handled.
     if (character > 0x10ffff) {
@@ -1290,6 +1319,11 @@ bool Scanner::DetectPropertyNameToken(const TrivialStringPiece& name,
 
     case 4:
       if (IsEqualToCssIdentifier(
+              name.begin, cssom::GetPropertyName(cssom::kFlexProperty))) {
+        *property_name_token = kFlexToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(
               name.begin, cssom::GetPropertyName(cssom::kFontProperty))) {
         *property_name_token = kFontToken;
         return true;
@@ -1305,6 +1339,11 @@ bool Scanner::DetectPropertyNameToken(const TrivialStringPiece& name,
       if (IsEqualToCssIdentifier(
               name.begin, cssom::GetPropertyName(cssom::kColorProperty))) {
         *property_name_token = kColorToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(
+              name.begin, cssom::GetPropertyName(cssom::kOrderProperty))) {
+        *property_name_token = kOrderToken;
         return true;
       }
       if (IsEqualToCssIdentifier(
@@ -1400,6 +1439,21 @@ bool Scanner::DetectPropertyNameToken(const TrivialStringPiece& name,
         return true;
       }
       if (IsEqualToCssIdentifier(
+              name.begin, cssom::GetPropertyName(cssom::kFlexFlowProperty))) {
+        *property_name_token = kFlexFlowToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(
+              name.begin, cssom::GetPropertyName(cssom::kFlexGrowProperty))) {
+        *property_name_token = kFlexGrowToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(
+              name.begin, cssom::GetPropertyName(cssom::kFlexWrapProperty))) {
+        *property_name_token = kFlexWrapToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(
               name.begin, cssom::GetPropertyName(cssom::kFontSizeProperty))) {
         *property_name_token = kFontSizeToken;
         return true;
@@ -1419,15 +1473,19 @@ bool Scanner::DetectPropertyNameToken(const TrivialStringPiece& name,
         *property_name_token = kTransformToken;
         return true;
       }
-      // NOTE: word-wrap is treated as an alias for overflow-wrap
       if (IsEqualToCssIdentifier(
               name.begin, cssom::GetPropertyName(cssom::kWordWrapProperty))) {
-        *property_name_token = kOverflowWrapToken;
+        *property_name_token = kWordWrapToken;
         return true;
       }
       return false;
 
     case 10:
+      if (IsEqualToCssIdentifier(
+              name.begin, cssom::GetPropertyName(cssom::kAlignSelfProperty))) {
+        *property_name_token = kAlignSelfToken;
+        return true;
+      }
       if (IsEqualToCssIdentifier(
               name.begin, cssom::GetPropertyName(cssom::kBackgroundProperty))) {
         *property_name_token = kBackgroundToken;
@@ -1441,6 +1499,11 @@ bool Scanner::DetectPropertyNameToken(const TrivialStringPiece& name,
       if (IsEqualToCssIdentifier(
               name.begin, cssom::GetPropertyName(cssom::kBoxShadowProperty))) {
         *property_name_token = kBoxShadowToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(
+              name.begin, cssom::GetPropertyName(cssom::kFlexBasisProperty))) {
+        *property_name_token = kFlexBasisToken;
         return true;
       }
       if (IsEqualToCssIdentifier(
@@ -1482,8 +1545,18 @@ bool Scanner::DetectPropertyNameToken(const TrivialStringPiece& name,
 
     case 11:
       if (IsEqualToCssIdentifier(
+              name.begin, cssom::GetPropertyName(cssom::kAlignItemsProperty))) {
+        *property_name_token = kAlignItemsToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(
               name.begin, cssom::GetPropertyName(cssom::kBorderLeftProperty))) {
         *property_name_token = kBorderLeftToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(
+              name.begin, cssom::GetPropertyName(cssom::kFlexShrinkProperty))) {
+        *property_name_token = kFlexShrinkToken;
         return true;
       }
       if (IsEqualToCssIdentifier(
@@ -1570,6 +1643,12 @@ bool Scanner::DetectPropertyNameToken(const TrivialStringPiece& name,
     case 13:
       if (IsEqualToCssIdentifier(
               name.begin,
+              cssom::GetPropertyName(cssom::kAlignContentProperty))) {
+        *property_name_token = kAlignContentToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(
+              name.begin,
               cssom::GetPropertyName(cssom::kBorderBottomProperty))) {
         *property_name_token = kBorderBottomToken;
         return true;
@@ -1639,6 +1718,12 @@ bool Scanner::DetectPropertyNameToken(const TrivialStringPiece& name,
       }
       if (IsEqualToCssIdentifier(
               name.begin,
+              cssom::GetPropertyName(cssom::kFlexDirectionProperty))) {
+        *property_name_token = kFlexDirectionToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(
+              name.begin,
               cssom::GetPropertyName(cssom::kPaddingBottomProperty))) {
         *property_name_token = kPaddingBottomToken;
         return true;
@@ -1674,6 +1759,12 @@ bool Scanner::DetectPropertyNameToken(const TrivialStringPiece& name,
               name.begin,
               cssom::GetPropertyName(cssom::kBackgroundSizeProperty))) {
         *property_name_token = kBackgroundSizeToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(
+              name.begin,
+              cssom::GetPropertyName(cssom::kJustifyContentProperty))) {
+        *property_name_token = kJustifyContentToken;
         return true;
       }
       if (IsEqualToCssIdentifier(
@@ -1906,6 +1997,15 @@ bool Scanner::DetectPropertyNameToken(const TrivialStringPiece& name,
         return true;
       }
       return false;
+
+    case 33:
+      if (IsEqualToCssIdentifier(
+              name.begin,
+              cssom::GetPropertyName(
+                  cssom::kIntersectionObserverRootMarginProperty))) {
+        *property_name_token = kIntersectionObserverRootMarginToken;
+        return true;
+      }
   }
 
   return false;
@@ -1942,6 +2042,10 @@ bool Scanner::DetectPropertyValueToken(const TrivialStringPiece& name,
         *property_value_token = kRedToken;
         return true;
       }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kRowKeywordName)) {
+        *property_value_token = kRowToken;
+        return true;
+      }
       if (IsEqualToCssIdentifier(name.begin, cssom::kTopKeywordName)) {
         *property_value_token = kTopToken;
         return true;
@@ -1976,20 +2080,16 @@ bool Scanner::DetectPropertyValueToken(const TrivialStringPiece& name,
         *property_value_token = kEaseToken;
         return true;
       }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kFlexKeywordName)) {
+        *property_value_token = kFlexToken;
+        return true;
+      }
       if (IsEqualToCssIdentifier(name.begin, cssom::kFromKeywordName)) {
         *property_value_token = kFromToken;
         return true;
       }
       if (IsEqualToCssIdentifier(name.begin, cssom::kGrayKeywordName)) {
         *property_value_token = kGrayToken;
-        return true;
-      }
-      if (IsEqualToCssIdentifier(name.begin, cssom::kNavyKeywordName)) {
-        *property_value_token = kNavyToken;
-        return true;
-      }
-      if (IsEqualToCssIdentifier(name.begin, cssom::kNoneKeywordName)) {
-        *property_value_token = kNoneToken;
         return true;
       }
       if (IsEqualToCssIdentifier(name.begin, cssom::kLeftKeywordName)) {
@@ -2000,8 +2100,20 @@ bool Scanner::DetectPropertyValueToken(const TrivialStringPiece& name,
         *property_value_token = kLimeToken;
         return true;
       }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kNavyKeywordName)) {
+        *property_value_token = kNavyToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kNoneKeywordName)) {
+        *property_value_token = kNoneToken;
+        return true;
+      }
       if (IsEqualToCssIdentifier(name.begin, cssom::kTealKeywordName)) {
         *property_value_token = kTealToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kWrapKeywordName)) {
+        *property_value_token = kWrapToken;
         return true;
       }
       return false;
@@ -2066,6 +2178,10 @@ bool Scanner::DetectPropertyValueToken(const TrivialStringPiece& name,
         *property_value_token = kCenterToken;
         return true;
       }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kColumnKeywordName)) {
+        *property_value_token = kColumnToken;
+        return true;
+      }
       if (IsEqualToCssIdentifier(name.begin, cssom::kCircleKeywordName)) {
         *property_value_token = kCircleToken;
         return true;
@@ -2098,8 +2214,8 @@ bool Scanner::DetectPropertyValueToken(const TrivialStringPiece& name,
         *property_value_token = kNormalToken;
         return true;
       }
-      if (IsEqualToCssIdentifier(name.begin, cssom::kNoWrapKeywordName)) {
-        *property_value_token = kNoWrapToken;
+      if (IsEqualToCssIdentifier(name.begin, cssom::kNowrapKeywordName)) {
+        *property_value_token = kNowrapToken;
         return true;
       }
       if (IsEqualToCssIdentifier(name.begin, cssom::kPurpleKeywordName)) {
@@ -2108,6 +2224,10 @@ bool Scanner::DetectPropertyValueToken(const TrivialStringPiece& name,
       }
       if (IsEqualToCssIdentifier(name.begin, cssom::kRepeatKeywordName)) {
         *property_value_token = kRepeatToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kScrollKeywordName)) {
+        *property_value_token = kScrollToken;
         return true;
       }
       if (IsEqualToCssIdentifier(name.begin, cssom::kSilverKeywordName)) {
@@ -2127,6 +2247,10 @@ bool Scanner::DetectPropertyValueToken(const TrivialStringPiece& name,
     case 7:
       if (IsEqualToCssIdentifier(name.begin, cssom::kContainKeywordName)) {
         *property_value_token = kContainToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kContentKeywordName)) {
+        *property_value_token = kContentToken;
         return true;
       }
       if (IsEqualToCssIdentifier(name.begin, cssom::kCursiveKeywordName)) {
@@ -2165,6 +2289,10 @@ bool Scanner::DetectPropertyValueToken(const TrivialStringPiece& name,
         *property_value_token = kReverseToken;
         return true;
       }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kStretchKeywordName)) {
+        *property_value_token = kStretchToken;
+        return true;
+      }
       if (IsEqualToCssIdentifier(name.begin, cssom::kVisibleKeywordName)) {
         *property_value_token = kVisibleToken;
         return true;
@@ -2180,16 +2308,24 @@ bool Scanner::DetectPropertyValueToken(const TrivialStringPiece& name,
         *property_value_token = kBaselineToken;
         return true;
       }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kCollapseKeywordName)) {
+        *property_value_token = kCollapseToken;
+        return true;
+      }
       if (IsEqualToCssIdentifier(name.begin, cssom::kEaseOutKeywordName)) {
         *property_value_token = kEaseOutToken;
         return true;
       }
-      if (IsEqualToCssIdentifier(name.begin, cssom::kForwardsKeywordName)) {
-        *property_value_token = kForwardsToken;
-        return true;
-      }
       if (IsEqualToCssIdentifier(name.begin, cssom::kEllipsisKeywordName)) {
         *property_value_token = kEllipsisToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kFlexEndKeywordName)) {
+        *property_value_token = kFlexEndToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kForwardsKeywordName)) {
+        *property_value_token = kForwardsToken;
         return true;
       }
       if (IsEqualToCssIdentifier(name.begin, cssom::kInfiniteKeywordName)) {
@@ -2250,16 +2386,20 @@ bool Scanner::DetectPropertyValueToken(const TrivialStringPiece& name,
         *property_value_token = kBreakWordToken;
         return true;
       }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kFlexStartKeywordName)) {
+        *property_value_token = kFlexStartToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kMonoscopicKeywordName)) {
+        *property_value_token = kMonoscopicToken;
+        return true;
+      }
       if (IsEqualToCssIdentifier(name.begin, cssom::kSansSerifKeywordName)) {
         *property_value_token = kSansSerifToken;
         return true;
       }
       if (IsEqualToCssIdentifier(name.begin, cssom::kStepStartKeywordName)) {
         *property_value_token = kStepStartToken;
-        return true;
-      }
-      if (IsEqualToCssIdentifier(name.begin, cssom::kMonoscopicKeywordName)) {
-        *property_value_token = kMonoscopicToken;
         return true;
       }
       return false;
@@ -2269,12 +2409,20 @@ bool Scanner::DetectPropertyValueToken(const TrivialStringPiece& name,
         *property_value_token = kEaseInOutToken;
         return true;
       }
-      if (IsEqualToCssIdentifier(name.begin, cssom::kTransparentKeywordName)) {
-        *property_value_token = kTransparentToken;
+      if (IsEqualToCssIdentifier(name.begin, cssom::kInlineFlexKeywordName)) {
+        *property_value_token = kInlineFlexToken;
         return true;
       }
       if (IsEqualToCssIdentifier(name.begin, cssom::kRectangularKeywordName)) {
         *property_value_token = kRectangularToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kRowReverseKeywordName)) {
+        *property_value_token = kRowReverseToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kTransparentKeywordName)) {
+        *property_value_token = kTransparentToken;
         return true;
       }
       return false;
@@ -2284,12 +2432,20 @@ bool Scanner::DetectPropertyValueToken(const TrivialStringPiece& name,
         *property_value_token = kClosestSideToken;
         return true;
       }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kInlineBlockKeywordName)) {
+        *property_value_token = kInlineBlockToken;
+        return true;
+      }
       if (IsEqualToCssIdentifier(name.begin, cssom::kLineThroughKeywordName)) {
         *property_value_token = kLineThroughToken;
         return true;
       }
-      if (IsEqualToCssIdentifier(name.begin, cssom::kInlineBlockKeywordName)) {
-        *property_value_token = kInlineBlockToken;
+      if (IsEqualToCssIdentifier(name.begin, cssom::kSpaceAroundKeywordName)) {
+        *property_value_token = kSpaceAroundToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kWrapReverseKeywordName)) {
+        *property_value_token = kWrapReverseToken;
         return true;
       }
       return false;
@@ -2299,12 +2455,21 @@ bool Scanner::DetectPropertyValueToken(const TrivialStringPiece& name,
         *property_value_token = kFarthestSideToken;
         return true;
       }
+      if (IsEqualToCssIdentifier(name.begin, cssom::kSpaceBetweenKeywordName)) {
+        *property_value_token = kSpaceBetweenToken;
+        return true;
+      }
       return false;
 
     case 14:
       if (IsEqualToCssIdentifier(name.begin,
                                  cssom::kClosestCornerKeywordName)) {
         *property_value_token = kClosestCornerToken;
+        return true;
+      }
+      if (IsEqualToCssIdentifier(name.begin,
+                                 cssom::kColumnReverseKeywordName)) {
+        *property_value_token = kColumnReverseToken;
         return true;
       }
       return false;
@@ -2592,6 +2757,22 @@ bool Scanner::DetectKnownFunctionTokenAndMaybeChangeParsingMode(
       if (IsEqualToCssIdentifier(name.begin, "nth-last-of-type")) {
         parsing_mode_ = kNthChildMode;
         *known_function_token = kNthLastOfTypeFunctionToken;
+        return true;
+      }
+      return false;
+
+    case 30:
+      if (IsEqualToCssIdentifier(name.begin,
+                                 "-cobalt-ui-nav-focus-transform")) {
+        *known_function_token = kCobaltUiNavFocusTransformFunctionToken;
+        return true;
+      }
+      return false;
+
+    case 34:
+      if (IsEqualToCssIdentifier(name.begin,
+                                 "-cobalt-ui-nav-spotlight-transform")) {
+        *known_function_token = kCobaltUiNavSpotlightTransformFunctionToken;
         return true;
       }
       return false;
@@ -2939,7 +3120,7 @@ bool Scanner::TryScanNthChild(TrivialStringPiece* nth) {
   nth->begin = SkipWhiteSpace(input_iterator_);
   nth->end = nth->begin;
 
-  while (IsAsciiDigit(*nth->end)) {
+  while (base::IsAsciiDigit(*nth->end)) {
     ++nth->end;
   }
   if (IsAsciiAlphaCaselessEqual(*nth->end, 'n')) {
@@ -2959,13 +3140,13 @@ bool Scanner::TryScanNthChildExtra(TrivialStringPiece* nth) {
   }
 
   nth->end = SkipWhiteSpace(nth->end + 1);
-  if (!IsAsciiDigit(*nth->end)) {
+  if (!base::IsAsciiDigit(*nth->end)) {
     return false;
   }
 
   do {
     ++nth->end;
-  } while (IsAsciiDigit(*nth->end));
+  } while (base::IsAsciiDigit(*nth->end));
 
   input_iterator_ = nth->end;
   return true;
@@ -2989,8 +3170,7 @@ bool Scanner::DetectUnitToken(const TrivialStringPiece& unit,
       return false;
 
     case 'd':
-      if (length == 3 &&
-          IsAsciiAlphaCaselessEqual(unit.begin[1], 'e') &&
+      if (length == 3 && IsAsciiAlphaCaselessEqual(unit.begin[1], 'e') &&
           IsAsciiAlphaCaselessEqual(unit.begin[2], 'g')) {
         *token = kDegreesToken;
         return true;
@@ -3038,8 +3218,7 @@ bool Scanner::DetectUnitToken(const TrivialStringPiece& unit,
       }
       return false;
     case 'g':
-      if (length == 4 &&
-          IsAsciiAlphaCaselessEqual(unit.begin[1], 'r') &&
+      if (length == 4 && IsAsciiAlphaCaselessEqual(unit.begin[1], 'r') &&
           IsAsciiAlphaCaselessEqual(unit.begin[2], 'a') &&
           IsAsciiAlphaCaselessEqual(unit.begin[3], 'd')) {
         *token = kGradiansToken;
@@ -3062,8 +3241,7 @@ bool Scanner::DetectUnitToken(const TrivialStringPiece& unit,
       return false;
 
     case 'k':
-      if (length == 3 &&
-          IsAsciiAlphaCaselessEqual(unit.begin[1], 'h') &&
+      if (length == 3 && IsAsciiAlphaCaselessEqual(unit.begin[1], 'h') &&
           IsAsciiAlphaCaselessEqual(unit.begin[2], 'z')) {
         *token = kKilohertzToken;
         return true;
@@ -3123,8 +3301,7 @@ bool Scanner::DetectUnitToken(const TrivialStringPiece& unit,
       return false;
 
     case 't':
-      if (length == 4 &&
-          IsAsciiAlphaCaselessEqual(unit.begin[1], 'u') &&
+      if (length == 4 && IsAsciiAlphaCaselessEqual(unit.begin[1], 'u') &&
           IsAsciiAlphaCaselessEqual(unit.begin[2], 'r') &&
           IsAsciiAlphaCaselessEqual(unit.begin[3], 'n')) {
         *token = kTurnsToken;

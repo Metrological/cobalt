@@ -30,12 +30,12 @@ SSH into another machine and run the binary on that machine.
     Cobalt on Linux:
 
     ```
-    $ sudo apt-get install build-essential coreutils git gperf \
-           libasound2-dev libavformat-dev libavresample-dev \
+    $ sudo apt-get install bison build-essential coreutils git gperf \
+           libaom-dev libasound2-dev libavformat-dev libavresample-dev \
            libdirectfb-dev libdirectfb-extra libpulse-dev \
-           libgl1-mesa-dev libgles2-mesa-dev libx11-dev \
+           libgl1-mesa-dev libgles2-mesa-dev libvpx-dev libx11-dev \
            libxcomposite-dev libxcomposite1 libxrender-dev libxrender1 \
-           libxpm-dev m4 ruby tar xserver-xephyr xz-utils yasm
+           libxpm-dev m4 python ruby tar xserver-xephyr xz-utils yasm
     ```
 
 1.  Install the latest version of the standard C++ header files (`libstdc++`).
@@ -43,23 +43,6 @@ SSH into another machine and run the binary on that machine.
 
     ```
     sudo apt-get install libstdc++-4.8-dev
-    ```
-
-1.  Install `bison-2.7`. Note that this series of commands uninstalls any
-    version of `bison` that you already have installed to ensure that the
-    desired version is installed.
-
-    ```
-    $ sudo apt-get remove bison
-    $ cd /tmp
-    $ wget http://ftp.gnu.org/gnu/bison/bison-2.7.1.tar.gz
-    $ tar zxf bison-2.7.1.tar.gz
-    $ cd bison-2.7.1
-    $ sh configure && make && sudo make install
-    $ which bison
-    /usr/local/bin/bison
-    $ bison --version
-    bison (GNU Bison) 2.7.12-4996
     ```
 
 1.  Clone the Cobalt code repository. The following `git` command creates a

@@ -17,7 +17,7 @@
 #include <iostream>
 #include <string>
 
-#include "base/file_util.h"
+#include "base/files/file_util.h"
 #include "cobalt/script/source_code.h"
 
 namespace cobalt {
@@ -30,6 +30,7 @@ StandaloneJavascriptRunner::StandaloneJavascriptRunner(
 }
 
 void StandaloneJavascriptRunner::RunInteractive() {
+#if defined(COBALT_LINUX)
   while (!std::cin.eof() && std::cin.good()) {
     // Interactive prompt.
     std::cout << "> ";
@@ -42,11 +43,14 @@ void StandaloneJavascriptRunner::RunInteractive() {
     }
   }
   std::cout << std::endl;
+#else
+  NOTIMPLEMENTED();
+#endif
 }
 
-void StandaloneJavascriptRunner::ExecuteFile(const FilePath& path) {
+void StandaloneJavascriptRunner::ExecuteFile(const base::FilePath& path) {
   std::string contents;
-  if (file_util::ReadFileToString(path, &contents)) {
+  if (base::ReadFileToString(path, &contents)) {
     ExecuteAndPrintResult(base::SourceLocation(path.value(), 1, 1), contents);
   } else {
     DLOG(INFO) << "Failed to read file: " << path.value();

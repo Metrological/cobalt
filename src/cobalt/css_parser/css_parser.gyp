@@ -14,17 +14,15 @@
 
 {
   'variables': {
+    'optimize_target_for_speed': 1,
     'sb_pedantic_warnings': 1,
 
     # Define the platform specific Bison binary.
     'conditions': [
       ['host_os=="win"', {
         'bison_exe': '<(DEPTH)/third_party/winflexbison/bin/Release/win_bison',
-        'bison_major_version': '3'
       }, {
         'bison_exe': 'bison',
-        'bison_major_version': '<!(bison --version | '
-          'head -n 1 | sed -Ee "s/[^0-9]*([0-9]+).*/\\1/")'
       }],
     ],
   },
@@ -38,13 +36,7 @@
       'type': 'none',
       'sources': [
         'grammar.h',
-      ],
-      'conditions': [
-        ['bison_major_version==2', {
-          'sources': ['grammar-bison-2.y'],
-        }, {
-          'sources': ['grammar.y']
-        }]
+        'grammar.y'
       ],
       # Generated header files are stored in the intermediate directory
       # under their module sub-directory.
@@ -91,6 +83,8 @@
         'background_shorthand_property_parse_structures.h',
         'border_shorthand_property_parse_structures.cc',
         'border_shorthand_property_parse_structures.h',
+        'flex_shorthand_property_parse_structures.cc',
+        'flex_shorthand_property_parse_structures.h',
         'font_shorthand_property_parse_structures.cc',
         'font_shorthand_property_parse_structures.h',
         'margin_or_padding_shorthand.cc',
@@ -106,13 +100,12 @@
         'shadow_property_parse_structures.cc',
         'shadow_property_parse_structures.h',
         'string_pool.h',
+        'text_decoration_shorthand_property_parse_structures.cc',
+        'text_decoration_shorthand_property_parse_structures.h',
         'transition_shorthand_property_parse_structures.cc',
         'transition_shorthand_property_parse_structures.h',
         'trivial_string_piece.h',
         'trivial_type_pairs.h',
-      ],
-      'defines': [
-        'BISON_VERSION_MAJOR=<@(bison_major_version)'
       ],
       # Scanner exposes UChar32 in a header.
       'direct_dependent_settings': {
@@ -137,9 +130,6 @@
         'ref_counted_util_test.cc',
         'scanner_test.cc',
         'trivial_string_piece_test.cc',
-      ],
-      'defines': [
-        'BISON_VERSION_MAJOR=<@(bison_major_version)'
       ],
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',

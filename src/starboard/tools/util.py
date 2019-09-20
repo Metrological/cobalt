@@ -24,6 +24,14 @@ import time
 import zipfile
 
 
+def Which(filename):
+  """Searches the environment's PATH for |filename|, returning the first."""
+  for path in os.environ['PATH'].split(os.pathsep):
+    full_name = os.path.join(path, filename)
+    if os.path.exists(full_name) and os.path.isfile(full_name):
+      return full_name
+  return None
+
 def MakeDirs(destination_dir):
   """Wrapper around os.makedirs that is a noop if the directory exists."""
   if os.path.isdir(destination_dir):
@@ -79,7 +87,8 @@ def SpawnProcess(cmd_line, env=None, cwd=None, shell=None):
                           stdout=subprocess.PIPE,
                           stderr=subprocess.STDOUT,
                           env=env,
-                          cwd=cwd)
+                          cwd=cwd,
+                          universal_newlines=True)
 
 
 def Execute(cmd_line, env=None, cwd=None, shell=None):
@@ -214,3 +223,7 @@ def Compress(job_list):
   for proc in compress_procs:
     proc.join()
   return outputs
+
+def SetupDefaultLoggingConfig(logging_lvl=logging.INFO):
+  fmt = '[%(filename)s:%(lineno)s:%(levelname)s] %(message)s'
+  logging.basicConfig(format=fmt, level=logging_lvl)

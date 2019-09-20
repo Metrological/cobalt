@@ -16,6 +16,8 @@
 #define COBALT_SCRIPT_V8C_ISOLATE_FELLOWSHIP_H_
 
 #include "base/memory/singleton.h"
+#include "cobalt/script/v8c/cobalt_platform.h"
+#include "v8/include/libplatform/libplatform.h"
 #include "v8/include/v8-platform.h"
 #include "v8/include/v8.h"
 
@@ -26,29 +28,34 @@ namespace v8c {
 // A helper singleton to hold global state required by all V8 isolates across
 // the entire process (the fellowship).  Initialization logic for this data is
 // also handled here, most notably, the possible reading/writing of
-// |startup_data| from/to a cache file.
+// |startup_data| from/to a cache file if snapshot has not been generated at
+// build time.
 struct IsolateFellowship {
  public:
   static IsolateFellowship* GetInstance() {
-    return Singleton<IsolateFellowship,
-                     StaticMemorySingletonTraits<IsolateFellowship>>::get();
+    return base::Singleton<IsolateFellowship, base::StaticMemorySingletonTraits<
+                                                  IsolateFellowship>>::get();
   }
 
-  v8::Platform* platform = nullptr;
+  std::unique_ptr<CobaltPlatform> platform;
   v8::ArrayBuffer::Allocator* array_buffer_allocator = nullptr;
+#if !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
   v8::StartupData startup_data = {nullptr, 0};
+#endif  // !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
 
-  friend struct StaticMemorySingletonTraits<IsolateFellowship>;
+  friend struct base::StaticMemorySingletonTraits<IsolateFellowship>;
 
  private:
   IsolateFellowship();
   ~IsolateFellowship();
 
+#if !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
   // Initialize |startup_data| by either reading it from a cache file or
   // creating it.  If creating it for the first time, then when appropriate
   // (i.e. the platform has a suitable directory) attempt to write it to a cache
   // file.
   void InitializeStartupData();
+#endif  // !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
 };
 
 }  // namespace v8c

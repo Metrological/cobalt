@@ -15,15 +15,16 @@
 #ifndef COBALT_MEDIA_DECODER_BUFFER_ALLOCATOR_H_
 #define COBALT_MEDIA_DECODER_BUFFER_ALLOCATOR_H_
 
+#include <memory>
+
 #include "base/compiler_specific.h"
 #include "cobalt/media/base/decoder_buffer.h"
 #include "cobalt/media/base/video_decoder_config.h"
 #include "cobalt/media/base/video_resolution.h"
 #include "nb/bidirectional_fit_reuse_allocator.h"
 #include "nb/starboard_memory_allocator.h"
-#include "starboard/common/scoped_ptr.h"
+#include "starboard/common/mutex.h"
 #include "starboard/media.h"
-#include "starboard/mutex.h"
 
 namespace cobalt {
 namespace media {
@@ -44,8 +45,7 @@ class DecoderBufferAllocator : public DecoderBuffer::Allocator {
   Allocations Allocate(size_t size, size_t alignment,
                        intptr_t context) override;
   void Free(Allocations allocations) override;
-
-  void UpdateVideoConfig(const VideoDecoderConfig& video_config);
+  void UpdateVideoConfig(const VideoDecoderConfig& video_config) override;
 
  private:
 #if COBALT_MEDIA_BUFFER_USING_MEMORY_POOL || SB_API_VERSION >= 10
@@ -66,7 +66,7 @@ class DecoderBufferAllocator : public DecoderBuffer::Allocator {
 
   starboard::Mutex mutex_;
   nb::StarboardMemoryAllocator fallback_allocator_;
-  starboard::scoped_ptr<ReuseAllocator> reuse_allocator_;
+  std::unique_ptr<ReuseAllocator> reuse_allocator_;
   bool using_memory_pool_ = false;
 #if SB_API_VERSION >= 10
   SbMediaVideoCodec video_codec_ = kSbMediaVideoCodecNone;

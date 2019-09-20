@@ -14,6 +14,7 @@
 
 {
   'variables': {
+    'optimize_target_for_speed': 1,
     'sb_pedantic_warnings': 1,
   },
   'targets': [
@@ -38,8 +39,18 @@
         'box.h',
         'box_generator.cc',
         'box_generator.h',
+        'box_intersection_observer_module.cc',
+        'box_intersection_observer_module.h',
         'container_box.cc',
         'container_box.h',
+        'flex_container_box.cc',
+        'flex_container_box.h',
+        'flex_formatting_context.cc',
+        'flex_formatting_context.h',
+        'flex_item.cc',
+        'flex_item.h',
+        'flex_line.cc',
+        'flex_line.h',
         'letterboxed_image.cc',
         'letterboxed_image.h',
         'formatting_context.h',
@@ -53,6 +64,9 @@
         'inline_level_replaced_box.h',
         'insets_layout_unit.cc',
         'insets_layout_unit.h',
+        'intersection_observer_root.h',
+        'intersection_observer_target.cc',
+        'intersection_observer_target.h',
         'layout.cc',
         'layout.h',
         'layout_unit.h',
@@ -94,17 +108,13 @@
         '<(DEPTH)/cobalt/loader/loader.gyp:loader',
         '<(DEPTH)/cobalt/render_tree/render_tree.gyp:animations',
         '<(DEPTH)/cobalt/render_tree/render_tree.gyp:render_tree',
+        '<(DEPTH)/cobalt/ui_navigation/ui_navigation.gyp:ui_navigation',
         '<(DEPTH)/third_party/icu/icu.gyp:icuuc',
       ],
       # Exporting dom so that layout_test gets the transitive include paths to
       # include generated headers.
       'export_dependent_settings': [
         '<(DEPTH)/cobalt/dom/dom.gyp:dom',
-      ],
-      'conditions': [
-        ['cobalt_enable_lib == 1', {
-          'defines' : ['FORCE_VIDEO_EXTERNAL_MESH'],
-        }],
       ],
     },
 

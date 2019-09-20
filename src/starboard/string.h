@@ -404,39 +404,10 @@ SB_EXPORT double SbStringParseDouble(const char* start, char** out_end);
 }  // extern "C"
 #endif
 
-#ifdef __cplusplus
-
+#if defined(__cplusplus) && SB_API_VERSION < 11
 extern "C++" {
-
-#include <string>
-#include <vector>
-
-namespace starboard {
-
-SB_EXPORT SB_C_INLINE std::string FormatString(const char* format, ...)
-    SB_PRINTF_FORMAT(1, 2);
-
-SB_EXPORT SB_C_INLINE std::string FormatString(const char* format, ...) {
-  va_list arguments;
-  va_start(arguments, format);
-  int expected_size = ::SbStringFormat(NULL, 0, format, arguments);
-  va_end(arguments);
-
-  std::string result;
-  if (expected_size <= 0) {
-    return result;
-  }
-
-  std::vector<char> buffer(expected_size + 1);
-  va_start(arguments, format);
-  ::SbStringFormat(buffer.data(), buffer.size(), format, arguments);
-  va_end(arguments);
-  return std::string(buffer.data(), expected_size);
-}
-
-}  // namespace starboard
+#include "starboard/common/string.h"
 }  // extern "C++"
-
-#endif  // __cplusplus
+#endif  // defined(__cplusplus) && SB_API_VERSION < 11
 
 #endif  // STARBOARD_STRING_H_

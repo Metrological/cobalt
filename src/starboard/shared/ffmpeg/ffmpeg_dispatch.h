@@ -18,7 +18,7 @@
 #ifndef STARBOARD_SHARED_FFMPEG_FFMPEG_DISPATCH_H_
 #define STARBOARD_SHARED_FFMPEG_FFMPEG_DISPATCH_H_
 
-#include "starboard/mutex.h"
+#include "starboard/common/mutex.h"
 #include "starboard/types.h"
 
 struct AVCodec;
@@ -92,6 +92,9 @@ class FFMPEGDispatch {
   void (*avcodec_flush_buffers)(AVCodecContext* avctx);
   AVFrame* (*avcodec_alloc_frame)(void);
   void (*avcodec_get_frame_defaults)(AVFrame* frame);
+  void (*avcodec_align_dimensions2)(AVCodecContext* avctx,
+                                    int* width, int* height,
+                                    int linesize_align[]);
 
   unsigned (*avformat_version)(void);
   void (*av_register_all)(void);

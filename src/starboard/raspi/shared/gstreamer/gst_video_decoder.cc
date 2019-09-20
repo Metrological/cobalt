@@ -159,11 +159,11 @@ namespace starboard {
 namespace player {
 namespace filter {
 
-bool VideoDecoder::OutputModeSupported(SbPlayerOutputMode output_mode,
-        SbMediaVideoCodec codec,
-        SbDrmSystem drm_system) {
-    return output_mode == kSbPlayerOutputModePunchOut;
-}
+//bool VideoDecoder::OutputModeSupported(SbPlayerOutputMode output_mode,
+//        SbMediaVideoCodec codec,
+//        SbDrmSystem drm_system) {
+//    return output_mode == kSbPlayerOutputModePunchOut;
+//}
 
 }  // namespace filter
 }  // namespace player

@@ -14,19 +14,20 @@
 
 #include "cobalt/browser/web_module.h"
 
+#include <memory>
 #include <sstream>
 #include <string>
 
 #include "base/bind.h"
 #include "base/callback.h"
 #include "base/command_line.h"
-#include "base/debug/trace_event.h"
 #include "base/logging.h"
-#include "base/memory/scoped_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/message_loop_proxy.h"
+#include "base/message_loop/message_loop.h"
 #include "base/optional.h"
-#include "base/stringprintf.h"
+#include "base/strings/stringprintf.h"
+#include "base/synchronization/waitable_event.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/base/c_val.h"
 #include "cobalt/base/language.h"
 #include "cobalt/base/startup_timer.h"
@@ -37,7 +38,7 @@
 #include "cobalt/browser/switches.h"
 #include "cobalt/browser/web_module_stat_tracker.h"
 #include "cobalt/css_parser/parser.h"
-#include "cobalt/debug/debug_server_module.h"
+#include "cobalt/debug/backend/debug_module.h"
 #include "cobalt/dom/blob.h"
 #include "cobalt/dom/csp_delegate_factory.h"
 #include "cobalt/dom/element.h"
@@ -66,10 +67,12 @@
 #include "cobalt/script/javascript_engine.h"
 #include "cobalt/storage/storage_manager.h"
 #include "starboard/accessibility.h"
-#include "starboard/log.h"
+#include "starboard/common/log.h"
 
 namespace cobalt {
 namespace browser {
+
+using cobalt::cssom::ViewportSize;
 
 namespace {
 
@@ -77,30 +80,9 @@ namespace {
 // deeper than this could be discarded, and will not be rendered.
 const int kDOMMaxElementDepth = 32;
 
-#if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
-// Help string for the 'partial_layout' command.
-const char kPartialLayoutCommandShortHelp[] =
-    "Controls partial layout: on | off | wipe | wipe,off";
-const char kPartialLayoutCommandLongHelp[] =
-    "Controls partial layout.\n"
-    "\n"
-    "Syntax:\n"
-    "  debug.partial_layout('CMD [, CMD ...]')\n"
-    "\n"
-    "Where CMD can be:\n"
-    "  on   : turn partial layout on.\n"
-    "  off  : turn partial layout off.\n"
-    "  wipe : wipe the box tree.\n"
-    "\n"
-    "Example:\n"
-    "  debug.partial_layout('off,wipe')\n"
-    "\n"
-    "To wipe the box tree and turn partial layout off.";
-#endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
-
 bool CacheUrlContent(SplashScreenCache* splash_screen_cache, const GURL& url,
                      const std::string& content) {
-  base::optional<std::string> key = SplashScreenCache::GetKeyForStartUrl(url);
+  base::Optional<std::string> key = SplashScreenCache::GetKeyForStartUrl(url);
   if (key) {
     return splash_screen_cache->SplashScreenCache::CacheSplashScreen(*key,
                                                                      content);
@@ -129,11 +111,12 @@ class WebModule::Impl {
   explicit Impl(const ConstructionData& data);
   ~Impl();
 
-#if defined(ENABLE_DEBUG_CONSOLE)
-  debug::DebugServer* debug_server() const {
-    return debug_server_module_->debug_server();
+#if defined(ENABLE_DEBUGGER)
+  debug::backend::DebugDispatcher* debug_dispatcher() {
+    DCHECK(debug_module_);
+    return debug_module_->debug_dispatcher();
   }
-#endif  // ENABLE_DEBUG_CONSOLE
+#endif  // ENABLE_DEBUGGER
 
 #if SB_HAS(ON_SCREEN_KEYBOARD)
   // Injects an on screen keyboard input event into the web module. Event is
@@ -155,7 +138,11 @@ class WebModule::Impl {
   // Injects an on screen keyboard blurred event into the web module. Event is
   // directed at the on screen keyboard element.
   void InjectOnScreenKeyboardBlurredEvent(int ticket);
-
+#if SB_API_VERSION >= 11
+  // Injects an on screen keyboard suggestions updated event into the web
+  // module. Event is directed at the on screen keyboard element.
+  void InjectOnScreenKeyboardSuggestionsUpdatedEvent(int ticket);
+#endif  // SB_API_VERSION >= 11
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
   // Injects a keyboard event into the web module. Event is directed at a
@@ -198,23 +185,28 @@ class WebModule::Impl {
   // so that the message loop can easily exit
   void ClearAllIntervalsAndTimeouts();
 
-#if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
-  void OnPartialLayoutConsoleCommandReceived(const std::string& message);
-#endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
-
 #if defined(ENABLE_WEBDRIVER)
   // Creates a new webdriver::WindowDriver that interacts with the Window that
   // is owned by this WebModule instance.
   void CreateWindowDriver(
       const webdriver::protocol::WindowId& window_id,
-      scoped_ptr<webdriver::WindowDriver>* window_driver_out);
-#endif
+      std::unique_ptr<webdriver::WindowDriver>* window_driver_out);
+#endif  // defined(ENABLE_WEBDRIVER)
 
-#if defined(ENABLE_DEBUG_CONSOLE)
-  void CreateDebugServerIfNull();
-#endif  // ENABLE_DEBUG_CONSOLE
+#if defined(ENABLE_DEBUGGER)
+  void WaitForWebDebugger();
 
-  void SetSize(math::Size window_dimensions, float video_pixel_ratio);
+  bool IsFinishedWaitingForWebDebugger() {
+    return wait_for_web_debugger_finished_.IsSignaled();
+  }
+
+  void FreezeDebugger(
+      std::unique_ptr<debug::backend::DebuggerState>* debugger_state) {
+    *debugger_state = debug_module_->Freeze();
+  }
+#endif  // defined(ENABLE_DEBUGGER)
+
+  void SetSize(cssom::ViewportSize window_dimensions, float video_pixel_ratio);
   void SetCamera3D(const scoped_refptr<input::Camera3D>& camera_3d);
   void SetWebMediaPlayerFactory(
       media::WebMediaPlayerFactory* web_media_player_factory);
@@ -276,7 +268,7 @@ class WebModule::Impl {
   // tree with this callback attached. It includes the time the render tree was
   // produced.
   void OnRenderTreeRasterized(
-      scoped_refptr<base::MessageLoopProxy> web_module_message_loop,
+      scoped_refptr<base::SingleThreadTaskRunner> web_module_message_loop,
       const base::TimeTicks& produced_time);
 
   // WebModule thread handling of the OnRenderTreeRasterized() callback. It
@@ -288,12 +280,12 @@ class WebModule::Impl {
   void OnCspPolicyChanged();
 
   scoped_refptr<script::GlobalEnvironment> global_environment() {
-    DCHECK(thread_checker_.CalledOnValidThread());
+    DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
     return global_environment_;
   }
 
-  void OnError(const std::string& error) {
-    error_callback_.Run(window_->location()->url(), error);
+  void OnLoadComplete(const base::Optional<std::string>& error) {
+    if (error) error_callback_.Run(window_->location()->url(), *error);
   }
 
   // Report an error encountered while running JS.
@@ -315,7 +307,7 @@ class WebModule::Impl {
 
   // Thread checker ensures all calls to the WebModule are made from the same
   // thread that it is created in.
-  base::ThreadChecker thread_checker_;
+  THREAD_CHECKER(thread_checker_);
 
   std::string name_;
 
@@ -335,64 +327,64 @@ class WebModule::Impl {
   base::TypeId resource_provider_type_id_;
 
   // CSS parser.
-  scoped_ptr<css_parser::Parser> css_parser_;
+  std::unique_ptr<css_parser::Parser> css_parser_;
 
   // DOM (HTML / XML) parser.
-  scoped_ptr<dom_parser::Parser> dom_parser_;
+  std::unique_ptr<dom_parser::Parser> dom_parser_;
 
   // FetcherFactory that is used to create a fetcher according to URL.
-  scoped_ptr<loader::FetcherFactory> fetcher_factory_;
+  std::unique_ptr<loader::FetcherFactory> fetcher_factory_;
 
   // LoaderFactory that is used to acquire references to resources from a
   // URL.
-  scoped_ptr<loader::LoaderFactory> loader_factory_;
+  std::unique_ptr<loader::LoaderFactory> loader_factory_;
 
-  scoped_ptr<loader::image::AnimatedImageTracker> animated_image_tracker_;
+  std::unique_ptr<loader::image::AnimatedImageTracker> animated_image_tracker_;
 
   // ImageCache that is used to manage image cache logic.
-  scoped_ptr<loader::image::ImageCache> image_cache_;
+  std::unique_ptr<loader::image::ImageCache> image_cache_;
 
   // The reduced cache capacity manager can be used to force a reduced image
   // cache over periods of time where memory is known to be restricted, such
   // as when a video is playing.
-  scoped_ptr<loader::image::ReducedCacheCapacityManager>
+  std::unique_ptr<loader::image::ReducedCacheCapacityManager>
       reduced_image_cache_capacity_manager_;
 
   // RemoteTypefaceCache that is used to manage loading and caching typefaces
   // from URLs.
-  scoped_ptr<loader::font::RemoteTypefaceCache> remote_typeface_cache_;
+  std::unique_ptr<loader::font::RemoteTypefaceCache> remote_typeface_cache_;
 
   // MeshCache that is used to manage mesh cache logic.
-  scoped_ptr<loader::mesh::MeshCache> mesh_cache_;
+  std::unique_ptr<loader::mesh::MeshCache> mesh_cache_;
 
   // Interface between LocalStorage and the Storage Manager.
-  scoped_ptr<dom::LocalStorageDatabase> local_storage_database_;
+  std::unique_ptr<dom::LocalStorageDatabase> local_storage_database_;
 
   // Stats for the web module. Both the dom stat tracker and layout stat
   // tracker are contained within it.
-  scoped_ptr<browser::WebModuleStatTracker> web_module_stat_tracker_;
+  std::unique_ptr<browser::WebModuleStatTracker> web_module_stat_tracker_;
 
   // Post and run tasks to notify MutationObservers.
   dom::MutationObserverTaskManager mutation_observer_task_manager_;
 
   // JavaScript engine for the browser.
-  scoped_ptr<script::JavaScriptEngine> javascript_engine_;
+  std::unique_ptr<script::JavaScriptEngine> javascript_engine_;
 
   // JavaScript Global Object for the browser. There should be one per window,
   // but since there is only one window, we can have one per browser.
   scoped_refptr<script::GlobalEnvironment> global_environment_;
 
   // Used by |Console| to obtain a JavaScript stack trace.
-  scoped_ptr<script::ExecutionState> execution_state_;
+  std::unique_ptr<script::ExecutionState> execution_state_;
 
   // Interface for the document to execute JavaScript code.
-  scoped_ptr<script::ScriptRunner> script_runner_;
+  std::unique_ptr<script::ScriptRunner> script_runner_;
 
   // Object to register and retrieve MediaSource object with a string key.
-  scoped_ptr<dom::MediaSource::Registry> media_source_registry_;
+  std::unique_ptr<dom::MediaSource::Registry> media_source_registry_;
 
   // Object to register and retrieve Blob objects with a string key.
-  scoped_ptr<dom::Blob::Registry> blob_registry_;
+  std::unique_ptr<dom::Blob::Registry> blob_registry_;
 
   // The Window object wraps all DOM-related components.
   scoped_refptr<dom::Window> window_;
@@ -404,7 +396,7 @@ class WebModule::Impl {
   base::WeakPtr<dom::Window> window_weak_;
 
   // Environment Settings object
-  scoped_ptr<dom::DOMSettings> environment_settings_;
+  std::unique_ptr<dom::DOMSettings> environment_settings_;
 
   // Called by |OnRenderTreeProduced|.
   OnRenderTreeProducedCallback render_tree_produced_callback_;
@@ -413,30 +405,29 @@ class WebModule::Impl {
   OnErrorCallback error_callback_;
 
   // Triggers layout whenever the document changes.
-  scoped_ptr<layout::LayoutManager> layout_manager_;
+  std::unique_ptr<layout::LayoutManager> layout_manager_;
 
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
   // Allows the debugger to add render components to the web module.
   // Used for DOM node highlighting and overlay messages.
-  scoped_ptr<debug::RenderOverlay> debug_overlay_;
+  std::unique_ptr<debug::backend::RenderOverlay> debug_overlay_;
 
   // The core of the debugging system.
-  // Created lazily when accessed via |GetDebugServer|.
-  scoped_ptr<debug::DebugServerModule> debug_server_module_;
-#endif  // ENABLE_DEBUG_CONSOLE
+  std::unique_ptr<debug::backend::DebugModule> debug_module_;
+
+  // Used to avoid a deadlock when running |Impl::Pause| while waiting for the
+  // web debugger to connect.
+  base::WaitableEvent wait_for_web_debugger_finished_ = {
+      base::WaitableEvent::ResetPolicy::MANUAL,
+      base::WaitableEvent::InitialState::NOT_SIGNALED};
+#endif  // ENABLE_DEBUGGER
 
   // DocumentObserver that observes the loading document.
-  scoped_ptr<DocumentLoadedObserver> document_load_observer_;
+  std::unique_ptr<DocumentLoadedObserver> document_load_observer_;
 
-#if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
-  // Handles the 'partial_layout' command.
-  scoped_ptr<base::ConsoleCommandManager::CommandHandler>
-      partial_layout_command_handler_;
-#endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
+  std::unique_ptr<media_session::MediaSessionClient> media_session_client_;
 
-  scoped_ptr<media_session::MediaSessionClient> media_session_client_;
-
-  scoped_ptr<layout::TopmostEventTarget> topmost_event_target_;
+  std::unique_ptr<layout::TopmostEventTarget> topmost_event_target_;
 
   base::Closure on_before_unload_fired_but_not_handled_;
 
@@ -450,7 +441,8 @@ class WebModule::Impl {
   // correctly execute, even if there are multiple synchronous loads in queue
   // before the suspend (or other) event handlers.
   base::WaitableEvent synchronous_loader_interrupt_ = {
-      true /* manually reset */, false /* initially signaled */};
+      base::WaitableEvent::ResetPolicy::MANUAL,
+      base::WaitableEvent::InitialState::NOT_SIGNALED};
 };
 
 class WebModule::Impl::DocumentLoadedObserver : public dom::DocumentObserver {
@@ -476,7 +468,8 @@ WebModule::Impl::Impl(const ConstructionData& data)
     : name_(data.options.name),
       is_running_(false),
       is_render_tree_rasterization_pending_(
-          StringPrintf("%s.IsRenderTreeRasterizationPending", name_.c_str()),
+          base::StringPrintf("%s.IsRenderTreeRasterizationPending",
+                             name_.c_str()),
           false, "True when a render tree is produced but not yet rasterized."),
       resource_provider_(data.resource_provider),
       resource_provider_type_id_(data.resource_provider->GetTypeId()) {
@@ -508,13 +501,13 @@ WebModule::Impl::Impl(const ConstructionData& data)
 
   dom_parser_.reset(new dom_parser::Parser(
       kDOMMaxElementDepth,
-      base::Bind(&WebModule::Impl::OnError, base::Unretained(this)),
+      base::Bind(&WebModule::Impl::OnLoadComplete, base::Unretained(this)),
       data.options.require_csp));
   DCHECK(dom_parser_);
 
   blob_registry_.reset(new dom::Blob::Registry);
 
-  base::Callback<int(const std::string&, scoped_array<char>*)>
+  base::Callback<int(const std::string&, std::unique_ptr<char[]>*)>
       read_cache_callback;
   if (data.options.can_fetch_cache) {
     read_cache_callback =
@@ -534,9 +527,11 @@ WebModule::Impl::Impl(const ConstructionData& data)
       read_cache_callback));
   DCHECK(fetcher_factory_);
 
-  loader_factory_.reset(
-      new loader::LoaderFactory(fetcher_factory_.get(), resource_provider_,
-                                data.options.loader_thread_priority));
+  DCHECK_LE(0, data.options.encoded_image_cache_capacity);
+  loader_factory_.reset(new loader::LoaderFactory(
+      name_.c_str(), fetcher_factory_.get(), resource_provider_,
+      data.options.encoded_image_cache_capacity,
+      data.options.loader_thread_priority));
 
   animated_image_tracker_.reset(new loader::image::AnimatedImageTracker(
       data.options.animated_image_decode_thread_priority));
@@ -599,9 +594,9 @@ WebModule::Impl::Impl(const ConstructionData& data)
   media_source_registry_.reset(new dom::MediaSource::Registry);
 
   media_session_client_ = media_session::MediaSessionClient::Create();
+  media_session_client_->SetMediaPlayerFactory(data.web_media_player_factory);
 
-  system_caption_settings_ =
-      new cobalt::dom::captions::SystemCaptionSettings();
+  system_caption_settings_ = new cobalt::dom::captions::SystemCaptionSettings();
 
   dom::Window::CacheCallback splash_screen_cache_callback =
       CacheUrlContentCallback(data.options.splash_screen_cache);
@@ -610,12 +605,32 @@ WebModule::Impl::Impl(const ConstructionData& data)
   // accessible from |Window|, so we must explicitly add them as roots.
   global_environment_->AddRoot(&mutation_observer_task_manager_);
   global_environment_->AddRoot(media_source_registry_.get());
+  global_environment_->AddRoot(blob_registry_.get());
+
+#if defined(ENABLE_DEBUGGER)
+  if (data.options.wait_for_web_debugger) {
+    // Post a task that blocks the message loop and waits for the web debugger.
+    // This must be posted before the the window's task to load the document.
+    base::MessageLoop::current()->task_runner()->PostTask(
+        FROM_HERE, base::Bind(&WebModule::Impl::WaitForWebDebugger,
+                              base::Unretained(this)));
+  } else {
+    // We're not going to wait for the web debugger, so consider it finished.
+    wait_for_web_debugger_finished_.Signal();
+  }
+#endif  // defined(ENABLE_DEBUGGER)
+
+  bool log_tts = false;
+#if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
+  log_tts =
+      base::CommandLine::ForCurrentProcess()->HasSwitch(switches::kUseTTS);
+#endif
 
   window_ = new dom::Window(
-      data.window_dimensions.width(), data.window_dimensions.height(),
-      data.video_pixel_ratio, data.initial_application_state, css_parser_.get(),
-      dom_parser_.get(), fetcher_factory_.get(), loader_factory_.get(),
-      &resource_provider_, animated_image_tracker_.get(), image_cache_.get(),
+      data.window_dimensions, data.video_pixel_ratio,
+      data.initial_application_state, css_parser_.get(), dom_parser_.get(),
+      fetcher_factory_.get(), loader_factory_.get(), &resource_provider_,
+      animated_image_tracker_.get(), image_cache_.get(),
       reduced_image_cache_capacity_manager_.get(), remote_typeface_cache_.get(),
       mesh_cache_.get(), local_storage_database_.get(),
       data.can_play_type_handler, data.web_media_player_factory,
@@ -628,7 +643,7 @@ WebModule::Impl::Impl(const ConstructionData& data)
           ? base::GetSystemLanguageScript()
           : data.options.font_language_script_override,
       data.options.navigation_callback,
-      base::Bind(&WebModule::Impl::OnError, base::Unretained(this)),
+      base::Bind(&WebModule::Impl::OnLoadComplete, base::Unretained(this)),
       data.network_module->cookie_jar(), data.network_module->GetPostSender(),
       data.options.require_csp, data.options.csp_enforcement_mode,
       base::Bind(&WebModule::Impl::OnCspPolicyChanged, base::Unretained(this)),
@@ -641,16 +656,18 @@ WebModule::Impl::Impl(const ConstructionData& data)
                  base::Unretained(this)),
       base::Bind(&WebModule::Impl::OnStopDispatchEvent, base::Unretained(this)),
       data.options.provide_screenshot_function, &synchronous_loader_interrupt_,
-      data.options.csp_insecure_allowed_token, data.dom_max_element_depth,
-      data.options.video_playback_rate_multiplier,
+      data.ui_nav_root, data.options.csp_insecure_allowed_token,
+      data.dom_max_element_depth, data.options.video_playback_rate_multiplier,
 #if defined(ENABLE_TEST_RUNNER)
       data.options.layout_trigger == layout::LayoutManager::kTestRunnerMode
           ? dom::Window::kClockTypeTestRunner
-          : dom::Window::kClockTypeSystemTime,
+          : (data.options.limit_performance_timer_resolution
+                 ? dom::Window::kClockTypeResolutionLimitedSystemTime
+                 : dom::Window::kClockTypeSystemTime),
 #else
       dom::Window::kClockTypeSystemTime,
 #endif
-      splash_screen_cache_callback, system_caption_settings_);
+      splash_screen_cache_callback, system_caption_settings_, log_tts);
   DCHECK(window_);
 
   window_weak_ = base::AsWeakPtr(window_.get());
@@ -686,11 +703,6 @@ WebModule::Impl::Impl(const ConstructionData& data)
       data.options.clear_window_with_background_color));
   DCHECK(layout_manager_);
 
-#if defined(ENABLE_DEBUG_CONSOLE)
-  debug_overlay_.reset(
-      new debug::RenderOverlay(data.render_tree_produced_callback));
-#endif  // ENABLE_DEBUG_CONSOLE
-
 #if !defined(COBALT_FORCE_CSP)
   if (data.options.csp_enforcement_mode == dom::kCspEnforcementDisable) {
     // If CSP is disabled, enable eval(). Otherwise, it will be enabled by
@@ -714,11 +726,24 @@ WebModule::Impl::Impl(const ConstructionData& data)
     window_->document()->AddObserver(document_load_observer_.get());
   }
 
+#if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
+  window_->document()->SetPartialLayout(data.options.enable_partial_layout);
+#endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
+
+#if defined(ENABLE_DEBUGGER)
+  debug_overlay_.reset(
+      new debug::backend::RenderOverlay(render_tree_produced_callback_));
+
+  debug_module_.reset(new debug::backend::DebugModule(
+      window_->console(), global_environment_.get(), debug_overlay_.get(),
+      resource_provider_, window_, data.options.debugger_state));
+#endif  // ENABLE_DEBUGGER
+
   is_running_ = true;
 }
 
 WebModule::Impl::~Impl() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(is_running_);
   is_running_ = false;
   global_environment_->SetReportEvalCallback(base::Closure());
@@ -728,10 +753,10 @@ WebModule::Impl::~Impl() {
   document_load_observer_.reset();
   media_session_client_.reset();
 
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
+  debug_module_.reset();
   debug_overlay_.reset();
-  debug_server_module_.reset();
-#endif  // ENABLE_DEBUG_CONSOLE
+#endif  // ENABLE_DEBUGGER
 
   // Disable callbacks for the resource caches. Otherwise, it is possible for a
   // callback to occur into a DOM object that is being kept alive by a JS engine
@@ -766,7 +791,7 @@ void WebModule::Impl::InjectInputEvent(scoped_refptr<dom::Element> element,
                                        const scoped_refptr<dom::Event>& event) {
   TRACE_EVENT1("cobalt::browser", "WebModule::Impl::InjectInputEvent()",
                "event", event->type().c_str());
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(is_running_);
   DCHECK(window_);
 
@@ -797,7 +822,7 @@ void WebModule::Impl::InjectOnScreenKeyboardInputEvent(
 }
 
 void WebModule::Impl::InjectOnScreenKeyboardShownEvent(int ticket) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(is_running_);
   DCHECK(window_);
   DCHECK(window_->on_screen_keyboard());
@@ -806,7 +831,7 @@ void WebModule::Impl::InjectOnScreenKeyboardShownEvent(int ticket) {
 }
 
 void WebModule::Impl::InjectOnScreenKeyboardHiddenEvent(int ticket) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(is_running_);
   DCHECK(window_);
   DCHECK(window_->on_screen_keyboard());
@@ -815,7 +840,7 @@ void WebModule::Impl::InjectOnScreenKeyboardHiddenEvent(int ticket) {
 }
 
 void WebModule::Impl::InjectOnScreenKeyboardFocusedEvent(int ticket) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(is_running_);
   DCHECK(window_);
   DCHECK(window_->on_screen_keyboard());
@@ -824,7 +849,7 @@ void WebModule::Impl::InjectOnScreenKeyboardFocusedEvent(int ticket) {
 }
 
 void WebModule::Impl::InjectOnScreenKeyboardBlurredEvent(int ticket) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(is_running_);
   DCHECK(window_);
   DCHECK(window_->on_screen_keyboard());
@@ -832,6 +857,17 @@ void WebModule::Impl::InjectOnScreenKeyboardBlurredEvent(int ticket) {
   window_->on_screen_keyboard()->DispatchBlurEvent(ticket);
 }
 
+#if SB_API_VERSION >= 11
+void WebModule::Impl::InjectOnScreenKeyboardSuggestionsUpdatedEvent(
+    int ticket) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  DCHECK(is_running_);
+  DCHECK(window_);
+  DCHECK(window_->on_screen_keyboard());
+
+  window_->on_screen_keyboard()->DispatchSuggestionsUpdatedEvent(ticket);
+}
+#endif  // SB_API_VERSION >= 11
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
 void WebModule::Impl::InjectKeyboardEvent(scoped_refptr<dom::Element> element,
@@ -861,7 +897,7 @@ void WebModule::Impl::InjectWheelEvent(scoped_refptr<dom::Element> element,
 void WebModule::Impl::ExecuteJavascript(
     const std::string& script_utf8, const base::SourceLocation& script_location,
     base::WaitableEvent* got_result, std::string* result, bool* out_succeeded) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(is_running_);
   DCHECK(script_runner_);
 
@@ -880,13 +916,13 @@ void WebModule::Impl::ExecuteJavascript(
 }
 
 void WebModule::Impl::ClearAllIntervalsAndTimeouts() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(window_);
   window_->DestroyTimers();
 }
 
 void WebModule::Impl::OnRanAnimationFrameCallbacks() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(is_running_);
   // Notify the stat tracker that the animation frame callbacks have finished.
   // This may end the current event being tracked.
@@ -896,7 +932,7 @@ void WebModule::Impl::OnRanAnimationFrameCallbacks() {
 
 void WebModule::Impl::OnRenderTreeProduced(
     const LayoutResults& layout_results) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(is_running_);
 
   last_render_tree_produced_time_ = base::TimeTicks::Now();
@@ -908,18 +944,19 @@ void WebModule::Impl::OnRenderTreeProduced(
   LayoutResults layout_results_with_callback(
       layout_results.render_tree, layout_results.layout_time,
       base::Bind(&WebModule::Impl::OnRenderTreeRasterized,
-                 base::Unretained(this), base::MessageLoopProxy::current(),
+                 base::Unretained(this),
+                 base::MessageLoop::current()->task_runner(),
                  last_render_tree_produced_time_));
 
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
   debug_overlay_->OnRenderTreeProduced(layout_results_with_callback);
-#else  // ENABLE_DEBUG_CONSOLE
+#else   // ENABLE_DEBUGGER
   render_tree_produced_callback_.Run(layout_results_with_callback);
-#endif  // ENABLE_DEBUG_CONSOLE
+#endif  // ENABLE_DEBUGGER
 }
 
 void WebModule::Impl::OnRenderTreeRasterized(
-    scoped_refptr<base::MessageLoopProxy> web_module_message_loop,
+    scoped_refptr<base::SingleThreadTaskRunner> web_module_message_loop,
     const base::TimeTicks& produced_time) {
   web_module_message_loop->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::ProcessOnRenderTreeRasterized,
@@ -930,7 +967,7 @@ void WebModule::Impl::OnRenderTreeRasterized(
 void WebModule::Impl::ProcessOnRenderTreeRasterized(
     const base::TimeTicks& produced_time,
     const base::TimeTicks& rasterized_time) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   web_module_stat_tracker_->OnRenderTreeRasterized(produced_time,
                                                    rasterized_time);
   if (produced_time >= last_render_tree_produced_time_) {
@@ -942,19 +979,8 @@ void WebModule::Impl::CancelSynchronousLoads() {
   synchronous_loader_interrupt_.Signal();
 }
 
-#if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
-void WebModule::Impl::OnPartialLayoutConsoleCommandReceived(
-    const std::string& message) {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  DCHECK(is_running_);
-  DCHECK(window_);
-  DCHECK(window_->document());
-  window_->document()->SetPartialLayout(message);
-}
-#endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
-
 void WebModule::Impl::OnCspPolicyChanged() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(is_running_);
   DCHECK(window_);
   DCHECK(window_->document());
@@ -972,7 +998,7 @@ void WebModule::Impl::OnCspPolicyChanged() {
 
 bool WebModule::Impl::ReportScriptError(
     const script::ErrorReport& error_report) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(is_running_);
   DCHECK(window_);
   return window_->ReportScriptError(error_report);
@@ -981,8 +1007,8 @@ bool WebModule::Impl::ReportScriptError(
 #if defined(ENABLE_WEBDRIVER)
 void WebModule::Impl::CreateWindowDriver(
     const webdriver::protocol::WindowId& window_id,
-    scoped_ptr<webdriver::WindowDriver>* window_driver_out) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+    std::unique_ptr<webdriver::WindowDriver>* window_driver_out) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(is_running_);
   DCHECK(window_);
   DCHECK(window_weak_);
@@ -994,31 +1020,26 @@ void WebModule::Impl::CreateWindowDriver(
       base::Bind(&WebModule::Impl::global_environment, base::Unretained(this)),
       base::Bind(&WebModule::Impl::InjectKeyboardEvent, base::Unretained(this)),
       base::Bind(&WebModule::Impl::InjectPointerEvent, base::Unretained(this)),
-      base::MessageLoopProxy::current()));
+      base::MessageLoop::current()->task_runner()));
 }
 #endif  // defined(ENABLE_WEBDRIVER)
 
-#if defined(ENABLE_DEBUG_CONSOLE)
-void WebModule::Impl::CreateDebugServerIfNull() {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  DCHECK(is_running_);
-  DCHECK(window_);
-  DCHECK(global_environment_);
-  DCHECK(resource_provider_);
-
-  if (debug_server_module_) {
-    return;
-  }
-
-  debug_server_module_.reset(new debug::DebugServerModule(
-      window_->console(), global_environment_, debug_overlay_.get(),
-      resource_provider_, window_));
+#if defined(ENABLE_DEBUGGER)
+void WebModule::Impl::WaitForWebDebugger() {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  DCHECK(debug_module_);
+  LOG(WARNING) << "\n-------------------------------------"
+                  "\n Waiting for web debugger to connect "
+                  "\n-------------------------------------";
+  // This blocks until the web debugger connects.
+  debug_module_->debug_dispatcher()->SetPaused(true);
+  wait_for_web_debugger_finished_.Signal();
 }
-#endif  // defined(ENABLE_DEBUG_CONSOLE)
+#endif  // defined(ENABLE_DEBUGGER)
 
 void WebModule::Impl::InjectCustomWindowAttributes(
     const Options::InjectedWindowAttributes& attributes) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(global_environment_);
 
   for (Options::InjectedWindowAttributes::const_iterator iter =
@@ -1038,10 +1059,14 @@ void WebModule::Impl::SetRemoteTypefaceCacheCapacity(int64_t bytes) {
   remote_typeface_cache_->SetCapacity(static_cast<uint32>(bytes));
 }
 
-void WebModule::Impl::SetSize(math::Size window_dimensions,
+void WebModule::Impl::SetSize(cssom::ViewportSize window_dimensions,
                               float video_pixel_ratio) {
-  window_->SetSize(window_dimensions.width(), window_dimensions.height(),
-                   video_pixel_ratio);
+  // A value of 0.0 for the video pixel ratio means that the ratio could not be
+  // determined. In that case it should be assumed to be the same as the
+  // graphics resolution, which corresponds to a device pixel ratio of 1.0.
+  float device_pixel_ratio =
+      video_pixel_ratio == 0.0f ? 1.0f : video_pixel_ratio;
+  window_->SetSize(window_dimensions, device_pixel_ratio);
 }
 
 void WebModule::Impl::SetCamera3D(
@@ -1052,6 +1077,7 @@ void WebModule::Impl::SetCamera3D(
 void WebModule::Impl::SetWebMediaPlayerFactory(
     media::WebMediaPlayerFactory* web_media_player_factory) {
   window_->set_web_media_player_factory(web_media_player_factory);
+  media_session_client_->SetMediaPlayerFactory(web_media_player_factory);
 }
 
 void WebModule::Impl::SetApplicationState(base::ApplicationState state) {
@@ -1148,7 +1174,7 @@ void WebModule::Impl::FinishSuspend() {
   // still be referenced and won't be cleared from the cache.
   PurgeResourceCaches(should_retain_remote_typeface_cache_on_suspend_);
 
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
   // The debug overlay may be holding onto a render tree, clear that out.
   debug_overlay_->ClearInput();
 #endif
@@ -1170,7 +1196,7 @@ void WebModule::Impl::Resume(render_tree::ResourceProvider* resource_provider) {
 
 void WebModule::Impl::ReduceMemory() {
   TRACE_EVENT0("cobalt::browser", "WebModule::Impl::ReduceMemory()");
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (!is_running_) {
     return;
   }
@@ -1192,7 +1218,7 @@ void WebModule::Impl::GetJavaScriptHeapStatistics(
     const JavaScriptHeapStatisticsCallback& callback) {
   TRACE_EVENT0("cobalt::browser",
                "WebModule::Impl::GetJavaScriptHeapStatistics()");
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   script::HeapStatistics heap_statistics =
       javascript_engine_->GetHeapStatistics();
   callback.Run(heap_statistics);
@@ -1202,7 +1228,7 @@ void WebModule::Impl::LogScriptError(
     const base::SourceLocation& source_location,
     const std::string& error_message) {
   std::string file_name =
-      FilePath(source_location.file_path).BaseName().value();
+      base::FilePath(source_location.file_path).BaseName().value();
 
   std::stringstream ss;
   base::TimeDelta dt = base::StartupTimer::TimeElapsed();
@@ -1218,7 +1244,7 @@ void WebModule::Impl::LogScriptError(
 }
 
 void WebModule::Impl::InjectBeforeUnloadEvent() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (window_ && window_->HasEventListener(base::Tokens::beforeunload())) {
     window_->DispatchEvent(new dom::Event(base::Tokens::beforeunload()));
   } else if (!on_before_unload_fired_but_not_handled_.is_null()) {
@@ -1227,7 +1253,7 @@ void WebModule::Impl::InjectBeforeUnloadEvent() {
 }
 
 void WebModule::Impl::InjectCaptionSettingsChangedEvent() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   system_caption_settings_->OnCaptionSettingsChanged();
 }
 
@@ -1277,22 +1303,7 @@ void WebModule::DestructionObserver::WillDestroyCurrentMessageLoop() {
 WebModule::Options::Options()
     : name("WebModule"),
       layout_trigger(layout::LayoutManager::kOnDocumentMutation),
-      image_cache_capacity(32 * 1024 * 1024),
-      remote_typeface_cache_capacity(4 * 1024 * 1024),
-      mesh_cache_capacity(COBALT_MESH_CACHE_SIZE_IN_BYTES),
-      enable_map_to_mesh_rectangular(false),
-      csp_enforcement_mode(dom::kCspEnforcementEnable),
-      csp_insecure_allowed_token(0),
-      track_event_stats(false),
-      image_cache_capacity_multiplier_when_playing_video(1.0f),
-      thread_priority(base::kThreadPriority_Normal),
-      loader_thread_priority(base::kThreadPriority_Low),
-      animated_image_decode_thread_priority(base::kThreadPriority_Low),
-      video_playback_rate_multiplier(1.f),
-      enable_image_animations(true),
-      should_retain_remote_typeface_cache_on_suspend(false),
-      can_fetch_cache(false),
-      clear_window_with_background_color(true) {}
+      mesh_cache_capacity(COBALT_MESH_CACHE_SIZE_IN_BYTES) {}
 
 WebModule::WebModule(
     const GURL& initial_url, base::ApplicationState initial_application_state,
@@ -1302,22 +1313,28 @@ WebModule::WebModule(
     const base::Closure& window_minimize_callback,
     media::CanPlayTypeHandler* can_play_type_handler,
     media::WebMediaPlayerFactory* web_media_player_factory,
-    network::NetworkModule* network_module, const math::Size& window_dimensions,
-    float video_pixel_ratio, render_tree::ResourceProvider* resource_provider,
-    float layout_refresh_rate, const Options& options)
-    : thread_(options.name.c_str()) {
+    network::NetworkModule* network_module,
+    const ViewportSize& window_dimensions, float video_pixel_ratio,
+    render_tree::ResourceProvider* resource_provider, float layout_refresh_rate,
+    const Options& options)
+    : thread_(options.name.c_str()),
+      ui_nav_root_(new ui_navigation::NavItem(
+          ui_navigation::kNativeItemTypeContainer,
+          // Currently, events do not need to be processed for the root item.
+          base::Closure(), base::Closure(), base::Closure())) {
   ConstructionData construction_data(
       initial_url, initial_application_state, render_tree_produced_callback,
       error_callback, window_close_callback, window_minimize_callback,
       can_play_type_handler, web_media_player_factory, network_module,
       window_dimensions, video_pixel_ratio, resource_provider,
-      kDOMMaxElementDepth, layout_refresh_rate, options);
+      kDOMMaxElementDepth, layout_refresh_rate, ui_nav_root_, options);
 
   // Start the dedicated thread and create the internal implementation
   // object on that thread.
-  thread_.StartWithOptions(base::Thread::Options(
-      MessageLoop::TYPE_DEFAULT, cobalt::browser::kWebModuleStackSize,
-      options.thread_priority));
+  base::Thread::Options thread_options(base::MessageLoop::TYPE_DEFAULT,
+                                       cobalt::browser::kWebModuleStackSize);
+  thread_options.priority = options.thread_priority;
+  thread_.StartWithOptions(thread_options);
   DCHECK(message_loop());
 
   // Block this thread until the initialization is complete.
@@ -1326,32 +1343,13 @@ WebModule::WebModule(
   // continue in its own time, but without this wait there is a race condition
   // such that inline scripts may be executed before the document elements they
   // operate on are present.
-  message_loop()->PostBlockingTask(
+  message_loop()->task_runner()->PostBlockingTask(
       FROM_HERE, base::Bind(&WebModule::Initialize, base::Unretained(this),
                             construction_data));
-
-#if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
-  CommandLine* command_line = CommandLine::ForCurrentProcess();
-  if (command_line->HasSwitch(browser::switches::kPartialLayout)) {
-    const std::string partial_layout_string =
-        command_line->GetSwitchValueASCII(browser::switches::kPartialLayout);
-    OnPartialLayoutConsoleCommandReceived(partial_layout_string);
-  }
-  partial_layout_command_handler_.reset(
-      new base::ConsoleCommandManager::CommandHandler(
-          browser::switches::kPartialLayout,
-          base::Bind(&WebModule::OnPartialLayoutConsoleCommandReceived,
-                     base::Unretained(this)),
-          kPartialLayoutCommandShortHelp, kPartialLayoutCommandLongHelp));
-#endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
 }
 
 WebModule::~WebModule() {
   DCHECK(message_loop());
-
-#if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
-  partial_layout_command_handler_.reset();
-#endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
 
   // Create a destruction observer to shut down the WebModule once all pending
   // tasks have been executed and the message loop is about to be destroyed.
@@ -1359,8 +1357,8 @@ WebModule::~WebModule() {
   // destroy the internal components before the message loop is set to NULL.
   // No posted tasks will be executed once the thread is stopped.
   DestructionObserver destruction_observer(this);
-  message_loop()->PostBlockingTask(
-      FROM_HERE, base::Bind(&MessageLoop::AddDestructionObserver,
+  message_loop()->task_runner()->PostBlockingTask(
+      FROM_HERE, base::Bind(&base::MessageLoop::AddDestructionObserver,
                             base::Unretained(message_loop()),
                             base::Unretained(&destruction_observer)));
 
@@ -1372,7 +1370,7 @@ WebModule::~WebModule() {
 }
 
 void WebModule::Initialize(const ConstructionData& data) {
-  DCHECK_EQ(MessageLoop::current(), message_loop());
+  DCHECK_EQ(base::MessageLoop::current(), message_loop());
   impl_.reset(new Impl(data));
 }
 
@@ -1385,7 +1383,7 @@ void WebModule::InjectOnScreenKeyboardInputEvent(
                type.c_str());
   DCHECK(message_loop());
   DCHECK(impl_);
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::InjectOnScreenKeyboardInputEvent,
                             base::Unretained(impl_.get()),
                             scoped_refptr<dom::Element>(), type, event));
@@ -1397,7 +1395,7 @@ void WebModule::InjectOnScreenKeyboardShownEvent(int ticket) {
                ticket);
   DCHECK(message_loop());
   DCHECK(impl_);
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::InjectOnScreenKeyboardShownEvent,
                             base::Unretained(impl_.get()), ticket));
 }
@@ -1408,7 +1406,7 @@ void WebModule::InjectOnScreenKeyboardHiddenEvent(int ticket) {
                ticket);
   DCHECK(message_loop());
   DCHECK(impl_);
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::InjectOnScreenKeyboardHiddenEvent,
                             base::Unretained(impl_.get()), ticket));
 }
@@ -1419,7 +1417,7 @@ void WebModule::InjectOnScreenKeyboardFocusedEvent(int ticket) {
                ticket);
   DCHECK(message_loop());
   DCHECK(impl_);
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE,
       base::Bind(&WebModule::Impl::InjectOnScreenKeyboardFocusedEvent,
                  base::Unretained(impl_.get()), ticket));
@@ -1431,12 +1429,26 @@ void WebModule::InjectOnScreenKeyboardBlurredEvent(int ticket) {
                ticket);
   DCHECK(message_loop());
   DCHECK(impl_);
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE,
       base::Bind(&WebModule::Impl::InjectOnScreenKeyboardBlurredEvent,
                  base::Unretained(impl_.get()), ticket));
 }
 
+#if SB_API_VERSION >= 11
+void WebModule::InjectOnScreenKeyboardSuggestionsUpdatedEvent(int ticket) {
+  TRACE_EVENT1("cobalt::browser",
+               "WebModule::InjectOnScreenKeyboardSuggestionsUpdatedEvent()",
+               "ticket", ticket);
+  DCHECK(message_loop());
+  DCHECK(impl_);
+  message_loop()->task_runner()->PostTask(
+      FROM_HERE,
+      base::Bind(
+          &WebModule::Impl::InjectOnScreenKeyboardSuggestionsUpdatedEvent,
+          base::Unretained(impl_.get()), ticket));
+}
+#endif  // SB_API_VERSION >= 11
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
 void WebModule::InjectKeyboardEvent(base::Token type,
@@ -1445,7 +1457,7 @@ void WebModule::InjectKeyboardEvent(base::Token type,
                type.c_str());
   DCHECK(message_loop());
   DCHECK(impl_);
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::InjectKeyboardEvent,
                             base::Unretained(impl_.get()),
                             scoped_refptr<dom::Element>(), type, event));
@@ -1457,7 +1469,7 @@ void WebModule::InjectPointerEvent(base::Token type,
                type.c_str());
   DCHECK(message_loop());
   DCHECK(impl_);
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::InjectPointerEvent,
                             base::Unretained(impl_.get()),
                             scoped_refptr<dom::Element>(), type, event));
@@ -1469,7 +1481,7 @@ void WebModule::InjectWheelEvent(base::Token type,
                type.c_str());
   DCHECK(message_loop());
   DCHECK(impl_);
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::InjectWheelEvent,
                             base::Unretained(impl_.get()),
                             scoped_refptr<dom::Element>(), type, event));
@@ -1479,9 +1491,9 @@ void WebModule::InjectBeforeUnloadEvent() {
   TRACE_EVENT0("cobalt::browser", "WebModule::InjectBeforeUnloadEvent()");
   DCHECK(message_loop());
   DCHECK(impl_);
-  message_loop()->PostTask(FROM_HERE,
-                           base::Bind(&WebModule::Impl::InjectBeforeUnloadEvent,
-                                      base::Unretained(impl_.get())));
+  message_loop()->task_runner()->PostTask(
+      FROM_HERE, base::Bind(&WebModule::Impl::InjectBeforeUnloadEvent,
+                            base::Unretained(impl_.get())));
 }
 
 void WebModule::InjectCaptionSettingsChangedEvent() {
@@ -1489,7 +1501,7 @@ void WebModule::InjectCaptionSettingsChangedEvent() {
                "WebModule::InjectCaptionSettingsChangedEvent()");
   DCHECK(message_loop());
   DCHECK(impl_);
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::InjectCaptionSettingsChangedEvent,
                             base::Unretained(impl_.get())));
 }
@@ -1501,9 +1513,11 @@ std::string WebModule::ExecuteJavascript(
   DCHECK(message_loop());
   DCHECK(impl_);
 
-  base::WaitableEvent got_result(true, false);
+  base::WaitableEvent got_result(
+      base::WaitableEvent::ResetPolicy::MANUAL,
+      base::WaitableEvent::InitialState::NOT_SIGNALED);
   std::string result;
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE,
       base::Bind(&WebModule::Impl::ExecuteJavascript,
                  base::Unretained(impl_.get()), script_utf8, script_location,
@@ -1518,188 +1532,195 @@ void WebModule::ClearAllIntervalsAndTimeouts() {
   DCHECK(impl_);
 
   if (impl_) {
-    message_loop()->PostTask(
+    message_loop()->task_runner()->PostTask(
         FROM_HERE, base::Bind(&WebModule::Impl::ClearAllIntervalsAndTimeouts,
                               base::Unretained(impl_.get())));
   }
 }
 
-#if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
-void WebModule::OnPartialLayoutConsoleCommandReceived(
-    const std::string& message) {
-  DCHECK(message_loop());
-  DCHECK(impl_);
-
-  message_loop()->PostTask(
-      FROM_HERE,
-      base::Bind(&WebModule::Impl::OnPartialLayoutConsoleCommandReceived,
-                 base::Unretained(impl_.get()), message));
-}
-#endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
-
 #if defined(ENABLE_WEBDRIVER)
-scoped_ptr<webdriver::WindowDriver> WebModule::CreateWindowDriver(
+std::unique_ptr<webdriver::WindowDriver> WebModule::CreateWindowDriver(
     const webdriver::protocol::WindowId& window_id) {
   DCHECK(message_loop());
   DCHECK(impl_);
 
-  scoped_ptr<webdriver::WindowDriver> window_driver;
-  message_loop()->PostBlockingTask(
+  std::unique_ptr<webdriver::WindowDriver> window_driver;
+  message_loop()->task_runner()->PostBlockingTask(
       FROM_HERE, base::Bind(&WebModule::Impl::CreateWindowDriver,
                             base::Unretained(impl_.get()), window_id,
                             base::Unretained(&window_driver)));
 
-  return window_driver.Pass();
+  return window_driver;
 }
 #endif  // defined(ENABLE_WEBDRIVER)
 
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
 // May be called from any thread.
-debug::DebugServer* WebModule::GetDebugServer() {
+debug::backend::DebugDispatcher* WebModule::GetDebugDispatcher() {
+  DCHECK(impl_);
+  return impl_->debug_dispatcher();
+}
+
+std::unique_ptr<debug::backend::DebuggerState> WebModule::FreezeDebugger() {
   DCHECK(message_loop());
   DCHECK(impl_);
 
-  message_loop()->PostBlockingTask(
-      FROM_HERE, base::Bind(&WebModule::Impl::CreateDebugServerIfNull,
-                            base::Unretained(impl_.get())));
-
-  return impl_->debug_server();
+  std::unique_ptr<debug::backend::DebuggerState> debugger_state;
+  message_loop()->task_runner()->PostBlockingTask(
+      FROM_HERE, base::Bind(&WebModule::Impl::FreezeDebugger,
+                            base::Unretained(impl_.get()),
+                            base::Unretained(&debugger_state)));
+  return debugger_state;
 }
-#endif  // defined(ENABLE_DEBUG_CONSOLE)
+#endif  // defined(ENABLE_DEBUGGER)
 
-void WebModule::SetSize(const math::Size& window_dimensions,
+void WebModule::SetSize(const ViewportSize& viewport_size,
                         float video_pixel_ratio) {
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE,
       base::Bind(&WebModule::Impl::SetSize, base::Unretained(impl_.get()),
-                 window_dimensions, video_pixel_ratio));
+                 viewport_size, video_pixel_ratio));
 }
 
 void WebModule::SetCamera3D(const scoped_refptr<input::Camera3D>& camera_3d) {
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::SetCamera3D,
                             base::Unretained(impl_.get()), camera_3d));
 }
 
 void WebModule::SetWebMediaPlayerFactory(
     media::WebMediaPlayerFactory* web_media_player_factory) {
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE,
       base::Bind(&WebModule::Impl::SetWebMediaPlayerFactory,
                  base::Unretained(impl_.get()), web_media_player_factory));
 }
 
 void WebModule::SetImageCacheCapacity(int64_t bytes) {
-  message_loop()->PostTask(FROM_HERE,
-                           base::Bind(&WebModule::Impl::SetImageCacheCapacity,
-                                      base::Unretained(impl_.get()), bytes));
+  message_loop()->task_runner()->PostTask(
+      FROM_HERE, base::Bind(&WebModule::Impl::SetImageCacheCapacity,
+                            base::Unretained(impl_.get()), bytes));
 }
 
 void WebModule::SetRemoteTypefaceCacheCapacity(int64_t bytes) {
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::SetRemoteTypefaceCacheCapacity,
                             base::Unretained(impl_.get()), bytes));
 }
 
 void WebModule::Prestart() {
   // Must only be called by a thread external from the WebModule thread.
-  DCHECK_NE(MessageLoop::current(), message_loop());
+  DCHECK_NE(base::MessageLoop::current(), message_loop());
 
   // We must block here so that we don't queue the finish until after
   // SuspendLoaders has run to completion, and therefore has already queued any
   // precipitate tasks.
-  message_loop()->PostBlockingTask(
+  message_loop()->task_runner()->PostBlockingTask(
       FROM_HERE, base::Bind(&WebModule::Impl::SuspendLoaders,
                             base::Unretained(impl_.get()),
                             false /*update_application_state*/));
 
   // We must block here so that the call doesn't return until the web
   // application has had a chance to process the whole event.
-  message_loop()->PostBlockingTask(FROM_HERE,
-                                   base::Bind(&WebModule::Impl::FinishSuspend,
-                                              base::Unretained(impl_.get())));
+  message_loop()->task_runner()->PostBlockingTask(
+      FROM_HERE, base::Bind(&WebModule::Impl::FinishSuspend,
+                            base::Unretained(impl_.get())));
 }
 
 void WebModule::Start(render_tree::ResourceProvider* resource_provider) {
   // Must only be called by a thread external from the WebModule thread.
-  DCHECK_NE(MessageLoop::current(), message_loop());
+  DCHECK_NE(base::MessageLoop::current(), message_loop());
 
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::Start,
                             base::Unretained(impl_.get()), resource_provider));
 }
 
 void WebModule::Pause() {
   // Must only be called by a thread external from the WebModule thread.
-  DCHECK_NE(MessageLoop::current(), message_loop());
+  DCHECK_NE(base::MessageLoop::current(), message_loop());
 
   impl_->CancelSynchronousLoads();
 
-  // We must block here so that the call doesn't return until the web
-  // application has had a chance to process the whole event.
-  message_loop()->PostBlockingTask(
-      FROM_HERE,
-      base::Bind(&WebModule::Impl::Pause, base::Unretained(impl_.get())));
+  auto impl_pause =
+      base::Bind(&WebModule::Impl::Pause, base::Unretained(impl_.get()));
+
+#if defined(ENABLE_DEBUGGER)
+  // We normally need to block here so that the call doesn't return until the
+  // web application has had a chance to process the whole event. However, our
+  // message loop is blocked while waiting for the web debugger to connect, so
+  // we would deadlock here if the user switches to Chrome to run devtools on
+  // the same machine where Cobalt is running. Therefore, while we're still
+  // waiting for the debugger we post the pause task without blocking on it,
+  // letting it eventually run when the debugger connects and the message loop
+  // is unblocked again.
+  if (!impl_->IsFinishedWaitingForWebDebugger()) {
+    message_loop()->task_runner()->PostTask(FROM_HERE, impl_pause);
+    return;
+  }
+#endif  // defined(ENABLE_DEBUGGER)
+
+  message_loop()->task_runner()->PostBlockingTask(FROM_HERE, impl_pause);
 }
 
 void WebModule::Unpause() {
   // Must only be called by a thread external from the WebModule thread.
-  DCHECK_NE(MessageLoop::current(), message_loop());
+  DCHECK_NE(base::MessageLoop::current(), message_loop());
 
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE,
       base::Bind(&WebModule::Impl::Unpause, base::Unretained(impl_.get())));
 }
 
 void WebModule::Suspend() {
   // Must only be called by a thread external from the WebModule thread.
-  DCHECK_NE(MessageLoop::current(), message_loop());
+  DCHECK_NE(base::MessageLoop::current(), message_loop());
 
   impl_->CancelSynchronousLoads();
 
   // We must block here so that we don't queue the finish until after
   // SuspendLoaders has run to completion, and therefore has already queued any
   // precipitate tasks.
-  message_loop()->PostBlockingTask(
+  message_loop()->task_runner()->PostBlockingTask(
       FROM_HERE, base::Bind(&WebModule::Impl::SuspendLoaders,
                             base::Unretained(impl_.get()),
                             true /*update_application_state*/));
 
   // We must block here so that the call doesn't return until the web
   // application has had a chance to process the whole event.
-  message_loop()->PostBlockingTask(FROM_HERE,
-                                   base::Bind(&WebModule::Impl::FinishSuspend,
-                                              base::Unretained(impl_.get())));
+  message_loop()->task_runner()->PostBlockingTask(
+      FROM_HERE, base::Bind(&WebModule::Impl::FinishSuspend,
+                            base::Unretained(impl_.get())));
 }
 
 void WebModule::Resume(render_tree::ResourceProvider* resource_provider) {
   // Must only be called by a thread external from the WebModule thread.
-  DCHECK_NE(MessageLoop::current(), message_loop());
+  DCHECK_NE(base::MessageLoop::current(), message_loop());
 
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::Resume,
                             base::Unretained(impl_.get()), resource_provider));
 }
 
 void WebModule::ReduceMemory() {
   // Must only be called by a thread external from the WebModule thread.
-  DCHECK_NE(MessageLoop::current(), message_loop());
+  DCHECK_NE(base::MessageLoop::current(), message_loop());
 
   impl_->CancelSynchronousLoads();
 
   // We block here so that we block the Low Memory event handler until we have
   // reduced our memory consumption.
-  message_loop()->PostBlockingTask(FROM_HERE,
-                                   base::Bind(&WebModule::Impl::ReduceMemory,
-                                              base::Unretained(impl_.get())));
+  message_loop()->task_runner()->PostBlockingTask(
+      FROM_HERE, base::Bind(&WebModule::Impl::ReduceMemory,
+                            base::Unretained(impl_.get())));
 }
 
 void WebModule::RequestJavaScriptHeapStatistics(
     const JavaScriptHeapStatisticsCallback& callback) {
   // Must only be called by a thread external from the WebModule thread.
-  DCHECK_NE(MessageLoop::current(), message_loop());
+  DCHECK_NE(base::MessageLoop::current(), message_loop());
 
-  message_loop()->PostTask(
+  message_loop()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::GetJavaScriptHeapStatistics,
                             base::Unretained(impl_.get()), callback));
 }

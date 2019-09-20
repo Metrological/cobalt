@@ -14,6 +14,7 @@
 
 #include "cobalt/dom/element.h"
 
+#include <memory>
 #include <vector>
 
 #include "base/run_loop.h"
@@ -25,6 +26,7 @@
 #include "cobalt/dom/dom_stat_tracker.h"
 #include "cobalt/dom/dom_token_list.h"
 #include "cobalt/dom/global_stats.h"
+#include "cobalt/dom/html_div_element.h"
 #include "cobalt/dom/html_element.h"
 #include "cobalt/dom/html_element_context.h"
 #include "cobalt/dom/named_node_map.h"
@@ -48,9 +50,9 @@ class ElementTest : public ::testing::Test {
   ElementTest();
   ~ElementTest() override;
 
-  scoped_ptr<css_parser::Parser> css_parser_;
-  scoped_ptr<dom_parser::Parser> dom_parser_;
-  scoped_ptr<DomStatTracker> dom_stat_tracker_;
+  std::unique_ptr<css_parser::Parser> css_parser_;
+  std::unique_ptr<dom_parser::Parser> dom_parser_;
+  std::unique_ptr<DomStatTracker> dom_stat_tracker_;
   HTMLElementContext html_element_context_;
   scoped_refptr<Document> document_;
   scoped_refptr<XMLDocument> xml_document_;
@@ -218,7 +220,7 @@ TEST_F(ElementTest, AttributesPropertyGetAndRemove) {
   attributes = element->attributes();
 
   // Removing an invalid attribute shouldn't change anything.
-  EXPECT_EQ(NULL, attributes->RemoveNamedItem("a"));
+  EXPECT_EQ(NULL, attributes->RemoveNamedItem("a").get());
   EXPECT_EQ(1, attributes->length());
 
   // Test that removing an attribute through NamedNodeMap works.
@@ -238,7 +240,7 @@ TEST_F(ElementTest, AttributesPropertySet) {
   EXPECT_EQ("2", attribute->value());
 
   scoped_refptr<NamedNodeMap> attributes = element->attributes();
-  EXPECT_EQ(NULL, attributes->SetNamedItem(attribute));
+  EXPECT_EQ(NULL, attributes->SetNamedItem(attribute).get());
   EXPECT_EQ(std::string("2"), element->GetAttribute("a"));
 
   attributes->SetNamedItem(new Attr("a", "3", NULL));
@@ -267,7 +269,7 @@ TEST_F(ElementTest, AttributesPropertyTransfer) {
   EXPECT_EQ(attribute, attributes1->SetNamedItem(attribute));
 
   // This should fail since attribute is still attached to element1.
-  EXPECT_EQ(NULL, attributes2->SetNamedItem(attribute));
+  EXPECT_EQ(NULL, attributes2->SetNamedItem(attribute).get());
   EXPECT_EQ(std::string("2"), element2->GetAttribute("a"));
 
   element1->RemoveAttribute("a");
@@ -554,12 +556,42 @@ TEST_F(ElementTest, OuterHTML) {
           ->AsElement();
   element_b2->AppendChild(new Text(document_, "Text"));
 
+  element_a->AppendChild(new Text(document_, "\n  "));
+
+  // Start specifically testing that the "style" attribute is serialized
+  // correctly.
+  scoped_refptr<HTMLElement> div_element_1 =
+      element_a->AppendChild(new HTMLDivElement(document_))
+          ->AsElement()
+          ->AsHTMLElement();
+  div_element_1->SetAttribute("style", "height: 20px;");
+
+  element_a->AppendChild(new Text(document_, "\n  "));
+
+  scoped_refptr<HTMLElement> div_element_2 =
+      element_a->AppendChild(new HTMLDivElement(document_))
+          ->AsElement()
+          ->AsHTMLElement();
+  div_element_2->AsHTMLElement()->style()->set_width("10px", nullptr);
+
+  element_a->AppendChild(new Text(document_, "\n  "));
+
+  scoped_refptr<HTMLElement> div_element_3 =
+      element_a->AppendChild(new HTMLDivElement(document_))
+          ->AsElement()
+          ->AsHTMLElement();
+  div_element_3->SetAttribute("style", "height: 20px;");
+  div_element_3->AsHTMLElement()->style()->set_width("10px", nullptr);
+
   element_a->AppendChild(new Text(document_, "\n"));
 
   const char kExpectedHTML[] =
       "<root><element_a key=\"value\">\n"
       "  <element_b1 just_key></element_b1>\n"
       "  <element_b2>Text</element_b2>\n"
+      "  <div style=\"height: 20px;\"></div>\n"
+      "  <div style=\"width: 10px;\"></div>\n"
+      "  <div style=\"height: 20px; width: 10px;\"></div>\n"
       "</element_a></root>";
   EXPECT_EQ(kExpectedHTML, root->outer_html(NULL));
 
@@ -687,6 +719,12 @@ TEST_F(ElementTest, NodeValueAndTextContent) {
   // Setting text content as empty string shouldn't add new child.
   root->set_text_content(std::string());
   EXPECT_EQ(NULL, root->first_child());
+}
+
+TEST_F(ElementTest, ScrollWidthHeight) {
+  scoped_refptr<Element> root = new Element(document_, base::Token("root"));
+  EXPECT_FLOAT_EQ(root->scroll_width(), 0.0f);
+  EXPECT_FLOAT_EQ(root->scroll_height(), 0.0f);
 }
 
 }  // namespace dom

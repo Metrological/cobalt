@@ -14,6 +14,8 @@
 
 #include <string>
 
+#include "starboard/configuration.h"
+
 #ifndef COBALT_BROWSER_SWITCHES_H_
 #define COBALT_BROWSER_SWITCHES_H_
 
@@ -22,13 +24,21 @@ namespace browser {
 namespace switches {
 
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
-extern const char kAudioDecoderStub[];
-extern const char kAudioDecoderStubHelp[];
 extern const char kDebugConsoleMode[];
 extern const char kDebugConsoleModeHelp[];
+
+#if defined(ENABLE_DEBUGGER)
+extern const char kRemoteDebuggingPort[];
+extern const char kRemoteDebuggingPortHelp[];
+extern const char kWaitForWebDebugger[];
+extern const char kWaitForWebDebuggerHelp[];
+#endif  // ENABLE_DEBUGGER
+
 extern const char kDisableImageAnimations[];
 extern const char kDisableImageAnimationsHelp[];
 extern const char kForceDeterministicRendering[];
+extern const char kDisableMediaCodecs[];
+extern const char kDisableMediaCodecsHelp[];
 extern const char kDisableRasterizerCaching[];
 extern const char kDisableSignIn[];
 extern const char kDisableSignInHelp[];
@@ -36,8 +46,6 @@ extern const char kDisableSplashScreenOnReloads[];
 extern const char kDisableSplashScreenOnReloadsHelp[];
 extern const char kDisableWebDriver[];
 extern const char kDisableWebDriverHelp[];
-extern const char kDisableWebmVp9[];
-extern const char kDisableWebmVp9Help[];
 extern const char kExtraWebFileDir[];
 extern const char kExtraWebFileDirHelp[];
 extern const char kFakeMicrophone[];
@@ -52,18 +60,12 @@ extern const char kMinCompatibilityVersion[];
 extern const char kMinCompatibilityVersionHelp[];
 extern const char kMinLogLevel[];
 extern const char kMinLogLevelHelp[];
-extern const char kNullAudioStreamer[];
-extern const char kNullAudioStreamerHelp[];
 extern const char kNullSavegame[];
 extern const char kNullSavegameHelp[];
-extern const char kPartialLayout[];
-extern const char kPartialLayoutHelp[];
+extern const char kDisablePartialLayout[];
+extern const char kDisablePartialLayoutHelp[];
 extern const char kProd[];
 extern const char kProdHelp[];
-extern const char kProxy[];
-extern const char kProxyHelp[];
-extern const char kRemoteDebuggingPort[];
-extern const char kRemoteDebuggingPortHelp[];
 extern const char kRequireCSP[];
 extern const char kRequireCSPHelp[];
 extern const char kRequireHTTPSLocation[];
@@ -76,21 +78,29 @@ extern const char kSuspendFuzzer[];
 extern const char kSuspendFuzzerHelp[];
 extern const char kTimedTrace[];
 extern const char kTimedTraceHelp[];
+extern const char kUserAgentOsNameVersion[];
+extern const char kUserAgentOsNameVersionHelp[];
 extern const char kUseTTS[];
 extern const char kUseTTSHelp[];
-extern const char kVideoContainerSizeOverride[];
-extern const char kVideoContainerSizeOverrideHelp[];
-extern const char kVideoDecoderStub[];
-extern const char kVideoDecoderStubHelp[];
 extern const char kWebDriverListenIp[];
 extern const char kWebDriverListenIpHelp[];
 extern const char kWebDriverPort[];
 extern const char kWebDriverPortHelp[];
+
+#if SB_HAS(ON_SCREEN_KEYBOARD)
+extern const char kDisableOnScreenKeyboard[];
+extern const char kDisableOnScreenKeyboardHelp[];
+#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
 
 extern const char kDisableJavaScriptJit[];
 extern const char kDisableJavaScriptJitHelp[];
+extern const char kDisableTimerResolutionLimit[];
+extern const char kDisableTimerResolutionLimitHelp[];
 extern const char kEnableMapToMeshRectanglar[];
+extern const char kEncodedImageCacheSizeInBytes[];
+extern const char kEncodedImageCacheSizeInBytesHelp[];
+extern const char kForceMigrationForStoragePartitioning[];
 extern const char kFPSPrint[];
 extern const char kFPSPrintHelp[];
 extern const char kFPSOverlay[];
@@ -111,6 +121,8 @@ extern const char kMaxCobaltGpuUsage[];
 extern const char kMaxCobaltGpuUsageHelp[];
 extern const char kOffscreenTargetCacheSizeInBytes[];
 extern const char kOffscreenTargetCacheSizeInBytesHelp[];
+extern const char kProxy[];
+extern const char kProxyHelp[];
 extern const char kQrCodeOverlay[];
 extern const char kQrCodeOverlayHelp[];
 extern const char kReduceCpuMemoryBy[];

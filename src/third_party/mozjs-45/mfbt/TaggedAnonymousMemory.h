@@ -34,7 +34,7 @@
 
 #if defined(STARBOARD)
 
-#include "starboard/log.h"
+#include "starboard/common/log.h"
 #include "starboard/memory.h"
 
 static inline void
@@ -48,7 +48,12 @@ MozTaggedAnonymousMmap(void* aAddr, size_t aLength, int aProt, int aFlags,
 {
   // Starboard has no concept of passing an address into mmap.
   SB_DCHECK(aAddr == nullptr);
+#if SB_HAS(MMAP)
   return SbMemoryMap(aLength, aProt, aTag);
+#else  // SB_HAS(MMAP)
+  SB_NOTIMPLEMENTED();
+  return nullptr;
+#endif  // SB_HAS(MMAP)
 }
 
 static inline int

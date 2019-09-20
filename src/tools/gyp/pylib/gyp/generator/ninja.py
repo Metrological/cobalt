@@ -79,9 +79,16 @@ is_windows = platform.system() == 'Windows'
 
 microsoft_flavors = [
     'win', 'win-win32', 'win-win32-lib',
-    'xb1', 'xb1-future', 'xb1-youtubetv', 'xb1-mainappbeta'
 ]
-sony_flavors = ['ps3', 'ps4', 'ps4-vr']
+sony_flavors = []
+
+try:
+  import private_ninja_flavors
+  microsoft_flavors += private_ninja_flavors.PrivateMicrosoftFlavors()
+  sony_flavors += private_ninja_flavors.PrivateSonyFlavors()
+except ImportError:
+  pass
+
 windows_host_flavors = microsoft_flavors + sony_flavors
 
 
@@ -221,10 +228,9 @@ class Target:
     # that compose a .lib (rather than the .lib itself). That list is stored
     # here.
     self.component_objs = None
-    # Windows/PS3 only. The import .lib is the output of a build step, but
+    # Windows only. The import .lib is the output of a build step, but
     # because dependents only link against the lib (not both the lib and the
     # dll) we keep track of the import library here.
-    # For PS3, this is the "stub" library.
     self.import_lib = None
 
   def Linkable(self):
@@ -1218,9 +1224,14 @@ class NinjaWriter:
                                                   'host' else '')
         libraries = spec.get(libraries_keyword, []) + config.get(
             libraries_keyword, [])
+
+        ldflags_executable = GetConfigFlags(
+            config, self.toolset, 'ldflags_executable')
+        if not ldflags_executable:
+          ldflags_executable = GetConfigFlags(config, self.toolset, 'ldflags')
+
         ldflags = gyp.common.uniquer(
-            map(self.ExpandSpecial,
-                GetConfigFlags(config, self.toolset, 'ldflags') + libraries))
+            map(self.ExpandSpecial, ldflags_executable + libraries))
 
         executable_linker_flags = executable_linker.GetFlags(ldflags)
         self.ninja.variable('{0}_flags'.format(rule_name),
@@ -1241,9 +1252,13 @@ class NinjaWriter:
                                                   'host' else '')
         libraries = spec.get(libraries_keyword, []) + config.get(
             libraries_keyword, [])
+
+        ldflags_shared = GetConfigFlags(config, self.toolset, 'ldflags_shared')
+        if not ldflags_shared:
+          ldflags_shared = GetConfigFlags(config, self.toolset, 'ldflags')
+
         ldflags = gyp.common.uniquer(
-            map(self.ExpandSpecial,
-                GetConfigFlags(config, self.toolset, 'ldflags') + libraries))
+            map(self.ExpandSpecial, ldflags_shared + libraries))
 
         shared_library_linker_flags = shared_library_linker.GetFlags(ldflags)
         self.ninja.variable('{0}_flags'.format(rule_name),
@@ -1284,6 +1299,10 @@ class NinjaWriter:
         ]
 
         link_deps.extend(extra_link_deps)
+
+      tail_deps = GetConfigFlags(config, self.toolset, 'TailDependencies')
+      if tail_deps:
+        link_deps.extend(map(self.ExpandSpecial, tail_deps))
 
       output = self.ComputeOutput(spec)
       self.target.binary = output
@@ -1327,7 +1346,7 @@ class NinjaWriter:
                 GetToolchainOrNone(self.flavor).GetCompilerSettings()
                 .IsUseLibraryDependencyInputs(config_name)):
               extra_link_deps.extend(target.component_objs)
-            elif (self.flavor in (microsoft_flavors + ['ps3']) and
+            elif (self.flavor in microsoft_flavors and
                   target.import_lib):
               extra_link_deps.append(target.import_lib)
             elif target.UsesToc(self.flavor):
@@ -1420,48 +1439,6 @@ class NinjaWriter:
             extra_bindings.append(('implibflag',
                                    '/IMPLIB:%s' % self.target.import_lib))
             output = [output, self.target.import_lib]
-        elif self.flavor in ['ps3']:
-          # Tell Ninja we'll be generating a .sprx and a stub library.
-          # Bind the variable '$prx' to our output binary so we can
-          # refer to it in the linker rules.
-          prx_output = output
-          prx_output_base, prx_output_ext = os.path.splitext(prx_output)
-          assert prx_output_ext == '.sprx'
-
-          extra_bindings.append(('prx', output))
-          # TODO: Figure out how to suppress the "removal" warning
-          # generated from the prx generator when we remove a function.
-          # For now, we'll just delete the 'verlog.txt' file before linking.
-          # Bind it here so we can refer to it as $verlog in the PS3 solink
-          # rule.
-          verlog = output.replace(prx_output_ext, '_verlog.txt')
-          extra_bindings.append(('verlog', verlog))
-          self.target.import_lib = output.replace(prx_output_ext, '_stub.a')
-          output = [prx_output, self.target.import_lib]
-
-          # For PRXs, we need to convert any c++ exports into C. This is done
-          # with an "export pickup" step that runs over the object files
-          # and produces a new .c file. That .c file should be compiled and
-          # linked into the PRX.
-          gen_files_dir = os.path.join(
-              self.ExpandSpecial(
-                  generator_default_variables['SHARED_INTERMEDIATE_DIR']),
-              'prx')
-
-          export_pickup_output = os.path.join(
-              gen_files_dir,
-              os.path.basename(prx_output_base) + '.prx_export.c')
-          prx_export_obj_file = export_pickup_output[:-2] + '.o'
-          self.ninja.build(
-              export_pickup_output,
-              'prx_export_pickup',
-              link_deps,
-              implicit=list(implicit_deps),
-              order_only=list(order_only_deps))
-
-          self.ninja.build(prx_export_obj_file, 'cc', export_pickup_output)
-          link_deps.append(prx_export_obj_file)
-
         else:
           output = [output, output + '.TOC']
 
@@ -1731,7 +1708,7 @@ class NinjaWriter:
     type_in_output_root = ['executable', 'loadable_module']
     if self.flavor == 'mac' and self.toolset == 'target':
       type_in_output_root += ['shared_library', 'static_library']
-    elif self.flavor in ['win', 'ps3'] and self.toolset == 'target':
+    elif self.flavor == 'win' and self.toolset == 'target':
       type_in_output_root += ['shared_library']
 
     if type in type_in_output_root or self.is_standalone_static_library:
@@ -1849,20 +1826,7 @@ def CalculateVariables(default_variables, params):
     global generator_extra_sources_for_rules
     generator_extra_sources_for_rules = getattr(
         xcode_generator, 'generator_extra_sources_for_rules', [])
-  elif flavor in ['ps3']:
-    if is_windows:
-      # This is required for BuildCygwinBashCommandLine() to work.
-      import gyp.generator.msvs as msvs_generator
-      generator_additional_non_configuration_keys = getattr(
-          msvs_generator, 'generator_additional_non_configuration_keys', [])
-      generator_additional_path_sections = getattr(
-          msvs_generator, 'generator_additional_path_sections', [])
-
-    default_variables['SHARED_LIB_PREFIX'] = ''
-    default_variables['SHARED_LIB_SUFFIX'] = '.sprx'
-    generator_flags = params.get('generator_flags', {})
-
-  elif flavor in ['ps4', 'ps4-vr']:
+  elif flavor in sony_flavors:
     if is_windows:
       # This is required for BuildCygwinBashCommandLine() to work.
       import gyp.generator.msvs as msvs_generator
@@ -2079,6 +2043,16 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params,
     for host_tool in host_toolchain:
       MaybeWriteRule(master_ninja, host_tool, 'host', shell)
     master_ninja.newline()
+
+    # Copy the gyp-win-tool to the toplevel_build.
+    # Also write python to the master_ninja.
+    if flavor in microsoft_flavors:
+      gyp.common.CopyTool(flavor, toplevel_build)
+      GetToolchainOrNone(flavor).GenerateEnvironmentFiles(
+          toplevel_build, generator_flags, OpenOutput)
+      master_ninja.variable('python', sys.executable)
+      master_ninja.newline()
+
   except NotImplementedError:
     # Fall back to the legacy toolchain.
 
@@ -2168,16 +2142,12 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params,
       # Require LD to be set.
       master_ninja.variable('ld', os.environ.get('LD'))
       master_ninja.variable('ar', os.environ.get('AR', 'ar'))
-      if flavor in ['ps3']:
-        master_ninja.variable('prx_export_pickup',
-                              os.environ['PRX_EXPORT_PICKUP'])
       ar_flags = os.environ.get('ARFLAGS', 'rcs')
       master_ninja.variable('arFlags', ar_flags)
-      # On the PS3, when we use ps3snarl.exe with a response file, we cannot
+      # On Sony, when we use orbis-snarl.exe with a response file, we cannot
       # pass it flags (like 'rcs'), so ARFLAGS is likely set to '' for this
       # platform.  In that case, do not append the thin archive 'T' flag
       # to the flags string.
-      # Likewise for PS4, but using orbis-snarl.exe
       thin_flag_to_add = ''
       if len(ar_flags) >= 1 and ar_flags.find('T') == -1:
         thin_flag_to_add = 'T'
@@ -2225,7 +2195,7 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params,
     if flavor not in microsoft_flavors:
       if flavor in sony_flavors:
         # uca := Unnamed Console A
-        dep_format = 'snc' if (flavor in ['ps3']) else 'uca'
+        dep_format = 'uca'
         master_ninja.rule(
             'cc',
             description='CC $out',
@@ -2329,64 +2299,42 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params,
           rspfile='$out.rsp',
           rspfile_content='$in_newline')
 
-      if flavor in ['ps3']:
-        # TODO: Can we suppress the warnings from verlog.txt rather than
-        # rm'ing it?
-        ld_cmd = 'rm -f $verlog && ' + ld_cmd
-        if is_windows:
-          ld_cmd = 'cmd.exe /c ' + ld_cmd
+      # This allows targets that only need to depend on $lib's API to declare
+      # an order-only dependency on $lib.TOC and avoid relinking such
+      # downstream dependencies when $lib changes only in non-public ways.
+      # The resulting string leaves an uninterpolated %{suffix} which
+      # is used in the final substitution below.
+      mtime_preserving_solink_base = (
+          'if [ ! -e $lib -o ! -e ${lib}.TOC ]; then %(solink)s && '
+          '%(extract_toc)s > ${lib}.TOC; else %(solink)s && %(extract_toc)s '
+          '> ${lib}.tmp && if ! cmp -s ${lib}.tmp ${lib}.TOC; then mv '
+          '${lib}.tmp ${lib}.TOC ; fi; fi' % {
+              'solink': (
+                  ld_cmd +
+                  ' -shared $ldflags -o $lib -Wl,-soname=$soname %(suffix)s'),
+              'extract_toc': ('{ readelf -d ${lib} | grep SONAME ; '
+                              'nm -gD -f p ${lib} | cut -f1-2 -d\' \'; }')
+          })
 
-        prx_flags = '--oformat=fsprx --prx-with-runtime --zgenprx -zgenstub'
-        master_ninja.rule(
-            'solink',
-            description='LINK(PRX) $lib',
-            restat=True,
-            command=ld_cmd + ' @$prx.rsp',
-            rspfile='$prx.rsp',
-            rspfile_content='$ldflags %s -o $prx $in $libs' % prx_flags,
-            pool='link_pool')
-        master_ninja.rule(
-            'prx_export_pickup',
-            description='PRX-EXPORT-PICKUP $out',
-            command='$prx_export_pickup --output-src=$out $in')
-
-      else:  # Assume it is a Linux platform
-        # This allows targets that only need to depend on $lib's API to declare
-        # an order-only dependency on $lib.TOC and avoid relinking such
-        # downstream dependencies when $lib changes only in non-public ways.
-        # The resulting string leaves an uninterpolated %{suffix} which
-        # is used in the final substitution below.
-        mtime_preserving_solink_base = (
-            'if [ ! -e $lib -o ! -e ${lib}.TOC ]; then %(solink)s && '
-            '%(extract_toc)s > ${lib}.TOC; else %(solink)s && %(extract_toc)s '
-            '> ${lib}.tmp && if ! cmp -s ${lib}.tmp ${lib}.TOC; then mv '
-            '${lib}.tmp ${lib}.TOC ; fi; fi' % {
-                'solink': (
-                    ld_cmd +
-                    ' -shared $ldflags -o $lib -Wl,-soname=$soname %(suffix)s'),
-                'extract_toc': ('{ readelf -d ${lib} | grep SONAME ; '
-                                'nm -gD -f p ${lib} | cut -f1-2 -d\' \'; }')
-            })
-
-        master_ninja.rule(
-            'solink',
-            description='SOLINK $lib',
-            restat=True,
-            command=(mtime_preserving_solink_base % {
-                'suffix':
-                    '-Wl,--whole-archive $in $solibs -Wl,--no-whole-archive '
-                    '$libs'
-            }))
-        master_ninja.rule(
-            'solink_module',
-            description='SOLINK(module) $lib',
-            restat=True,
-            command=(mtime_preserving_solink_base % {
-                'suffix': '-Wl,--start-group $in $solibs -Wl,--end-group $libs'
-            }))
+      master_ninja.rule(
+          'solink',
+          description='SOLINK $lib',
+          restat=True,
+          command=(mtime_preserving_solink_base % {
+              'suffix':
+                  '-Wl,--whole-archive $in $solibs -Wl,--no-whole-archive '
+                  '$libs'
+          }))
+      master_ninja.rule(
+          'solink_module',
+          description='SOLINK(module) $lib',
+          restat=True,
+          command=(mtime_preserving_solink_base % {
+              'suffix': '-Wl,--start-group $in $solibs -Wl,--end-group $libs'
+          }))
 
       if flavor in sony_flavors:
-        # PS3 and PS4 linkers don't know about rpath.
+        # Sony linkers don't know about rpath.
         rpath = ''
       else:
         rpath = r'-Wl,-rpath=\$$ORIGIN/lib'

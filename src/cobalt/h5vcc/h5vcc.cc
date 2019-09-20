@@ -25,7 +25,7 @@ H5vcc::H5vcc(const Settings& settings, const scoped_refptr<dom::Window>& window,
                                           mutation_observer_task_manager);
   account_info_ = new H5vccAccountInfo(settings.account_manager);
   audio_config_array_ = new H5vccAudioConfigArray();
-  c_val_ = new H5vccCVal();
+  c_val_ = new dom::CValView();
   crash_log_ = new H5vccCrashLog();
   runtime_ =
       new H5vccRuntime(settings.event_dispatcher, settings.initial_deep_link);
@@ -33,7 +33,6 @@ H5vcc::H5vcc(const Settings& settings, const scoped_refptr<dom::Window>& window,
 #if defined(COBALT_ENABLE_SSO)
   sso_ = new H5vccSso();
 #endif
-  storage_ = new H5vccStorage(settings.network_module);
   system_ = new H5vccSystem();
   trace_event_ = new H5vccTraceEvent();
 }
@@ -47,7 +46,6 @@ void H5vcc::TraceMembers(script::Tracer* tracer) {
   tracer->Trace(runtime_);
   tracer->Trace(settings_);
   tracer->Trace(sso_);
-  tracer->Trace(storage_);
   tracer->Trace(system_);
   tracer->Trace(trace_event_);
 }

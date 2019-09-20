@@ -15,9 +15,10 @@
 #include "cobalt/renderer/rasterizer/skia/hardware_rasterizer.h"
 
 #include <algorithm>
+#include <memory>
+#include <unordered_map>
 
-#include "base/containers/linked_hash_map.h"
-#include "base/debug/trace_event.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/renderer/backend/egl/framebuffer_render_target.h"
 #include "cobalt/renderer/backend/egl/graphics_context.h"
 #include "cobalt/renderer/backend/egl/graphics_system.h"
@@ -44,11 +45,11 @@
 #include "third_party/skia/src/gpu/GrResourceProvider.h"
 
 namespace {
-  // Some clients call Submit() multiple times with up to 2 different render
-  // targets each frame, so the max must be at least 2 to avoid constantly
-  // generating new surfaces.
-  static const size_t kMaxSkSurfaceCount = 2;
-}
+// Some clients call Submit() multiple times with up to 2 different render
+// targets each frame, so the max must be at least 2 to avoid constantly
+// generating new surfaces.
+static const size_t kMaxSkSurfaceCount = 2;
+}  // namespace
 
 namespace cobalt {
 namespace renderer {
@@ -82,9 +83,10 @@ class HardwareRasterizer::Impl {
   GrContext* GetGrContext();
 
   void MakeCurrent();
+  void ReleaseContext();
 
  private:
-  typedef base::linked_hash_map<int32_t, sk_sp<SkSurface>> SkSurfaceMap;
+  typedef std::unordered_map<int32_t, sk_sp<SkSurface>> SkSurfaceMap;
   class CachedScratchSurfaceHolder
       : public RenderTreeNodeVisitor::ScratchSurface {
    public:
@@ -100,7 +102,7 @@ class HardwareRasterizer::Impl {
   };
 
   sk_sp<SkSurface> CreateSkSurface(const math::Size& size);
-  scoped_ptr<RenderTreeNodeVisitor::ScratchSurface> CreateScratchSurface(
+  std::unique_ptr<RenderTreeNodeVisitor::ScratchSurface> CreateScratchSurface(
       const math::Size& size);
 
   void RasterizeRenderTreeToCanvas(
@@ -115,25 +117,27 @@ class HardwareRasterizer::Impl {
       const render_tree::ImageNode* image_node,
       const render_tree::MapToMeshFilter& mesh_filter,
       RenderTreeNodeVisitorDrawState* draw_state);
+  scoped_refptr<render_tree::Image> ConvertRenderTreeToImage(
+      const scoped_refptr<render_tree::Node>& root);
 
-  base::ThreadChecker thread_checker_;
+  THREAD_CHECKER(thread_checker_);
 
   backend::GraphicsContextEGL* graphics_context_;
-  scoped_ptr<render_tree::ResourceProvider> resource_provider_;
+  std::unique_ptr<render_tree::ResourceProvider> resource_provider_;
 
   sk_sp<GrContext> gr_context_;
 
   SkSurfaceMap sk_output_surface_map_;
 
-  base::optional<ScratchSurfaceCache> scratch_surface_cache_;
+  base::Optional<ScratchSurfaceCache> scratch_surface_cache_;
 
-  base::optional<egl::TexturedMeshRenderer> textured_mesh_renderer_;
+  base::Optional<egl::TexturedMeshRenderer> textured_mesh_renderer_;
 
   // Valid only for the duration of a call to RasterizeRenderTreeToCanvas().
   // Useful for directing textured_mesh_renderer_ on whether to flip its y-axis
   // or not since Skia does not let us pull that information out of the
   // SkCanvas object (which Skia would internally use to get this information).
-  base::optional<GrSurfaceOrigin> current_surface_origin_;
+  base::Optional<GrSurfaceOrigin> current_surface_origin_;
 
   // If true, rasterizer will eschew performance optimizations in favor of
   // ensuring that each rasterization is pixel-wise deterministic, given
@@ -177,8 +181,7 @@ GrBackendRenderTargetDesc CobaltRenderTargetToSkiaBackendRenderTargetDesc(
   return skia_desc;
 }
 
-glm::mat4 ModelViewMatrixSurfaceOriginAdjustment(
-    GrSurfaceOrigin origin) {
+glm::mat4 ModelViewMatrixSurfaceOriginAdjustment(GrSurfaceOrigin origin) {
   if (origin == kTopLeft_GrSurfaceOrigin) {
     return glm::scale(glm::vec3(1.0f, -1.0f, 1.0f));
   } else {
@@ -187,9 +190,8 @@ glm::mat4 ModelViewMatrixSurfaceOriginAdjustment(
 }
 
 glm::mat4 GetFallbackTextureModelViewProjectionMatrix(
-    GrSurfaceOrigin origin,
-    const SkISize& canvas_size, const SkMatrix& total_matrix,
-    const math::RectF& destination_rect) {
+    GrSurfaceOrigin origin, const SkISize& canvas_size,
+    const SkMatrix& total_matrix, const math::RectF& destination_rect) {
   // We define a transformation from GLES normalized device coordinates (e.g.
   // [-1.0, 1.0]) into Skia coordinates (e.g. [0, canvas_size.width()]).  This
   // lets us apply Skia's transform inside of Skia's coordinate space.
@@ -236,16 +238,16 @@ glm::mat4 GetFallbackTextureModelViewProjectionMatrix(
 // Accommodate for the fact that for some image formats, like UYVY, our texture
 // pixel width is actually half the size specified because there are two Y
 // values in each pixel.
-math::Rect AdjustContentRegionForImageType(
-    const base::optional<AlternateRgbaFormat>& alternate_rgba_format,
-    const math::Rect& content_region) {
+math::RectF AdjustContentRegionForImageType(
+    const base::Optional<AlternateRgbaFormat>& alternate_rgba_format,
+    const math::RectF& content_region) {
   if (!alternate_rgba_format) {
     return content_region;
   }
 
   switch (*alternate_rgba_format) {
     case AlternateRgbaFormat_UYVY: {
-      math::Rect adjusted_content_region = content_region;
+      math::RectF adjusted_content_region = content_region;
       adjusted_content_region.set_width(content_region.width() / 2);
       return adjusted_content_region;
     } break;
@@ -261,19 +263,19 @@ math::Rect AdjustContentRegionForImageType(
 // This function will adjust the content region rectangle to match only the
 // left eye's video region, since we are ultimately presenting to a monoscopic
 // display.
-math::Rect AdjustContentRegionForStereoMode(render_tree::StereoMode stereo_mode,
-                                            const math::Rect& content_region) {
+math::RectF AdjustContentRegionForStereoMode(
+    render_tree::StereoMode stereo_mode, const math::RectF& content_region) {
   switch (stereo_mode) {
     case render_tree::kLeftRight: {
       // Use the left half (left eye) of the video only.
-      math::Rect adjusted_content_region(content_region);
+      math::RectF adjusted_content_region(content_region);
       adjusted_content_region.set_width(content_region.width() / 2);
       return adjusted_content_region;
     }
 
     case render_tree::kTopBottom: {
       // Use the top half (left eye) of the video only.
-      math::Rect adjusted_content_region(content_region);
+      math::RectF adjusted_content_region(content_region);
       adjusted_content_region.set_height(content_region.height() / 2);
       return adjusted_content_region;
     }
@@ -289,7 +291,8 @@ math::Rect AdjustContentRegionForStereoMode(render_tree::StereoMode stereo_mode,
 }
 
 egl::TexturedMeshRenderer::Image::Texture GetTextureFromHardwareFrontendImage(
-    HardwareFrontendImage* image, render_tree::StereoMode stereo_mode) {
+    const math::Matrix3F& local_transform, HardwareFrontendImage* image,
+    render_tree::StereoMode stereo_mode) {
   egl::TexturedMeshRenderer::Image::Texture result;
 
   if (image->GetContentRegion()) {
@@ -300,8 +303,13 @@ egl::TexturedMeshRenderer::Image::Texture GetTextureFromHardwareFrontendImage(
     // data is defined to be specified top-to-bottom, and so we must flip the
     // y-axis before passing it on to a GL renderer.
     math::Size image_size(image->GetSize());
-    result.content_region = math::Rect(
-        0, image_size.height(), image_size.width(), -image_size.height());
+    result.content_region = math::Rect::RoundFromRectF(math::RectF(
+        image_size.width() * local_transform.Get(0, 2) /
+            local_transform.Get(0, 0),
+        image_size.height() *
+            (1 + local_transform.Get(1, 2) / local_transform.Get(1, 1)),
+        image_size.width() / local_transform.Get(0, 0),
+        -image_size.height() / local_transform.Get(1, 1)));
   }
 
   result.content_region = AdjustContentRegionForStereoMode(
@@ -314,7 +322,8 @@ egl::TexturedMeshRenderer::Image::Texture GetTextureFromHardwareFrontendImage(
 }
 
 egl::TexturedMeshRenderer::Image SkiaImageToTexturedMeshRendererImage(
-    Image* image, render_tree::StereoMode stereo_mode) {
+    const math::Matrix3F& local_transform, Image* image,
+    render_tree::StereoMode stereo_mode) {
   egl::TexturedMeshRenderer::Image result;
 
   if (image->GetTypeId() == base::GetTypeId<SinglePlaneImage>()) {
@@ -332,36 +341,57 @@ egl::TexturedMeshRenderer::Image SkiaImageToTexturedMeshRendererImage(
       }
     }
 
-    result.textures[0] =
-        GetTextureFromHardwareFrontendImage(hardware_image, stereo_mode);
+    result.textures[0] = GetTextureFromHardwareFrontendImage(
+        local_transform, hardware_image, stereo_mode);
   } else if (image->GetTypeId() == base::GetTypeId<MultiPlaneImage>()) {
     HardwareMultiPlaneImage* hardware_image =
         base::polymorphic_downcast<HardwareMultiPlaneImage*>(image);
     if (hardware_image->GetFormat() ==
-        render_tree::kMultiPlaneImageFormatYUV2PlaneBT709) {
+        render_tree::kMultiPlaneImageFormatYUV3PlaneBT601FullRange) {
+      result.type =
+          egl::TexturedMeshRenderer::Image::YUV_3PLANE_BT601_FULL_RANGE;
+      result.textures[0] = GetTextureFromHardwareFrontendImage(
+          local_transform, hardware_image->GetHardwareFrontendImage(0).get(),
+          stereo_mode);
+      result.textures[1] = GetTextureFromHardwareFrontendImage(
+          local_transform, hardware_image->GetHardwareFrontendImage(1).get(),
+          stereo_mode);
+      result.textures[2] = GetTextureFromHardwareFrontendImage(
+          local_transform, hardware_image->GetHardwareFrontendImage(2).get(),
+          stereo_mode);
+    } else if (hardware_image->GetFormat() ==
+               render_tree::kMultiPlaneImageFormatYUV2PlaneBT709) {
       result.type = egl::TexturedMeshRenderer::Image::YUV_2PLANE_BT709;
       result.textures[0] = GetTextureFromHardwareFrontendImage(
-          hardware_image->GetHardwareFrontendImage(0), stereo_mode);
+          local_transform, hardware_image->GetHardwareFrontendImage(0).get(),
+          stereo_mode);
       result.textures[1] = GetTextureFromHardwareFrontendImage(
-          hardware_image->GetHardwareFrontendImage(1), stereo_mode);
+          local_transform, hardware_image->GetHardwareFrontendImage(1).get(),
+          stereo_mode);
     } else if (hardware_image->GetFormat() ==
                render_tree::kMultiPlaneImageFormatYUV3PlaneBT709) {
       result.type = egl::TexturedMeshRenderer::Image::YUV_3PLANE_BT709;
       result.textures[0] = GetTextureFromHardwareFrontendImage(
-          hardware_image->GetHardwareFrontendImage(0), stereo_mode);
+          local_transform, hardware_image->GetHardwareFrontendImage(0).get(),
+          stereo_mode);
       result.textures[1] = GetTextureFromHardwareFrontendImage(
-          hardware_image->GetHardwareFrontendImage(1), stereo_mode);
+          local_transform, hardware_image->GetHardwareFrontendImage(1).get(),
+          stereo_mode);
       result.textures[2] = GetTextureFromHardwareFrontendImage(
-          hardware_image->GetHardwareFrontendImage(2), stereo_mode);
+          local_transform, hardware_image->GetHardwareFrontendImage(2).get(),
+          stereo_mode);
     } else if (hardware_image->GetFormat() ==
                render_tree::kMultiPlaneImageFormatYUV3Plane10BitBT2020) {
       result.type = egl::TexturedMeshRenderer::Image::YUV_3PLANE_10BIT_BT2020;
       result.textures[0] = GetTextureFromHardwareFrontendImage(
-          hardware_image->GetHardwareFrontendImage(0), stereo_mode);
+          local_transform, hardware_image->GetHardwareFrontendImage(0).get(),
+          stereo_mode);
       result.textures[1] = GetTextureFromHardwareFrontendImage(
-          hardware_image->GetHardwareFrontendImage(1), stereo_mode);
+          local_transform, hardware_image->GetHardwareFrontendImage(1).get(),
+          stereo_mode);
       result.textures[2] = GetTextureFromHardwareFrontendImage(
-          hardware_image->GetHardwareFrontendImage(2), stereo_mode);
+          local_transform, hardware_image->GetHardwareFrontendImage(2).get(),
+          stereo_mode);
     }
   } else {
     NOTREACHED();
@@ -422,9 +452,9 @@ bool SetupGLTextureParameters(const egl::TexturedMeshRenderer::Image& image,
 
 FaceOrientation GetFaceOrientationFromModelViewProjectionMatrix(
     const glm::mat4& model_view_projection_matrix) {
-  return glm::determinant(model_view_projection_matrix) >= 0 ?
-             FaceOrientation_Ccw :
-             FaceOrientation_Cw;
+  return glm::determinant(model_view_projection_matrix) >= 0
+             ? FaceOrientation_Ccw
+             : FaceOrientation_Cw;
 }
 
 }  // namespace
@@ -445,8 +475,8 @@ void HardwareRasterizer::Impl::RenderTextureEGL(
   draw_state->render_target->flush();
 
   // This may be the first use of the render target, so ensure it is bound.
-  GL_CALL(glBindFramebuffer(GL_FRAMEBUFFER,
-      draw_state->render_target->getRenderTargetHandle()));
+  GL_CALL(glBindFramebuffer(
+      GL_FRAMEBUFFER, draw_state->render_target->getRenderTargetHandle()));
 
   SkISize canvas_size = draw_state->render_target->getBaseLayerSize();
   GL_CALL(glViewport(0, 0, canvas_size.width(), canvas_size.height()));
@@ -463,14 +493,13 @@ void HardwareRasterizer::Impl::RenderTextureEGL(
 
   glm::mat4 model_view_projection_matrix =
       GetFallbackTextureModelViewProjectionMatrix(
-          *current_surface_origin_,
-          canvas_size, draw_state->render_target->getTotalMatrix(),
+          *current_surface_origin_, canvas_size,
+          draw_state->render_target->getTotalMatrix(),
           image_node->data().destination_rect);
 
-  SetupGLStateForImageRender(
-      image,
-      GetFaceOrientationFromModelViewProjectionMatrix(
-          model_view_projection_matrix));
+  SetupGLStateForImageRender(image,
+                             GetFaceOrientationFromModelViewProjectionMatrix(
+                                 model_view_projection_matrix));
 
   if (!textured_mesh_renderer_) {
     textured_mesh_renderer_.emplace(graphics_context_);
@@ -478,13 +507,14 @@ void HardwareRasterizer::Impl::RenderTextureEGL(
 
   // Convert our image into a format digestable by TexturedMeshRenderer.
   egl::TexturedMeshRenderer::Image textured_mesh_renderer_image =
-      SkiaImageToTexturedMeshRendererImage(image, render_tree::kMono);
+      SkiaImageToTexturedMeshRendererImage(image_node->data().local_transform,
+                                           image, render_tree::kMono);
 
-  if (SetupGLTextureParameters(textured_mesh_renderer_image,
-                               GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE)) {
+  if (SetupGLTextureParameters(textured_mesh_renderer_image, GL_CLAMP_TO_EDGE,
+                               GL_CLAMP_TO_EDGE)) {
     // Invoke our TexturedMeshRenderer to actually perform the draw call.
-    textured_mesh_renderer_->RenderQuad(
-        textured_mesh_renderer_image, model_view_projection_matrix);
+    textured_mesh_renderer_->RenderQuad(textured_mesh_renderer_image,
+                                        model_view_projection_matrix);
   }
 
   // Let Skia know that we've modified GL state.
@@ -519,8 +549,8 @@ void HardwareRasterizer::Impl::RenderTextureWithMeshFilterEGL(
   draw_state->render_target->flush();
 
   // This may be the first use of the render target, so ensure it is bound.
-  GL_CALL(glBindFramebuffer(GL_FRAMEBUFFER,
-      draw_state->render_target->getRenderTargetHandle()));
+  GL_CALL(glBindFramebuffer(
+      GL_FRAMEBUFFER, draw_state->render_target->getRenderTargetHandle()));
 
   // We setup our viewport to fill the entire canvas.
   GL_CALL(glViewport(0, 0, canvas_size.width(), canvas_size.height()));
@@ -530,10 +560,9 @@ void HardwareRasterizer::Impl::RenderTextureWithMeshFilterEGL(
       ModelViewMatrixSurfaceOriginAdjustment(*current_surface_origin_) *
       draw_state->transform_3d;
 
-  SetupGLStateForImageRender(
-      image,
-      GetFaceOrientationFromModelViewProjectionMatrix(
-          model_view_projection_matrix));
+  SetupGLStateForImageRender(image,
+                             GetFaceOrientationFromModelViewProjectionMatrix(
+                                 model_view_projection_matrix));
 
   if (!textured_mesh_renderer_) {
     textured_mesh_renderer_.emplace(graphics_context_);
@@ -546,20 +575,26 @@ void HardwareRasterizer::Impl::RenderTextureWithMeshFilterEGL(
 
   // Convert our image into a format digestable by TexturedMeshRenderer.
   egl::TexturedMeshRenderer::Image textured_mesh_renderer_image =
-      SkiaImageToTexturedMeshRendererImage(image, mesh_filter.stereo_mode());
+      SkiaImageToTexturedMeshRendererImage(image_node->data().local_transform,
+                                           image, mesh_filter.stereo_mode());
 
-  if (SetupGLTextureParameters(textured_mesh_renderer_image,
-                               GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE)) {
+  if (SetupGLTextureParameters(textured_mesh_renderer_image, GL_CLAMP_TO_EDGE,
+                               GL_CLAMP_TO_EDGE)) {
     // Invoke out TexturedMeshRenderer to actually perform the draw call.
     textured_mesh_renderer_->RenderVBO(
         mono_vbo->GetHandle(), mono_vbo->GetVertexCount(),
-        mono_vbo->GetDrawMode(),
-        textured_mesh_renderer_image,
+        mono_vbo->GetDrawMode(), textured_mesh_renderer_image,
         model_view_projection_matrix);
   }
 
   // Let Skia know that we've modified GL state.
   gr_context_->resetContext();
+}
+
+scoped_refptr<render_tree::Image>
+HardwareRasterizer::Impl::ConvertRenderTreeToImage(
+    const scoped_refptr<render_tree::Node>& root) {
+  return resource_provider_->DrawOffscreenImage(root);
 }
 
 HardwareRasterizer::Impl::Impl(backend::GraphicsContext* graphics_context,
@@ -635,7 +670,7 @@ void HardwareRasterizer::Impl::Submit(
     const scoped_refptr<render_tree::Node>& render_tree,
     const scoped_refptr<backend::RenderTarget>& render_target,
     const Options& options) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   scoped_refptr<backend::RenderTargetEGL> render_target_egl(
       base::polymorphic_downcast<backend::RenderTargetEGL*>(
@@ -648,7 +683,7 @@ void HardwareRasterizer::Impl::Submit(
   }
 
   backend::GraphicsContextEGL::ScopedMakeCurrent scoped_make_current(
-      graphics_context_, render_target_egl);
+      graphics_context_, render_target_egl.get());
 
   // First reset the graphics context state for the pending render tree
   // draw calls, in case we have modified state in between.
@@ -677,20 +712,20 @@ void HardwareRasterizer::Impl::Submit(
     canvas->flush();
   }
 
-  graphics_context_->SwapBuffers(render_target_egl);
+  graphics_context_->SwapBuffers(render_target_egl.get());
   canvas->restore();
 }
 
 void HardwareRasterizer::Impl::SubmitOffscreen(
     const scoped_refptr<render_tree::Node>& render_tree, SkCanvas* canvas) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   RasterizeRenderTreeToCanvas(render_tree, canvas, kBottomLeft_GrSurfaceOrigin);
 }
 
 void HardwareRasterizer::Impl::SubmitOffscreenToRenderTarget(
     const scoped_refptr<render_tree::Node>& render_tree,
     const scoped_refptr<backend::RenderTarget>& render_target) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   scoped_refptr<backend::RenderTargetEGL> render_target_egl(
       base::polymorphic_downcast<backend::RenderTargetEGL*>(
@@ -701,7 +736,7 @@ void HardwareRasterizer::Impl::SubmitOffscreenToRenderTarget(
   }
 
   backend::GraphicsContextEGL::ScopedMakeCurrent scoped_make_current(
-      graphics_context_, render_target_egl);
+      graphics_context_, render_target_egl.get());
 
   // Create a canvas from the render target.
   GrBackendRenderTargetDesc skia_desc =
@@ -733,6 +768,10 @@ void HardwareRasterizer::Impl::MakeCurrent() {
   graphics_context_->MakeCurrent();
 }
 
+void HardwareRasterizer::Impl::ReleaseContext() {
+  graphics_context_->ReleaseCurrentContext();
+}
+
 sk_sp<SkSurface> HardwareRasterizer::Impl::CreateSkSurface(
     const math::Size& size) {
   TRACE_EVENT2("cobalt::renderer", "HardwareRasterizer::CreateSkSurface()",
@@ -745,17 +784,18 @@ sk_sp<SkSurface> HardwareRasterizer::Impl::CreateSkSurface(
                                      image_info);
 }
 
-scoped_ptr<RenderTreeNodeVisitor::ScratchSurface>
+std::unique_ptr<RenderTreeNodeVisitor::ScratchSurface>
 HardwareRasterizer::Impl::CreateScratchSurface(const math::Size& size) {
   TRACE_EVENT2("cobalt::renderer", "HardwareRasterizer::CreateScratchImage()",
                "width", size.width(), "height", size.height());
 
-  scoped_ptr<CachedScratchSurfaceHolder> scratch_surface(
+  std::unique_ptr<CachedScratchSurfaceHolder> scratch_surface(
       new CachedScratchSurfaceHolder(&scratch_surface_cache_.value(), size));
   if (scratch_surface->GetSurface()) {
-    return scratch_surface.PassAs<RenderTreeNodeVisitor::ScratchSurface>();
+    return std::unique_ptr<RenderTreeNodeVisitor::ScratchSurface>(
+        scratch_surface.release());
   } else {
-    return scoped_ptr<RenderTreeNodeVisitor::ScratchSurface>();
+    return std::unique_ptr<RenderTreeNodeVisitor::ScratchSurface>();
   }
 }
 
@@ -808,7 +848,7 @@ void HardwareRasterizer::Impl::RasterizeRenderTreeToCanvas(
   // expected. Remove after switching to webdriver benchmark.
   TRACE_EVENT0("cobalt::renderer", "VisitRenderTree");
 
-  base::optional<GrSurfaceOrigin> old_origin = current_surface_origin_;
+  base::Optional<GrSurfaceOrigin> old_origin = current_surface_origin_;
   current_surface_origin_.emplace(origin);
 
   RenderTreeNodeVisitor::CreateScratchSurfaceFunction
@@ -822,6 +862,8 @@ void HardwareRasterizer::Impl::RasterizeRenderTreeToCanvas(
       base::Bind(&HardwareRasterizer::Impl::RenderTextureEGL,
                  base::Unretained(this)),
       base::Bind(&HardwareRasterizer::Impl::RenderTextureWithMeshFilterEGL,
+                 base::Unretained(this)),
+      base::Bind(&HardwareRasterizer::Impl::ConvertRenderTreeToImage,
                  base::Unretained(this)));
   DCHECK(render_tree);
   render_tree->Accept(&visitor);
@@ -869,11 +911,11 @@ render_tree::ResourceProvider* HardwareRasterizer::GetResourceProvider() {
   return impl_->GetResourceProvider();
 }
 
-GrContext* HardwareRasterizer::GetGrContext() {
-  return impl_->GetGrContext();
-}
+GrContext* HardwareRasterizer::GetGrContext() { return impl_->GetGrContext(); }
 
 void HardwareRasterizer::MakeCurrent() { return impl_->MakeCurrent(); }
+
+void HardwareRasterizer::ReleaseContext() { return impl_->ReleaseContext(); }
 
 }  // namespace skia
 }  // namespace rasterizer

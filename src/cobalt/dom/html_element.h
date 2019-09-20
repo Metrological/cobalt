@@ -15,15 +15,15 @@
 #ifndef COBALT_DOM_HTML_ELEMENT_H_
 #define COBALT_DOM_HTML_ELEMENT_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "base/compiler_specific.h"
 #include "base/memory/ref_counted.h"
-#include "base/memory/scoped_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/optional.h"
-#include "base/string_piece.h"
+#include "base/strings/string_piece.h"
 #include "cobalt/base/token.h"
 #include "cobalt/cssom/animation_set.h"
 #include "cobalt/cssom/css_computed_style_declaration.h"
@@ -36,18 +36,21 @@
 #include "cobalt/cssom/style_sheet_list.h"
 #include "cobalt/dom/css_animations_adapter.h"
 #include "cobalt/dom/css_transitions_adapter.h"
+#include "cobalt/dom/directionality.h"
 #include "cobalt/dom/dom_rect_list.h"
 #include "cobalt/dom/dom_stat_tracker.h"
 #include "cobalt/dom/element.h"
 #include "cobalt/dom/layout_boxes.h"
 #include "cobalt/dom/pseudo_element.h"
 #include "cobalt/loader/image/image_cache.h"
+#include "cobalt/ui_navigation/nav_item.h"
 
 namespace cobalt {
 namespace dom {
 
 class DOMStringMap;
 class HTMLAnchorElement;
+class HTMLAudioElement;
 class HTMLBodyElement;
 class HTMLBRElement;
 class HTMLDivElement;
@@ -65,16 +68,6 @@ class HTMLStyleElement;
 class HTMLTitleElement;
 class HTMLUnknownElement;
 class HTMLVideoElement;
-
-// The enum Directionality is used to track the explicit direction of the html
-// element:
-// https://dev.w3.org/html5/spec-preview/global-attributes.html#the-directionality
-// NOTE: Value "auto" is not supported.
-enum Directionality {
-  kNoExplicitDirectionality,
-  kLeftToRightDirectionality,
-  kRightToLeftDirectionality,
-};
 
 // The enum PseudoElementType is used to track the type of pseudo element
 enum PseudoElementType {
@@ -169,6 +162,18 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   float client_width() override;
   float client_height() override;
 
+  // Updated version of the CSSOM View Module extensions:
+  //   https://www.w3.org/TR/cssom-view-1/#extension-to-the-element-interface
+  int32 scroll_width() override;
+  int32 scroll_height() override;
+
+  // These attributes are only partially implemented. They will only work with
+  // elements associated with UI navigation containers.
+  float scroll_left() override;
+  float scroll_top() override;
+  void set_scroll_left(float x) override;
+  void set_scroll_top(float y) override;
+
   // Web API: CSSOM View Module: Extensions to the HTMLElement Interface
   // (partial interface)
   //   https://www.w3.org/TR/2013/WD-cssom-view-20131217/#extensions-to-the-htmlelement-interface
@@ -184,7 +189,7 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   // Custom, not in any spec: Element.
   scoped_refptr<HTMLElement> AsHTMLElement() override { return this; }
 
-  base::optional<std::string> GetStyleAttribute() const override;
+  base::Optional<std::string> GetStyleAttribute() const override;
   void SetStyleAttribute(const std::string& value) override;
   void RemoveStyleAttribute() override;
 
@@ -196,6 +201,7 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   // Safe type conversion methods that will downcast to the required type if
   // possible or return NULL otherwise.
   virtual scoped_refptr<HTMLAnchorElement> AsHTMLAnchorElement();
+  virtual scoped_refptr<HTMLAudioElement> AsHTMLAudioElement();
   virtual scoped_refptr<HTMLBodyElement> AsHTMLBodyElement();
   virtual scoped_refptr<HTMLBRElement> AsHTMLBRElement();
   virtual scoped_refptr<HTMLDivElement> AsHTMLDivElement();
@@ -227,6 +233,7 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   void ClearRuleMatchingStateOnElementAndAncestors(
       bool invalidate_tree_matching_rules);
   void ClearRuleMatchingStateOnElementAndDescendants();
+  void ClearRuleMatchingStateOnElementAndSiblingsAndDescendants();
 
   // Returns the cached matching rules of this element.
   cssom::RulesWithCascadePrecedence* matching_rules() {
@@ -272,7 +279,7 @@ class HTMLElement : public Element, public cssom::MutationObserver {
       const base::TimeDelta& style_change_event_time,
       AncestorsAreDisplayed ancestor_is_displayed);
 
-  void MarkDisplayNoneOnNodeAndDescendants() override;
+  void MarkNotDisplayedOnNodeAndDescendants() override;
   void PurgeCachedBackgroundImagesOfNodeAndDescendants() override;
   void InvalidateComputedStylesOfNodeAndDescendants() override;
   void InvalidateLayoutBoxesOfNodeAndAncestors() override;
@@ -286,8 +293,8 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   // The LayoutContainerBox gives the HTML Element an interface to the container
   // box that result from it. The BoxList is set when layout is performed for a
   // node.
-  void set_layout_boxes(scoped_ptr<LayoutBoxes> layout_boxes) {
-    layout_boxes_ = layout_boxes.Pass();
+  void set_layout_boxes(std::unique_ptr<LayoutBoxes> layout_boxes) {
+    layout_boxes_ = std::move(layout_boxes);
   }
 
   LayoutBoxes* layout_boxes() const { return layout_boxes_.get(); }
@@ -298,7 +305,7 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   }
 
   void SetPseudoElement(PseudoElementType type,
-                        scoped_ptr<PseudoElement> pseudo_element);
+                        std::unique_ptr<PseudoElement> pseudo_element);
 
   // Returns true if the element's computed style and all of its pseudo
   // element's computed styles are valid.
@@ -322,6 +329,15 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   // to 'none'.
   bool IsDisplayed() const;
 
+  // Get the UI navigation item (if any) representing this HTML element.
+  const scoped_refptr<ui_navigation::NavItem>& GetUiNavItem() const {
+    return ui_nav_item_;
+  }
+
+  // Returns true if the element is the root element as defined in
+  // https://www.w3.org/TR/html5/semantics.html#the-root-element.
+  bool IsRootElement();
+
   DEFINE_WRAPPABLE_TYPE(HTMLElement);
 
  protected:
@@ -331,7 +347,10 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   void OnInsertedIntoDocument() override;
   void OnRemovedFromDocument() override;
 
-  void CopyDirectionality(const HTMLElement& other);
+  // From Element.
+  void OnSetAttribute(const std::string& name,
+                      const std::string& value) override;
+  void OnRemoveAttribute(const std::string& name) override;
 
   // HTMLElement keeps a pointer to the dom stat tracker to ensure that it can
   // make stat updates even after its weak pointer to its document has been
@@ -341,11 +360,6 @@ class HTMLElement : public Element, public cssom::MutationObserver {
  private:
   // From Node.
   void OnMutation() override;
-
-  // From Element.
-  void OnSetAttribute(const std::string& name,
-                      const std::string& value) override;
-  void OnRemoveAttribute(const std::string& name) override;
 
   bool IsFocusable();
   bool HasTabindexFocusFlag() const;
@@ -363,6 +377,9 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   // directionality does not invalidate the computed style.
   void SetDirectionality(const std::string& value);
 
+  // Update the cached value of tabindex.
+  void SetTabIndex(const std::string& value);
+
   // Invalidate the matching rules and rule matching state in this element and
   // its descendants. In the case where this is the the initial invalidation,
   // it will also invalidate the rule matching state of its siblings.
@@ -370,6 +387,9 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   // Fully clear the rule matching state of this element and optionally
   // invalidate all of its descendants matching rules.
   void ClearRuleMatchingStateInternal(bool invalidate_descendants);
+
+  // Update the UI navigation item type for this element.
+  void UpdateUiNavigationType();
 
   // Clear the list of active background images, and notify the animated image
   // tracker to stop the animations.
@@ -381,10 +401,6 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   // computed style's background-image property is loaded.
   void OnBackgroundImageLoaded();
 
-  // Returns true if the element is the root element as defined in
-  // https://www.w3.org/TR/html5/semantics.html#the-root-element.
-  bool IsRootElement();
-
   // Purge the cached background images on only this node.
   void PurgeCachedBackgroundImages();
 
@@ -392,6 +408,11 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   // InvalidateLayoutBoxesOfNodeAndAncestors() and
   // InvalidateLayoutBoxesOfNodeAndDescendants().
   void InvalidateLayoutBoxes();
+
+  // Handle UI navigation events.
+  void OnUiNavBlur();
+  void OnUiNavFocus();
+  void OnUiNavScroll();
 
   bool locked_for_focus_;
 
@@ -404,6 +425,9 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   // determining directionality. Inheritance of directionality occurs via the
   // base direction of the parent element's paragraph.
   Directionality directionality_;
+
+  // Cache the tabindex value.
+  base::Optional<int32> tabindex_;
 
   // The inline style specified via attribute's in the element's HTML tag, or
   // through JavaScript (accessed via style() defined above).
@@ -438,9 +462,9 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   cssom::RulesWithCascadePrecedence matching_rules_;
 
   // This contains information about the boxes generated from the element.
-  scoped_ptr<LayoutBoxes> layout_boxes_;
+  std::unique_ptr<LayoutBoxes> layout_boxes_;
 
-  scoped_ptr<PseudoElement> pseudo_elements_[kMaxPseudoElementType];
+  std::unique_ptr<PseudoElement> pseudo_elements_[kMaxPseudoElementType];
   base::WeakPtr<DOMStringMap> dataset_;
 
   std::vector<GURL> active_background_images_;
@@ -451,6 +475,13 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   // We maintain it here to indicate to the resource caching system
   // that the images are currently in-use, and should not be purged.
   loader::image::CachedImageReferenceVector cached_background_images_;
+
+  // Elements with specific styles or attributes can be animated by the
+  // platform's UI engine. This is done by attaching special animation nodes to
+  // the boxes generated for the relevant elements; the rendering pipeline will
+  // then query starboard for position data each frame, thus animating the
+  // boxes without requiring a new layout.
+  scoped_refptr<ui_navigation::NavItem> ui_nav_item_;
 
   // HTMLElement is a friend of Animatable so that animatable can insert and
   // remove animations into HTMLElement's set of animations.

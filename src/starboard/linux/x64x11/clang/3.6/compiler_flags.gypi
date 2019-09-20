@@ -45,6 +45,8 @@
         'common_clang_flags': [
           '-Werror',
           '-fcolor-diagnostics',
+          # Point to a gcc toolchain that works with this compiler.
+          '--gcc-toolchain=<(GCC_TOOLCHAIN_FOLDER)',
           # Default visibility to hidden, to enable dead stripping.
           '-fvisibility=hidden',
           # Warn for implicit type conversions that may change a value.
@@ -97,6 +99,7 @@
           '-Wno-tautological-compare',
           # Suppress "[type1] has C-linkage specified, but returns user-defined type [type2] which is incompatible with C"
           '-Wno-return-type-c-linkage',
+          '-Wno-unused-parameter',
         ],
       }],
       ['cobalt_fastbuild==0', {
@@ -123,7 +126,7 @@
       '-std=c99',
     ],
     'cflags_cc': [
-      '-std=gnu++11',
+      '-std=c++11',
     ],
     'target_conditions': [
       ['sb_pedantic_warnings==1', {

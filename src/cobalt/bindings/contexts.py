@@ -30,6 +30,7 @@ from name_conversion import get_interface_name
 from overload_context import get_overload_contexts
 from v8_attributes import is_constructor_attribute
 from v8_interface import method_overloads_by_name
+import v8_utilities
 
 
 def is_date_type(idl_type):
@@ -109,21 +110,20 @@ def idl_string_type_to_cobalt(idl_type):
 
 
 def cobalt_type_is_optional(idl_type):
-  """Return True iff the idl_type should be wrapped by a base::optional<>.
+  """Return True iff the idl_type should be wrapped by a base::Optional<>.
 
   Returns:
-    (bool): Whether the cobalt type should be wrapped in base::optional<>.
+    (bool): Whether the cobalt type should be wrapped in base::Optional<>.
   Args:
-    idl_type: An idl_types.IdlType object.
-
-  The Cobalt type for interfaces and callback functions are scoped_refptr or
+    idl_type: An idl_types.IdlType object.  The Cobalt type for interfaces and
+      callback functions are scoped_refptr or
   script::Handle, so they can already be assigned a NULL value. Other types,
-  such as primitives, strings, and unions, need to be wrapped by
-  base::optional<>, in which case the IDL null value will map to
+    such as primitives, strings, and unions, need to be wrapped by
+  base::Optional<>, in which case the IDL null value will map to
   base::nullopt_t.
   """
 
-  # These never need base::optional<>
+  # These never need base::Optional<>
   if (idl_type.is_interface_type or idl_type.is_callback_function or
       idl_type.is_callback_interface or is_object_type(idl_type) or
       is_any_type(idl_type) or is_array_buffer_or_view_type(idl_type)):
@@ -191,7 +191,7 @@ def get_conversion_flags(idl_type, extended_attributes):
       not idl_type.base_type.startswith('unrestricted ')):
     flags.append('kConversionFlagRestricted')
   if idl_type.is_nullable and not cobalt_type_is_optional(idl_type.inner_type):
-    # Other types use base::optional<> so there is no need for a flag to check
+    # Other types use base::Optional<> so there is no need for a flag to check
     # if null values are allowed.
     flags.append('kConversionFlagNullable')
   if idl_type.is_string_type:
@@ -298,7 +298,7 @@ class ContextBuilder(object):
     assert cobalt_type, 'Unsupported idl_type %s' % idl_type
 
     if cobalt_type_is_optional(idl_type):
-      cobalt_type = 'base::optional<%s >' % cobalt_type
+      cobalt_type = 'base::Optional<%s >' % cobalt_type
 
     return cobalt_type
 
@@ -397,6 +397,12 @@ class ContextBuilder(object):
             self.typed_object_to_cobalt_type(interface, operation),
         'is_static':
             operation.is_static,
+        'on_instance':
+            v8_utilities.on_instance(interface, operation),
+        'on_interface':
+            v8_utilities.on_interface(interface, operation),
+        'on_prototype':
+            v8_utilities.on_prototype(interface, operation),
         'call_with':
             operation.extended_attributes.get('CallWith', None),
         'raises_exception':
@@ -406,7 +412,6 @@ class ContextBuilder(object):
         'unsupported':
             'NotSupported' in operation.extended_attributes,
     }
-
     context.update(self.partial_context(interface, operation))
     return context
 
@@ -486,6 +491,12 @@ class ContextBuilder(object):
             self.typed_object_to_cobalt_type(interface, attribute),
         'is_static':
             attribute.is_static,
+        'on_instance':
+            v8_utilities.on_instance(interface, attribute),
+        'on_interface':
+            v8_utilities.on_interface(interface, attribute),
+        'on_prototype':
+            v8_utilities.on_prototype(interface, attribute),
         'is_read_only':
             attribute.is_read_only,
         'call_with':
@@ -560,6 +571,7 @@ class ContextBuilder(object):
     Arguments:
         expression_generator: An ExpressionGenerator object.
         interface: an IdlInterface object
+
     Returns:
         [overload_contexts]
     """
@@ -598,6 +610,9 @@ class ContextBuilder(object):
       context['idl_name'] = context['overloads'][0]['idl_name']
       context['conditional'] = context['overloads'][0]['conditional']
       context['unsupported'] = context['overloads'][0]['unsupported']
+      context['on_instance'] = context['overloads'][0]['on_instance']
+      context['on_interface'] = context['overloads'][0]['on_interface']
+      context['on_prototype'] = context['overloads'][0]['on_prototype']
       for overload in context['overloads']:
         assert context['conditional'] == overload['conditional'], (
             'All overloads must have the same conditional.')
@@ -620,6 +635,7 @@ class ContextBuilder(object):
     Arguments:
         expression_generator: An ExpressionGenerator object.
         interface: An IdlInterface object.
+
     Returns:
         overload_context
     """
@@ -643,6 +659,7 @@ class ContextBuilder(object):
     Arguments:
         dictionary: An IdlDictionary object
         dictionary_member: An IdlDictionaryMember object.
+
     Returns:
       dictionary_member_context (dict)
     """

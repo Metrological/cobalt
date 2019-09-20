@@ -14,7 +14,10 @@
 
 #include "cobalt/speech/sandbox/audio_loader.h"
 
+#include <memory>
 #include <vector>
+
+#include "base/memory/ptr_util.h"
 
 namespace cobalt {
 namespace speech {
@@ -25,18 +28,25 @@ class DummyDecoder : public loader::Decoder {
  public:
   typedef base::Callback<void(const uint8*, int)> DoneCallback;
 
-  explicit DummyDecoder(const DoneCallback& done_callback)
-      : done_callback_(done_callback) {}
+  explicit DummyDecoder(
+      const DoneCallback& done_callback,
+      const loader::Loader::OnCompleteFunction& load_complete_callback)
+      : done_callback_(done_callback),
+        load_complete_callback_(load_complete_callback) {}
   ~DummyDecoder() override {}
 
   // This function is used for binding callback for creating DummyDecoder.
-  static scoped_ptr<Decoder> Create(const DoneCallback& done_callback) {
-    return scoped_ptr<Decoder>(new DummyDecoder(done_callback));
+  static std::unique_ptr<Decoder> Create(
+      const DoneCallback& done_callback,
+      const loader::Loader::OnCompleteFunction& load_complete_callback =
+          loader::Loader::OnCompleteFunction()) {
+    return std::unique_ptr<Decoder>(
+        new DummyDecoder(done_callback, load_complete_callback));
   }
 
   // From Decoder.
   void DecodeChunk(const char* data, size_t size) override {
-    DCHECK(thread_checker_.CalledOnValidThread());
+    DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
     // Because we load data into memory, set a maximum buffer size.
     const int kMaxBufferSize = 1024 * 1024;
@@ -47,14 +57,20 @@ class DummyDecoder : public loader::Decoder {
   }
 
   void Finish() override {
-    DCHECK(thread_checker_.CalledOnValidThread());
+    DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
     if (buffer_.size() == 0) {
       // No data loaded.
+      if (!load_complete_callback_.is_null()) {
+        load_complete_callback_.Run(base::nullopt);
+      }
       done_callback_.Run(NULL, 0);
       return;
     }
 
+    if (!load_complete_callback_.is_null()) {
+      load_complete_callback_.Run(base::nullopt);
+    }
     done_callback_.Run(reinterpret_cast<uint8*>(&buffer_[0]), buffer_.size());
   }
   bool Suspend() override {
@@ -66,9 +82,10 @@ class DummyDecoder : public loader::Decoder {
   }
 
  private:
-  base::ThreadChecker thread_checker_;
+  THREAD_CHECKER(thread_checker_);
   std::vector<char> buffer_;
   DoneCallback done_callback_;
+  loader::Loader::OnCompleteFunction load_complete_callback_;
 };
 }  // namespace
 
@@ -80,11 +97,11 @@ AudioLoader::AudioLoader(const GURL& url,
   DCHECK(!callback.is_null());
 
   fetcher_factory_.reset(new loader::FetcherFactory(network_module_));
-  loader_ = make_scoped_ptr(new loader::Loader(
+  loader_ = base::WrapUnique(new loader::Loader(
       base::Bind(&loader::FetcherFactory::CreateFetcher,
                  base::Unretained(fetcher_factory_.get()), url),
-      scoped_ptr<loader::Decoder>(new DummyDecoder(
-          base::Bind(&AudioLoader::OnLoadingDone, base::Unretained(this)))),
+      base::Bind(&DummyDecoder::Create, base::Bind(&AudioLoader::OnLoadingDone,
+                                                   base::Unretained(this))),
       base::Bind(&AudioLoader::OnLoadingError, base::Unretained(this))));
 }
 
@@ -94,8 +111,8 @@ void AudioLoader::OnLoadingDone(const uint8* data, int size) {
   done_callback_.Run(data, size);
 }
 
-void AudioLoader::OnLoadingError(const std::string& error) {
-  DLOG(WARNING) << "OnLoadingError with error message: " << error;
+void AudioLoader::OnLoadingError(const base::Optional<std::string>& error) {
+  if (error) DLOG(WARNING) << "OnLoadingError with error message: " << *error;
 }
 
 }  // namespace sandbox

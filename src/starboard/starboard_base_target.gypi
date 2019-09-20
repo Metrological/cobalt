@@ -46,6 +46,11 @@
         'SB_IS_LIBRARY=1',
       ],
     }],
+    ['sb_evergreen==1', {
+      'defines': [
+        'SB_IS_EVERGREEN=1',
+      ],
+    }],
     ['starboard_path == ""', {
       'defines': [
         # There doesn't appear to be any way to use the C preprocessor to do
@@ -62,15 +67,6 @@
         'STARBOARD_ATOMIC_INCLUDE="<(starboard_path)/atomic_public.h"',
         'STARBOARD_CONFIGURATION_INCLUDE="<(starboard_path)/configuration_public.h"',
         'STARBOARD_THREAD_TYPES_INCLUDE="<(starboard_path)/thread_types_public.h"',
-      ],
-    }],
-    ['sb_media_platform == "starboard"', {
-      'defines': [
-        'SB_GYP_CAN_MEDIA_USE_STARBOARD_PIPELINE=1',
-      ],
-    }, {
-      'defines': [
-        'SB_GYP_CAN_MEDIA_USE_STARBOARD_PIPELINE=0',
       ],
     }],
   ],

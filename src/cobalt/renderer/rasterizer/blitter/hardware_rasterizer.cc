@@ -14,14 +14,12 @@
 
 #include "cobalt/renderer/rasterizer/blitter/hardware_rasterizer.h"
 
+#include <memory>
 #include <string>
 
 #include "base/bind.h"
-#include "base/debug/trace_event.h"
 #include "base/threading/thread_checker.h"
-#if defined(ENABLE_DEBUG_CONSOLE)
-#include "cobalt/base/console_commands.h"
-#endif
+#include "base/trace_event/trace_event.h"
 #include "cobalt/render_tree/resource_provider_stub.h"
 #include "cobalt/renderer/backend/blitter/graphics_context.h"
 #include "cobalt/renderer/backend/blitter/render_target.h"
@@ -30,6 +28,10 @@
 #include "cobalt/renderer/rasterizer/blitter/render_tree_node_visitor.h"
 #include "cobalt/renderer/rasterizer/blitter/resource_provider.h"
 #include "cobalt/renderer/rasterizer/skia/software_rasterizer.h"
+
+#if defined(ENABLE_DEBUGGER)
+#include "cobalt/debug/console/command_manager.h"
+#endif
 
 #if SB_HAS(BLITTER)
 
@@ -40,11 +42,10 @@ namespace blitter {
 
 class HardwareRasterizer::Impl {
  public:
-  explicit Impl(backend::GraphicsContext* graphics_context,
-                int skia_atlas_width, int skia_atlas_height,
-                int scratch_surface_size_in_bytes,
-                int software_surface_cache_size_in_bytes,
-                bool purge_skia_font_caches_on_destruction);
+  Impl(backend::GraphicsContext* graphics_context, int skia_atlas_width,
+       int skia_atlas_height, int scratch_surface_size_in_bytes,
+       int software_surface_cache_size_in_bytes,
+       bool purge_skia_font_caches_on_destruction);
   ~Impl();
 
   void Submit(const scoped_refptr<render_tree::Node>& render_tree,
@@ -58,17 +59,17 @@ class HardwareRasterizer::Impl {
   render_tree::ResourceProvider* GetResourceProvider();
 
  private:
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
   void OnToggleHighlightSoftwareDraws(const std::string& message);
 #endif
 #if defined(COBALT_RENDER_DIRTY_REGION_ONLY)
   void SetupLastFrameSurface(int width, int height);
 #endif  // #if defined(COBALT_RENDER_DIRTY_REGION_ONLY)
-  base::ThreadChecker thread_checker_;
+  THREAD_CHECKER(thread_checker_);
 
   backend::GraphicsContextBlitter* context_;
 
-  scoped_ptr<render_tree::ResourceProvider> resource_provider_;
+  std::unique_ptr<render_tree::ResourceProvider> resource_provider_;
 
   int64 submit_count_;
 
@@ -82,11 +83,11 @@ class HardwareRasterizer::Impl {
   CachedSoftwareRasterizer software_surface_cache_;
   LinearGradientCache linear_gradient_cache_;
 
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
   // Debug command to toggle cache highlights to help visualize which nodes
   // are being cached.
   bool toggle_highlight_software_draws_;
-  base::ConsoleCommandManager::CommandHandler
+  debug::console::ConsoleCommandManager::CommandHandler
       toggle_highlight_software_draws_command_handler_;
 #endif
 };
@@ -107,7 +108,7 @@ HardwareRasterizer::Impl::Impl(backend::GraphicsContext* graphics_context,
                               context_->GetSbBlitterContext(),
                               software_surface_cache_size_in_bytes,
                               purge_skia_font_caches_on_destruction)
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
       ,
       toggle_highlight_software_draws_(false),
       toggle_highlight_software_draws_command_handler_(
@@ -118,10 +119,10 @@ HardwareRasterizer::Impl::Impl(backend::GraphicsContext* graphics_context,
           "Toggles whether all software rasterized elements will appear as a "
           "green rectangle or not.  This can be used to identify where in a "
           "scene software rasterization is occurring.")
-#endif  // defined(ENABLE_DEBUG_CONSOLE)
+#endif  // defined(ENABLE_DEBUGGER)
 {
   resource_provider_ =
-      scoped_ptr<render_tree::ResourceProvider>(new ResourceProvider(
+      std::unique_ptr<render_tree::ResourceProvider>(new ResourceProvider(
           context_->GetSbBlitterDevice(),
           software_surface_cache_.GetResourceProvider(),
           base::Bind(&HardwareRasterizer::Impl::SubmitOffscreenToRenderTarget,
@@ -134,10 +135,10 @@ HardwareRasterizer::Impl::~Impl() {
   }
 }
 
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
 void HardwareRasterizer::Impl::OnToggleHighlightSoftwareDraws(
     const std::string& message) {
-  UNREFERENCED_PARAMETER(message);
+  SB_UNREFERENCED_PARAMETER(message);
   toggle_highlight_software_draws_ = !toggle_highlight_software_draws_;
 }
 #endif
@@ -147,7 +148,7 @@ void HardwareRasterizer::Impl::Submit(
     const scoped_refptr<backend::RenderTarget>& render_target,
     const Options& options) {
   TRACE_EVENT0("cobalt::renderer", "Rasterizer::Submit()");
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   int width = render_target->GetSize().width();
   int height = render_target->GetSize().height();
@@ -202,14 +203,14 @@ void HardwareRasterizer::Impl::Submit(
     RenderState initial_render_state(visitor_render_target, Transform(),
                                      start_bounds);
 
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
     initial_render_state.highlight_software_draws =
         toggle_highlight_software_draws_;
-#endif  // defined(ENABLE_DEBUG_CONSOLE)
+#endif  // defined(ENABLE_DEBUGGER)
     RenderTreeNodeVisitor visitor(
         context_->GetSbBlitterDevice(), context_->GetSbBlitterContext(),
-        initial_render_state, &scratch_surface_cache_,
-        &software_surface_cache_, &linear_gradient_cache_);
+        initial_render_state, &scratch_surface_cache_, &software_surface_cache_,
+        &linear_gradient_cache_);
     render_tree->Accept(&visitor);
   }
 
@@ -235,7 +236,7 @@ void HardwareRasterizer::Impl::SubmitOffscreenToRenderTarget(
     const scoped_refptr<backend::RenderTarget>& render_target) {
   TRACE_EVENT0("cobalt::renderer",
                "Rasterizer::SubmitOffscreenToRenderTarget()");
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   SbBlitterContext context = context_->GetSbBlitterContext();
 

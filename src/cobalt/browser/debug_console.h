@@ -15,8 +15,11 @@
 #ifndef COBALT_BROWSER_DEBUG_CONSOLE_H_
 #define COBALT_BROWSER_DEBUG_CONSOLE_H_
 
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if !defined(ENABLE_DEBUGGER)
+#error "Debugger is not enabled in this build."
+#endif  // !ENABLE_DEBUGGER
 
+#include <memory>
 #include <string>
 
 #include "base/callback.h"
@@ -24,11 +27,13 @@
 #include "cobalt/base/token.h"
 #include "cobalt/browser/lifecycle_observer.h"
 #include "cobalt/browser/web_module.h"
-#include "cobalt/debug/debug_hub.h"
+#include "cobalt/debug/console/debug_hub.h"
 #include "cobalt/dom/input_event_init.h"
 #include "cobalt/dom/keyboard_event_init.h"
+#include "cobalt/dom/pointer_event_init.h"
+#include "cobalt/dom/wheel_event_init.h"
 #include "cobalt/dom/window.h"
-#include "googleurl/src/gurl.h"
+#include "url/gurl.h"
 
 namespace cobalt {
 namespace browser {
@@ -42,16 +47,26 @@ class DebugConsole : public LifecycleObserver {
       const WebModule::OnRenderTreeProducedCallback&
           render_tree_produced_callback,
       network::NetworkModule* network_module,
-      const math::Size& window_dimensions,
+      const cssom::ViewportSize& window_dimensions,
       render_tree::ResourceProvider* resource_provider,
       float layout_refresh_rate,
-      const debug::Debugger::GetDebugServerCallback& get_debug_server_callback);
+      const debug::CreateDebugClientCallback& create_debug_client_callback);
   ~DebugConsole();
 
   // Filters a key event.
   // Returns true if the event should be passed on to other handlers,
   // false if it was consumed within this function.
   bool FilterKeyEvent(base::Token type, const dom::KeyboardEventInit& event);
+
+  // Filters a pointer event.
+  // Returns true if the event should be passed on to other handlers,
+  // false if it was consumed within this function.
+  bool FilterPointerEvent(base::Token type, const dom::PointerEventInit& event);
+
+  // Filters a wheel event.
+  // Returns true if the event should be passed on to other handlers,
+  // false if it was consumed within this function.
+  bool FilterWheelEvent(base::Token type, const dom::WheelEventInit& event);
 
 #if SB_HAS(ON_SCREEN_KEYBOARD)
   // Inject an on screen keyboard input event.
@@ -71,7 +86,8 @@ class DebugConsole : public LifecycleObserver {
   // Returns the currently set debug console visibility mode.
   int GetMode();
 
-  void SetSize(const math::Size& window_dimensions, float video_pixel_ratio) {
+  void SetSize(const cssom::ViewportSize& window_dimensions,
+               float video_pixel_ratio) {
     web_module_->SetSize(window_dimensions, video_pixel_ratio);
   }
 
@@ -104,11 +120,10 @@ class DebugConsole : public LifecycleObserver {
   // implements the debug console.
   // This web module will produce a second render tree to combine with the main
   // one.
-  scoped_ptr<WebModule> web_module_;
+  std::unique_ptr<WebModule> web_module_;
 };
 
 }  // namespace browser
 }  // namespace cobalt
 
-#endif  // ENABLE_DEBUG_CONSOLE
 #endif  // COBALT_BROWSER_DEBUG_CONSOLE_H_

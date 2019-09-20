@@ -4,6 +4,7 @@
 
 {
   'variables': {
+    'optimize_target_for_speed': 1,
     'conditions': [
       [ 'os_posix == 1 and OS != "mac" and OS != "android"', {
         # Maybe link to system .so once the security concerns are thought
@@ -65,6 +66,11 @@
             4133,
           ],
           'conditions': [
+            ['clang == 1', {
+              'cflags': [
+                '-Wno-tautological-compare',
+              ],
+            }],
             ['OS!="win"', {'product_name': 'png'}],
             ['OS=="win"', {
               'type': '<(component)',
@@ -82,7 +88,7 @@
                 'defines': [
                   'PNG_USE_DLL',
                 ],
-              },          
+              },
             }],
             ['OS=="android"', {
               'toolsets': ['target', 'host'],

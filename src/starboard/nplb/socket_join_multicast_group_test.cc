@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "starboard/common/socket.h"
 #include "starboard/nplb/socket_helpers.h"
-#include "starboard/socket.h"
+#include "starboard/thread.h"
 #include "starboard/time.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -71,6 +72,9 @@ TEST(SbSocketJoinMulticastGroupTest, SunnyDay) {
         continue;
       }
 
+      // Clean up the sockets.
+      EXPECT_TRUE(SbSocketDestroy(send_socket));
+      EXPECT_TRUE(SbSocketDestroy(receive_socket));
       FAIL() << "Failed to send multicast packet: " << error;
       return;
     }
@@ -79,15 +83,16 @@ TEST(SbSocketJoinMulticastGroupTest, SunnyDay) {
   }
 
   SbSocketAddress receive_address;
-  int loop_counts = 10000;
+  SbTimeMonotonic stop_time = SbTimeGetMonotonicNow() + kSbTimeSecond;
   while (true) {
     // Breaks the case where the test will hang in a loop when
     // SbSocketReceiveFrom() always returns kSbSocketPending.
-    ASSERT_GE(loop_counts--, 0) << "Multicast timed out.";
+    ASSERT_LE(SbTimeGetMonotonicNow(), stop_time) << "Multicast timed out.";
     int received = SbSocketReceiveFrom(
         receive_socket, buf, SB_ARRAY_SIZE_INT(buf), &receive_address);
     if (received < 0 &&
         SbSocketGetLastError(receive_socket) == kSbSocketPending) {
+      SbThreadSleep(kSbTimeMillisecond);
       continue;
     }
     EXPECT_EQ(SB_ARRAY_SIZE_INT(kBuf), received);

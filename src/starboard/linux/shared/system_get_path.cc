@@ -21,9 +21,9 @@
 
 #include <cstring>
 
+#include "starboard/common/log.h"
+#include "starboard/common/string.h"
 #include "starboard/directory.h"
-#include "starboard/log.h"
-#include "starboard/string.h"
 #include "starboard/user.h"
 
 namespace {
@@ -54,7 +54,7 @@ bool GetExecutablePath(char* out_path, int path_size) {
   }
 
   char path[kMaxPathSize + 1];
-  size_t bytes_read = readlink("/proc/self/exe", path, kMaxPathSize);
+  ssize_t bytes_read = readlink("/proc/self/exe", path, kMaxPathSize);
   if (bytes_read < 1) {
     return false;
   }

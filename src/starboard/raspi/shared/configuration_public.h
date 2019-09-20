@@ -40,6 +40,9 @@
 // Whether the current platform provides the standard header inttypes.h.
 #define SB_HAS_INTTYPES_H 1
 
+// Whether the current platform provides the standard header sys/types.h.
+#define SB_HAS_SYS_TYPES_H 1
+
 // Whether the current platform provides the standard header wchar.h.
 #define SB_HAS_WCHAR_H 1
 
@@ -88,6 +91,9 @@
 #define SB_IMPORT_PLATFORM
 
 // --- Extensions Configuration ----------------------------------------------
+
+// Do not use <unordered_map> and <unordered_set> for the hash table types.
+#define SB_HAS_STD_UNORDERED_HASH 0
 
 // GCC/Clang doesn't define a long long hash function, except for Android and
 // Game consoles.
@@ -203,9 +209,6 @@
 #define SB_HAS_SPEECH_SYNTHESIS 0
 
 // --- Media Configuration ---------------------------------------------------
-
-// Whether the current platform uses a media player that relies on a URL.
-#define SB_HAS_PLAYER_WITH_URL 0
 
 // The maximum audio bitrate the platform can decode.  The following value
 // equals to 5M bytes per seconds which is more than enough for compressed

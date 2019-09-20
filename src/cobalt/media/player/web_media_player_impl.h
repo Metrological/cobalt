@@ -48,16 +48,16 @@
 #ifndef COBALT_MEDIA_PLAYER_WEB_MEDIA_PLAYER_IMPL_H_
 #define COBALT_MEDIA_PLAYER_WEB_MEDIA_PLAYER_IMPL_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "base/callback.h"
 #include "base/memory/ref_counted.h"
-#include "base/memory/scoped_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/message_loop.h"
+#include "base/message_loop/message_loop.h"
 #include "base/threading/thread.h"
-#include "base/time.h"
+#include "base/time/time.h"
 #include "cobalt/media/base/decoder_buffer.h"
 #include "cobalt/media/base/demuxer.h"
 #include "cobalt/media/base/eme_constants.h"
@@ -66,8 +66,8 @@
 #include "cobalt/media/base/video_frame_provider.h"
 #include "cobalt/media/player/web_media_player.h"
 #include "cobalt/media/player/web_media_player_delegate.h"
-#include "googleurl/src/gurl.h"
 #include "ui/gfx/size.h"
+#include "url/gurl.h"
 
 #if defined(OS_STARBOARD)
 
@@ -84,7 +84,7 @@ class MediaLog;
 class WebMediaPlayerProxy;
 
 class WebMediaPlayerImpl : public WebMediaPlayer,
-                           public MessageLoop::DestructionObserver,
+                           public base::MessageLoop::DestructionObserver,
                            public base::SupportsWeakPtr<WebMediaPlayerImpl> {
  public:
   // Construct a WebMediaPlayerImpl with reference to the client, and media
@@ -105,7 +105,10 @@ class WebMediaPlayerImpl : public WebMediaPlayer,
   // When calling this, the |audio_source_provider| and
   // |audio_renderer_sink| arguments should be the same object.
 
-  WebMediaPlayerImpl(PipelineWindow window, WebMediaPlayerClient* client,
+  WebMediaPlayerImpl(PipelineWindow window,
+                     const Pipeline::GetDecodeTargetGraphicsContextProviderFunc&
+                         get_decode_target_graphics_context_provider_func,
+                     WebMediaPlayerClient* client,
                      WebMediaPlayerDelegate* delegate,
                      DecoderBuffer::Allocator* buffer_allocator,
                      bool allow_resume_after_suspend,
@@ -114,11 +117,12 @@ class WebMediaPlayerImpl : public WebMediaPlayer,
 
 #if SB_HAS(PLAYER_WITH_URL)
   void LoadUrl(const GURL& url) override;
-#else   // SB_HAS(PLAYER_WITH_URL)
-  void LoadMediaSource() override;
-  void LoadProgressive(const GURL& url,
-                       scoped_ptr<BufferedDataSource> data_source) override;
 #endif  // SB_HAS(PLAYER_WITH_URL)
+  void LoadMediaSource() override;
+  void LoadProgressive(
+      const GURL& url,
+      std::unique_ptr<BufferedDataSource> data_source) override;
+
   void CancelLoad() override;
 
   // Playback controls.
@@ -153,6 +157,7 @@ class WebMediaPlayerImpl : public WebMediaPlayer,
   base::Time GetStartDate() const override;
 #endif  // SB_HAS(PLAYER_WITH_URL)
   float GetCurrentTime() const override;
+  float GetPlaybackRate() const override;
 
   // Get rate of loading the resource.
   int32 GetDataRate() const override;
@@ -160,8 +165,8 @@ class WebMediaPlayerImpl : public WebMediaPlayer,
   // Internal states of loading and network.
   // TODO(hclam): Ask the pipeline about the state rather than having reading
   // them from members which would cause race conditions.
-  WebMediaPlayer::NetworkState GetNetworkState() const override;
-  WebMediaPlayer::ReadyState GetReadyState() const override;
+  NetworkState GetNetworkState() const override;
+  ReadyState GetReadyState() const override;
 
   bool DidLoadingProgress() const override;
 
@@ -170,10 +175,7 @@ class WebMediaPlayerImpl : public WebMediaPlayer,
 
   float MediaTimeForTimeValue(float timeValue) const override;
 
-  unsigned GetDecodedFrameCount() const override;
-  unsigned GetDroppedFrameCount() const override;
-  unsigned GetAudioDecodedByteCount() const override;
-  unsigned GetVideoDecodedByteCount() const override;
+  PlayerStatistics GetStatistics() const override;
 
   scoped_refptr<VideoFrameProvider> GetVideoFrameProvider() override;
 
@@ -187,10 +189,10 @@ class WebMediaPlayerImpl : public WebMediaPlayer,
 
   bool GetDebugReportDataAddress(void** out_address, size_t* out_size) override;
 
-  void SetDrmSystem(DrmSystem* drm_system) override;
+  void SetDrmSystem(const scoped_refptr<media::DrmSystem>& drm_system) override;
   void SetDrmSystemReadyCB(const DrmSystemReadyCB& drm_system_ready_cb);
 
-  void OnPipelineSeek(PipelineStatus status);
+  void OnPipelineSeek(PipelineStatus status, bool is_initial_preroll);
   void OnPipelineEnded(PipelineStatus status);
   void OnPipelineError(PipelineStatus error, const std::string& message);
   void OnPipelineBufferingState(Pipeline::BufferingState buffering_state);
@@ -201,19 +203,17 @@ class WebMediaPlayerImpl : public WebMediaPlayer,
   // Called when the data source is downloading or paused.
   void OnDownloadingStatusChanged(bool is_downloading);
 
-  // Finishes starting the pipeline due to a call to load().
+// Finishes starting the pipeline due to a call to load().
 #if SB_HAS(PLAYER_WITH_URL)
   void StartPipeline(const GURL& url);
-#else   // SB_HAS(PLAYER_WITH_URL)
-  void StartPipeline(Demuxer* demuxer);
 #endif  // SB_HAS(PLAYER_WITH_URL)
+  void StartPipeline(Demuxer* demuxer);
 
   // Helpers that set the network/ready state and notifies the client if
   // they've changed.
-  void SetNetworkState(WebMediaPlayer::NetworkState state);
-  void SetNetworkError(WebMediaPlayer::NetworkState state,
-                       const std::string& message);
-  void SetReadyState(WebMediaPlayer::ReadyState state);
+  void SetNetworkState(NetworkState state);
+  void SetNetworkError(NetworkState state, const std::string& message);
+  void SetReadyState(ReadyState state);
 
   // Destroy resources held.
   void Destroy();
@@ -238,15 +238,15 @@ class WebMediaPlayerImpl : public WebMediaPlayer,
   base::Thread pipeline_thread_;
 
   // TODO(hclam): get rid of these members and read from the pipeline directly.
-  WebMediaPlayer::NetworkState network_state_;
-  WebMediaPlayer::ReadyState ready_state_;
+  NetworkState network_state_;
+  ReadyState ready_state_;
 
   // Keep a list of buffered time ranges.
   Ranges<base::TimeDelta> buffered_;
 
   // Message loops for posting tasks between Chrome's main thread. Also used
   // for DCHECKs so methods calls won't execute in the wrong thread.
-  MessageLoop* main_loop_;
+  base::MessageLoop* main_loop_;
 
   scoped_refptr<Pipeline> pipeline_;
 
@@ -310,8 +310,8 @@ class WebMediaPlayerImpl : public WebMediaPlayer,
   bool is_local_source_;
   bool supports_save_;
 
-  scoped_ptr<Demuxer> progressive_demuxer_;
-  scoped_ptr<ChunkDemuxer> chunk_demuxer_;
+  std::unique_ptr<Demuxer> progressive_demuxer_;
+  std::unique_ptr<ChunkDemuxer> chunk_demuxer_;
 
 #if defined(__LB_ANDROID__)
   AudioFocusBridge audio_focus_bridge_;
@@ -326,7 +326,7 @@ class WebMediaPlayerImpl : public WebMediaPlayer,
       media_time_and_seeking_state_cb_;
 
   DrmSystemReadyCB drm_system_ready_cb_;
-  DrmSystem* drm_system_;
+  scoped_refptr<DrmSystem> drm_system_;
 
   DISALLOW_COPY_AND_ASSIGN(WebMediaPlayerImpl);
 };

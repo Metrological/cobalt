@@ -14,14 +14,16 @@
 
 #include "cobalt/dom/document.h"
 
+#include <memory>
 #include <vector>
 
 #include "base/bind.h"
 #include "base/bind_helpers.h"
+#include "base/callback.h"
 #include "base/compiler_specific.h"
-#include "base/debug/trace_event.h"
-#include "base/message_loop.h"
-#include "base/string_util.h"
+#include "base/message_loop/message_loop.h"
+#include "base/strings/string_util.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/base/token.h"
 #include "cobalt/base/tokens.h"
 #include "cobalt/cssom/css_media_rule.h"
@@ -30,6 +32,7 @@
 #include "cobalt/cssom/css_style_rule.h"
 #include "cobalt/cssom/css_style_sheet.h"
 #include "cobalt/cssom/keyword_value.h"
+#include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/benchmark_stat_names.h"
 #include "cobalt/dom/comment.h"
 #include "cobalt/dom/csp_delegate.h"
@@ -61,6 +64,8 @@
 #include "cobalt/dom/window.h"
 #include "cobalt/script/global_environment.h"
 #include "nb/memory_scope.h"
+
+using cobalt::cssom::ViewportSize;
 
 namespace cobalt {
 namespace dom {
@@ -95,7 +100,9 @@ Document::Document(HTMLElementContext* html_element_context,
           new cssom::CSSComputedStyleDeclaration()),
       ready_state_(kDocumentReadyStateComplete),
       dom_max_element_depth_(options.dom_max_element_depth),
-      render_postponed_(false) {
+      render_postponed_(false),
+      ALLOW_THIS_IN_INITIALIZER_LIST(intersection_observer_task_manager_(
+          new IntersectionObserverTaskManager())) {
   DCHECK(html_element_context_);
   DCHECK(options.url.is_empty() || options.url.is_valid());
   page_visibility_state_->AddObserver(this);
@@ -104,15 +111,12 @@ Document::Document(HTMLElementContext* html_element_context,
     SetViewport(*options.viewport_size);
   }
 
-  scoped_ptr<CspViolationReporter> violation_reporter(
+  std::unique_ptr<CspViolationReporter> violation_reporter(
       new CspViolationReporter(this, options.post_sender));
-  csp_delegate_ =
-      CspDelegateFactory::GetInstance()
-          ->Create(options.csp_enforcement_mode, violation_reporter.Pass(),
-                   options.url, options.require_csp,
-                   options.csp_policy_changed_callback,
-                   options.csp_insecure_allowed_token)
-          .Pass();
+  csp_delegate_ = CspDelegateFactory::GetInstance()->Create(
+      options.csp_enforcement_mode, std::move(violation_reporter), options.url,
+      options.require_csp, options.csp_policy_changed_callback,
+      options.csp_insecure_allowed_token);
 
   cookie_jar_ = options.cookie_jar;
 
@@ -188,7 +192,7 @@ scoped_refptr<HTMLCollection> Document::GetElementsByTagName(
   if (IsXMLDocument()) {
     return HTMLCollection::CreateWithElementsByLocalName(this, local_name);
   } else {
-    const std::string lower_local_name = StringToLowerASCII(local_name);
+    const std::string lower_local_name = base::ToLowerASCII(local_name);
     return HTMLCollection::CreateWithElementsByLocalName(this,
                                                          lower_local_name);
   }
@@ -203,8 +207,7 @@ scoped_refptr<Element> Document::CreateElement(const std::string& local_name) {
   if (IsXMLDocument()) {
     return new Element(this, base::Token(local_name));
   } else {
-    std::string lower_local_name = local_name;
-    StringToLowerASCII(&lower_local_name);
+    std::string lower_local_name = base::ToLowerASCII(local_name);
     DCHECK(html_element_context_->html_element_factory());
     return html_element_context_->html_element_factory()->CreateHTMLElement(
         this, base::Token(lower_local_name));
@@ -214,7 +217,8 @@ scoped_refptr<Element> Document::CreateElement(const std::string& local_name) {
 scoped_refptr<Element> Document::CreateElementNS(
     const std::string& namespace_uri, const std::string& local_name) {
   // TODO: Implement namespaces, if we actually need this.
-  UNREFERENCED_PARAMETER(namespace_uri);
+  NOTIMPLEMENTED();
+  SB_UNREFERENCED_PARAMETER(namespace_uri);
   return CreateElement(local_name);
 }
 
@@ -289,13 +293,13 @@ scoped_refptr<HTMLBodyElement> Document::body() const {
   // is either a body element or a frameset element. If there is no such
   // element, it is null.
   //   https://www.w3.org/TR/html5/dom.html#the-body-element-0
-  HTMLHtmlElement* html_element = html();
+  HTMLHtmlElement* html_element = html().get();
   if (!html_element) {
     return NULL;
   }
   for (Element* child = html_element->first_element_child(); child;
        child = child->next_element_sibling()) {
-    HTMLElement* child_html_element = child->AsHTMLElement();
+    HTMLElement* child_html_element = child->AsHTMLElement().get();
     if (child_html_element) {
       HTMLBodyElement* body_element = child_html_element->AsHTMLBodyElement();
       if (body_element) {
@@ -344,13 +348,13 @@ scoped_refptr<HTMLHeadElement> Document::head() const {
   // The head element of a document is the first head element that is a child of
   // the html element, if there is one, or null otherwise.
   //   https://www.w3.org/TR/html5/dom.html#the-head-element-0
-  HTMLHtmlElement* html_element = html();
+  HTMLHtmlElement* html_element = html().get();
   if (!html_element) {
     return NULL;
   }
   for (Element* child = html_element->first_element_child(); child;
        child = child->next_element_sibling()) {
-    HTMLElement* child_html_element = child->AsHTMLElement();
+    HTMLElement* child_html_element = child->AsHTMLElement().get();
     if (child_html_element) {
       HTMLHeadElement* head_element = child_html_element->AsHTMLHeadElement();
       if (head_element) {
@@ -427,7 +431,8 @@ std::string Document::cookie(script::ExceptionState* exception_state) const {
     return "";
   }
   if (cookie_jar_) {
-    return cookie_jar_->GetCookies(url_as_gurl());
+    return net::CanonicalCookie::BuildCookieLine(
+        cookie_jar_->GetCookies(url_as_gurl()));
   } else {
     DLOG(WARNING) << "Document has no cookie jar";
     return "";
@@ -460,7 +465,8 @@ std::string Document::cookie() const {
     return "";
   }
   if (cookie_jar_) {
-    return cookie_jar_->GetCookies(url_as_gurl());
+    return net::CanonicalCookie::BuildCookieLine(
+        cookie_jar_->GetCookies(url_as_gurl()));
   } else {
     DLOG(WARNING) << "Document has no cookie jar";
     return "";
@@ -483,7 +489,7 @@ scoped_refptr<HTMLHtmlElement> Document::html() const {
   // The html element of a document is the document's root element, if there is
   // one and it's an html element, or null otherwise.
   //   https://www.w3.org/TR/html5/dom.html#the-html-element-0
-  Element* root = document_element();
+  Element* root = document_element().get();
   if (!root) {
     return NULL;
   }
@@ -500,7 +506,7 @@ void Document::SetActiveElement(Element* active_element) {
 }
 
 void Document::SetIndicatedElement(HTMLElement* indicated_element) {
-  if (indicated_element != indicated_element_) {
+  if (indicated_element != indicated_element_.get()) {
     if (indicated_element_) {
       // Clear the rule matching state on this element and its ancestors, as
       // their hover state may be changing. However, the tree's matching rules
@@ -534,16 +540,16 @@ void Document::DecreaseLoadingCounterAndMaybeDispatchLoadEvent() {
   DCHECK_GT(loading_counter_, 0);
   loading_counter_--;
   if (loading_counter_ == 0 && should_dispatch_load_event_) {
-    DCHECK(MessageLoop::current());
+    DCHECK(base::MessageLoop::current());
     should_dispatch_load_event_ = false;
 
-    MessageLoop::current()->PostTask(
+    base::MessageLoop::current()->task_runner()->PostTask(
         FROM_HERE, base::Bind(&Document::DispatchOnLoadEvent,
                               base::AsWeakPtr<Document>(this)));
 
-    HTMLBodyElement* body_element = body();
+    HTMLBodyElement* body_element = body().get();
     if (body_element) {
-      body_element->PostToDispatchEvent(FROM_HERE, base::Tokens::load());
+      body_element->PostToDispatchEventName(FROM_HERE, base::Tokens::load());
     }
   }
 }
@@ -648,7 +654,7 @@ void RemoveRulesFromCSSRuleListFromSelectorTree(
     const scoped_refptr<cssom::CSSRuleList>& css_rule_list,
     cssom::SelectorTree* maybe_selector_tree) {
   for (unsigned int i = 0; i < css_rule_list->length(); ++i) {
-    cssom::CSSRule* rule = css_rule_list->Item(i);
+    cssom::CSSRule* rule = css_rule_list->Item(i).get();
 
     cssom::CSSStyleRule* css_style_rule = rule->AsCSSStyleRule();
     if (css_style_rule && css_style_rule->added_to_selector_tree()) {
@@ -670,7 +676,7 @@ void AppendRulesFromCSSRuleListToSelectorTree(
     const scoped_refptr<cssom::CSSRuleList>& css_rule_list,
     cssom::SelectorTree* selector_tree) {
   for (unsigned int i = 0; i < css_rule_list->length(); ++i) {
-    cssom::CSSRule* rule = css_rule_list->Item(i);
+    cssom::CSSRule* rule = css_rule_list->Item(i).get();
 
     cssom::CSSStyleRule* css_style_rule = rule->AsCSSStyleRule();
     if (css_style_rule && !css_style_rule->added_to_selector_tree()) {
@@ -832,44 +838,24 @@ bool Document::UpdateComputedStyleOnElementAndAncestor(HTMLElement* element) {
 void Document::SampleTimelineTime() { default_timeline_->Sample(); }
 
 #if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
-void Document::SetPartialLayout(const std::string& mode_string) {
-  std::vector<std::string> mode_tokens;
-  Tokenize(mode_string, ",", &mode_tokens);
-  for (std::vector<std::string>::iterator mode_token_iterator =
-           mode_tokens.begin();
-       mode_token_iterator != mode_tokens.end(); ++mode_token_iterator) {
-    const std::string& mode_token = *mode_token_iterator;
-    if (mode_token == "wipe") {
-      scoped_refptr<HTMLHtmlElement> current_html = html();
-      if (current_html) {
-        current_html->InvalidateLayoutBoxesOfNodeAndDescendants();
-      }
-      DLOG(INFO) << "Partial Layout state wiped";
-    } else if (mode_token == "off") {
-      partial_layout_is_enabled_ = false;
-      DLOG(INFO) << "Partial Layout mode turned off";
-    } else if (mode_token == "on") {
-      partial_layout_is_enabled_ = true;
-      DLOG(INFO) << "Partial Layout mode turned on";
-    } else if (mode_token == "undefined") {
-      DLOG(INFO) << "Partial Layout mode is currently "
-                 << (partial_layout_is_enabled_ ? "on" : "off");
-    } else {
-      DLOG(WARNING) << "Partial Layout mode \"" << mode_string
-                    << "\" not recognized.";
-    }
-  }
+void Document::SetPartialLayout(bool enabled) {
+  partial_layout_is_enabled_ = enabled;
+  DLOG(INFO) << "Partial Layout is "
+             << (partial_layout_is_enabled_ ? "on" : "off");
 }
 #endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
 
-void Document::SetViewport(const math::Size& viewport_size) {
-  if (viewport_size_ && viewport_size_->width() == viewport_size.width() &&
-      viewport_size_->height() == viewport_size.height()) {
+ViewportSize Document::viewport_size() {
+  return viewport_size_.value_or(ViewportSize());
+}
+
+void Document::SetViewport(const ViewportSize& viewport_size) {
+  if (viewport_size_ && *viewport_size_ == viewport_size) {
     return;
   }
-
   viewport_size_ = viewport_size;
-  initial_computed_style_data_ = CreateInitialComputedStyle(*viewport_size_);
+  initial_computed_style_data_ =
+      CreateInitialComputedStyle(viewport_size_->width_height());
   initial_computed_style_declaration_->SetData(initial_computed_style_data_);
 
   is_computed_style_dirty_ = true;
@@ -941,7 +927,7 @@ void Document::UpdateSelectorTree() {
 
     scoped_refptr<HTMLHtmlElement> current_html = html();
     if (current_html) {
-      current_html->ClearRuleMatchingStateOnElementAndDescendants();
+      current_html->ClearRuleMatchingStateOnElementAndSiblingsAndDescendants();
     }
 
     is_selector_tree_dirty_ = false;
@@ -979,13 +965,13 @@ void Document::DisableJit() {
 }
 
 void Document::OnWindowFocusChanged(bool has_focus) {
-  UNREFERENCED_PARAMETER(has_focus);
+  SB_UNREFERENCED_PARAMETER(has_focus);
   // Ignored by this class.
 }
 
 void Document::OnVisibilityStateChanged(
     page_visibility::VisibilityState visibility_state) {
-  UNREFERENCED_PARAMETER(visibility_state);
+  SB_UNREFERENCED_PARAMETER(visibility_state);
   DispatchEvent(new Event(base::Tokens::visibilitychange(), Event::kBubbles,
                           Event::kNotCancelable));
 }
@@ -1092,7 +1078,6 @@ void Document::UpdateMediaRules() {
          style_sheet_index < style_sheets_->length(); ++style_sheet_index) {
       scoped_refptr<cssom::CSSStyleSheet> css_style_sheet =
           style_sheets_->Item(style_sheet_index)->AsCSSStyleSheet();
-
       css_style_sheet->EvaluateMediaRules(*viewport_size_);
     }
   }

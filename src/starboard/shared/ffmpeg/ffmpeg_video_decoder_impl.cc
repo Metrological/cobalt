@@ -17,9 +17,12 @@
 
 #include "starboard/shared/ffmpeg/ffmpeg_video_decoder_impl.h"
 
+#if SB_API_VERSION >= 11
+#include "starboard/format_string.h"
+#endif  // SB_API_VERSION >= 11
+#include "starboard/common/string.h"
 #include "starboard/linux/shared/decode_target_internal.h"
 #include "starboard/memory.h"
-#include "starboard/string.h"
 #include "starboard/thread.h"
 
 namespace starboard {
@@ -188,6 +191,9 @@ void VideoDecoderImpl<FFMPEG>::Reset() {
     TeardownCodec();
     InitializeCodec();
   }
+
+  decltype(frames_) frames;
+  frames_ = std::queue<scoped_refptr<CpuVideoFrame>>();
 }
 
 bool VideoDecoderImpl<FFMPEG>::is_valid() const {
@@ -279,37 +285,41 @@ bool VideoDecoderImpl<FFMPEG>::DecodePacket(AVPacket* packet) {
     return false;
   }
 
-  int pitch = AlignUp(av_frame_->width, kAlignment * 2);
+  int codec_aligned_width = av_frame_->width;
+  int codec_aligned_height = av_frame_->height;
+  int codec_linesize_align[AV_NUM_DATA_POINTERS];
+  ffmpeg_->avcodec_align_dimensions2(codec_context_,
+      &codec_aligned_width, &codec_aligned_height, codec_linesize_align);
 
+  int pitch = AlignUp(av_frame_->width, codec_linesize_align[0] * 2);
+
+  const int kBitDepth = 8;
   scoped_refptr<CpuVideoFrame> frame = CpuVideoFrame::CreateYV12Frame(
-      av_frame_->width, av_frame_->height, pitch, av_frame_->reordered_opaque,
-      av_frame_->data[0], av_frame_->data[1], av_frame_->data[2]);
+      kBitDepth, av_frame_->width, av_frame_->height, pitch,
+      av_frame_->reordered_opaque, av_frame_->data[0], av_frame_->data[1],
+      av_frame_->data[2]);
 
   bool result = true;
   if (output_mode_ == kSbPlayerOutputModeDecodeToTexture) {
-    result = UpdateDecodeTarget(frame);
+    frames_.push(frame);
   }
 
   decoder_status_cb_(kBufferFull, frame);
 
-  return result;
+  return true;
 }
 
-bool VideoDecoderImpl<FFMPEG>::UpdateDecodeTarget(
+void VideoDecoderImpl<FFMPEG>::UpdateDecodeTarget_Locked(
     const scoped_refptr<CpuVideoFrame>& frame) {
   SbDecodeTarget decode_target = DecodeTargetCreate(
       decode_target_graphics_context_provider_, frame, decode_target_);
 
   // Lock only after the post to the renderer thread, to prevent deadlock.
-  ScopedLock lock(decode_target_mutex_);
   decode_target_ = decode_target;
 
   if (!SbDecodeTargetIsValid(decode_target)) {
     SB_LOG(ERROR) << "Could not acquire a decode target from provider.";
-    return false;
   }
-
-  return true;
 }
 
 void VideoDecoderImpl<FFMPEG>::InitializeCodec() {
@@ -391,6 +401,12 @@ SbDecodeTarget VideoDecoderImpl<FFMPEG>::GetCurrentDecodeTarget() {
   // We must take a lock here since this function can be called from a
   // separate thread.
   ScopedLock lock(decode_target_mutex_);
+  while (frames_.size() > 1 && frames_.front()->HasOneRef()) {
+    frames_.pop();
+  }
+  if (!frames_.empty()) {
+    UpdateDecodeTarget_Locked(frames_.front());
+  }
   if (SbDecodeTargetIsValid(decode_target_)) {
     // Make a disposable copy, since the state is internally reused by this
     // class (to avoid recreating GL objects).
@@ -417,10 +433,17 @@ int VideoDecoderImpl<FFMPEG>::AllocateBuffer(AVCodecContext* codec_context,
     return ret;
   }
 
-  // Align to kAlignment * 2 as we will divide y_stride by 2 for u and v planes
-  size_t y_stride = AlignUp(codec_context->width, kAlignment * 2);
+  int codec_aligned_width = codec_context->width;
+  int codec_aligned_height = codec_context->height;
+  int codec_linesize_align[AV_NUM_DATA_POINTERS];
+  ffmpeg_->avcodec_align_dimensions2(codec_context,
+      &codec_aligned_width, &codec_aligned_height, codec_linesize_align);
+
+  // Align to linesize alignment * 2 as we will divide y_stride by 2 for
+  // u and v planes.
+  size_t y_stride = AlignUp(codec_context->width, codec_linesize_align[0] * 2);
   size_t uv_stride = y_stride / 2;
-  size_t aligned_height = AlignUp(codec_context->height, kAlignment * 2);
+  size_t aligned_height = codec_aligned_height;
 
   uint8_t* frame_buffer = reinterpret_cast<uint8_t*>(SbMemoryAllocateAligned(
       kAlignment, GetYV12SizeInBytes(y_stride, aligned_height)));
@@ -463,10 +486,17 @@ int VideoDecoderImpl<FFMPEG>::AllocateBuffer(AVCodecContext* codec_context,
     return ret;
   }
 
-  // Align to kAlignment * 2 as we will divide y_stride by 2 for u and v planes
-  size_t y_stride = AlignUp(codec_context->width, kAlignment * 2);
+  int codec_aligned_width = codec_context->width;
+  int codec_aligned_height = codec_context->height;
+  int codec_linesize_align[AV_NUM_DATA_POINTERS];
+  ffmpeg_->avcodec_align_dimensions2(codec_context,
+      &codec_aligned_width, &codec_aligned_height, codec_linesize_align);
+
+  // Align to linesize alignment * 2 as we will divide y_stride by 2 for
+  // u and v planes.
+  size_t y_stride = AlignUp(codec_context->width, codec_linesize_align[0] * 2);
   size_t uv_stride = y_stride / 2;
-  size_t aligned_height = AlignUp(codec_context->height, kAlignment * 2);
+  size_t aligned_height = codec_aligned_height;
   uint8_t* frame_buffer = reinterpret_cast<uint8_t*>(SbMemoryAllocateAligned(
       kAlignment, GetYV12SizeInBytes(y_stride, aligned_height)));
 

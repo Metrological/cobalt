@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+
 #include "cobalt/speech/audio_encoder_flac.h"
 
 #include "base/logging.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/string_number_conversions.h"
+#include "base/strings/string_number_conversions.h"
 
 namespace cobalt {
 namespace speech {
@@ -51,16 +52,16 @@ AudioEncoderFlac::AudioEncoderFlac(int sample_rate)
 }
 
 AudioEncoderFlac::~AudioEncoderFlac() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   FLAC__stream_encoder_delete(encoder_);
 }
 
 void AudioEncoderFlac::Encode(const ShellAudioBus* audio_bus) {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
-  DCHECK_EQ(audio_bus->channels(), 1);
+  DCHECK_EQ(audio_bus->channels(), size_t(1));
   uint32 frames = static_cast<uint32>(audio_bus->frames());
-  scoped_array<FLAC__int32> flac_samples(new FLAC__int32[frames]);
+  std::unique_ptr<FLAC__int32[]> flac_samples(new FLAC__int32[frames]);
   for (uint32 i = 0; i < frames; ++i) {
     if (audio_bus->sample_type() == ShellAudioBus::kFloat32) {
       flac_samples[i] = static_cast<FLAC__int32>(
@@ -80,7 +81,7 @@ void AudioEncoderFlac::Encode(const ShellAudioBus* audio_bus) {
 }
 
 void AudioEncoderFlac::Finish() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   // Finish the encoding. It causes the encoder to encode any data still in
   // its input pipe, and finally reset the encoder to the unintialized state.
@@ -88,14 +89,14 @@ void AudioEncoderFlac::Finish() {
 }
 
 std::string AudioEncoderFlac::GetMimeType() const {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   return std::string(kContentTypeFLAC) +
          base::UintToString(FLAC__stream_encoder_get_sample_rate(encoder_));
 }
 
 std::string AudioEncoderFlac::GetAndClearAvailableEncodedData() {
-  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   std::string result = encoded_data_;
   encoded_data_.clear();
@@ -109,14 +110,14 @@ std::string AudioEncoderFlac::GetAndClearAvailableEncodedData() {
 FLAC__StreamEncoderWriteStatus AudioEncoderFlac::WriteCallback(
     const FLAC__StreamEncoder* encoder, const FLAC__byte buffer[], size_t bytes,
     unsigned int samples, unsigned int current_frame, void* client_data) {
-  UNREFERENCED_PARAMETER(encoder);
-  UNREFERENCED_PARAMETER(samples);
-  UNREFERENCED_PARAMETER(current_frame);
+  SB_UNREFERENCED_PARAMETER(encoder);
+  SB_UNREFERENCED_PARAMETER(samples);
+  SB_UNREFERENCED_PARAMETER(current_frame);
 
   AudioEncoderFlac* audio_encoder =
       reinterpret_cast<AudioEncoderFlac*>(client_data);
   DCHECK(audio_encoder);
-  DCHECK(audio_encoder->thread_checker_.CalledOnValidThread());
+  DCHECK_CALLED_ON_VALID_THREAD(audio_encoder->thread_checker_);
 
   audio_encoder->encoded_data_.append(reinterpret_cast<const char*>(buffer),
                                       bytes);

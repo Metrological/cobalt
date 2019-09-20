@@ -26,6 +26,7 @@
 #include "cobalt/dom/on_screen_keyboard_bridge.h"
 #include "cobalt/dom/window.h"
 #include "cobalt/script/promise.h"
+#include "cobalt/script/sequence.h"
 #include "cobalt/script/wrappable.h"
 #include "starboard/window.h"
 
@@ -57,8 +58,17 @@ class OnScreenKeyboard : public EventTarget {
   // Blurs the on screen keyboard by calling a Starboard function.
   script::Handle<script::Promise<void>> Blur();
 
+  // Updates the on screen keyboard suggestions by calling a Starboard function.
+  script::Handle<script::Promise<void>> UpdateSuggestions(
+      const script::Sequence<std::string>& suggestions);
+
   std::string data() const { return data_; }
   void set_data(const std::string& data) { data_ = data; }
+
+  bool is_composing() const { return is_composing_; }
+  void set_is_composing(const bool is_composing) {
+    is_composing_ = is_composing;
+  }
 
   const EventListenerScriptValue* onshow() const;
   void set_onshow(const EventListenerScriptValue& event_listener);
@@ -78,22 +88,29 @@ class OnScreenKeyboard : public EventTarget {
   // If the keyboard is shown.
   bool shown() const;
 
+  // If the keyboard has suggestions implemented.
+  bool suggestions_supported() const { return suggestions_supported_; }
+
   // The rectangle of the keyboard in screen pixel coordinates.
   scoped_refptr<DOMRect> bounding_rect() const;
 
   void set_keep_focus(bool keep_focus);
   bool keep_focus() const { return keep_focus_; }
 
-  // Called by the WebModule to dispatch DOM show, hide, focus, and blur events.
+  // Called by the WebModule to dispatch DOM show, hide, focus, blur and
+  // suggestions updated events.
   void DispatchHideEvent(int ticket);
   void DispatchShowEvent(int ticket);
   void DispatchFocusEvent(int ticket);
   void DispatchBlurEvent(int ticket);
+  void DispatchSuggestionsUpdatedEvent(int ticket);
 
   DEFINE_WRAPPABLE_TYPE(OnScreenKeyboard);
 
  private:
   friend class OnScreenKeyboardMockBridge;
+
+  bool ResolvePromise(int ticket, TicketToPromiseMap* ticket_to_promise_map);
 
   ~OnScreenKeyboard() override {}
 
@@ -101,16 +118,20 @@ class OnScreenKeyboard : public EventTarget {
   TicketToPromiseMap ticket_to_show_promise_map_;
   TicketToPromiseMap ticket_to_focus_promise_map_;
   TicketToPromiseMap ticket_to_blur_promise_map_;
+  TicketToPromiseMap ticket_to_update_suggestions_promise_map_;
 
   OnScreenKeyboardBridge* bridge_;
 
   script::ScriptValueFactory* const script_value_factory_;
 
   std::string data_;
+  bool is_composing_;
 
   int next_ticket_;
 
   bool keep_focus_ = false;
+
+  bool suggestions_supported_;
 
   DISALLOW_COPY_AND_ASSIGN(OnScreenKeyboard);
 };

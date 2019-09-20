@@ -1,4 +1,4 @@
-// Copyright 2018 The Cobalt Authors. All Rights Reserved.
+// Copyright 2019 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -39,23 +39,23 @@ namespace testing {
 
 class TestDictionary {
  public:
-  TestDictionary() {
-    has_boolean_member_ = false;
-    boolean_member_ = bool();
-    has_short_clamp_member_ = false;
-    short_clamp_member_ = int16_t();
-    has_long_member_ = false;
-    long_member_ = int32_t();
-    has_double_member_ = false;
-    double_member_ = double();
-    has_string_member_ = false;
-    string_member_ = std::string();
-    has_interface_member_ = false;
-    interface_member_ = scoped_refptr<ArbitraryInterface>();
-    member_with_default_ = 5;
-    has_non_default_member_ = false;
-    non_default_member_ = int32_t();
-    has_any_member_ = false;
+  TestDictionary()
+    : has_boolean_member_(false),
+      boolean_member_(bool()),
+      has_short_clamp_member_(false),
+      short_clamp_member_(int16_t()),
+      has_long_member_(false),
+      long_member_(int32_t()),
+      has_double_member_(false),
+      double_member_(double()),
+      has_string_member_(false),
+      string_member_(std::string()),
+      has_interface_member_(false),
+      interface_member_(scoped_refptr<ArbitraryInterface>()),
+      member_with_default_(5),
+      has_non_default_member_(false),
+      non_default_member_(int32_t()),
+      has_any_member_(false) {
   }
 
   TestDictionary(const TestDictionary& other) {
@@ -270,16 +270,16 @@ class TestDictionary {
   int32_t member_with_default_;
   bool has_non_default_member_;
   int32_t non_default_member_;
-  scoped_ptr<script::Handle<::cobalt::script::ValueHandle>> any_member_with_default_;
+  std::unique_ptr<script::Handle<::cobalt::script::ValueHandle>> any_member_with_default_;
   bool has_any_member_;
-  scoped_ptr<script::Handle<::cobalt::script::ValueHandle>> any_member_;
+  std::unique_ptr<script::Handle<::cobalt::script::ValueHandle>> any_member_;
 };
 
 // This ostream override is necessary for MOCK_METHODs commonly used
 // in idl test code
 inline std::ostream& operator<<(
     std::ostream& stream, const cobalt::bindings::testing::TestDictionary& in) {
-  UNREFERENCED_PARAMETER(in);
+  SB_UNREFERENCED_PARAMETER(in);
   stream << "[TestDictionary]";
   return stream;
 }

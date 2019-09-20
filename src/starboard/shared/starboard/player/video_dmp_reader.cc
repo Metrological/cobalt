@@ -57,6 +57,38 @@ static void DeallocateSampleFunc(SbPlayer player,
   SB_UNREFERENCED_PARAMETER(sample_buffer);
 }
 
+SbPlayerSampleInfo ConvertToPlayerSampleInfo(
+    const VideoDmpReader::AudioAccessUnit& audio_unit) {
+  SbPlayerSampleInfo sample_info = {};
+  sample_info.buffer = audio_unit.data().data();
+  sample_info.buffer_size = static_cast<int>(audio_unit.data().size());
+  sample_info.timestamp = audio_unit.timestamp();
+  sample_info.drm_info = audio_unit.drm_sample_info();
+#if SB_API_VERSION >= 11
+  sample_info.type = kSbMediaTypeAudio;
+  sample_info.audio_sample_info = audio_unit.audio_sample_info();
+#else   // SB_API_VERSION >= 11
+  sample_info.video_sample_info = NULL;
+#endif  // SB_API_VERSION >= 11
+  return sample_info;
+}
+
+SbPlayerSampleInfo ConvertToPlayerSampleInfo(
+    const VideoDmpReader::VideoAccessUnit& video_unit) {
+  SbPlayerSampleInfo sample_info = {};
+  sample_info.buffer = video_unit.data().data();
+  sample_info.buffer_size = static_cast<int>(video_unit.data().size());
+  sample_info.timestamp = video_unit.timestamp();
+  sample_info.drm_info = video_unit.drm_sample_info();
+#if SB_API_VERSION >= 11
+  sample_info.type = kSbMediaTypeVideo;
+  sample_info.video_sample_info = video_unit.video_sample_info();
+#else   // SB_API_VERSION >= 11
+  sample_info.video_sample_info = &video_unit.video_sample_info();
+#endif  // SB_API_VERSION >= 11
+  return sample_info;
+}
+
 }  // namespace
 
 using std::placeholders::_1;
@@ -64,35 +96,47 @@ using std::placeholders::_2;
 
 VideoDmpReader::VideoDmpReader(const char* filename)
     : reverse_byte_order_(false),
-      read_cb_(std::bind(&VideoDmpReader::ReadFromFile, this, _1, _2)) {
-  SB_CHECK(SbFileCanOpen(filename, kSbFileOpenOnly | kSbFileRead))
-      << "Can't open " << filename;
-  file_ = SbFileOpen(filename, kSbFileOpenOnly | kSbFileRead, NULL, NULL);
-  SB_DCHECK(SbFileIsValid(file_));
+      read_cb_(std::bind(&VideoDmpReader::ReadFromCache, this, _1, _2)) {
+  ScopedFile file(filename, kSbFileOpenOnly | kSbFileRead);
+  SB_CHECK(file.IsValid()) << "Failed to open " << filename;
+  int64_t file_size = file.GetSize();
+  SB_CHECK(file_size >= 0);
+
+  file_cache_.resize(file_size);
+  int bytes_read = file.Read(file_cache_.data(), file_size);
+  SB_CHECK(bytes_read == file_size);
 
   Parse();
 
-  SbFileClose(file_);
+  // To free memory used by |file_cache_|.
+  decltype(file_cache_) empty;
+  file_cache_.swap(empty);
 }
 
 VideoDmpReader::~VideoDmpReader() {}
 
-scoped_refptr<InputBuffer> VideoDmpReader::GetAudioInputBuffer(
-    size_t index) const {
-  SB_DCHECK(index < audio_access_units_.size());
-  const AudioAccessUnit& au = audio_access_units_[index];
-  return new InputBuffer(kSbMediaTypeAudio, DeallocateSampleFunc, NULL, NULL,
-                         au.data().data(), static_cast<int>(au.data().size()),
-                         au.timestamp(), NULL, NULL);
+SbPlayerSampleInfo VideoDmpReader::GetPlayerSampleInfo(SbMediaType type,
+                                                       size_t index) const {
+  switch (type) {
+    case kSbMediaTypeAudio: {
+      SB_DCHECK(index < audio_access_units_.size());
+      const AudioAccessUnit& audio_au = audio_access_units_[index];
+      return ConvertToPlayerSampleInfo(audio_au);
+    }
+    case kSbMediaTypeVideo: {
+      SB_DCHECK(index < video_access_units_.size());
+      const VideoAccessUnit& video_au = video_access_units_[index];
+      return ConvertToPlayerSampleInfo(video_au);
+    }
+  }
+  SB_NOTREACHED() << "Unhandled SbMediaType";
+  return SbPlayerSampleInfo();
 }
 
-scoped_refptr<InputBuffer> VideoDmpReader::GetVideoInputBuffer(
-    size_t index) const {
-  SB_DCHECK(index < video_access_units_.size());
-  const VideoAccessUnit& au = video_access_units_[index];
-  return new InputBuffer(kSbMediaTypeVideo, DeallocateSampleFunc, NULL, NULL,
-                         au.data().data(), static_cast<int>(au.data().size()),
-                         au.timestamp(), &au.video_sample_info(), NULL);
+SbMediaAudioSampleInfo VideoDmpReader::GetAudioSampleInfo(size_t index) const {
+  SB_DCHECK(index < audio_access_units_.size());
+  const AudioAccessUnit& au = audio_access_units_[index];
+  return au.audio_sample_info();
 }
 
 void VideoDmpReader::Parse() {
@@ -109,9 +153,18 @@ void VideoDmpReader::Parse() {
     }
     reverse_byte_order_ = true;
   }
+  uint32_t dmp_writer_version;
+  Read(read_cb_, reverse_byte_order_, &dmp_writer_version);
+  if (dmp_writer_version != kSupportWriterVersion) {
+    SB_LOG(ERROR) << "Unsupported input dmp file(" << dmp_writer_version
+                  << "). Please regenerate dmp files with"
+                  << " right dmp writer. Currently support version "
+                  << kSupportWriterVersion << ".";
+    return;
+  }
   for (;;) {
     uint32_t type;
-    int bytes_read = ReadFromFile(&type, sizeof(type));
+    int bytes_read = ReadFromCache(&type, sizeof(type));
     if (bytes_read <= 0) {
       break;
     }
@@ -123,7 +176,7 @@ void VideoDmpReader::Parse() {
       case kRecordTypeAudioConfig:
         Read(read_cb_, reverse_byte_order_, &audio_codec_);
         if (audio_codec_ != kSbMediaAudioCodecNone) {
-          Read(read_cb_, reverse_byte_order_, &audio_header_);
+          Read(read_cb_, reverse_byte_order_, &audio_sample_info_);
         }
         break;
       case kRecordTypeVideoConfig:
@@ -175,9 +228,12 @@ VideoDmpReader::AudioAccessUnit VideoDmpReader::ReadAudioAccessUnit() {
   std::vector<uint8_t> data(size);
   Read(read_cb_, data.data(), size);
 
+  SbMediaAudioSampleInfoWithConfig audio_sample_info;
+  Read(read_cb_, reverse_byte_order_, &audio_sample_info);
+
   return AudioAccessUnit(timestamp,
                          drm_sample_info_present ? &drm_sample_info : NULL,
-                         std::move(data));
+                         std::move(data), audio_sample_info);
 }
 
 VideoDmpReader::VideoAccessUnit VideoDmpReader::ReadVideoAccessUnit() {
@@ -205,8 +261,12 @@ VideoDmpReader::VideoAccessUnit VideoDmpReader::ReadVideoAccessUnit() {
                          std::move(data), video_sample_info);
 }
 
-int VideoDmpReader::ReadFromFile(void* buffer, int bytes_to_read) {
-  return SbFileRead(file_, static_cast<char*>(buffer), bytes_to_read);
+int VideoDmpReader::ReadFromCache(void* buffer, int bytes_to_read) {
+  bytes_to_read = std::min(
+      bytes_to_read, static_cast<int>(file_cache_.size()) - file_cache_offset_);
+  SbMemoryCopy(buffer, file_cache_.data() + file_cache_offset_, bytes_to_read);
+  file_cache_offset_ += bytes_to_read;
+  return bytes_to_read;
 }
 
 }  // namespace video_dmp

@@ -15,14 +15,14 @@
 #ifndef COBALT_RENDERER_RASTERIZER_BLITTER_CACHED_SOFTWARE_RASTERIZER_H_
 #define COBALT_RENDERER_RASTERIZER_BLITTER_CACHED_SOFTWARE_RASTERIZER_H_
 
-#include "base/containers/linked_hash_map.h"
-#include "base/hash_tables.h"
+#include "base/containers/hash_tables.h"
 #include "base/memory/ref_counted.h"
 #include "cobalt/base/c_val.h"
 #include "cobalt/render_tree/node.h"
 #include "cobalt/renderer/rasterizer/blitter/render_state.h"
 #include "cobalt/renderer/rasterizer/common/offscreen_render_coordinate_mapping.h"
 #include "cobalt/renderer/rasterizer/skia/software_rasterizer.h"
+#include "net/base/linked_hash_map.h"
 #include "starboard/blitter.h"
 
 #if SB_HAS(BLITTER)
@@ -49,11 +49,11 @@ class CachedSoftwareRasterizer {
     // OnStartNewFrame() was called.
     bool referenced;
 
-#if defined(ENABLE_DEBUG_CONSOLE)
+#if defined(ENABLE_DEBUGGER)
     // True if OnStartNewFrame() has not been called since this surface was
     // created.
     bool created;
-#endif  // defined(ENABLE_DEBUG_CONSOLE)
+#endif  // defined(ENABLE_DEBUGGER)
 
     // Transform information detailing how the surface should be output to
     // the display such that sub-pixel alignments are respected.
@@ -116,7 +116,7 @@ class CachedSoftwareRasterizer {
   }
 
  private:
-  typedef base::linked_hash_map<render_tree::Node*, Surface> CacheMap;
+  typedef net::linked_hash_map<render_tree::Node*, Surface> CacheMap;
 
   // Release surfaces until we have |space_needed| free bytes in the cache.
   // This function will never release surfaces that were referenced this frame.

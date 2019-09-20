@@ -14,16 +14,17 @@
 
 #include "cobalt/browser/splash_screen_cache.h"
 
+#include <memory>
 #include <string>
 
-#include "base/memory/scoped_ptr.h"
+#include "base/hash.h"
 #include "base/optional.h"
-#include "base/string_util.h"
+#include "base/strings/string_util.h"
 #include "base/synchronization/lock.h"
 #include "cobalt/base/get_application_key.h"
+#include "starboard/common/string.h"
 #include "starboard/directory.h"
 #include "starboard/file.h"
-#include "starboard/string.h"
 
 namespace cobalt {
 namespace browser {
@@ -50,12 +51,19 @@ bool CreateDirsForKey(const std::string& key) {
 
 }  // namespace
 
-SplashScreenCache::SplashScreenCache() { base::AutoLock lock(lock_); }
+SplashScreenCache::SplashScreenCache() : last_page_hash_(0) {
+  base::AutoLock lock(lock_);
+}
 
 bool SplashScreenCache::CacheSplashScreen(const std::string& key,
                                           const std::string& content) const {
   base::AutoLock lock(lock_);
   if (key.empty()) {
+    return false;
+  }
+
+  // If an identical page was already read from disk, skip writing
+  if (base::Hash(content) == last_page_hash_) {
     return false;
   }
 
@@ -85,7 +93,7 @@ bool SplashScreenCache::IsSplashScreenCached(const std::string& key) const {
 }
 
 int SplashScreenCache::ReadCachedSplashScreen(
-    const std::string& key, scoped_array<char>* result) const {
+    const std::string& key, std::unique_ptr<char[]>* result) const {
   base::AutoLock lock(lock_);
   if (!result) {
     return 0;
@@ -107,13 +115,14 @@ int SplashScreenCache::ReadCachedSplashScreen(
   const int kFileSize = static_cast<int>(info.size);
   result->reset(new char[kFileSize]);
   int result_size = cache_file.ReadAll(result->get(), kFileSize);
+  last_page_hash_ = base::Hash(result->get(), result_size);
   return result_size;
 }
 
 // static
-base::optional<std::string> SplashScreenCache::GetKeyForStartUrl(
+base::Optional<std::string> SplashScreenCache::GetKeyForStartUrl(
     const GURL& url) {
-  base::optional<std::string> encoded_url = base::GetApplicationKey(url);
+  base::Optional<std::string> encoded_url = base::GetApplicationKey(url);
   if (!encoded_url) {
     return base::nullopt;
   }

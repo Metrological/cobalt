@@ -16,6 +16,7 @@
 #define COBALT_DOM_CSS_TRANSITIONS_ADAPTER_H_
 
 #include <map>
+#include <memory>
 
 #include "base/basictypes.h"
 #include "base/compiler_specific.h"
@@ -40,8 +41,10 @@ class CSSTransitionsAdapter : public cssom::TransitionSet::EventHandler {
       const scoped_refptr<dom::DOMAnimatable>& target);
   ~CSSTransitionsAdapter();
 
-  void OnTransitionStarted(const cssom::Transition& transition) override;
-  void OnTransitionRemoved(const cssom::Transition& transition) override;
+  void OnTransitionStarted(const cssom::Transition& transition,
+                           cssom::TransitionSet* transition_set) override;
+  void OnTransitionRemoved(const cssom::Transition& transition,
+                           cssom::Transition::IsCanceled is_canceled) override;
 
  private:
   // The AnimationWithEventHandler struct maintains a reference to the Animation
@@ -50,19 +53,19 @@ class CSSTransitionsAdapter : public cssom::TransitionSet::EventHandler {
   struct AnimationWithEventHandler {
     AnimationWithEventHandler(
         const scoped_refptr<web_animations::Animation>& animation,
-        scoped_ptr<web_animations::Animation::EventHandler> event_handler)
-        : animation(animation), event_handler(event_handler.Pass()) {}
+        std::unique_ptr<web_animations::Animation::EventHandler> event_handler)
+        : animation(animation), event_handler(std::move(event_handler)) {}
     ~AnimationWithEventHandler() {}
 
     scoped_refptr<web_animations::Animation> animation;
-    scoped_ptr<web_animations::Animation::EventHandler> event_handler;
+    std::unique_ptr<web_animations::Animation::EventHandler> event_handler;
   };
   typedef std::map<cssom::PropertyKey, AnimationWithEventHandler*>
       PropertyValueAnimationMap;
 
   // Called to handle Animation events.  When a transition's corresponding
   // animation enters the after phase, we fire the transitionend event.
-  void HandleAnimationEnterAfterPhase(const cssom::Transition& transition);
+  void HandleAnimationEnterAfterPhase(cssom::TransitionSet* transition_set);
 
   scoped_refptr<dom::DOMAnimatable> animatable_;
 

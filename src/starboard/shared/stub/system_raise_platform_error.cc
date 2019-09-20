@@ -14,8 +14,9 @@
 
 #include "starboard/system.h"
 
-#include "starboard/log.h"
+#include "starboard/common/log.h"
 
+#if SB_API_VERSION < 11
 SbSystemPlatformError SbSystemRaisePlatformError(
     SbSystemPlatformErrorType type,
     SbSystemPlatformErrorCallback callback,
@@ -27,14 +28,6 @@ SbSystemPlatformError SbSystemRaisePlatformError(
     case kSbSystemPlatformErrorTypeConnectionError:
       message = "Connection error.";
       break;
-#if SB_API_VERSION < 6
-    case kSbSystemPlatformErrorTypeUserSignedOut:
-      message = "User is not signed in.";
-      break;
-    case kSbSystemPlatformErrorTypeUserAgeRestricted:
-      message = "User is age restricted.";
-      break;
-#endif
     default:
       message = "<unknown>";
       break;
@@ -42,3 +35,22 @@ SbSystemPlatformError SbSystemRaisePlatformError(
   SB_DLOG(INFO) << "SbSystemRaisePlatformError: " << message;
   return kSbSystemPlatformErrorInvalid;
 }
+#else   // SB_API_VERSION < 11
+bool SbSystemRaisePlatformError(SbSystemPlatformErrorType type,
+                                SbSystemPlatformErrorCallback callback,
+                                void* user_data) {
+  SB_UNREFERENCED_PARAMETER(callback);
+  SB_UNREFERENCED_PARAMETER(user_data);
+  std::string message;
+  switch (type) {
+    case kSbSystemPlatformErrorTypeConnectionError:
+      message = "Connection error.";
+      break;
+    default:
+      message = "<unknown>";
+      break;
+  }
+  SB_DLOG(INFO) << "SbSystemRaisePlatformError: " << message;
+  return false;
+}
+#endif  // SB_API_VERSION < 11

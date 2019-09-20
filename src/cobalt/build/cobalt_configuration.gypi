@@ -34,7 +34,7 @@
     'variables': {
       'cobalt_webapi_extension_source_idl_files%': [],
       'cobalt_webapi_extension_generated_header_idl_files%': [],
-      'cobalt_media_source_2016%': 1,
+      'cobalt_v8_buildtime_snapshot%': "true",
     },
 
     # Whether Cobalt is being built.
@@ -47,10 +47,6 @@
     # Enable support for the map to mesh filter, which is primarily used to
     # implement spherical video playback.
     'enable_map_to_mesh%': 0,
-
-    # Enables embedding Cobalt as a shared library within another app. This
-    # requires a 'lib' starboard implementation for the corresponding platform.
-    'cobalt_enable_lib': '<(sb_enable_lib)',
 
     # This variable defines what Cobalt's preferred strategy should be for
     # handling internally triggered application exit requests (e.g. the user
@@ -122,7 +118,7 @@
     'cobalt_font_package_override_fallback_symbols%': -1,
 
     # Build version number.
-    'cobalt_version%': 0,
+    'cobalt_version%': '<(BUILD_NUMBER)',
 
     # Defines what kind of rasterizer will be used.  This can be adjusted to
     # force a stub graphics implementation or software graphics implementation.
@@ -209,10 +205,13 @@
     'enable_sso%': 0,
 
     # Set to 1 to compile with SPDY support.
-    'enable_spdy%': 0,
+    'enable_spdy%': 1,
 
     # Set to 1 to enable filtering of HTTP headers before sending.
     'enable_xhr_header_filtering%': 0,
+
+    # Set to 1 to enable setting Interceptors on the URLRequestJobFactory
+    'enable_configure_request_job_factory%': 0,
 
     # List of platform-specific targets that get compiled into cobalt.
     'cobalt_platform_dependencies%': [],
@@ -227,6 +226,11 @@
 
     # Some platforms have difficulty linking snapshot_app_stats
     'build_snapshot_app_stats%': 1,
+
+    # Set to "true" to enable v8 snapshot generation at Cobalt build time.
+    'cobalt_v8_buildtime_snapshot%': '<(cobalt_v8_buildtime_snapshot)',
+
+    'cobalt_enable_quic': 1,
 
     # Cache parameters
 
@@ -264,6 +268,25 @@
     # allows. It is recommended that enough memory be reserved for two RGBA
     # atlases about a quarter of the frame size.
     'offscreen_target_cache_size_in_bytes%': -1,
+
+    # Determines the capacity of the encoded image cache, which manages encoded
+    # images downloaded from a web page. These images are cached within CPU
+    # memory.  This not only reduces network traffic to download the encoded
+    # images, but also allows the downloaded images to be held during suspend.
+    # Note that there is also a cache for the decoded images whose capacity is
+    # specified in |image_cache_size_in_bytes|.  The decoded images are often
+    # cached in the GPU memory and will be released during suspend.
+    #
+    # If a system meet the following requirements:
+    # 1. Has a fast image decoder.
+    # 2. Has enough CPU memory, or has a unified memory architecture that allows
+    #    sharing of CPU and GPU memory.
+    # Then it may consider to set |encoded_image_cache_size_in_bytes| to a much
+    # bigger value, and set the value of |image_cache_size_in_bytes| to a much
+    # smaller value. This allows the app to cache significant more images.
+    #
+    # Set this to 0 can disable the cache completely.
+    'encoded_image_cache_size_in_bytes%': 1024 * 1024,
 
     # Determines the capacity of the image cache, which manages image surfaces
     # downloaded from a web page.  While it depends on the platform, often (and
@@ -365,13 +388,6 @@
     # reproducing bugs.
     'cobalt_gc_zeal%': 0,
 
-    # Use media source extension implementation that is conformed to the
-    # Candidate Recommendation of July 5th 2016.
-    'cobalt_media_source_2016%': '<(cobalt_media_source_2016)',
-
-    # Note that the following media buffer related variables are only used when
-    # |cobalt_media_source_2016| is set to 1.
-
     # This can be set to "memory" or "file".  When it is set to "memory", the
     # media buffers will be stored in main memory allocated by SbMemory
     # functions.  When it is set to "file", the media buffers will be stored in
@@ -398,11 +414,11 @@
     # The maximum amount of memory that will be used to store media buffers when
     # video resolution is no larger than 1080p. This must be larger than sum of
     # 1080p video budget and non-video budget.
-    'cobalt_media_buffer_max_capacity_1080p%': 36 * 1024 * 1024,
+    'cobalt_media_buffer_max_capacity_1080p%': 50 * 1024 * 1024,
     # The maximum amount of memory that will be used to store media buffers when
     # video resolution is 4k. If 0, then memory can grow without bound. This
     # must be larger than sum of 4k video budget and non-video budget.
-    'cobalt_media_buffer_max_capacity_4k%': 100 * 1024 * 1024,
+    'cobalt_media_buffer_max_capacity_4k%': 140 * 1024 * 1024,
 
     # When the media stack needs more memory to store media buffers, it will
     # allocate extra memory in units of |cobalt_media_buffer_allocation_unit|.
@@ -441,14 +457,14 @@
     # used by video buffers but will also make JavaScript app less likely to
     # re-download video data.  Note that the JavaScript app may experience
     # significant difficulty if this value is too low.
-    'cobalt_media_buffer_video_budget_1080p%': 16 * 1024 * 1024,
+    'cobalt_media_buffer_video_budget_1080p%': 30 * 1024 * 1024,
     # Specifies the maximum amount of memory used by video buffers of media
     # source before triggering a garbage collection when the video resolution is
     # lower than 4k (3840x2160).  A large value will cause more memory being
     # used by video buffers but will also make JavaScript app less likely to
     # re-download video data.  Note that the JavaScript app may experience
     # significant difficulty if this value is too low.
-    'cobalt_media_buffer_video_budget_4k%': 60 * 1024 * 1024,
+    'cobalt_media_buffer_video_budget_4k%': 100 * 1024 * 1024,
 
     # Specifies the duration threshold of media source garbage collection.  When
     # the accumulated duration in a source buffer exceeds this value, the media
@@ -474,11 +490,11 @@
       'COBALT_SECURITY_SCREEN_CLEAR_TO_UGLY_COLOR',
       'ENABLE_DEBUG_COMMAND_LINE_SWITCHES',
       'ENABLE_DEBUG_C_VAL',
-      'ENABLE_DEBUG_CONSOLE',
       'ENABLE_IGNORE_CERTIFICATE_ERRORS',
       'ENABLE_PARTIAL_LAYOUT_CONTROL',
       'ENABLE_TEST_DATA',
       'ENABLE_TEST_RUNNER',
+      'ENABLE_TOKEN_ALPHABETICAL_SORTING',
 
       # TODO: Rename to COBALT_LOGGING_ENABLED.
       '__LB_SHELL__FORCE_LOGGING__',
@@ -493,11 +509,11 @@
       'COBALT_SECURITY_SCREEN_CLEAR_TO_UGLY_COLOR',
       'ENABLE_DEBUG_COMMAND_LINE_SWITCHES',
       'ENABLE_DEBUG_C_VAL',
-      'ENABLE_DEBUG_CONSOLE',
       'ENABLE_IGNORE_CERTIFICATE_ERRORS',
       'ENABLE_PARTIAL_LAYOUT_CONTROL',
       'ENABLE_TEST_DATA',
       'ENABLE_TEST_RUNNER',
+      'ENABLE_TOKEN_ALPHABETICAL_SORTING',
       '__LB_SHELL__FORCE_LOGGING__',
       'SK_DEVELOPER',
     ],
@@ -508,7 +524,6 @@
       'COBALT_SECURITY_SCREEN_CLEAR_TO_UGLY_COLOR',
       'ENABLE_DEBUG_COMMAND_LINE_SWITCHES',
       'ENABLE_DEBUG_C_VAL',
-      'ENABLE_DEBUG_CONSOLE',
       'ENABLE_IGNORE_CERTIFICATE_ERRORS',
       'ENABLE_PARTIAL_LAYOUT_CONTROL',
       'ENABLE_TEST_DATA',
@@ -519,6 +534,7 @@
       'COBALT_BUILD_TYPE_GOLD',
       'COBALT_FORCE_CSP',
       'COBALT_FORCE_HTTPS',
+      'OFFICIAL_BUILD',  # Chromium base relies on this.
       'TRACING_DISABLED',
     ],
   },
@@ -540,15 +556,6 @@
       'COBALT_MEDIA_SOURCE_GARBAGE_COLLECTION_DURATION_THRESHOLD_IN_SECONDS=<(cobalt_media_source_garbage_collection_duration_threshold_in_seconds)',
     ],
     'conditions': [
-      ['cobalt_media_source_2016 == 1', {
-        'defines': [
-          'COBALT_MEDIA_SOURCE_2016=1',
-        ],
-      }, {
-        'defines': [
-          'COBALT_MEDIA_SOURCE_2012=1',
-        ],
-      }],
       ['cobalt_media_buffer_storage_type == "memory"', {
         'defines': [
           'COBALT_MEDIA_BUFFER_STORAGE_TYPE_MEMORY=1',
@@ -569,31 +576,26 @@
           'DIAL_SERVER',
         ],
       }],
-      #shared_library
-      ['final_executable_type=="shared_library"', {
-        'target_conditions': [
-          ['_toolset=="target"', {
-            'defines': [
-              # Rewrite main() functions into StarboardMain. TODO: This is a
-              # hack, it would be better to be more surgical, here.
-              'main=StarboardMain',
-              'EXECUTABLE_TYPE_SHARED_LIBRARY=1'
-            ],
-            'cflags': [
-              # To link into a shared library on Linux and similar platforms,
-              # the compiler must be told to generate Position Independent Code.
-              # This appears to cause errors when linking the code statically,
-              # however.
-              '-fPIC',
-            ],
-          }],
-        ],
-      }],
       ['enable_spdy == 0', {
         'defines': [
           'COBALT_DISABLE_SPDY',
         ],
       }],
+      ['enable_debugger == 1', {
+        'defines': [
+          'ENABLE_DEBUGGER',
+        ],
+      }],
+      ['cobalt_v8_buildtime_snapshot == "true"', {
+        'defines': [
+          'COBALT_V8_BUILDTIME_SNAPSHOT=1',
+        ],
+      }],
+      ['cobalt_enable_quic == 1', {
+        'defines': [
+          'COBALT_ENABLE_QUIC',
+        ],
+      }]
     ],
   }, # end of target_defaults
 
@@ -604,25 +606,21 @@
   'conditions': [
     ['cobalt_config != "gold"', {
       'variables' : {
-        'cobalt_copy_debug_console': 1,
         'enable_about_scheme': 1,
         'enable_fake_microphone': 1,
         'enable_network_logging': 1,
-        'enable_remote_debugging%': 1,
         'enable_webdriver%': 1,
       },
     },
     {
       'variables' : {
-        'cobalt_copy_debug_console': 0,
         'enable_about_scheme': 0,
         'enable_fake_microphone': 0,
         'enable_network_logging': 0,
-        'enable_remote_debugging%': 0,
         'enable_webdriver': 0,
       },
     }],
-    ['cobalt_config != "gold" and cobalt_enable_lib == 0', {
+    ['cobalt_config != "gold"', {
       'variables' : {
         'cobalt_copy_test_data': 1,
       },

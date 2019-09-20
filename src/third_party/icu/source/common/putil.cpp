@@ -63,6 +63,9 @@
 #include "ucln_cmn.h"
 #include "charstr.h"
 
+// Must be after "umitex.h" which includes "time.h" on some platforms.
+#include "starboard/client_porting/poem/eztime_poem.h"
+
 /* Include standard headers. */
 #if !defined(STARBOARD)
 #include <stdio.h>
@@ -630,6 +633,9 @@ uprv_tzset()
 U_CAPI int32_t U_EXPORT2
 uprv_timezone()
 {
+#if U_PLATFORM == U_STARBOARD
+  return SbTimeZoneGetCurrent() * 60;
+#else
 #ifdef U_TIMEZONE
     return U_TIMEZONE;
 #else
@@ -660,6 +666,7 @@ uprv_timezone()
         tdiff += 3600;
 #endif
     return tdiff;
+#endif
 #endif
 }
 

@@ -42,7 +42,7 @@ class CSSConditionRule : public CSSGroupingRule {
   //
   // From CSSRule.
   void Accept(CSSRuleVisitor* visitor) override {
-    UNREFERENCED_PARAMETER(visitor);
+    SB_UNREFERENCED_PARAMETER(visitor);
     NOTREACHED();
   }
 
@@ -56,7 +56,6 @@ class CSSConditionRule : public CSSGroupingRule {
   DEFINE_WRAPPABLE_TYPE(CSSConditionRule);
 
  protected:
-  CSSConditionRule();
   explicit CSSConditionRule(const scoped_refptr<CSSRuleList>& css_rule_list);
 
   ~CSSConditionRule() override {}

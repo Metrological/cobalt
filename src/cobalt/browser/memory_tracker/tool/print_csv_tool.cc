@@ -22,7 +22,7 @@
 #include "cobalt/browser/memory_tracker/tool/util.h"
 #include "nb/analytics/memory_tracker.h"
 #include "nb/analytics/memory_tracker_helpers.h"
-#include "starboard/log.h"
+#include "starboard/common/log.h"
 #include "starboard/types.h"
 
 namespace cobalt {
@@ -89,7 +89,7 @@ std::string PrintCSVTool::ToCsvString(const MapAllocationSamples& samples_in) {
 
     const AllocationSamples& samples_ref = it->second;
     if (samples_ref.allocated_bytes_.empty() ||
-      samples_ref.number_allocations_.empty()) {
+        samples_ref.number_allocations_.empty()) {
       SB_NOTREACHED() << "Should not be here";
       return "ERROR";
     }

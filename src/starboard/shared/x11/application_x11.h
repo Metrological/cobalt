@@ -21,7 +21,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "base/memory/scoped_ptr.h"
+#include "nb/scoped_ptr.h"
 #include "starboard/configuration.h"
 #include "starboard/player.h"
 #include "starboard/shared/internal_only.h"
@@ -47,6 +47,7 @@ class ApplicationX11 : public shared::starboard::QueueApplication {
 
   SbWindow CreateWindow(const SbWindowOptions* options);
   bool DestroyWindow(SbWindow window);
+  SbWindow GetFirstWindow();
 
   // Make the current GL layer and video layer visible.
   void Composite();
@@ -76,10 +77,8 @@ class ApplicationX11 : public shared::starboard::QueueApplication {
                    int width,
                    int height) override;
 
-#if SB_API_VERSION >= 6
   bool IsStartImmediate() override { return !HasPreloadSwitch(); }
   bool IsPreloadImmediate() override { return HasPreloadSwitch(); }
-#endif  // SB_API_VERSION >= 6
 
  protected:
   // --- Application overrides ---

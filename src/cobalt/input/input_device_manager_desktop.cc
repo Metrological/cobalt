@@ -17,7 +17,7 @@
 #include <cmath>
 #include <string>
 
-#include "base/time.h"
+#include "base/time/time.h"
 #include "cobalt/base/token.h"
 #include "cobalt/base/tokens.h"
 #include "cobalt/dom/event.h"
@@ -42,11 +42,11 @@ void UpdateEventInit(const system_window::InputEvent* input_event,
                      EventInit* event) {
   if (input_event->timestamp() != 0) {
     // Convert SbTimeMonotonic to DOMTimeStamp.
-    event->set_time_stamp(cobalt::dom::Event::GetEventTime(
-        input_event->timestamp()));
+    event->set_time_stamp(
+        cobalt::dom::Event::GetEventTime(input_event->timestamp()));
   }
 }
-}
+}  // namespace
 
 InputDeviceManagerDesktop::InputDeviceManagerDesktop(
     const KeyboardEventCallback& keyboard_event_callback,
@@ -101,7 +101,6 @@ COMPILE_ASSERT(static_cast<uint32_t>(kSbKeyModifiersNone) ==
                    static_cast<uint32_t>(kSbKeyModifiersShift) ==
                        system_window::InputEvent::kShiftKey,
                Mismatched_modifier_enums);
-#if SB_API_VERSION >= 6
 COMPILE_ASSERT(static_cast<uint32_t>(kSbKeyModifiersPointerButtonLeft) ==
                        system_window::InputEvent::kLeftButton &&
                    static_cast<uint32_t>(kSbKeyModifiersPointerButtonRight) ==
@@ -113,7 +112,6 @@ COMPILE_ASSERT(static_cast<uint32_t>(kSbKeyModifiersPointerButtonLeft) ==
                    static_cast<uint32_t>(kSbKeyModifiersPointerButtonForward) ==
                        system_window::InputEvent::kForwardButton,
                Mismatched_modifier_enums);
-#endif  // SB_API_VERSION >= 6
 
 void UpdateEventModifierInit(const system_window::InputEvent* input_event,
                              EventModifierInit* event) {
@@ -177,12 +175,14 @@ void UpdateMouseEventInitButtons(const system_window::InputEvent* input_event,
   //   https://www.w3.org/TR/2016/WD-uievents-20160804/#ref-for-dom-mouseevent-buttons-2
   switch (input_event->type()) {
     case system_window::InputEvent::kTouchpadDown:
+    case system_window::InputEvent::kTouchscreenDown:
     case system_window::InputEvent::kPointerDown:
       // For 'down' events, ensure that the buttons state includes the currently
       // reported button press.
       buttons |= 1 << event->button();
       break;
     case system_window::InputEvent::kTouchpadUp:
+    case system_window::InputEvent::kTouchscreenUp:
     case system_window::InputEvent::kPointerUp:
       // For 'up' events, ensure that the buttons state excludes the currently
       // reported button press.
@@ -194,6 +194,7 @@ void UpdateMouseEventInitButtons(const system_window::InputEvent* input_event,
     case system_window::InputEvent::kInput:
     case system_window::InputEvent::kPointerMove:
     case system_window::InputEvent::kTouchpadMove:
+    case system_window::InputEvent::kTouchscreenMove:
     case system_window::InputEvent::kWheel:
       break;
   }
@@ -252,6 +253,11 @@ void InputDeviceManagerDesktop::HandlePointerEvent(
     case system_window::InputEvent::kTouchpadMove:
       pointer_event.set_pointer_type("touchpad");
       break;
+    case system_window::InputEvent::kTouchscreenDown:
+    case system_window::InputEvent::kTouchscreenUp:
+    case system_window::InputEvent::kTouchscreenMove:
+      pointer_event.set_pointer_type("touch");
+      break;
     case system_window::InputEvent::kKeyDown:
     case system_window::InputEvent::kKeyUp:
     case system_window::InputEvent::kKeyMove:
@@ -264,7 +270,6 @@ void InputDeviceManagerDesktop::HandlePointerEvent(
       break;
   }
   pointer_event.set_pointer_id(input_event->device_id());
-#if SB_API_VERSION >= 6
   pointer_event.set_width(value_or(input_event->size().x(), 0.0f));
   pointer_event.set_height(value_or(input_event->size().y(), 0.0f));
   pointer_event.set_pressure(value_or(input_event->pressure(),
@@ -273,7 +278,6 @@ void InputDeviceManagerDesktop::HandlePointerEvent(
       value_or(static_cast<float>(input_event->tilt().x()), 0.0f));
   pointer_event.set_tilt_y(
       value_or(static_cast<float>(input_event->tilt().y()), 0.0f));
-#endif  // SB_API_VERSION >= 6
   pointer_event.set_is_primary(true);
   pointer_event_callback_.Run(type, pointer_event);
 }
@@ -302,9 +306,7 @@ void InputDeviceManagerDesktop::HandleInputEvent(
   dom::InputEventInit input_event;
   UpdateEventInit(event, &input_event);
   input_event.set_data(event->input_text());
-  // We do not handle composition sessions currently, so isComposing should
-  // always be false.
-  input_event.set_is_composing(false);
+  input_event.set_is_composing(event->is_composing());
   input_event_callback_.Run(type, input_event);
 }
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
@@ -350,14 +352,17 @@ void InputDeviceManagerDesktop::HandleSystemWindowInputEvent(
       break;
     }
     case system_window::InputEvent::kPointerMove:
-    case system_window::InputEvent::kTouchpadMove: {
+    case system_window::InputEvent::kTouchpadMove:
+    case system_window::InputEvent::kTouchscreenMove: {
       HandlePointerEvent(base::Tokens::pointermove(), input_event);
       break;
     }
     case system_window::InputEvent::kTouchpadDown:
+    case system_window::InputEvent::kTouchscreenDown:
       HandlePointerEvent(base::Tokens::pointerdown(), input_event);
       break;
     case system_window::InputEvent::kTouchpadUp:
+    case system_window::InputEvent::kTouchscreenUp:
       HandlePointerEvent(base::Tokens::pointerup(), input_event);
       break;
     case system_window::InputEvent::kWheel:

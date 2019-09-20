@@ -15,10 +15,10 @@
 #ifndef COBALT_RENDERER_BACKEND_EGL_FRAMEBUFFER_H_
 #define COBALT_RENDERER_BACKEND_EGL_FRAMEBUFFER_H_
 
-#include <GLES2/gl2.h>
+#include <memory>
 
-#include "base/memory/scoped_ptr.h"
 #include "cobalt/math/size.h"
+#include "cobalt/renderer/egl_and_gles.h"
 
 namespace cobalt {
 namespace renderer {
@@ -66,7 +66,7 @@ class FramebufferEGL {
   GLuint depthbuffer_handle_;
 
   // The color component of the framebuffer object as a texture.
-  scoped_ptr<TextureEGL> color_texture_;
+  std::unique_ptr<TextureEGL> color_texture_;
 
   // Did an error occur during construction?
   bool error_;

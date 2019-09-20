@@ -19,10 +19,12 @@
 #include <algorithm>
 #include <vector>
 
-#include "starboard/condition_variable.h"
+#include "starboard/audio_sink.h"
+#include "starboard/common/condition_variable.h"
+#include "starboard/common/log.h"
+#include "starboard/common/mutex.h"
 #include "starboard/configuration.h"
 #include "starboard/memory.h"
-#include "starboard/mutex.h"
 #include "starboard/shared/alsa/alsa_util.h"
 #include "starboard/thread.h"
 #include "starboard/time.h"
@@ -105,6 +107,9 @@ class AlsaAudioSink : public SbAudioSinkPrivate {
   bool is_valid() { return playback_handle_ != NULL; }
 
  private:
+  AlsaAudioSink(const AlsaAudioSink&) = delete;
+  AlsaAudioSink& operator=(const AlsaAudioSink&) = delete;
+
   static void* ThreadEntryPoint(void* context);
   void AudioThreadFunc();
   // Write silence to ALSA when there is not enough data in source or when the
@@ -256,6 +261,7 @@ bool AlsaAudioSink::IdleLoop() {
     {
       ScopedLock lock(mutex_);
       if (destroying_) {
+        SB_DLOG(INFO) << "alsa::AlsaAudioSink exits idle loop : destroying";
         break;
       }
       playback_rate = playback_rate_;
@@ -265,6 +271,9 @@ bool AlsaAudioSink::IdleLoop() {
     update_source_status_func_(&frames_in_buffer, &offset_in_frames,
                                &is_playing, &is_eos_reached, context_);
     if (is_playing && frames_in_buffer > 0 && playback_rate > 0.0) {
+      SB_DLOG(INFO) << "alsa::AlsaAudioSink exits idle loop : is playing "
+                    << is_playing << " frames in buffer " << frames_in_buffer
+                    << " playback_rate " << playback_rate;
       return true;
     }
     if (drain) {
@@ -289,6 +298,8 @@ bool AlsaAudioSink::PlaybackLoop() {
       ScopedTryLock lock(mutex_);
       if (lock.is_locked()) {
         if (destroying_) {
+          SB_DLOG(INFO)
+              << "alsa::AlsaAudioSink exits playback loop : destroying";
           break;
         }
         playback_rate = playback_rate_;
@@ -297,6 +308,8 @@ bool AlsaAudioSink::PlaybackLoop() {
 
     if (delayed_frame < kMinimumFramesInALSA) {
       if (playback_rate == 0.0) {
+        SB_DLOG(INFO)
+            << "alsa::AlsaAudioSink exits playback loop: playback rate 0";
         return true;
       }
       int frames_in_buffer, offset_in_frames;
@@ -304,6 +317,8 @@ bool AlsaAudioSink::PlaybackLoop() {
       update_source_status_func_(&frames_in_buffer, &offset_in_frames,
                                  &is_playing, &is_eos_reached, context_);
       if (!is_playing || frames_in_buffer == 0) {
+        SB_DLOG(INFO) << "alsa::AlsaAudioSink exits playback loop: is playing "
+                      << is_playing << " frames in buffer " << frames_in_buffer;
         return true;
       }
       WriteFrames(playback_rate, std::min(kFramesPerRequest, frames_in_buffer),
@@ -333,6 +348,9 @@ void AlsaAudioSink::WriteFrames(double playback_rate,
           frames_to_buffer_end);
       consume_frame_func_(consumed, context_);
       if (consumed != frames_to_buffer_end) {
+        SB_DLOG(INFO) << "alsa::AlsaAudioSink exits write frames : consumed "
+                      << consumed << " frames, with " << frames_to_buffer_end
+                      << " frames to buffer end";
         return;
       }
 
@@ -378,7 +396,31 @@ void AlsaAudioSink::WriteFrames(double playback_rate,
   }
 }
 
-}  // namespace
+class AlsaAudioSinkType : public SbAudioSinkPrivate::Type {
+ public:
+  SbAudioSink Create(
+      int channels,
+      int sampling_frequency_hz,
+      SbMediaAudioSampleType audio_sample_type,
+      SbMediaAudioFrameStorageType audio_frame_storage_type,
+      SbAudioSinkFrameBuffers frame_buffers,
+      int frames_per_channel,
+      SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
+      SbAudioSinkConsumeFramesFunc consume_frames_func,
+      void* context);
+
+  bool IsValid(SbAudioSink audio_sink) override {
+    return audio_sink != kSbAudioSinkInvalid && audio_sink->IsType(this);
+  }
+
+  void Destroy(SbAudioSink audio_sink) override {
+    if (audio_sink != kSbAudioSinkInvalid && !IsValid(audio_sink)) {
+      SB_LOG(WARNING) << "audio_sink is invalid.";
+      return;
+    }
+    delete audio_sink;
+  }
+};
 
 SbAudioSink AlsaAudioSinkType::Create(
     int channels,
@@ -402,26 +444,29 @@ SbAudioSink AlsaAudioSinkType::Create(
   return audio_sink;
 }
 
-}  // namespace alsa
-}  // namespace shared
-}  // namespace starboard
+}  // namespace
 
 namespace {
-SbAudioSinkPrivate::Type* alsa_audio_sink_type_;
+AlsaAudioSinkType* alsa_audio_sink_type_;
 }  // namespace
 
 // static
-void SbAudioSinkPrivate::PlatformInitialize() {
+void PlatformInitialize() {
   SB_DCHECK(!alsa_audio_sink_type_);
-  alsa_audio_sink_type_ = new starboard::shared::alsa::AlsaAudioSinkType;
-  SetPrimaryType(alsa_audio_sink_type_);
-  EnableFallbackToStub();
+  alsa_audio_sink_type_ = new AlsaAudioSinkType();
+  SbAudioSinkPrivate::SetPrimaryType(alsa_audio_sink_type_);
 }
 
 // static
-void SbAudioSinkPrivate::PlatformTearDown() {
-  SB_DCHECK(alsa_audio_sink_type_ == GetPrimaryType());
-  SetPrimaryType(NULL);
+void PlatformTearDown() {
+  SB_DCHECK(alsa_audio_sink_type_);
+  SB_DCHECK(alsa_audio_sink_type_ == SbAudioSinkPrivate::GetPrimaryType());
+
+  SbAudioSinkPrivate::SetPrimaryType(NULL);
   delete alsa_audio_sink_type_;
   alsa_audio_sink_type_ = NULL;
 }
+
+}  // namespace alsa
+}  // namespace shared
+}  // namespace starboard

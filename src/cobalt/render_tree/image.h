@@ -15,6 +15,7 @@
 #ifndef COBALT_RENDER_TREE_IMAGE_H_
 #define COBALT_RENDER_TREE_IMAGE_H_
 
+#include "base/basictypes.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
 #include "base/optional.h"
@@ -121,10 +122,17 @@ class RawImageMemory {
 // decoders.
 enum MultiPlaneImageFormat {
   // A YUV image where each channel, Y, U and V, is stored as a separate
-  // single-channel image plane.
+  // single-channel image plane.  Its pixels are mapped to RGB using BT. 601
+  // standard.  Each of the channel is represented by a value between [0, 255].
+  kMultiPlaneImageFormatYUV3PlaneBT601FullRange,
+  // A YUV image where each channel, Y, U and V, is stored as a separate
+  // single-channel image plane.  Its pixels are mapped to RGB using BT. 709
+  // standard.  Each of the channel is represented by a value between [16, 235].
   kMultiPlaneImageFormatYUV3PlaneBT709,
   // A YUV image where the Y channel is stored as a single-channel image plane
-  // and the U and V channels are interleaved in a second image plane.
+  // and the U and V channels are interleaved in a second image plane.  Its
+  // pixels are mapped to RGB using BT. 709 standard.  Each of the channel is
+  // represented by a value between [16, 235].
   kMultiPlaneImageFormatYUV2PlaneBT709,
   // A YUV image where each channel, Y, U and V, is stored as a separate
   // single-channel 10bit unnormalized image plane.
@@ -198,7 +206,7 @@ class MultiPlaneImageDataDescriptor {
 
   // We keep an array of base::optionals so that we don't have to specify a
   // default constructor for PlaneInformation.
-  base::optional<PlaneInformation> plane_descriptors_[kMaxPlanes];
+  base::Optional<PlaneInformation> plane_descriptors_[kMaxPlanes];
 };
 
 // The Image type is an abstract base class that represents a stored image

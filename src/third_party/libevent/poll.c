@@ -33,7 +33,10 @@
 #ifdef STARBOARD
 #include "libevent-starboard.h"
 
-// Use libevent's local compatibility  versions of these.
+#include <poll.h>
+#include <stdlib.h>
+
+// Use libevent's local compatibility versions of these.
 #include "third_party/libevent/compat/sys/queue.h"
 #include "third_party/libevent/compat/sys/_libevent_time.h"
 
@@ -174,7 +177,7 @@ poll_dispatch(struct event_base *base, void *arg, struct timeval *tv)
 		return (0);
 	}
 #ifndef STARBOARD
-  else if (base->sig.evsignal_caught) {
+	} else if (base->sig.evsignal_caught) {
 		evsignal_process(base);
 	}
 #endif

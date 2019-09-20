@@ -18,11 +18,11 @@
 #include <functional>
 #include <queue>
 
+#include "starboard/common/log.h"
+#include "starboard/common/mutex.h"
+#include "starboard/common/queue.h"
 #include "starboard/common/ref_counted.h"
-#include "starboard/log.h"
 #include "starboard/media.h"
-#include "starboard/mutex.h"
-#include "starboard/queue.h"
 #include "starboard/raspi/shared/dispmanx_util.h"
 #include "starboard/raspi/shared/open_max/dispmanx_resource_pool.h"
 #include "starboard/raspi/shared/open_max/open_max_video_decode_component.h"
@@ -49,6 +49,7 @@ class VideoDecoder
                   const ErrorCB& error_cb) override;
   size_t GetPrerollFrameCount() const override { return 1; }
   SbTime GetPrerollTimeout() const override { return kSbTimeMax; }
+  size_t GetMaxNumberOfCachedFrames() const override { return 12; }
   void WriteInputBuffer(const scoped_refptr<InputBuffer>& input_buffer)
       override;
   void WriteEndOfStream() override;

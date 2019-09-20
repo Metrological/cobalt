@@ -16,7 +16,8 @@
 #define STARBOARD_SHARED_STARBOARD_PLAYER_FILTER_MEDIA_TIME_PROVIDER_H_
 
 #include "starboard/media.h"
-#include "starboard/shared/starboard/player/filter/callback.h"
+#include "starboard/shared/internal_only.h"
+#include "starboard/shared/starboard/player/filter/common.h"
 
 namespace starboard {
 namespace shared {
@@ -34,7 +35,9 @@ class MediaTimeProvider {
   virtual void SetPlaybackRate(double playback_rate) = 0;
   virtual void Seek(SbTime seek_to_pts) = 0;
   // This function can be called from *any* thread.
-  virtual SbTime GetCurrentMediaTime(bool* is_playing, bool* is_eos_played) = 0;
+  virtual SbTime GetCurrentMediaTime(bool* is_playing,
+                                     bool* is_eos_played,
+                                     bool* is_underflow) = 0;
 
  protected:
   virtual ~MediaTimeProvider() {}

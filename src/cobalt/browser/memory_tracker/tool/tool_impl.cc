@@ -25,7 +25,7 @@
 #include <utility>
 #include <vector>
 
-#include "base/time.h"
+#include "base/time/time.h"
 #include "cobalt/base/c_val_collection_entry_stats.h"
 #include "cobalt/browser/memory_tracker/tool/params.h"
 #include "cobalt/browser/memory_tracker/tool/tool_thread.h"
@@ -35,9 +35,9 @@
 #include "nb/concurrent_map.h"
 #include "nb/memory_scope.h"
 #include "starboard/common/semaphore.h"
+#include "starboard/common/string.h"
 #include "starboard/configuration.h"
 #include "starboard/file.h"
-#include "starboard/string.h"
 #include "starboard/system.h"
 
 namespace cobalt {

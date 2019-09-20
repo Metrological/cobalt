@@ -19,10 +19,10 @@
 #include <sys/resource.h>
 #include <unistd.h>
 
-#include "starboard/log.h"
+#include "starboard/common/log.h"
+#include "starboard/common/string.h"
 #include "starboard/shared/pthread/is_success.h"
 #include "starboard/shared/pthread/thread_create_priority.h"
-#include "starboard/string.h"
 
 namespace starboard {
 namespace shared {
@@ -103,6 +103,7 @@ SbThread SbThreadCreate(int64_t stack_size,
   pthread_attr_setdetachstate(
       &attributes,
       (joinable ? PTHREAD_CREATE_JOINABLE : PTHREAD_CREATE_DETACHED));
+
   if (stack_size > 0) {
     pthread_attr_setstacksize(&attributes, stack_size);
   }

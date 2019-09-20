@@ -15,6 +15,7 @@
 #ifndef COBALT_DOM_EME_MEDIA_KEY_SESSION_H_
 #define COBALT_DOM_EME_MEDIA_KEY_SESSION_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -31,10 +32,6 @@
 #include "cobalt/script/script_value_factory.h"
 #include "starboard/drm.h"
 
-// TODO: Remove this workaround.
-#include "net/url_request/url_fetcher.h"
-#include "net/url_request/url_fetcher_delegate.h"
-
 namespace cobalt {
 namespace dom {
 namespace eme {
@@ -46,7 +43,7 @@ namespace eme {
 // Also see https://www.w3.org/TR/encrypted-media/#mediakeysession-interface.
 class MediaKeySession : public EventTarget {
  public:
-  typedef script::ScriptValue<script::Promise<void> > VoidPromiseValue;
+  typedef script::ScriptValue<script::Promise<void>> VoidPromiseValue;
   typedef base::Callback<void(MediaKeySession* session)> ClosedCallback;
 
   // Custom, not in any spec.
@@ -72,30 +69,12 @@ class MediaKeySession : public EventTarget {
   void TraceMembers(script::Tracer* tracer) override;
 
  private:
-  // TODO: Remove this workaround.
-  class IndividualizationFetcherDelegate : public net::URLFetcherDelegate {
-   public:
-    explicit IndividualizationFetcherDelegate(
-        MediaKeySession* media_key_session);
-    void OnURLFetchDownloadData(const net::URLFetcher* source,
-                                scoped_ptr<std::string> download_data) override;
-    void OnURLFetchComplete(const net::URLFetcher* source) override;
-    bool ShouldSendDownloadData() override { return true; }
-
-   private:
-    MediaKeySession* media_key_session_;
-    std::string response_;
-  };
-  IndividualizationFetcherDelegate invidualization_fetcher_delegate_;
-  scoped_ptr<net::URLFetcher> invidualization_fetcher_;
-  void OnIndividualizationResponse(const std::string& response);
-
   ~MediaKeySession() override;
 
   void OnSessionUpdateRequestGenerated(
       script::EnvironmentSettings* settings,
       VoidPromiseValue::Reference* promise_reference,
-      SbDrmSessionRequestType type, scoped_array<uint8> message,
+      SbDrmSessionRequestType type, std::unique_ptr<uint8[]> message,
       int message_size);
   void OnSessionUpdateRequestDidNotGenerate(
       VoidPromiseValue::Reference* promise_reference, SbDrmStatus status,
@@ -116,7 +95,7 @@ class MediaKeySession : public EventTarget {
   // consistent with Chromium. For this reason we need to hold to |drm_system_|
   // from each session.
   const scoped_refptr<media::DrmSystem> drm_system_;
-  scoped_ptr<media::DrmSystem::Session> drm_system_session_;
+  std::unique_ptr<media::DrmSystem::Session> drm_system_session_;
   script::ScriptValueFactory* const script_value_factory_;
   bool uninitialized_;
   bool callable_;

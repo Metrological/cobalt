@@ -16,97 +16,67 @@
 #define COBALT_MEDIA_MEDIA_MODULE_H_
 
 #include <map>
+#include <memory>
 #include <string>
 
 #include "base/basictypes.h"
 #include "base/compiler_specific.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/message_loop.h"
-#include "base/message_loop_proxy.h"
 #include "base/optional.h"
-#include "base/threading/thread.h"
-#include "cobalt/base/user_log.h"
 #include "cobalt/math/size.h"
 #include "cobalt/media/can_play_type_handler.h"
+#include "cobalt/media/decoder_buffer_allocator.h"
+#include "cobalt/media/player/web_media_player_delegate.h"
+#include "cobalt/media/player/web_media_player_impl.h"
 #include "cobalt/media/web_media_player_factory.h"
 #include "cobalt/render_tree/image.h"
 #include "cobalt/render_tree/resource_provider.h"
 #include "cobalt/system_window/system_window.h"
-
-#if defined(COBALT_MEDIA_SOURCE_2016)
-#include "cobalt/media/player/web_media_player_delegate.h"
-#else  // defined(COBALT_MEDIA_SOURCE_2016)
-#include "media/filters/shell_video_decoder_impl.h"
-#include "media/player/web_media_player_delegate.h"
-#endif  // defined(COBALT_MEDIA_SOURCE_2016)
+#include "starboard/common/mutex.h"
 
 namespace cobalt {
 namespace media {
 
-#if !defined(COBALT_MEDIA_SOURCE_2016)
-typedef ::media::ShellRawVideoDecoderFactory ShellRawVideoDecoderFactory;
-typedef ::media::WebMediaPlayer WebMediaPlayer;
-typedef ::media::WebMediaPlayerDelegate WebMediaPlayerDelegate;
-#endif  // !defined(COBALT_MEDIA_SOURCE_2016)
-
-// TODO: Collapse MediaModule into ShellMediaPlatform.
 class MediaModule : public WebMediaPlayerFactory,
                     public WebMediaPlayerDelegate {
  public:
   struct Options {
     Options() {}
 
-    bool use_audio_decoder_stub = false;
-    bool use_null_audio_streamer = false;
-    bool use_video_decoder_stub = false;
-    bool disable_webm_vp9 = false;
     bool allow_resume_after_suspend = true;
-    base::optional<math::Size> output_resolution_override;
   };
 
   typedef render_tree::Image Image;
 
-  // Calculates the output resolution based on the window size and override.
-  static math::Size CalculateOutputResolution(
-      system_window::SystemWindow* system_window,
-      const base::optional<math::Size>& output_resolution_override);
   // MediaModule implementation should implement this function to allow creation
   // of CanPlayTypeHandler.
-  static scoped_ptr<CanPlayTypeHandler> CreateCanPlayTypeHandler();
+  static std::unique_ptr<CanPlayTypeHandler> CreateCanPlayTypeHandler();
 
-  virtual ~MediaModule() {}
+  MediaModule(system_window::SystemWindow* system_window,
+              render_tree::ResourceProvider* resource_provider,
+              const Options& options = Options())
+      : options_(options),
+        system_window_(system_window),
+        resource_provider_(resource_provider) {}
 
   // Returns true when the setting is set successfully or if the setting has
   // already been set to the expected value.  Returns false when the setting is
   // invalid or not set to the expected value.
-  virtual bool SetConfiguration(const std::string& name, int32 value) {
-    UNREFERENCED_PARAMETER(name);
-    UNREFERENCED_PARAMETER(value);
+  bool SetConfiguration(const std::string& name, int32 value) {
+    SB_UNREFERENCED_PARAMETER(name);
+    SB_UNREFERENCED_PARAMETER(value);
     return false;
   }
 
-  // The following functions will be called inside Suspend() and Resume()
-  // from the main thread.  Sub-classes can override these functions for
-  // platform specific tasks.
-  virtual void OnSuspend() {}
-  virtual void OnResume(render_tree::ResourceProvider* resource_provider) {
-    UNREFERENCED_PARAMETER(resource_provider);
-  }
-
-  virtual system_window::SystemWindow* system_window() const { return NULL; }
+  // WebMediaPlayerFactory methods
+  std::unique_ptr<WebMediaPlayer> CreateWebMediaPlayer(
+      WebMediaPlayerClient* client) override;
+  void EnumerateWebMediaPlayers(
+      const EnumeratePlayersCB& enumerate_callback) const override;
 
   void Suspend();
   void Resume(render_tree::ResourceProvider* resource_provider);
-
-#if !defined(COBALT_MEDIA_SOURCE_2016)
-#if !defined(COBALT_BUILD_TYPE_GOLD)
-  virtual ShellRawVideoDecoderFactory* GetRawVideoDecoderFactory() {
-    return NULL;
-  }
-#endif  // !defined(COBALT_BUILD_TYPE_GOLD)
-#endif  // !defined(COBALT_MEDIA_SOURCE_2016)
 
   // TODO: Move the following methods into class like MediaModuleBase
   // to ensure that MediaModule is an interface.
@@ -114,36 +84,34 @@ class MediaModule : public WebMediaPlayerFactory,
   void RegisterPlayer(WebMediaPlayer* player) override;
   void UnregisterPlayer(WebMediaPlayer* player) override;
 
-  // This function should be defined on individual platform to create the
-  // platform specific MediaModule.
-  static scoped_ptr<MediaModule> Create(
-      system_window::SystemWindow* system_window,
-      render_tree::ResourceProvider* resource_provider,
-      const Options& options = Options());
-
- protected:
-  MediaModule() : thread_("media_module"), suspended_(false) {
-    thread_.Start();
-    message_loop_ = thread_.message_loop_proxy();
-  }
-
  private:
   void RegisterDebugState(WebMediaPlayer* player);
   void DeregisterDebugState();
-  void SuspendTask();
-  void ResumeTask();
-  void RegisterPlayerTask(WebMediaPlayer* player);
-  void UnregisterPlayerTask(WebMediaPlayer* player);
+
+  SbDecodeTargetGraphicsContextProvider*
+  GetSbDecodeTargetGraphicsContextProvider() {
+#if SB_HAS(GRAPHICS)
+    return resource_provider_->GetSbDecodeTargetGraphicsContextProvider();
+#else   // SB_HAS(GRAPHICS)
+    return NULL;
+#endif  // SB_HAS(GRAPHICS)
+  }
 
   // When the value of a particular player is true, it means the player is
   // paused by us.
   typedef std::map<WebMediaPlayer*, bool> Players;
 
-  // The thread that |players_| is accessed from,
-  base::Thread thread_;
-  scoped_refptr<base::MessageLoopProxy> message_loop_;
+  const Options options_;
+  system_window::SystemWindow* system_window_;
+  cobalt::render_tree::ResourceProvider* resource_provider_;
+
+  // Protect access to the list of players.
+  starboard::Mutex players_lock_;
+
   Players players_;
-  bool suspended_;
+  bool suspended_ = false;
+
+  DecoderBufferAllocator decoder_buffer_allocator_;
 };
 
 }  // namespace media

@@ -31,7 +31,6 @@
       'type': 'none',
       'dependencies': [
         '<(DEPTH)/base/base.gyp:base_unittests',
-        '<(DEPTH)/cobalt/accessibility/accessibility_test.gyp:*',
         '<(DEPTH)/cobalt/audio/audio.gyp:*',
         '<(DEPTH)/cobalt/audio/audio_test.gyp:*',
         '<(DEPTH)/cobalt/base/base.gyp:*',
@@ -42,12 +41,12 @@
         '<(DEPTH)/cobalt/css_parser/css_parser.gyp:*',
         '<(DEPTH)/cobalt/cssom/cssom.gyp:*',
         '<(DEPTH)/cobalt/cssom/cssom_test.gyp:*',
-        '<(DEPTH)/cobalt/debug/debug.gyp:*',
         '<(DEPTH)/cobalt/dom/dom.gyp:*',
         '<(DEPTH)/cobalt/dom/dom_test.gyp:*',
         '<(DEPTH)/cobalt/dom/testing/dom_testing.gyp:*',
         '<(DEPTH)/cobalt/dom_parser/dom_parser.gyp:*',
         '<(DEPTH)/cobalt/dom_parser/dom_parser_test.gyp:*',
+        '<(DEPTH)/cobalt/extension/extension.gyp:*',
         '<(DEPTH)/cobalt/h5vcc/h5vcc.gyp:*',
         '<(DEPTH)/cobalt/input/input.gyp:*',
         '<(DEPTH)/cobalt/layout/layout.gyp:*',
@@ -56,6 +55,7 @@
         '<(DEPTH)/cobalt/loader/loader.gyp:*',
         '<(DEPTH)/cobalt/loader/origin.gyp:*',
         '<(DEPTH)/cobalt/math/math.gyp:*',
+        '<(DEPTH)/cobalt/media/media.gyp:*',
         '<(DEPTH)/cobalt/media/sandbox/sandbox.gyp:*',
         '<(DEPTH)/cobalt/media_capture/media_capture.gyp:*',
         '<(DEPTH)/cobalt/media_capture/media_capture_test.gyp:*',
@@ -91,8 +91,8 @@
       'conditions': [
         ['OS=="starboard"', {
           'dependencies': [
-            '<(DEPTH)/nb/nb.gyp:nb_test',
-            '<(DEPTH)/nb/nb.gyp:reuse_allocator_benchmark',
+            '<(DEPTH)/nb/nb_test.gyp:nb_test',
+            '<(DEPTH)/nb/nb_test.gyp:reuse_allocator_benchmark',
             '<(DEPTH)/starboard/starboard_all.gyp:starboard_all',
           ],
         }],

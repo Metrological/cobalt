@@ -17,6 +17,7 @@
 """Cross-platform unit test runner."""
 
 import cStringIO
+import logging
 import os
 import re
 import signal
@@ -25,23 +26,25 @@ import sys
 import threading
 import traceback
 
-import _env  # pylint: disable=unused-import
+import _env  # pylint: disable=unused-import, relative-import
 from starboard.tools import abstract_launcher
 from starboard.tools import build
 from starboard.tools import command_line
-from starboard.tools.testing import test_filter
+from starboard.tools import paths
 from starboard.tools.testing import build_tests
+from starboard.tools.testing import test_filter
+from starboard.tools.util import SetupDefaultLoggingConfig
 
-_TOTAL_TESTS_REGEX = (r"\[==========\] (.*) tests? from .*"
-                      r"test cases? ran. \(.* ms total\)")
-_TESTS_PASSED_REGEX = r"\[  PASSED  \] (.*) tests?"
-_TESTS_FAILED_REGEX = r"\[  FAILED  \] (.*) tests?, listed below:"
-_SINGLE_TEST_FAILED_REGEX = r"\[  FAILED  \] (.*)"
+_FLAKY_RETRY_LIMIT = 4
+_TOTAL_TESTS_REGEX = re.compile(r"^\[==========\] (.*) tests? from .*"
+                                r"test cases? ran. \(.* ms total\)")
+_TESTS_PASSED_REGEX = re.compile(r"^\[  PASSED  \] (.*) tests?")
+_TESTS_FAILED_REGEX = re.compile(r"^\[  FAILED  \] (.*) tests?, listed below:")
+_SINGLE_TEST_FAILED_REGEX = re.compile(r"^\[  FAILED  \] (.*)")
 
 
 def _FilterTests(target_list, filters, config_name):
   """Returns a Mapping of test targets -> filtered tests."""
-
   targets = {}
   for target in target_list:
     targets[target] = []
@@ -67,6 +70,20 @@ def _FilterTests(target_list, filters, config_name):
   return targets
 
 
+def _VerifyConfig(config):
+  """Ensures a platform or app config is self-consistent."""
+  targets = config.GetTestTargets()
+  filters = config.GetTestFilters()
+  filter_targets = [f.target_name for f in filters]
+
+  # Filters must be defined in the same config as the targets they're filtering,
+  # platform filters in platform config, and app filters in app config.
+  unknown_targets = set(filter_targets) - set(targets)
+  if unknown_targets:
+    raise ValueError("Unknown filter targets in {} config ({}): {}".format(
+        config.GetName(), config.__class__.__name__, sorted(unknown_targets)))
+
+
 class TestLineReader(object):
   """Reads lines from the test runner's launcher output via an OS pipe.
 
@@ -90,11 +107,16 @@ class TestLineReader(object):
     while not self.stop_event.is_set():
       line = self.read_pipe.readline()
       if line:
-        sys.stdout.write(line)
-        sys.stdout.flush()
+        # Normalize line endings to unix.
+        line = line.replace("\r", "")
+        try:
+          sys.stdout.write(line)
+          sys.stdout.flush()
+        except IOError as err:
+          self.output_lines.write("error: " + str(err) + "\n")
+          return
       else:
         break
-
       self.output_lines.write(line)
 
   def Start(self):
@@ -175,11 +197,14 @@ class TestRunner(object):
                platform,
                config,
                device_id,
-               single_target,
+               specified_targets,
                target_params,
                out_directory,
+               platform_tests_only,
                application_name=None,
-               dry_run=False):
+               dry_run=False,
+               xml_output_dir=None,
+               log_xml_results=False):
     self.platform = platform
     self.config = config
     self.device_id = device_id
@@ -189,42 +214,52 @@ class TestRunner(object):
     self._app_config = self._platform_config.GetApplicationConfiguration(
         application_name)
     self.dry_run = dry_run
+    self.xml_output_dir = xml_output_dir
+    self.log_xml_results = log_xml_results
     self.threads = []
 
+    _VerifyConfig(self._platform_config)
+    _VerifyConfig(self._app_config)
+
     # If a particular test binary has been provided, configure only that one.
-    if single_target:
-      self.test_targets = self._GetSingleTestTarget(single_target)
+    if specified_targets:
+      self.test_targets = self._GetSpecifiedTestTargets(specified_targets)
     else:
-      self.test_targets = self._GetTestTargets()
+      self.test_targets = self._GetTestTargets(platform_tests_only)
 
     self.test_env_vars = self._GetAllTestEnvVariables()
 
-  def _GetSingleTestTarget(self, single_target):
-    """Sets up a single test target for a given platform and configuration.
+  def _GetSpecifiedTestTargets(self, specified_targets):
+    """Sets up specified test targets for a given platform and configuration.
 
     Args:
-      single_target:  The name of a test target to run.
+      specified_targets:  Array of test names to run.
 
     Returns:
-      A mapping from the test binary name to a list of filters for that binary.
+      A mapping from the test binary names to a list of filters for that binary.
       If the test has no filters, its list is empty.
 
     Raises:
       RuntimeError:  The specified test binary has been disabled for the given
         platform and configuration.
     """
-    targets = _FilterTests([single_target], self._GetTestFilters(), self.config)
-    if not targets:
-      # If the provided target name has been filtered,
-      # nothing will be run.
-      sys.stderr.write(
-          "\"{}\" has been filtered; no tests will be run.\n".format(
-              single_target))
+    targets = _FilterTests(specified_targets, self._GetTestFilters(),
+                           self.config)
+    if len(targets) != len(specified_targets):
+      # If any of the provided target names have been filtered,
+      # they will not all run.
+      sys.stderr.write("Test list has been filtered. Not all will run.\n"
+                       "Original list: \"{}\".\n"
+                       "Filtered list: \"{}\".\n".format(
+                           specified_targets, list(targets.keys())))
 
     return targets
 
-  def _GetTestTargets(self):
+  def _GetTestTargets(self, platform_tests_only):
     """Collects all test targets for a given platform and configuration.
+
+    Args:
+      platform_only: If True then only the platform tests are fetched.
 
     Returns:
       A mapping from names of test binaries to lists of filters for
@@ -232,7 +267,8 @@ class TestRunner(object):
         empty.
     """
     targets = self._platform_config.GetTestTargets()
-    targets.extend(self._app_config.GetTestTargets())
+    if not platform_tests_only:
+      targets.extend(self._app_config.GetTestTargets())
     targets = list(set(targets))
 
     final_targets = _FilterTests(targets, self._GetTestFilters(), self.config)
@@ -252,7 +288,7 @@ class TestRunner(object):
 
   def _GetAllTestEnvVariables(self):
     """Gets all environment variables used for tests on the given platform."""
-    env_variables = self._platform_config.GetTestEnvVariables()
+    env_variables = {}
     for test, test_env in self._app_config.GetTestEnvVariables().iteritems():
       if test in env_variables:
         env_variables[test].update(test_env)
@@ -260,18 +296,22 @@ class TestRunner(object):
         env_variables[test] = test_env
     return env_variables
 
-  def _RunTest(self, target_name):
-    """Runs a single unit test binary and collects all of the output.
+  def _RunTest(self, target_name, test_name=None):
+    """Runs a specific target or test and collects the output.
 
     Args:
-      target_name: The name of the test target being run.
+      target_name: The name of the test suite to be run.
+      test_name: The name of the specific test to be run. The entire test suite
+        is run when this is empty.
 
     Returns:
       A tuple containing tests results (See "_CollectTestResults()").
     """
 
     # Get the environment variables for the test target
-    env = self.test_env_vars.get(target_name, {})
+    env = {}
+    env.update(self._platform_config.GetTestEnvVariables())
+    env.update(self.test_env_vars.get(target_name, {}))
 
     # Set up a pipe for processing test output
     read_fd, write_fd = os.pipe()
@@ -280,9 +320,32 @@ class TestRunner(object):
 
     # Filter the specified tests for this platform, if any
     test_params = []
-    if self.test_targets[target_name]:
-      test_params.append("--gtest_filter=-{}".format(":".join(
-          self.test_targets[target_name])))
+    gtest_filter_value = ""
+
+    # If a specific test case was given, filter for the exact name given.
+    if test_name:
+      gtest_filter_value = test_name
+    elif self.test_targets[target_name]:
+      gtest_filter_value = "-" + ":".join(self.test_targets[target_name])
+    if gtest_filter_value:
+      test_params.append("--gtest_filter=" + gtest_filter_value)
+
+    if self.log_xml_results:
+      # Log the xml results
+      test_params.append("--gtest_output=xml:log")
+      logging.info("Xml results for this test will be logged.")
+    elif self.xml_output_dir:
+      # Have gtest create and save a test result xml
+      xml_output_subdir = os.path.join(self.xml_output_dir, target_name)
+      try:
+        os.makedirs(xml_output_subdir)
+      except OSError:
+        pass
+      xml_output_path = os.path.join(xml_output_subdir, "sponge_log.xml")
+      logging.info("Xml output for this test will be saved to: %s",
+                   xml_output_path)
+      test_params.append("--gtest_output=xml:%s" % (xml_output_path))
+
     test_params.extend(self.target_params)
 
     launcher = abstract_launcher.LauncherFactory(
@@ -301,14 +364,28 @@ class TestRunner(object):
     self.threads.append(test_launcher)
     self.threads.append(test_reader)
 
+    dump_params = " ARGS:" + " ".join(test_params) if test_params else ""
+    dump_env = " ENV VARS: " + ";".join(
+        "{}={}".format(k, v) for k, v in env.items()) if env else ""
+    # Output either the name of the test target or the specific test case
+    # being run.
+    # pylint: disable=g-long-ternary
+    sys.stdout.write("Starting {}{}{}".format(
+        test_name if test_name else target_name, dump_params, dump_env))
+
     if self.dry_run:
-      sys.stdout.write("{} {}\n".format(target_name, test_params)
-                       if test_params else "{}\n".format(target_name))
+      # Output a newline before running the test target / case.
+      sys.stdout.write("\n")
+
+      if test_params:
+        sys.stdout.write(" {}\n".format(test_params))
       write_pipe.close()
       read_pipe.close()
 
     else:
-      sys.stdout.write("Starting {}\n".format(target_name))
+      # Output a newline before running the test target / case.
+      sys.stdout.write("\n")
+
       test_reader.Start()
       test_launcher.Start()
 
@@ -347,15 +424,15 @@ class TestRunner(object):
     failed_tests = []
 
     for idx, line in enumerate(results):
-      total_tests_match = re.search(_TOTAL_TESTS_REGEX, line)
+      total_tests_match = _TOTAL_TESTS_REGEX.search(line)
       if total_tests_match:
         total_count = int(total_tests_match.group(1))
 
-      passed_match = re.search(_TESTS_PASSED_REGEX, line)
+      passed_match = _TESTS_PASSED_REGEX.search(line)
       if passed_match:
         passed_count = int(passed_match.group(1))
 
-      failed_match = re.search(_TESTS_FAILED_REGEX, line)
+      failed_match = _TESTS_FAILED_REGEX.search(line)
       if failed_match:
         failed_count = int(failed_match.group(1))
         # Descriptions of all failed tests appear after this line
@@ -375,14 +452,14 @@ class TestRunner(object):
     """
     failed_tests = []
     for line in lines:
-      test_failed_match = re.search(_SINGLE_TEST_FAILED_REGEX, line)
+      test_failed_match = _SINGLE_TEST_FAILED_REGEX.search(line)
       if test_failed_match:
         failed_tests.append(test_failed_match.group(1))
     return failed_tests
 
   def _GetFilteredTestList(self, target_name):
-    return _FilterTests([target_name], self._GetTestFilters(), self.config).get(
-        target_name, [])
+    return _FilterTests([target_name], self._GetTestFilters(),
+                        self.config).get(target_name, [])
 
   def _ProcessAllTestResults(self, results):
     """Collects and returns output for all selected tests.
@@ -394,7 +471,8 @@ class TestRunner(object):
       True if the test run succeeded, False if not.
     """
     if self.dry_run:
-      print "\n{} TOTAL TEST TARGETS".format(len(results))
+      logging.info("")  # formatting newline.
+      logging.info("%d TOTAL TEST TARGETS", len(results))
       return True
 
     total_run_count = 0
@@ -403,67 +481,134 @@ class TestRunner(object):
     total_flaky_failed_count = 0
     total_filtered_count = 0
 
+    print  # Explicit print for empty formatting line.
+    logging.info("TEST RUN COMPLETE.")
+    if results:
+      print  # Explicit print for empty formatting line.
+
     # If the number of run tests from a test binary cannot be
     # determined, assume an error occurred while running it.
     error = False
 
-    print "\nTEST RUN COMPLETE. RESULTS BELOW:\n"
+    failed_test_groups = []
 
     for result_set in results:
-
       target_name = result_set[0]
       run_count = result_set[1]
       passed_count = result_set[2]
       failed_count = result_set[3]
       failed_tests = result_set[4]
       return_code = result_set[5]
-      flaky_failed_tests = [
-          test_name for test_name in failed_tests if ".FLAKY_" in test_name
-      ]
+      actual_failed_tests = []
+      flaky_failed_tests = []
+      filtered_tests = self._GetFilteredTestList(target_name)
+
+      for test_name in failed_tests:
+        if ".FLAKY_" in test_name:
+          flaky_failed_tests.append(test_name)
+        else:
+          actual_failed_tests.append(test_name)
+
+      actual_failed_count = len(actual_failed_tests)
+      flaky_failed_count = len(flaky_failed_tests)
+      filtered_count = len(filtered_tests)
+
+      # If our math does not agree with gtest...
+      if actual_failed_count + flaky_failed_count != failed_count:
+        logging.warning("Inconsistent count of actual and flaky failed tests.")
+        logging.info("")  # formatting newline.
+
+      # Retry the flaky test cases that failed, and mark them as passed if they
+      # succeed within the retry limit.
+      if flaky_failed_count > 0:
+        logging.info("RE-RUNNING FLAKY TESTS.\n")
+        flaky_passed_tests = []
+        for test_case in flaky_failed_tests:
+          for retry in range(_FLAKY_RETRY_LIMIT):
+            retry_result = self._RunTest(target_name, test_case)
+            print  # Explicit print for empty formatting line.
+            if retry_result[2] == 1:
+              flaky_passed_tests.append(test_case)
+              logging.info("%s succeeded on run #%d!\n", test_case, retry + 2)
+              break
+            else:
+              logging.warning("%s Failed. Re-running...\n", test_case)
+        # Remove newly passing flaky tests from failing flaky test list.
+        for test_case in flaky_passed_tests:
+          flaky_failed_tests.remove(test_case)
+        flaky_failed_count -= len(flaky_passed_tests)
+        passed_count += len(flaky_passed_tests)
+      else:
+        logging.info("")  # formatting newline.
 
       test_status = "SUCCEEDED"
-      if return_code != 0:
+
+      # Always mark as FAILED if we have a non-zero return code, or failing
+      # test.
+      if return_code != 0 or actual_failed_count > 0 or flaky_failed_count > 0:
         error = True
         test_status = "FAILED"
+        failed_test_groups.append(target_name)
 
-      print "{}: {}.".format(target_name, test_status)
-      if run_count == 0:
-        print "  Results not available.  Did the test crash?\n"
+      logging.info("%s: %s.", target_name, test_status)
+      if return_code != 0 and run_count == 0 and filtered_count == 0:
+        logging.info("  Results not available.  Did the test crash?")
+        logging.info("")  # formatting newline.
         continue
 
-      print "  TOTAL TESTS RUN: {}".format(run_count)
+      logging.info("  TESTS RUN: %d", run_count)
       total_run_count += run_count
-      print "  PASSED: {}".format(passed_count)
-      total_passed_count += passed_count
-      if failed_count > 0:
-        print "  FAILED: {}".format(failed_count)
-        total_failed_count += failed_count
-        total_flaky_failed_count += len(flaky_failed_tests)
-        print "\n  FAILED TESTS:"
-        for line in failed_tests:
-          print "    {}".format(line)
-      filtered_count = len(self._GetFilteredTestList(target_name))
+      # Output the number of passed, failed, flaked, and filtered tests.
+      if passed_count > 0:
+        logging.info("  TESTS PASSED: %d", passed_count)
+        total_passed_count += passed_count
+      if actual_failed_count > 0:
+        logging.info("  TESTS FAILED: %d", actual_failed_count)
+        total_failed_count += actual_failed_count
+      if flaky_failed_count > 0:
+        logging.info("  TESTS FLAKED: %d", flaky_failed_count)
+        total_flaky_failed_count += flaky_failed_count
       if filtered_count > 0:
-        print "  FILTERED: {}".format(filtered_count)
+        logging.info("  TESTS FILTERED: %d", filtered_count)
         total_filtered_count += filtered_count
-      # Print a single newline to separate results from each test run
-      print
+      # Output the names of the failed, flaked, and filtered tests.
+      if actual_failed_count > 0:
+        logging.info("")  # formatting newline.
+        logging.info("  FAILED TESTS:")
+        for line in actual_failed_tests:
+          logging.info("    %s", line)
+      if flaky_failed_count > 0:
+        logging.info("")  # formatting newline.
+        logging.info("  FLAKED TESTS:")
+        for line in flaky_failed_tests:
+          logging.info("    %s", line)
+      if filtered_count > 0:
+        logging.info("")  # formatting newline.
+        logging.info("  FILTERED TESTS:")
+        for line in filtered_tests:
+          logging.info("    %s", line)
+      logging.info("")  # formatting newline.
+      logging.info("  RETURN CODE: %d", return_code)
+      logging.info("")  # formatting newline.
 
     overall_status = "SUCCEEDED"
     result = True
 
-    # If we only failed tests that are considered flaky, then count this run
-    # as a pass.
-    if error or total_failed_count - total_flaky_failed_count > 0:
+    # Any failing test or other errors will make the run a failure. This
+    # includes flaky tests if they did not pass any of their retries.
+    if error or total_failed_count > 0 or total_flaky_failed_count > 0:
       overall_status = "FAILED"
       result = False
 
-    print "TEST RUN {}.".format(overall_status)
-    print "  TOTAL TESTS RUN: {}".format(total_run_count)
-    print "  TOTAL TESTS PASSED: {}".format(total_passed_count)
-    print "  TOTAL TESTS FAILED: {}".format(total_failed_count)
-    print "  TOTAL TESTS FILTERED: {}".format(total_filtered_count)
-    print "  TOTAL FLAKY TESTS FAILED: {}".format(total_flaky_failed_count)
+    logging.info("TEST RUN %s.", overall_status)
+    if failed_test_groups:
+      failed_test_groups = list(set(failed_test_groups))
+      logging.info("  FAILED TESTS GROUPS: %s", ", ".join(failed_test_groups))
+    logging.info("  TOTAL TESTS RUN: %d", total_run_count)
+    logging.info("  TOTAL TESTS PASSED: %d", total_passed_count)
+    logging.info("  TOTAL TESTS FAILED: %d", total_failed_count)
+    logging.info("  TOTAL TESTS FLAKED: %d", total_flaky_failed_count)
+    logging.info("  TOTAL TESTS FILTERED: %d", total_filtered_count)
 
     return result
 
@@ -482,8 +627,7 @@ class TestRunner(object):
       if self.out_directory:
         out_directory = self.out_directory
       else:
-        out_directory = abstract_launcher.DynamicallyBuildOutDirectory(
-            self.platform, self.config)
+        out_directory = paths.BuildOutputDirectory(self.platform, self.config)
 
       if ninja_flags:
         extra_flags = [ninja_flags]
@@ -515,7 +659,7 @@ class TestRunner(object):
 
 
 def main():
-
+  SetupDefaultLoggingConfig()
   arg_parser = command_line.CreateParser()
   arg_parser.add_argument(
       "-b",
@@ -535,7 +679,14 @@ def main():
       action="store_true",
       help="Specifies to show what would be done without actually doing it.")
   arg_parser.add_argument(
-      "-t", "--target_name", help="Name of executable target.")
+      "-t",
+      "--target_name",
+      action="append",
+      help="Name of executable target. Repeatable for multiple targets.")
+  arg_parser.add_argument(
+      "--platform_tests_only",
+      action="store_true",
+      help="Runs only a small set of tests involved testing the platform.")
   arg_parser.add_argument(
       "-a",
       "--application_name",
@@ -546,7 +697,18 @@ def main():
       help="Flags to pass to the ninja build system. Provide them exactly"
       " as you would on the command line between a set of double quotation"
       " marks.")
-
+  arg_parser.add_argument(
+      "-x",
+      "--xml_output_dir",
+      help="If defined, results will be saved as xml files in given directory."
+      " Output for each test suite will be in it's own subdirectory and file:"
+      " <xml_output_dir>/<test_suite_name>/sponge_log.xml")
+  arg_parser.add_argument(
+      "-l",
+      "--log_xml_results",
+      action="store_true",
+      help="If set, results will be logged in xml format after all tests are"
+      " complete. --xml_output_dir will be ignored.")
   args = arg_parser.parse_args()
 
   # Extra arguments for the test target
@@ -556,7 +718,8 @@ def main():
 
   runner = TestRunner(args.platform, args.config, args.device_id,
                       args.target_name, target_params, args.out_directory,
-                      args.application_name, args.dry_run)
+                      args.platform_tests_only, args.application_name,
+                      args.dry_run, args.xml_output_dir, args.log_xml_results)
 
   def Abort(signum, frame):
     del signum, frame  # Unused.

@@ -74,6 +74,15 @@ typedef enum SbSystemPathId {
 // System properties that can be queried for. Many of these are used in
 // User-Agent string generation.
 typedef enum SbSystemPropertyId {
+#if SB_API_VERSION >= 11
+  // The certification scope that identifies a group of devices.
+  kSbSystemPropertyCertificationScope,
+
+  // The HMAC-SHA256 base64 encoded symmetric key used to sign a subset of the
+  // query parameters from the application startup URL.
+  kSbSystemPropertyBase64EncodedCertificationSecret,
+#endif  // SB_API_VERSION >= 11
+
   // The full model number of the main platform chipset, including any
   // vendor-specific prefixes.
   kSbSystemPropertyChipsetModelNumber,
@@ -99,9 +108,16 @@ typedef enum SbSystemPropertyId {
   // The year the device was launched, e.g. "2016".
   kSbSystemPropertyModelYear,
 
+#if SB_API_VERSION >= 11
+  // The corporate entity responsible for the manufacturing/assembly of the
+  // device on behalf of the business entity owning the brand.  This is often
+  // abbreviated as ODM.
+  kSbSystemPropertyOriginalDesignManufacturerName,
+#else
   // The name of the network operator that owns the target device, if
   // applicable.
   kSbSystemPropertyNetworkOperatorName,
+#endif
 
   // The name of the operating system and platform, suitable for inclusion in a
   // User-Agent, say.
@@ -188,6 +204,9 @@ typedef enum SbSystemCapabilityId {
   // incorrect.
   kSbSystemCapabilitySetsInputTimestamp,
 #endif
+
+  // ATTENTION: Do not add more to this enum. Instead add an "IsSupported"
+  // function in the relevant module.
 } SbSystemCapabilityId;
 
 // Enumeration of possible values for the |type| parameter passed to  the
@@ -198,14 +217,6 @@ typedef enum SbSystemPlatformErrorType {
   // |kSbSystemPlatformErrorResponsePositive| then the request should be
   // retried, otherwise the app should be stopped.
   kSbSystemPlatformErrorTypeConnectionError,
-
-#if SB_API_VERSION < 6
-  // The current user is not signed in.
-  kSbSystemPlatformErrorTypeUserSignedOut,
-
-  // The current user does not meet the age requirements to use the app.
-  kSbSystemPlatformErrorTypeUserAgeRestricted
-#endif
 } SbSystemPlatformErrorType;
 
 // Possible responses for |SbSystemPlatformErrorCallback|.
@@ -227,6 +238,7 @@ typedef void (*SbSystemPlatformErrorCallback)(
 // Private structure used to represent a raised platform error.
 typedef struct SbSystemPlatformErrorPrivate SbSystemPlatformErrorPrivate;
 
+#if SB_API_VERSION < 11
 // Opaque handle returned by |SbSystemRaisePlatformError| that can be passed
 // to |SbSystemClearPlatformError|.
 typedef SbSystemPlatformErrorPrivate* SbSystemPlatformError;
@@ -246,7 +258,7 @@ static SB_C_INLINE bool SbSystemPlatformErrorIsValid(
 // any required interaction, such as by showing a dialog.
 //
 // The return value is a handle that may be used in a subsequent call to
-// |SbClearPlatformError|. For example, the handle could be used to
+// |SbSystemClearPlatformError|. For example, the handle could be used to
 // programatically dismiss a dialog that was raised in response to the error.
 // The lifetime of the object referenced by the handle is until the user reacts
 // to the error or the error is dismissed by a call to
@@ -270,13 +282,41 @@ SB_EXPORT SbSystemPlatformError
 SbSystemRaisePlatformError(SbSystemPlatformErrorType type,
                            SbSystemPlatformErrorCallback callback,
                            void* user_data);
+#else   // SB_API_VERSION < 11
+// Cobalt calls this function to notify the platform that an error has occurred
+// in the application that the platform may need to handle. The platform is
+// expected to then notify the user of the error and to provide a means for
+// any required interaction, such as by showing a dialog.
+//
+// The return value is a boolean. If the platform cannot respond to the error,
+// then this function should return |false|, otherwise it should return |true|.
+//
+// This function may be called from any thread, and it is the platform's
+// responsibility to decide how to handle an error received while a previous
+// error is still pending. If that platform can only handle one error at a
+// time, then it may queue the second error or ignore it by returning
+// |kSbSystemPlatformErrorInvalid|.
+//
+// |type|: An error type, from the SbSystemPlatformErrorType enum,
+//    that defines the error.
+// |callback|: A function that may be called by the platform to let the caller
+//   know that the user has reacted to the error.
+// |user_data|: An opaque pointer that the platform should pass as an argument
+//   to the callback function, if it is called.
+SB_EXPORT bool SbSystemRaisePlatformError(
+    SbSystemPlatformErrorType type,
+    SbSystemPlatformErrorCallback callback,
+    void* user_data);
+#endif  // SB_API_VERSION < 11
 
+#if SB_API_VERSION < 11
 // Clears a platform error that was previously raised by a call to
 // |SbSystemRaisePlatformError|. The platform may use this, for example,
 // to close a dialog that was opened in response to the error.
 //
 // |handle|: The platform error to be cleared.
 SB_EXPORT void SbSystemClearPlatformError(SbSystemPlatformError handle);
+#endif  // SB_API_VERSION < 11
 
 // Pointer to a function to compare two items. The return value uses standard
 // |*cmp| semantics:
@@ -551,8 +591,50 @@ SB_EXPORT void SbSystemHideSplashScreen();
 // send kSbEventTypeResume to the event handler.
 // The return value of this function cannot change over the life time of the
 // application.
-bool SbSystemSupportsResume();
+SB_EXPORT bool SbSystemSupportsResume();
 #endif  // SB_API_VERSION >= 10
+
+#if SB_API_VERSION >= 11
+// Returns pointer to a constant global struct implementing the extension named
+// |name|, if it is implemented. Otherwise return NULL.
+//
+// Extensions are used to implement behavior which is specific to the
+// combination of application & platform. An extension relies on a header file
+// in the "extension" subdirectory of an app, which is used by both the
+// application and the Starboard platform to define an extension API struct.
+// Since the header is used both above and below Starboard, it cannot include
+// any files from above Starboard. It may depend on Starboard headers. That
+// API struct has only 2 required fields which must be first: a const char*
+// |name|, storing the extension name, and a uint32_t |version| storing the
+// version number of the extension. All other fields may be C types (including
+// custom structs) or function pointers. The application will query for the
+// function by name using SbSystemGetExtension, and the platform returns a
+// pointer to the singleton instance of the extension struct. The singleton
+// struct should be constant after initialization, since the application may
+// only get the extension once, meaning updated values would be ignored. As
+// the version of extensions are incremented, fields may be added to the end
+// of the struct, but never removed (only deprecated).
+
+SB_EXPORT const void* SbSystemGetExtension(const char* name);
+#endif  // SB_API_VERSION >= 11
+
+#if SB_API_VERSION >= 11
+// Computes a HMAC-SHA256 digest of |message| into |digest| using the
+// application's certification secret.
+//
+// This function may be implemented as an alternative to implementing
+// SbSystemGetProperty(kSbSystemPropertyBase64EncodedCertificationSecret),
+// however both should not be implemented.
+//
+// The output will be written into |digest|.  |digest_size_in_bytes| must be 32
+// (or greater), since 32-bytes will be written into it.
+// Returns false in the case of an error, or if it is not implemented.  In this
+// case the contents of |digest| will be undefined.
+bool SbSystemSignWithCertificationSecretKey(const uint8_t* message,
+                                            size_t message_size_in_bytes,
+                                            uint8_t* digest,
+                                            size_t digest_size_in_bytes);
+#endif
 
 #ifdef __cplusplus
 }  // extern "C"

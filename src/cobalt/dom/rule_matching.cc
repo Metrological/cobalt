@@ -15,12 +15,14 @@
 #include "cobalt/dom/rule_matching.h"
 
 #include <algorithm>
+#include <memory>
 #include <vector>
 
 #include "base/bind.h"
 #include "base/callback.h"
-#include "base/debug/trace_event.h"
-#include "base/string_util.h"
+#include "base/memory/ptr_util.h"
+#include "base/strings/string_util.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/base/unused.h"
 #include "cobalt/cssom/after_pseudo_element.h"
 #include "cobalt/cssom/attribute_selector.h"
@@ -307,7 +309,8 @@ class SelectorMatcher : public cssom::SelectorVisitor {
              selector_iterator = compound_selector->simple_selectors().begin();
          selector_iterator != compound_selector->simple_selectors().end();
          ++selector_iterator) {
-      element_ = MatchSelectorAndElement(*selector_iterator, element_, false);
+      element_ =
+          MatchSelectorAndElement(selector_iterator->get(), element_, false);
       if (!element_) {
         return;
       }
@@ -351,18 +354,6 @@ Element* MatchSelectorAndElement(cssom::Selector* selector, Element* element,
   SelectorMatcher selector_matcher(element, matching_combinators);
   selector->Accept(&selector_matcher);
   return selector_matcher.element();
-}
-
-bool MatchRuleAndElement(cssom::CSSStyleRule* rule, Element* element) {
-  for (cssom::Selectors::const_iterator selector_iterator =
-           rule->selectors().begin();
-       selector_iterator != rule->selectors().end(); ++selector_iterator) {
-    DCHECK(*selector_iterator);
-    if (MatchSelectorAndElement(*selector_iterator, element, true)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 void GatherCandidateNodesFromSelectorNodesMap(
@@ -600,12 +591,13 @@ bool RemoveNodesFromMatchingNodes(
   // |parent_nodes| and |matching_nodes|, as these two containers are kept in
   // sync.
   for (const auto& parent_node_to_remove : parent_nodes_to_remove) {
-    for (size_t index = 0; index < parent_nodes->size(); ++index) {
+    for (size_t index = 0; index < parent_nodes->size();) {
       if (parent_node_to_remove == (*parent_nodes)[index]) {
         node_removed = true;
         parent_nodes->erase(parent_nodes->begin() + index);
         matching_nodes->erase(matching_nodes->begin() + index);
-        break;
+      } else {
+        ++index;
       }
     }
   }
@@ -806,7 +798,7 @@ void UpdateElementMatchingRulesFromRuleMatchingState(HTMLElement* element) {
   // they can be compared to the new matching rules after they are generated.
   cssom::RulesWithCascadePrecedence* element_old_matching_rules =
       element_document->scratchpad_html_element_matching_rules();
-  *element_old_matching_rules = *element->matching_rules();
+  *element_old_matching_rules = std::move(*element->matching_rules());
   element->matching_rules()->clear();
 
   for (int type = 0; type < kMaxPseudoElementType; ++type) {
@@ -816,8 +808,9 @@ void UpdateElementMatchingRulesFromRuleMatchingState(HTMLElement* element) {
       cssom::RulesWithCascadePrecedence* old_pseudo_element_matching_rules =
           element_document->scratchpad_pseudo_element_matching_rules(
               PseudoElementType(type));
-      *old_pseudo_element_matching_rules = *pseudo_element->matching_rules();
-      pseudo_element->ClearMatchingRules();
+      *old_pseudo_element_matching_rules =
+          std::move(*pseudo_element->matching_rules());
+      pseudo_element->matching_rules()->clear();
     }
   }
 
@@ -851,7 +844,7 @@ void UpdateElementMatchingRulesFromRuleMatchingState(HTMLElement* element) {
       if (!element->pseudo_element(pseudo_element_type)) {
         element->SetPseudoElement(
             pseudo_element_type,
-            make_scoped_ptr(new dom::PseudoElement(element)));
+            base::WrapUnique(new dom::PseudoElement(element)));
 
         cssom::RulesWithCascadePrecedence* old_pseudo_element_matching_rules =
             element_document->scratchpad_pseudo_element_matching_rules(
@@ -953,6 +946,18 @@ scoped_refptr<Element> QuerySelector(Node* node, const std::string& selectors,
     child = iterator.Next();
   }
   return NULL;
+}
+
+bool MatchRuleAndElement(cssom::CSSStyleRule* rule, Element* element) {
+  for (cssom::Selectors::const_iterator selector_iterator =
+           rule->selectors().begin();
+       selector_iterator != rule->selectors().end(); ++selector_iterator) {
+    DCHECK(*selector_iterator);
+    if (MatchSelectorAndElement(selector_iterator->get(), element, true)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 scoped_refptr<NodeList> QuerySelectorAll(Node* node,

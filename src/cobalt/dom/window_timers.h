@@ -15,10 +15,11 @@
 #ifndef COBALT_DOM_WINDOW_TIMERS_H_
 #define COBALT_DOM_WINDOW_TIMERS_H_
 
-#include "base/hash_tables.h"
+#include <memory>
+
+#include "base/containers/hash_tables.h"
 #include "base/memory/ref_counted.h"
-#include "base/memory/scoped_ptr.h"
-#include "base/timer.h"
+#include "base/timer/timer.h"
 #include "cobalt/script/callback_function.h"
 #include "cobalt/script/script_value.h"
 #include "cobalt/script/wrappable.h"
@@ -44,19 +45,26 @@ class WindowTimers {
 
   void ClearAllIntervalsAndTimeouts();
 
+  // When called, it will irreversibly put the WindowTimers object in an
+  // inactive state where timer callbacks are ignored.  This is useful when
+  // we're in the process of shutting down and wish to drain the JavaScript
+  // event queue without adding more on to the end of it.
+  void DisableCallbacks();
+
  private:
   class TimerInfo : public base::RefCounted<TimerInfo> {
    public:
-    TimerInfo(script::Wrappable* const owner, scoped_ptr<base::Timer> timer,
+    TimerInfo(script::Wrappable* const owner,
+              std::unique_ptr<base::internal::TimerBase> timer,
               const TimerCallbackArg& callback)
-        : timer_(timer.release()), callback_(owner, callback) {}
+        : timer_(std::move(timer)), callback_(owner, callback) {}
 
-    base::Timer* timer() { return timer_.get(); }
+    base::internal::TimerBase* timer() { return timer_.get(); }
     TimerCallbackArg::Reference& callback_reference() { return callback_; }
 
    private:
     ~TimerInfo() {}
-    scoped_ptr<base::Timer> timer_;
+    std::unique_ptr<base::internal::TimerBase> timer_;
     TimerCallbackArg::Reference callback_;
 
     friend class base::RefCounted<TimerInfo>;
@@ -67,13 +75,17 @@ class WindowTimers {
   // if none can be found.
   int GetFreeTimerHandle();
 
-  // This callback, when called by base::Timer, runs the callback in TimerInfo
+  // This callback, when called by Timer, runs the callback in TimerInfo
   // and removes the handle if necessary.
   void RunTimerCallback(int handle);
 
   Timers timers_;
   int current_timer_index_;
   script::Wrappable* const owner_;
+
+  // Set to false when we're about to shutdown, to ensure that no new JavaScript
+  // is fired as we are waiting for it to drain.
+  bool callbacks_active_ = true;
 
   DISALLOW_COPY_AND_ASSIGN(WindowTimers);
 };

@@ -17,9 +17,9 @@
 
 #include <utility>
 
+#include "starboard/common/socket.h"
 #include "starboard/memory.h"
 #include "starboard/nplb/socket_helpers.h"
-#include "starboard/socket.h"
 #include "starboard/thread.h"
 #include "starboard/time.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -138,6 +138,7 @@ TEST_P(PairSbSocketSendToTest, RainyDaySendToSocketUntilBlocking) {
   scoped_ptr<ConnectedTrioWrapped> trio =
       CreateAndConnectWrapped(GetServerAddressType(), GetClientAddressType(),
                               GetPortNumberForTests(), kSocketTimeout);
+  ASSERT_TRUE(trio);
   // Push data into socket until it dies.
   uint64_t num_bytes = 0;
   while (num_bytes < kMaxTransferLimit) {
@@ -169,6 +170,7 @@ TEST_P(PairSbSocketSendToTest, RainyDaySendToSocketConnectionReset) {
   scoped_ptr<ConnectedTrioWrapped> trio =
       CreateAndConnectWrapped(GetServerAddressType(), GetClientAddressType(),
                               GetPortNumberForTests(), kSocketTimeout);
+  ASSERT_TRUE(trio);
 
   // Kills the server, the client socket will have it's connection reset during
   // one of the subsequent writes.

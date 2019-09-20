@@ -14,6 +14,7 @@
 
 {
   'variables': {
+    'optimize_target_for_speed': 1,
     'sb_pedantic_warnings': 1,
   },
   'targets': [
@@ -44,6 +45,10 @@
         'child_combinator.h',
         'class_selector.cc',
         'class_selector.h',
+        'cobalt_ui_nav_focus_transform_function.cc',
+        'cobalt_ui_nav_focus_transform_function.h',
+        'cobalt_ui_nav_spotlight_transform_function.cc',
+        'cobalt_ui_nav_spotlight_transform_function.h',
         'color_stop.cc',
         'color_stop.h',
         'combinator.cc',
@@ -55,6 +60,7 @@
         'compound_selector.h',
         'computed_style.cc',
         'computed_style.h',
+        'computed_style_utils.h',
         'css.cc',
         'css.h',
         'css_computed_style_data.cc',
@@ -123,6 +129,8 @@
         'integer_value.h',
         'interpolate_property_value.cc',
         'interpolate_property_value.h',
+        'interpolated_transform_property_value.cc',
+        'interpolated_transform_property_value.h',
         'keyword_names.cc',
         'keyword_names.h',
         'keyword_value.cc',
@@ -198,6 +206,8 @@
         'simple_selector.h',
         'specificity.cc',
         'specificity.h',
+        'serializer.cc',
+        'serializer.h',
         'string_value.cc',
         'string_value.h',
         'style_sheet.cc',
@@ -215,10 +225,7 @@
         'transform_function_list_value.cc',
         'transform_function_list_value.h',
         'transform_function_visitor.h',
-        'transform_matrix.cc',
-        'transform_matrix.h',
-        'transform_matrix_function_value.cc',
-        'transform_matrix_function_value.h',
+        'transform_property_value.h',
         'translate_function.cc',
         'translate_function.h',
         'type_selector.cc',
@@ -233,6 +240,7 @@
         'url_src_value.h',
         'url_value.cc',
         'url_value.h',
+        'viewport_size.h',
       ],
       'export_dependent_settings': [
         # Additionally, ensure that the include directories for generated
@@ -242,10 +250,12 @@
       ],
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
+        '<(DEPTH)/cobalt/network/network.gyp:network',
         '<(DEPTH)/cobalt/browser/browser_bindings_gen.gyp:generated_types',
         '<(DEPTH)/cobalt/dom/dom_exception.gyp:dom_exception',
         '<(DEPTH)/cobalt/math/math.gyp:math',
-        '<(DEPTH)/googleurl/googleurl.gyp:googleurl',
+        '<(DEPTH)/cobalt/ui_navigation/ui_navigation.gyp:ui_navigation',
+        '<(DEPTH)/url/url.gyp:url',
         'embed_resources_as_header_files',
       ],
     },

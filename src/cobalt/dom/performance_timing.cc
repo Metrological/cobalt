@@ -17,14 +17,15 @@
 namespace cobalt {
 namespace dom {
 
-PerformanceTiming::PerformanceTiming(const scoped_refptr<base::Clock>& clock)
-    : navigation_start_clock_(new base::OffsetClock(clock, clock->Now())) {}
+PerformanceTiming::PerformanceTiming(
+    const scoped_refptr<base::BasicClock>& clock)
+    : navigation_start_(base::Time::Now() - base::Time::UnixEpoch()),
+      navigation_start_clock_(new base::OffsetClock(clock, clock->Now())) {}
 
 PerformanceTiming::~PerformanceTiming() {}
 
 uint64 PerformanceTiming::navigation_start() const {
-  return static_cast<uint64>(
-      navigation_start_clock_->origin().InMilliseconds());
+  return static_cast<uint64>(navigation_start_.InMilliseconds());
 }
 
 scoped_refptr<base::OffsetClock> PerformanceTiming::GetNavigationStartClock() {

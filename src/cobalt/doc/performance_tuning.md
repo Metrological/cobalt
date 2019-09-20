@@ -202,7 +202,17 @@ not changing, which consumes CPU resources.  This behavior is defined by the
 value of `SB_MUST_FREQUENTLY_FLIP_DISPLAY_BUFFER` in your platform's
 `configuration_public.h` file.  Unless your platform is restricted in this
 aspect, you should ensure that `SB_MUST_FREQUENTLY_FLIP_DISPLAY_BUFFER`
-is set to `0`.
+is set to `0`.  If the platform needs a new frame submitted periodically,
+an alternative to setting `SB_MUST_FREQUENTLY_FLIP_DISPLAY_BUFFER` to `1`
+is to implement the Cobalt Extension "dev.cobalt.extension.Graphics" and
+report the maximum frame interval via `GetMaximumFrameIntervalInMilliseconds`.
+
+See `SbSystemGetExtension` and
+[`CobaltExtensionGraphicsApi`](../extension/graphics.h).
+
+Every `cobalt_minimum_frame_time_in_milliseconds`, this function will be queried
+to determine if a new frame should be presented even if the scene has not
+changed.
 
 **Tags:** *configuration_public.h, startup, browse-to-watch, input latency,
            framerate.*
@@ -263,6 +273,19 @@ must be set explicitly in `gyp_configuration.gypi`.
 
 **Tags:** *framerate, startup, browse-to-watch, input latency*
 
+#### Optimize for size vs speed
+
+For qa and gold configs, different compiler flags can be used for gyp targets
+which should be optimized for size vs speed. This can be used to reduce the
+executable size with minimal impact on performance. On top of the base
+`compiler_flags_qa` and `compiler_flags_gold`, the gyp variables
+`compiler_flags_qa_size`, `compiler_flags_qa_speed`, `compiler_flags_gold_size`,
+and `compiler_flags_gold_speed` will be used. Performance-critical gyp targets
+specify `optimize_target_for_speed`: 1, and these will use compiler flags
+`compiler_flags_<config>` + `compiler_flags_<config>_speed`; other gyp targets
+will use `compiler_flags_<config>` + `compiler_flags_<config>_size`.
+
+**Tags:** *cpu memory, package size*
 
 #### Link Time Optimization (LTO)
 If your toolchain supports it, it is recommended that you enable the LTO

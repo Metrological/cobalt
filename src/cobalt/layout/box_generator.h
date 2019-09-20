@@ -15,7 +15,6 @@
 #ifndef COBALT_LAYOUT_BOX_GENERATOR_H_
 #define COBALT_LAYOUT_BOX_GENERATOR_H_
 
-#include "base/memory/scoped_vector.h"
 #include "cobalt/cssom/css_computed_style_declaration.h"
 #include "cobalt/cssom/string_value.h"
 #include "cobalt/dom/html_element.h"
@@ -108,7 +107,7 @@ class BoxGenerator : public dom::NodeVisitor {
 
   const scoped_refptr<cssom::CSSComputedStyleDeclaration>
       parent_css_computed_style_declaration_;
-  const scoped_refptr<const web_animations::AnimationSet>& parent_animations_;
+  const scoped_refptr<const web_animations::AnimationSet> parent_animations_;
   scoped_refptr<Paragraph>* paragraph_;
   // The current element depth.
   const int dom_element_depth_;

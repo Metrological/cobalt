@@ -68,7 +68,6 @@ void DummySessionUpdatedFunc(SbDrmSystem drm_system,
 
 #endif  // SB_API_VERSION >= 10
 
-#if SB_HAS(DRM_KEY_STATUSES)
 void DummySessionKeyStatusesChangedFunc(SbDrmSystem drm_system,
                                         void* context,
                                         const void* session_id,
@@ -76,7 +75,6 @@ void DummySessionKeyStatusesChangedFunc(SbDrmSystem drm_system,
                                         int number_of_keys,
                                         const SbDrmKeyId* key_ids,
                                         const SbDrmKeyStatus* key_statuses);
-#endif  // SB_HAS(DRM_KEY_STATUSES)
 
 void DummySessionClosedFunc(SbDrmSystem drm_system,
                             void* context,
@@ -86,7 +84,10 @@ void DummySessionClosedFunc(SbDrmSystem drm_system,
 SbDrmSystem CreateDummyDrmSystem(const char* key_system);
 
 static const char* kKeySystems[] = {
-    "com.widevine", "com.widevine.alpha", "com.youtube.playready", "fairplay",
+    "com.widevine",
+    "com.widevine.alpha",
+    "com.youtube.playready",
+    "com.youtube.fairplay",
 };
 
 }  // namespace nplb

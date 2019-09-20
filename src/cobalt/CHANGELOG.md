@@ -2,6 +2,185 @@
 
 This document records all notable changes made to Cobalt since the last release.
 
+## Version 20
+
+ - **Support for QUIC and SPDY is now enabled.**
+
+   QUIC and SPDY networking protocol support is added and these are enabled by
+   default (if the server supports the protocol).  This reduces roundtrip
+   overhead and will improve networking overhead performance, especially on
+   lower quality connections.
+
+ - **BoringSSL replaces OpenSSL enabling architecture-specific optimizations.**
+
+   The update to BoringSSL brings with it the introduction of assembly-optimized
+   architecture-specific optimizations that can bring a 5x speed up to
+   cryptographic functions.  This is especially useful when decrypting TLS for
+   high-bandwidth video.
+
+ - **Added support for decoding JPEG images as multi-plane YUV.**
+
+   JPEG images are decoded into RGBA in previous versions of Cobalt.  The native
+   format of most JPEG images is YV12, which takes only 3/8 of memory compare to
+   RGBA.  Now JPEG images are decoded into multi-plane YUV images on platforms
+   with "rasterizer_type" set to "direct-gles".  As a result, when decoding to
+   multi-plane image is enabled, image cache size set by AutoMem will be reduced
+   by half due to the more compact nature of the YUV image format versus RGB.
+   This feature can also be enabled/disabled explicitly by passing command line
+   parameter "allow_image_decoding_to_multi_plane" to Cobalt with value "true"
+   or "false".
+
+ - **Improved image cache purge strategy.**
+
+   Cobalt's image cache is now more aware of which images are likely to be
+   reused (e.g. the ones referenced by HTMLImageElements, even if they are not
+   currently displayed), and will now prioritize purging completely unreferenced
+   images before weakly referenced images.
+
+ - **Added support for encoded image caching.**
+
+   Cobalt now has support for caching the encoded image data fetched from the
+   network.  This enables Cobalt to keep the cached encoded image data resident
+   so that when the user resumes, Cobalt does not need to do a network fetch
+   for images again.  The size of this cache can be adjusted via the gyp
+   option `encoded_image_cache_size_in_bytes`, or the command line switch
+   `--encoded_image_cache_size_in_bytes`.
+
+ - **Added support for Device Authentication URL signing.**
+
+   Cobalt will now add URL parameters signed with the device's secret key and
+   certification scope to the initial URL.  For more information, see
+   [doc/device_authentication.md](doc/device_authentication.md).
+
+ - **Updated Chromium net and base libraries from m25 to m70.**
+
+   Cobalt now has rebased its m25 net and base libraries to Chromium's m70
+   version of those libraries, bringing with it more functionality, better
+   performance, and fewer bugs.
+
+ - **Media Codec Support.**
+
+   Cobalt now supports the AV1 codec, the HEVC (H.265) codec, Dolby Digital
+   (AC-3) and Dolby Digital Plus (Enhanced AC-3, or EAC-3).
+
+ - **Flexbox support added.**
+
+   Cobalt now supports the Flexible Box Module, enabling web applications to
+   take advantage of the more expressive layout model.
+
+ - **Support added for Chromium DevTools with V8.**
+
+   Cobalt now supports the Chromium DevTools to help debug web applications.
+   You can access it on non-gold builds by first starting Cobalt, and then using
+   a browser to navigate to `http://YOUR_DEVICE_IP:9222`.  The Elements,
+   Sources, Console and Performance panels are supported.
+
+ - **Support added for Intersection Observer Web API.**
+
+   Cobalt now supports the Intersection Observer Web API to enable more
+   performant checking of whether HTML elements are visible or not.  Note that
+   Cobalt's implementation currently does not support triggering visibility
+   events that occur during CSS animation/transition playback.
+
+ - **Support for custom interface HTMLVideoElement.setMaxVideoCapabilities()**
+
+   This allows the web application to express a guarantee to the platform's
+   video player that a video will never exceed a maximum quality in a particular
+   property.  You could use this for example to indicate that a video will never
+   adapt past a maximum resolution.
+
+ - **Platform Services API added**
+
+   This API enables web applications to communicate directly to
+   platform-specific services and systems, assuming the platform explicitly
+   enables the given service.
+
+ - **EGL/GLES-based reference implementation of the Blitter API now available.**
+
+   The Blitter API is now much easier to test locally on desktop computers or
+   any device that already supports EGL/GLES.  The new platform configuration
+   is named `linux-x64x11-blittergles`.
+
+ - **Add support for AbortController to the  Fetch API.**
+
+   The Fetch API is now updated to support the `AbortController` feature.
+
+ - **Support added for HTMLAudioElement HTML tag.**
+
+   This can be used to play audio-only media.
+
+ - **Add support for CSS3 Media Queries “dpi” value.**
+
+   This can be used by the web application to adjust its layout depending
+   on the physical size of the display device, if known.
+
+ - **Add support for scrollWidth, scrollHeight, scrollLeft, and scrollTop.**
+
+   The web application can now query and set scroll properties of containers.
+
+ - **Initial support for Cobalt Evergreen automatic software updater added.**
+
+   Cobalt is transitioning towards a runtime-linkable environment in order to
+   support automatic software updates.  Changes have been made around the
+   Starboard interface in anticipation of this.  Most notably, the EGL/GLES
+   interface is no longer assumed to be available but rather Cobalt will now
+   query the Starboard implementation for a structure of function pointers that
+   implement the EGL/GLES APIs.
+
+   Part of this process involves moving options that were formerly build-time
+   options to be instead run-time options.  This will primarily be enabled
+   by the new Starboard extensions framework.  An example of an platform
+   specific option added in this way can be found in
+   `cobalt/extension/graphis.h`.
+
+ - **Cobalt code assumes that no errors are generated for unused parameters**
+
+   There now exists Cobalt code where input parameters may be unused, and it
+   is expected that toolchains will not generate errors in these cases.  You
+   may need to adjust your Starboard configuration so that your compiler no
+   longer emits this error, e.g. build with the `-Wno-unused-parameter`
+   command line flag in GCC.
+   `UNREFERENCED_PARAMETER` has been removed, but `SB_UNREFERENCED_PARAMETER`
+   will continue to be supported.
+
+ - **MediaSession actions and action details have changed to match the spec**
+
+   MediaSession now uses the newly specified `seekto` action instead of the
+   Cobalt 19 `seek` action, which has been removed. Also added `skipad` and
+   `stop` to the recognized actions, but the web app may not handle them yet.
+   The `MediaSessionClient` now uses a generated POD class for the IDL
+   `MediaSessionActionDetails` dictionary rather than an inner `Data` class when
+   invoking actions. (see: https://wicg.github.io/mediasession)
+
+- **MediaSession supports setPositionState() function**
+
+  MediaSession now supports the newly specified `setPositionState()` function.
+  `MediaSessionClient` now provides an immutable `MediaSessionState` object
+  that may be copied and queried on any thread to get a coherent view of
+  attributes set by the the web app on the `MediaSession`.
+
+- **Add support for size vs speed compiler flags**
+
+  Performance-critical gyp targets now specify `optimize_target_for_speed`: 1.
+  For gold configs, these targets will use compiler flags `compiler_flags_gold`
+  and `compiler_flags_gold_speed`; other targets will use `compiler_flags_gold`
+  and `compiler_flags_gold_size`. For qa configs, the respective variables are
+  `compiler_flags_qa_speed` and `compiler_flags_qa_size`. Only the qa and gold
+  configs support these types of compiler flag gyp variables.
+
+ - **Improvements and Bug Fixes**
+
+   - Fix bug where Cobalt would not refresh the layout when the textContent
+     property of a DOM TextNode is modified.
+   - Media codecs can now be disabled with the “--disable_media_codecs” command
+     line option to help with debugging.
+   - Enable “--proxy” command line flag in gold builds of Cobalt.
+   - Add `GetMaximumFrameIntervalInMilliseconds()` platform Cobalt configuration
+     setting (in `cobalt/extension/graphics.h`) to allow a platform to indicate a
+     minimum framerate causing Cobalt to rerender the display even if nothing has
+     changed after the specified interval.
+
+
 ## Version 19
  - **Add support for V8 JavaScript Engine**
 
@@ -15,11 +194,6 @@ This document records all notable changes made to Cobalt since the last release.
 
    This was not originally supported by Cobalt, and any prior use of animated
    WebP with transparency would have resulted in visual artifacts.
-
- - **Improvements and Bug Fixes**
-   - Fix pointer/mouse events not being dispatched to JavaScript in the same
-     order that they are generated by Starboard, relative to other input events
-     like key presses.
 
  - **Storage format changed from sqlite3 to protobuf**
 
@@ -49,11 +223,23 @@ This document records all notable changes made to Cobalt since the last release.
    implement voice-enabled features without relying on the platform's capability
    to perform speech recognition.
 
- - **Bison 2 deprecation**
+ - **Bison 3 required**
 
    Support for compiling with version 2.x of the GNU bison parser generator
-   has been deprecated and will be removed in this version. Please upgrade
-   to bison 3.x.
+   has been removed. Please update to version 3.x.
+
+ - **Improvements and Bug Fixes**
+  - Fix pointer/mouse events not being dispatched to JavaScript in the same
+    order that they are generated by Starboard, relative to other input events
+    like key presses.
+  - Fix issue with CSS media queries not assigning correct rule indices.
+    An issue was discovered and fixed where CSS rules defined within `@media`
+    rules would be assigned a CSS rule index relative to their position within
+    the nested `@media` rule rather than being assigned an index relative to
+    their position within the parent CSS file.  As a result, rules may have been
+    assigned incorrect precedence during CSS rule matching.
+  - Fix issue where the style attribute would not appear in the string output
+    of calls to element.outerHTML.
 
 ## Version 16
  - **Rebase libwebp to version 1.0.0**

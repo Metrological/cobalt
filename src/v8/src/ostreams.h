@@ -5,9 +5,11 @@
 #ifndef V8_OSTREAMS_H_
 #define V8_OSTREAMS_H_
 
+#if !V8_OS_STARBOARD
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#endif
 #include <ostream>  // NOLINT
 #include <streambuf>
 
@@ -18,7 +20,7 @@
 namespace v8 {
 namespace internal {
 
-
+#if !defined(COBALT)
 class OFStreamBase : public std::streambuf {
  public:
   explicit OFStreamBase(FILE* f);
@@ -31,6 +33,7 @@ class OFStreamBase : public std::streambuf {
   virtual int_type overflow(int_type c);
   virtual std::streamsize xsputn(const char* s, std::streamsize n);
 };
+#endif  // !defined(COBALT)
 
 
 // An output stream writing to a file.
@@ -40,7 +43,9 @@ class V8_EXPORT_PRIVATE OFStream : public std::ostream {
   virtual ~OFStream();
 
  private:
+#if !defined(COBALT)
   OFStreamBase buf_;
+#endif  // !defined(COBALT)
 };
 
 

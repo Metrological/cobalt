@@ -23,23 +23,27 @@ from starboard.tools import command_line
 RE_WEBDRIVER_LISTEN = re.compile(r'Starting WebDriver server on port (\d+)')
 # Pattern to match Cobalt log line for when a WindowDriver has been created.
 RE_WINDOWDRIVER_CREATED = re.compile(
-    r'^\[\d+/\d+:INFO:browser_module\.cc\(\d+\)\] Created WindowDriver: ID=\S+')
+    r'^\[[\d:]+/[\d.]+:INFO:browser_module\.cc\(\d+\)\] Created WindowDriver: ID=\S+'
+)
 # Pattern to match Cobalt log line for when a WebModule is has been loaded.
 RE_WEBMODULE_LOADED = re.compile(
-    r'^\[\d+/\d+:INFO:browser_module\.cc\(\d+\)\] Loaded WebModule')
+    r'^\[[\d:]+/[\d.]+:INFO:browser_module\.cc\(\d+\)\] Loaded WebModule')
 
 # selenium imports
 # pylint: disable=C0103
 ActionChains = webdriver_utils.import_selenium_module(
     submodule='webdriver.common.action_chains').ActionChains
 keys = webdriver_utils.import_selenium_module('webdriver.common.keys')
+selenium_exceptions = webdriver_utils.import_selenium_module(
+    'common.exceptions')
 
 DEFAULT_STARTUP_TIMEOUT_SECONDS = 2 * 60
 WEBDRIVER_HTTP_TIMEOUT_SECONDS = 2 * 60
 COBALT_EXIT_TIMEOUT_SECONDS = 5
 PAGE_LOAD_WAIT_SECONDS = 30
-WINDOWDRIVER_CREATED_TIMEOUT_SECONDS = 30
-WEBMODULE_LOADED_TIMEOUT_SECONDS = 30
+WINDOWDRIVER_CREATED_TIMEOUT_SECONDS = 45
+WEBMODULE_LOADED_TIMEOUT_SECONDS = 45
+FIND_ELEMENT_RETRY_LIMIT = 20
 
 COBALT_WEBDRIVER_CAPABILITIES = {
     'browserName': 'cobalt',
@@ -69,6 +73,7 @@ class CobaltRunner(object):
     device_id = None
     config = None
     out_directory = None
+    target_params = None
 
   class WindowDriverCreatedTimeoutException(Exception):
     """Exception thrown when WindowDriver was not created in time."""
@@ -92,9 +97,9 @@ class CobaltRunner(object):
       url:              The intial URL to launch Cobalt on.
       log_file:         The log file's name string.
       target_params:    An array of command line arguments to launch Cobalt
-      with.
+        with.
       success_message:  Optional success message to be printed on successful
-      exit.
+        exit.
     """
 
     self.test_script_started = threading.Event()
@@ -242,15 +247,14 @@ class CobaltRunner(object):
 
   def _KillLauncher(self):
     """Kills the launcher and its attached Cobalt instance."""
-    try:
-      self.launcher.Kill()
-    except Exception as e:  # pylint: disable=broad-except
-      sys.stderr.write('Exception killing launcher:\n')
-      sys.stderr.write('{}\n'.format(str(e)))
+    self.ExecuteJavaScript('window.close();')
 
     self.runner_thread.join(COBALT_EXIT_TIMEOUT_SECONDS)
     if self.runner_thread.isAlive():
-      sys.stderr.write('***Runner thread still alive***\n')
+      sys.stderr.write(
+          '***Runner thread still alive after sending graceful shutdown command, try again by killing app***\n'
+      )
+      self.launcher.Kill()
     # Once the write end of the pipe has been closed by the launcher, the reader
     # thread will get EOF and exit.
     self.reader_thread.join(COBALT_EXIT_TIMEOUT_SECONDS)
@@ -301,20 +305,57 @@ class CobaltRunner(object):
         thread.interrupt_main()
     return 0
 
+  def ExecuteJavaScript(self, js_code):
+    return self.webdriver.execute_script(js_code)
+
   def GetCval(self, cval_name):
-    """Returns the Python object represented by a JSON cval string.
+    """Returns the Python object represented by a cval string.
 
     Args:
       cval_name: Name of the cval.
+
     Returns:
-      Python object represented by the JSON cval string
+      Python object represented by the cval string
     """
     javascript_code = 'return h5vcc.cVal.getValue(\'{}\')'.format(cval_name)
-    json_result = self.webdriver.execute_script(javascript_code)
-    if json_result is None:
+    cval_string = self.ExecuteJavaScript(javascript_code)
+    if cval_string is None:
       return None
     else:
-      return json.loads(json_result)
+      try:
+        # Try to parse numbers and booleans.
+        return json.loads(cval_string)
+      except ValueError:
+        # If we can't parse a value, return the cval string as-is.
+        return cval_string
+
+  def GetCvalBatch(self, cval_name_list):
+    """Retrieves a batch of cvals.
+
+    Use this instead of retrieving individual cvals to reduce the overhead of
+    the query. There can be several milliseconds of latency for each individual
+    query.
+
+    Args:
+      cval_name_list: List of cval names.
+
+    Returns:
+      Python dictionary of values indexed by the cval names provided.
+    """
+    javascript_code_list = [
+        'h5vcc.cVal.getValue(\'{}\')'.format(name) for name in cval_name_list
+    ]
+    javascript_code = 'return [' + ','.join(javascript_code_list) + ']'
+    json_results = self.ExecuteJavaScript(javascript_code)
+    cval_value_list = [
+        None if result is None else json.loads(result)
+        for result in json_results
+    ]
+    return dict(zip(cval_name_list, cval_value_list))
+
+  def GetUserAgent(self):
+    """Returns the User Agent string."""
+    return self.ExecuteJavaScript('return navigator.userAgent;')
 
   def PollUntilFound(self, css_selector, expected_num=None):
     """Polls until an element is found.
@@ -322,6 +363,7 @@ class CobaltRunner(object):
     Args:
       css_selector: A CSS selector
       expected_num: The expected number of the selector type to be found.
+
     Raises:
       Underlying WebDriver exceptions
     """
@@ -337,6 +379,7 @@ class CobaltRunner(object):
 
     Args:
       unique_selector: A CSS selector that will select only one element
+
     Raises:
       AssertException: the element isn't unique
     Returns:
@@ -349,6 +392,7 @@ class CobaltRunner(object):
 
     Args:
       css_selector: A CSS selector
+
     Raises:
       AssertException: the element isn't found
     """
@@ -364,12 +408,25 @@ class CobaltRunner(object):
     Args:
       css_selector: A CSS selector
       expected_num: Expected number of matching elements
+
     Raises:
       AssertException: expected_num isn't met
     Returns:
       Array of selected elements
     """
-    elements = self.webdriver.find_elements_by_css_selector(css_selector)
+    # The retry part below is a temporary workaround to handle command
+    # failures during a short window of stale Cobalt WindowDriver
+    # after navigation. We only introduced it because of limited time budget
+    # at the moment, please don't introduce any code that relies on it.
+    retry_count = 0
+    while retry_count < FIND_ELEMENT_RETRY_LIMIT:
+      retry_count += 1
+      try:
+        elements = self.webdriver.find_elements_by_css_selector(css_selector)
+      except selenium_exceptions.NoSuchElementException:
+        time.sleep(0.2)
+        continue
+      break
     if expected_num is not None and len(elements) != expected_num:
       raise CobaltRunner.AssertException(
           'Expected number of element {} is: {}, got {}'.format(
@@ -406,6 +463,7 @@ class CobaltRunner(object):
 
     Args:
       url:  URL string to be loaded by Cobalt.
+
     Raises:
       Underlying WebDriver exceptions
     """
@@ -434,5 +492,9 @@ def GetDeviceParamsFromCommandLine():
   device_params.config = args.config
   device_params.device_id = args.device_id
   device_params.out_directory = args.out_directory
+  if args.target_params == None:
+    device_params.target_params = []
+  else:
+    device_params.target_params = [args.target_params]
 
   return device_params

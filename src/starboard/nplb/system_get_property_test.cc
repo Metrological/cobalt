@@ -14,8 +14,8 @@
 
 #include <string.h>
 
+#include "starboard/common/string.h"
 #include "starboard/memory.h"
-#include "starboard/string.h"
 #include "starboard/system.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -62,13 +62,31 @@ void BasicTest(SbSystemPropertyId id,
 #undef LOCAL_CONTEXT
 }
 
+void UnmodifiedOnFailureTest(SbSystemPropertyId id, int line) {
+  char value[kValueSize] = {0};
+  SbMemorySet(value, 0xCD, kValueSize);
+  for (size_t i = 0; i <= kValueSize; ++i) {
+    if (SbSystemGetProperty(id, value, i)) {
+      return;
+    }
+    for (auto ch : value) {
+      ASSERT_EQ('\xCD', ch) << "Context : id=" << id << ", line=" << line;
+    }
+  }
+}
+
 TEST(SbSystemGetPropertyTest, ReturnsRequired) {
   BasicTest(kSbSystemPropertyFriendlyName, true, true, __LINE__);
   BasicTest(kSbSystemPropertyPlatformName, true, true, __LINE__);
 
   BasicTest(kSbSystemPropertyChipsetModelNumber, false, true, __LINE__);
   BasicTest(kSbSystemPropertyFirmwareVersion, false, true, __LINE__);
+#if SB_API_VERSION >= 11
+  BasicTest(kSbSystemPropertyOriginalDesignManufacturerName,
+            false, true, __LINE__);
+#else
   BasicTest(kSbSystemPropertyNetworkOperatorName, false, true, __LINE__);
+#endif
   BasicTest(kSbSystemPropertySpeechApiKey, false, true, __LINE__);
 
   if (IsCEDevice(SbSystemGetDeviceType())) {
@@ -100,6 +118,30 @@ TEST(SbSystemGetPropertyTest, FailsGracefullyBogusId) {
   BasicTest(static_cast<SbSystemPropertyId>(99999), true, false, __LINE__);
 }
 
+TEST(SbSystemGetPropertyTest, DoesNotTouchOutputBufferOnFailureForDefinedIds) {
+  UnmodifiedOnFailureTest(kSbSystemPropertyChipsetModelNumber, __LINE__);
+  UnmodifiedOnFailureTest(kSbSystemPropertyFirmwareVersion, __LINE__);
+  UnmodifiedOnFailureTest(kSbSystemPropertyFriendlyName, __LINE__);
+  UnmodifiedOnFailureTest(kSbSystemPropertyManufacturerName, __LINE__);
+  UnmodifiedOnFailureTest(kSbSystemPropertyBrandName, __LINE__);
+  UnmodifiedOnFailureTest(kSbSystemPropertyModelName, __LINE__);
+  UnmodifiedOnFailureTest(kSbSystemPropertyModelYear, __LINE__);
+#if SB_API_VERSION >= 11
+  UnmodifiedOnFailureTest(kSbSystemPropertyOriginalDesignManufacturerName,
+                          __LINE__);
+#else
+  UnmodifiedOnFailureTest(kSbSystemPropertyNetworkOperatorName, __LINE__);
+#endif
+  UnmodifiedOnFailureTest(kSbSystemPropertyPlatformName, __LINE__);
+#if SB_API_VERSION < 10
+  UnmodifiedOnFailureTest(kSbSystemPropertyPlatformUuid, __LINE__);
+#endif  // SB_API_VERSION < 10
+  UnmodifiedOnFailureTest(kSbSystemPropertySpeechApiKey, __LINE__);
+#if SB_API_VERSION >= 5
+  UnmodifiedOnFailureTest(kSbSystemPropertyUserAgentAuxField, __LINE__);
+#endif  // SB_API_VERSION >= 5
+}
+
 TEST(SbSystemGetPropertyTest, SpeechApiKeyNotLeaked) {
   static const size_t kSize = 512;
   char speech_api_key[kSize] = {0};
@@ -118,7 +160,11 @@ TEST(SbSystemGetPropertyTest, SpeechApiKeyNotLeaked) {
     kSbSystemPropertyManufacturerName,
     kSbSystemPropertyModelName,
     kSbSystemPropertyModelYear,
+#if SB_API_VERSION >= 11
+    kSbSystemPropertyOriginalDesignManufacturerName,
+#else
     kSbSystemPropertyNetworkOperatorName,
+#endif
     kSbSystemPropertyPlatformName,
   };
 

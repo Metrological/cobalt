@@ -21,25 +21,29 @@
 #include <string>
 #include <vector>
 
+#include "base/containers/hash_tables.h"
 #include "base/containers/small_map.h"
-#include "base/hash_tables.h"
 #include "base/memory/ref_counted.h"
 #include "cobalt/cssom/property_value.h"
-#include "googleurl/src/gurl.h"
+#include "url/gurl.h"
 
 namespace cobalt {
 namespace cssom {
 
 // WARNING: When adding a new property, add a SetPropertyDefinition() entry in
-// NonTrivialGlobalVariables(), and add an entry in GetPropertyKey().
-// The property may also need to be added to a Web API idl file, with a
-// corresponding getter and setter implementation.
-// Additionally, support may need to be added in the css_parser module.
+// NonTrivialGlobalVariables(), and add an entry in GetPropertyKey(). The
+// property also likely needs to be added to css_style_declaration.idl,
+// CSSStyleDeclaration, and CSSComputedStyleData with a corresponding getter
+// and setter implementation. Additionally, support may need to be added in the
+// css_parser module including a test in parser_test.cc.
 
 enum PropertyKey {
   kNoneProperty = -1,
 
-  // All supported longhand property values are listed here.
+  // All supported longhand properties are listed here.
+  kAlignContentProperty,
+  kAlignItemsProperty,
+  kAlignSelfProperty,
   kAnimationDelayProperty,
   kAnimationDirectionProperty,
   kAnimationDurationProperty,
@@ -74,11 +78,18 @@ enum PropertyKey {
   kContentProperty,
   kDisplayProperty,
   kFilterProperty,
+  kFlexBasisProperty,
+  kFlexDirectionProperty,
+  kFlexGrowProperty,
+  kFlexShrinkProperty,
+  kFlexWrapProperty,
   kFontFamilyProperty,
   kFontSizeProperty,
   kFontStyleProperty,
   kFontWeightProperty,
   kHeightProperty,
+  kIntersectionObserverRootMarginProperty,
+  kJustifyContentProperty,
   kLeftProperty,
   kLineHeightProperty,
   kMarginBottomProperty,
@@ -90,6 +101,7 @@ enum PropertyKey {
   kMinHeightProperty,
   kMinWidthProperty,
   kOpacityProperty,
+  kOrderProperty,
   kOutlineColorProperty,
   kOutlineStyleProperty,
   kOutlineWidthProperty,
@@ -123,7 +135,7 @@ enum PropertyKey {
   kZIndexProperty,
   kMaxLonghandPropertyKey = kZIndexProperty,
 
-  // All other supported property values, such as shorthand property values or
+  // All other supported properties, such as shorthand properties or
   // aliases are listed here.
   kAllProperty,
   kSrcProperty,           // property for @font-face at-rule
@@ -143,6 +155,8 @@ enum PropertyKey {
   kBorderStyleProperty,
   kBorderTopProperty,
   kBorderWidthProperty,
+  kFlexProperty,
+  kFlexFlowProperty,
   kFontProperty,
   kMarginProperty,
   kOutlineProperty,
@@ -165,12 +179,13 @@ enum Animatable {
   kAnimatableYes,
 };
 
-// Any property that is referenced when calculating the declared property values
+// Any property that is referenced when calculating the computed property values
 // of children should have this set to true.
-// NOTE: This currently occurs within CalculateComputedStyleContext.
-enum ImpactsChildDeclaredStyle {
-  kImpactsChildDeclaredStyleNo,
-  kImpactsChildDeclaredStyleYes,
+// NOTE: This currently occurs within
+// CalculateComputedStyleContext::HandleSpecifiedValue.
+enum ImpactsChildComputedStyle {
+  kImpactsChildComputedStyleNo,
+  kImpactsChildComputedStyleYes,
 };
 
 // Any property that is referenced during box generation should have this set to
@@ -200,7 +215,7 @@ enum ImpactsBoxCrossReferences {
 // NOTE: The array size of SmallMap and the decision to use std::map as the
 // underlying container type are based on extensive performance testing. Do not
 // change these unless additional profiling data justifies it.
-typedef base::SmallMap<std::map<PropertyKey, GURL>, 1> GURLMap;
+typedef base::small_map<std::map<PropertyKey, GURL>, 1> GURLMap;
 
 const char* GetPropertyName(PropertyKey key);
 
@@ -208,7 +223,7 @@ const scoped_refptr<PropertyValue>& GetPropertyInitialValue(PropertyKey key);
 
 Inherited GetPropertyInheritance(PropertyKey key);
 Animatable GetPropertyAnimatable(PropertyKey key);
-ImpactsChildDeclaredStyle GetPropertyImpactsChildDeclaredStyle(PropertyKey key);
+ImpactsChildComputedStyle GetPropertyImpactsChildComputedStyle(PropertyKey key);
 ImpactsBoxGeneration GetPropertyImpactsBoxGeneration(PropertyKey key);
 ImpactsBoxSizes GetPropertyImpactsBoxSizes(PropertyKey key);
 ImpactsBoxCrossReferences GetPropertyImpactsBoxCrossReferences(PropertyKey key);
@@ -244,8 +259,8 @@ namespace BASE_HASH_NAMESPACE {
 #if defined(BASE_HASH_USE_HASH_STRUCT)
 
 // Forward declaration in case <hash_fun.h> is not #include'd.
-template <typename Key>
-struct hash;
+template <>
+struct hash<cobalt::cssom::PropertyKey>;
 
 template <>
 struct hash<cobalt::cssom::PropertyKey> {

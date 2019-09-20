@@ -15,10 +15,10 @@
 #ifndef STARBOARD_NPLB_THREAD_HELPERS_H_
 #define STARBOARD_NPLB_THREAD_HELPERS_H_
 
+#include "starboard/common/condition_variable.h"
+#include "starboard/common/mutex.h"
 #include "starboard/common/semaphore.h"
-#include "starboard/condition_variable.h"
 #include "starboard/configuration.h"
-#include "starboard/mutex.h"
 #include "starboard/thread.h"
 #include "starboard/time.h"
 #include "starboard/types.h"
@@ -180,6 +180,8 @@ class AbstractTestThread {
       ADD_FAILURE_AT(__FILE__, __LINE__) << "Could not join thread.";
     }
   }
+
+  SbThread GetThread() { return thread_; }
 
  private:
   static void* ThreadEntryPoint(void* ptr) {

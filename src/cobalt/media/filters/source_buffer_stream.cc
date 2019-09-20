@@ -9,8 +9,8 @@
 #include <sstream>
 
 #include "base/bind.h"
-#include "base/debug/trace_event.h"
 #include "base/logging.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/media/base/starboard_utils.h"
 #include "cobalt/media/base/timestamp_constants.h"
 #include "cobalt/media/base/video_resolution.h"
@@ -1545,12 +1545,6 @@ bool SourceBufferStream::UpdateAudioConfig(const AudioDecoderConfig& config) {
     return false;
   }
 
-  if (!audio_configs_[0].encryption_scheme().Matches(
-          config.encryption_scheme())) {
-    MEDIA_LOG(ERROR, media_log_) << "Audio encryption changes not allowed.";
-    return false;
-  }
-
   // Check to see if the new config matches an existing one.
   for (size_t i = 0; i < audio_configs_.size(); ++i) {
     if (config.Matches(audio_configs_[i])) {
@@ -1596,12 +1590,6 @@ bool SourceBufferStream::UpdateVideoConfig(const VideoDecoderConfig& config) {
 
   if (video_configs_[0].codec() != config.codec()) {
     MEDIA_LOG(ERROR, media_log_) << "Video codec changes not allowed.";
-    return false;
-  }
-
-  if (!video_configs_[0].encryption_scheme().Matches(
-          config.encryption_scheme())) {
-    MEDIA_LOG(ERROR, media_log_) << "Video encryption changes not allowed.";
     return false;
   }
 

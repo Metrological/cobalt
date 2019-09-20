@@ -4,6 +4,10 @@
 
 #include "src/flags.h"
 
+#if defined(STARBOARD)
+#include "starboard/client_porting/poem/stdlib_poem.h"
+#endif
+
 #include <cctype>
 #include <cstdlib>
 #include <sstream>
@@ -387,8 +391,10 @@ int FlagList::SetFlagsFromCommandLine(int* argc,
           // sense there.
           continue;
         } else {
+#ifndef V8_OS_STARBOARD
           PrintF(stderr, "Error: unrecognized flag %s\n"
                  "Try --help for options\n", arg);
+#endif
           return_code = j;
           break;
         }
@@ -402,9 +408,11 @@ int FlagList::SetFlagsFromCommandLine(int* argc,
           value = argv[i++];
         }
         if (!value) {
+#ifndef V8_OS_STARBOARD
           PrintF(stderr, "Error: missing value for flag %s of type %s\n"
                  "Try --help for options\n",
                  arg, Type2String(flag->type()));
+#endif
           return_code = j;
           break;
         }
@@ -426,6 +434,7 @@ int FlagList::SetFlagsFromCommandLine(int* argc,
           // We do not use strtoul because it accepts negative numbers.
           int64_t val = static_cast<int64_t>(strtoll(value, &endp, 10));
           if (val < 0 || val > std::numeric_limits<unsigned int>::max()) {
+#ifndef V8_OS_STARBOARD
             PrintF(stderr,
                    "Error: Value for flag %s of type %s is out of bounds "
                    "[0-%" PRIu64
@@ -434,6 +443,7 @@ int FlagList::SetFlagsFromCommandLine(int* argc,
                    arg, Type2String(flag->type()),
                    static_cast<uint64_t>(
                        std::numeric_limits<unsigned int>::max()));
+#endif
             return_code = j;
             break;
           }
@@ -467,13 +477,16 @@ int FlagList::SetFlagsFromCommandLine(int* argc,
           flag->type() == Flag::TYPE_MAYBE_BOOL;
       if ((is_bool_type && value != nullptr) || (!is_bool_type && is_bool) ||
           *endp != '\0') {
-        PrintF(stderr, "Error: illegal value for flag %s of type %s\n"
+#ifndef V8_OS_STARBOARD
+        PrintF(stderr,
+               "Error: illegal value for flag %s of type %s\n"
                "Try --help for options\n",
                arg, Type2String(flag->type()));
         if (is_bool_type) {
           PrintF(stderr,
                  "To set or unset a boolean flag, use --flag or --no-flag.\n");
         }
+#endif
         return_code = j;
         break;
       }
@@ -498,7 +511,11 @@ int FlagList::SetFlagsFromCommandLine(int* argc,
 
   if (FLAG_help) {
     PrintHelp();
+#if V8_OS_STARBOARD
+    SbSystemRequestStop(0);
+#else
     exit(0);
+#endif
   }
   // parsed all flags successfully
   return return_code;
@@ -567,6 +584,7 @@ void FlagList::PrintHelp() {
   CpuFeatures::PrintTarget();
   CpuFeatures::PrintFeatures();
 
+#ifndef V8_OS_STARBOARD
   OFStream os(stdout);
   os << "Usage:\n"
         "  shell [options] -e string\n"
@@ -591,6 +609,7 @@ void FlagList::PrintHelp() {
        << "        type: " << Type2String(f.type()) << "  default: " << f
        << "\n";
   }
+#endif
 }
 
 

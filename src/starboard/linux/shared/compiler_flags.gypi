@@ -32,13 +32,23 @@
     ],
     'compiler_flags_qa': [
       '-fno-rtti',
-      '-O2',
       '-gline-tables-only',
+    ],
+    'compiler_flags_qa_size': [
+      '-Os',
+    ],
+    'compiler_flags_qa_speed': [
+      '-O2',
     ],
     'compiler_flags_gold': [
       '-fno-rtti',
-      '-O2',
       '-gline-tables-only',
+    ],
+    'compiler_flags_gold_size': [
+      '-Os',
+    ],
+    'compiler_flags_gold_speed': [
+      '-O2',
     ],
     'conditions': [
       ['clang==1', {
@@ -74,6 +84,8 @@
           '-Wno-undefined-var-template',
           # Do not warn about an implicit exception spec mismatch.
           '-Wno-implicit-exception-spec-mismatch',
+          # It's OK not to use some input parameters.
+          '-Wno-unused-parameter',
         ],
       }],
       ['cobalt_fastbuild==0', {
@@ -126,8 +138,6 @@
           '-Wno-undefined-bool-conversion',
           # Skia doesn't use overrides.
           '-Wno-inconsistent-missing-override',
-          # Do not warn about unused function params.
-          '-Wno-unused-parameter',
           # Do not warn for implicit type conversions that may change a value.
           '-Wno-conversion',
           # shifting a negative signed value is undefined

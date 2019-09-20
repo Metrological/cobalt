@@ -16,13 +16,13 @@
 #define COBALT_LOADER_TEXT_DECODER_H_
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "base/callback.h"
 #include "base/compiler_specific.h"
 #include "base/logging.h"
-#include "base/memory/scoped_ptr.h"
 #include "base/threading/thread_checker.h"
 #include "cobalt/dom/url_utils.h"
 #include "cobalt/loader/decoder.h"
@@ -34,23 +34,24 @@ namespace loader {
 // results.
 class TextDecoder : public Decoder {
  public:
-  typedef base::Callback<void(const loader::Origin&, scoped_ptr<std::string>)>
-      SuccessCallback;
+  typedef base::Callback<void(const loader::Origin&,
+                              std::unique_ptr<std::string>)>
+      TextAvailableCallback;
 
-  explicit TextDecoder(const SuccessCallback& done_callback)
-      : done_callback_(done_callback), suspended_(false) {}
   ~TextDecoder() override {}
 
   // This function is used for binding callback for creating TextDecoder.
-  static scoped_ptr<Decoder> Create(
-      base::Callback<void(const loader::Origin&, scoped_ptr<std::string>)>
-          done_callback) {
-    return scoped_ptr<Decoder>(new TextDecoder(done_callback));
+  static std::unique_ptr<Decoder> Create(
+      const TextAvailableCallback& text_available_callback,
+      const loader::Decoder::OnCompleteFunction& load_complete_callback =
+          loader::Decoder::OnCompleteFunction()) {
+    return std::unique_ptr<Decoder>(
+        new TextDecoder(text_available_callback, load_complete_callback));
   }
 
   // From Decoder.
   void DecodeChunk(const char* data, size_t size) override {
-    DCHECK(thread_checker_.CalledOnValidThread());
+    DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
     if (suspended_) {
       return;
     }
@@ -60,47 +61,60 @@ class TextDecoder : public Decoder {
     text_->append(data, size);
   }
 
-  void DecodeChunkPassed(scoped_ptr<std::string> data) override {
-    DCHECK(thread_checker_.CalledOnValidThread());
+  void DecodeChunkPassed(std::unique_ptr<std::string> data) override {
+    DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
     DCHECK(data);
     if (suspended_) {
       return;
     }
 
     if (!text_) {
-      text_ = data.Pass();
+      text_ = std::move(data);
     } else {
       text_->append(*data);
     }
   }
 
   void Finish() override {
-    DCHECK(thread_checker_.CalledOnValidThread());
-    if (suspended_) {
-      return;
+    DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+
+    if (suspended_) return;
+
+    if (!text_) text_.reset(new std::string);
+
+    text_available_callback_.Run(last_url_origin_, std::move(text_));
+    if (!load_complete_callback_.is_null()) {
+      load_complete_callback_.Run(base::nullopt);
     }
-    if (!text_) {
-      text_.reset(new std::string);
-    }
-    done_callback_.Run(last_url_origin_, text_.Pass());
   }
+
   bool Suspend() override {
     suspended_ = true;
     text_.reset();
     return true;
   }
+
   void Resume(render_tree::ResourceProvider* /*resource_provider*/) override {
     suspended_ = false;
   }
+
   void SetLastURLOrigin(const loader::Origin& last_url_origin) override {
     last_url_origin_ = last_url_origin;
   }
 
  private:
-  base::ThreadChecker thread_checker_;
-  SuccessCallback done_callback_;
+  explicit TextDecoder(
+      const TextAvailableCallback& text_available_callback,
+      const loader::Decoder::OnCompleteFunction& load_complete_callback)
+      : text_available_callback_(text_available_callback),
+        load_complete_callback_(load_complete_callback),
+        suspended_(false) {}
+
+  THREAD_CHECKER(thread_checker_);
+  TextAvailableCallback text_available_callback_;
+  loader::Decoder::OnCompleteFunction load_complete_callback_;
   loader::Origin last_url_origin_;
-  scoped_ptr<std::string> text_;
+  std::unique_ptr<std::string> text_;
   bool suspended_;
 };
 

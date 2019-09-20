@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "base/memory/ref_counted.h"
-#include "base/memory/scoped_ptr.h"
 #include "cobalt/dom/element.h"
 #include "cobalt/dom/html_body_element.h"
 #include "cobalt/dom/html_collection.h"
@@ -52,7 +51,7 @@ TEST_F(IsDisplayedTest, ElementIsShown) {
   // display: none
   EXPECT_FALSE(
       algorithms::IsDisplayed(document()->GetElementById("none").get()));
-  // visiblity: hidden
+  // visibility: hidden
   EXPECT_FALSE(
       algorithms::IsDisplayed(document()->GetElementById("hidden").get()));
 }

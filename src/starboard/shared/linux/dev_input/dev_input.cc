@@ -12,6 +12,301 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#ifdef USE_COMPOSITOR
+#include "starboard/shared/linux/dev_input/dev_input.h"
+#include "starboard/raspi/shared/window_internal.h"
+#include "starboard/input.h"
+#include "starboard/key.h"
+#include "starboard/shared/posix/time_internal.h"
+#include <WPEFramework/compositor/Client.h>
+#include <linux/input.h>
+#include <fcntl.h>
+
+namespace starboard {
+namespace shared {
+namespace dev_input {
+namespace {
+
+using ::starboard::shared::starboard::Application;
+typedef int FileDescriptor;
+
+class DevInputImpl : public DevInput, public WPEFramework::Compositor::IDisplay::IKeyboard {
+public:
+    explicit DevInputImpl(SbWindow window);
+    DevInputImpl(SbWindow window, FileDescriptor wake_up_fd);
+    ~DevInputImpl() override;
+
+    Event* PollNextSystemEvent() override;
+    Event* WaitForSystemEventWithTimeout(SbTime time) override;
+    void WakeSystemEventWait() override;
+
+    virtual void AddRef() const override {
+    }
+    virtual uint32_t Release() const override {
+        return 0;
+    }
+    virtual void KeyMap(const char information[], const uint16_t size) override {
+    }
+    virtual void Key(const uint32_t key,
+            const IKeyboard::state action, const uint32_t time) override {
+    }
+    virtual void Modifiers(uint32_t depressedMods,
+            uint32_t latchedMods, uint32_t lockedMods, uint32_t group) override {
+    }
+    virtual void Repeat(int32_t rate, int32_t delay) override {
+    }
+    virtual void Direct(const uint32_t key, const state action) override {
+        event_.type = EV_KEY;
+        event_.code = key;
+        event_.value = action;
+        new_key_input_ = true;
+    }
+    Event* KeyInputToApplicationEvent(const struct input_event& event, int modifiers);
+
+private:
+    SbWindow window_;
+    struct input_event event_;
+    bool new_key_input_;
+    WPEFramework::Compositor::IDisplay *idisplay;
+};
+
+DevInputImpl::DevInputImpl(SbWindow window)
+: window_(window), new_key_input_(false) {
+    struct SbWindowPrivate *win = window_;
+    WPEFramework::Compositor::IDisplay::ISurface* isurface;
+    isurface = win->element->GetSurface();
+    isurface->Keyboard(this);
+
+    std::string displayName = isurface->Name();
+    displayName.pop_back();
+    displayName.pop_back();
+    idisplay = WPEFramework::Compositor::IDisplay::Instance(displayName);
+
+    int fd = idisplay->FileDescriptor();
+    fcntl(fd, F_SETFL, O_NONBLOCK);
+}
+
+DevInputImpl::DevInputImpl(SbWindow window, FileDescriptor wake_up_fd)
+: window_(window) {
+}
+
+DevInputImpl::~DevInputImpl() {
+}
+
+DevInput::Event* DevInputImpl::PollNextSystemEvent() {
+
+    idisplay->Process(1);
+    if (new_key_input_) {
+        new_key_input_ = false;
+        return KeyInputToApplicationEvent(event_, 0);
+    }
+    return NULL;
+}
+
+DevInput::Event* DevInputImpl::WaitForSystemEventWithTimeout(SbTime duration) {
+    Event* event = PollNextSystemEvent();
+    if (event) {
+        return event;
+    }
+
+    int fd = idisplay->FileDescriptor();
+    fd_set fdSet;
+    FD_ZERO(&fdSet);
+    FD_SET(fd, &fdSet);
+    struct timeval tv;
+    SbTime clamped_duration = std::max(duration, (SbTime)0);
+    ToTimevalDuration(clamped_duration, &tv);
+    select(fd+1, &fdSet, NULL, NULL, &tv);
+
+    return PollNextSystemEvent();
+}
+
+void DevInputImpl::WakeSystemEventWait() {
+}
+
+SbKey KeyCodeToSbKey(uint16_t code) {
+    switch (code) {
+    case KEY_BACKSPACE:
+        return kSbKeyBack;
+    case KEY_DELETE:
+        return kSbKeyDelete;
+    case KEY_TAB:
+        return kSbKeyTab;
+    case KEY_LINEFEED:
+    case KEY_ENTER:
+    case KEY_KPENTER:
+        return kSbKeyReturn;
+    case KEY_CLEAR:
+        return kSbKeyClear;
+    case KEY_SPACE:
+        return kSbKeySpace;
+    case KEY_HOME:
+        return kSbKeyHome;
+    case KEY_END:
+        return kSbKeyEnd;
+    case KEY_PAGEUP:
+        return kSbKeyPrior;
+    case KEY_PAGEDOWN:
+        return kSbKeyNext;
+    case KEY_LEFT:
+        return kSbKeyLeft;
+    case KEY_RIGHT:
+        return kSbKeyRight;
+    case KEY_DOWN:
+        return kSbKeyDown;
+    case KEY_UP:
+        return kSbKeyUp;
+    case KEY_ESC:
+        return kSbKeyEscape;
+
+    case KEY_A:
+        return kSbKeyA;
+    case KEY_B:
+        return kSbKeyB;
+    case KEY_C:
+        return kSbKeyC;
+    case KEY_D:
+        return kSbKeyD;
+    case KEY_E:
+        return kSbKeyE;
+    case KEY_F:
+        return kSbKeyF;
+    case KEY_G:
+        return kSbKeyG;
+    case KEY_H:
+        return kSbKeyH;
+    case KEY_I:
+        return kSbKeyI;
+    case KEY_J:
+        return kSbKeyJ;
+    case KEY_K:
+        return kSbKeyK;
+    case KEY_L:
+        return kSbKeyL;
+    case KEY_M:
+        return kSbKeyM;
+    case KEY_N:
+        return kSbKeyN;
+    case KEY_O:
+        return kSbKeyO;
+    case KEY_P:
+        return kSbKeyP;
+    case KEY_Q:
+        return kSbKeyQ;
+    case KEY_R:
+        return kSbKeyR;
+    case KEY_S:
+        return kSbKeyS;
+    case KEY_T:
+        return kSbKeyT;
+    case KEY_U:
+        return kSbKeyU;
+    case KEY_V:
+        return kSbKeyV;
+    case KEY_W:
+        return kSbKeyW;
+    case KEY_X:
+        return kSbKeyX;
+    case KEY_Y:
+        return kSbKeyY;
+    case KEY_Z:
+        return kSbKeyZ;
+
+    case KEY_0:
+        return kSbKey0;
+    case KEY_1:
+        return kSbKey1;
+    case KEY_2:
+        return kSbKey2;
+    case KEY_3:
+        return kSbKey3;
+    case KEY_4:
+        return kSbKey4;
+    case KEY_5:
+        return kSbKey5;
+    case KEY_6:
+        return kSbKey6;
+    case KEY_7:
+        return kSbKey7;
+    case KEY_8:
+        return kSbKey8;
+    case KEY_9:
+        return kSbKey9;
+
+    case KEY_NUMERIC_0:
+    case KEY_NUMERIC_1:
+    case KEY_NUMERIC_2:
+    case KEY_NUMERIC_3:
+    case KEY_NUMERIC_4:
+    case KEY_NUMERIC_5:
+    case KEY_NUMERIC_6:
+    case KEY_NUMERIC_7:
+    case KEY_NUMERIC_8:
+    case KEY_NUMERIC_9:
+        return static_cast<SbKey>(kSbKey0 + (code - KEY_NUMERIC_0));
+
+    case KEY_KP0:
+        return kSbKeyNumpad0;
+    case KEY_KP1:
+        return kSbKeyNumpad1;
+    case KEY_KP2:
+        return kSbKeyNumpad2;
+    case KEY_KP3:
+        return kSbKeyNumpad3;
+    case KEY_KP4:
+        return kSbKeyNumpad4;
+    case KEY_KP5:
+        return kSbKeyNumpad5;
+    case KEY_KP6:
+        return kSbKeyNumpad6;
+    case KEY_KP7:
+        return kSbKeyNumpad7;
+    case KEY_KP8:
+        return kSbKeyNumpad8;
+    case KEY_KP9:
+        return kSbKeyNumpad9;
+    }
+    return kSbKeyUnknown;
+}
+
+SbKeyLocation KeyCodeToSbKeyLocation(uint16_t code) {
+    return kSbKeyLocationUnspecified;
+}
+
+DevInput::Event* DevInputImpl::KeyInputToApplicationEvent(
+        const struct input_event& event,
+        int modifiers) {
+    SB_DCHECK(event.type == EV_KEY);
+    SB_DCHECK(event.value <= 2);
+    SbInputData* data = new SbInputData();
+    SbMemorySet(data, 0, sizeof(*data));
+    data->window = window_;
+    data->type =
+            (event.value == 0 ? kSbInputEventTypeUnpress : kSbInputEventTypePress);
+    data->device_type = kSbInputDeviceTypeKeyboard;
+    data->device_id = 1;
+    data->key = KeyCodeToSbKey(event.code);
+    data->key_location = KeyCodeToSbKeyLocation(event.code);
+    data->key_modifiers = modifiers;
+    return new Event(kSbEventTypeInput, data,
+            &Application::DeleteDestructor<SbInputData>);
+}
+
+}  // namespace
+
+DevInput* DevInput::Create(SbWindow window) {
+    return new DevInputImpl(window);
+}
+
+DevInput* DevInput::Create(SbWindow window, int wake_up_fd) {
+    return new DevInputImpl(window, wake_up_fd);
+}
+
+}  // namespace dev_input
+}  // namespace shared
+}  // namespace starboard
+
+#else
 #include "starboard/shared/linux/dev_input/dev_input.h"
 
 #include <errno.h>
@@ -21,22 +316,26 @@
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <unordered_map>
 #include <vector>
 
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <memory>
 #include <string>
+#include <vector>
 
+#include "starboard/common/log.h"
+#include "starboard/common/string.h"
 #include "starboard/configuration.h"
 #include "starboard/directory.h"
 #include "starboard/input.h"
 #include "starboard/key.h"
-#include "starboard/log.h"
 #include "starboard/memory.h"
+#include "starboard/once.h"
 #include "starboard/shared/posix/handle_eintr.h"
 #include "starboard/shared/posix/time_internal.h"
-#include "starboard/string.h"
 
 namespace starboard {
 namespace shared {
@@ -60,8 +359,141 @@ enum TouchPadPositionState {
   kTouchPadPositionAll = kTouchPadPositionX | kTouchPadPositionY
 };
 
+class ControllerTuning {
+ public:
+  ~ControllerTuning() {}
+
+  uint16_t GetKeyCode(uint16_t from);
+  void MapKeyCode(uint16_t from, uint16_t to) { key_map_[from] = to; }
+
+  float GetMinimumFlat() { return minimum_flat_; }
+  void SetMinimumFlat(float value) { minimum_flat_ = value; }
+
+ protected:
+  // Only create this object from DeviceMap::CreateControllerTuning()
+  ControllerTuning() {}
+
+ private:
+  std::unordered_map<int, int> key_map_;
+  float minimum_flat_ = 0;
+
+  friend class DeviceMap;
+};
+
+uint16_t ControllerTuning::GetKeyCode(uint16_t from) {
+  auto mapped_code = key_map_.find(from);
+  if (mapped_code != key_map_.end()) {
+    return mapped_code->second;
+  }
+  return from;
+}
+
+class DeviceMap {
+ public:
+  DeviceMap();
+  ~DeviceMap() = delete;
+
+  // Gets the singleton instance of the default DeviceMap. This
+  // is created the first time it is used.
+  static DeviceMap* Get();
+
+  // Return the controller tuning object for a given device. Return null if none
+  // is registered.
+  ControllerTuning* GetControllerTuning(const std::string& device) const;
+
+ private:
+  // Create a controllertuning object.
+  ControllerTuning* CreateControllerTuning();
+
+  // Register a controller tuning object for a given device.
+  void RegisterControllerTuning(const std::string& device,
+                                ControllerTuning* tuning);
+
+  std::unordered_map<std::string, ControllerTuning*> device_map_;
+
+  // Registry for all known controller tunings.
+  std::vector<std::unique_ptr<ControllerTuning>> controller_tunings_;
+};
+
+DeviceMap::DeviceMap() {
+  // Add key mappings for the Xbox controllers.
+  ControllerTuning* xbox_one_controller = CreateControllerTuning();
+  RegisterControllerTuning("Microsoft X-Box One S pad", xbox_one_controller);
+  RegisterControllerTuning("Microsoft X-Box One pad", xbox_one_controller);
+  RegisterControllerTuning("Microsoft X-Box 360 pad", xbox_one_controller);
+  xbox_one_controller->SetMinimumFlat(0.125);
+  xbox_one_controller->MapKeyCode(BTN_NORTH, BTN_WEST);  // Map for 'X'
+  xbox_one_controller->MapKeyCode(BTN_WEST, BTN_NORTH);  // Map for 'Y'
+  xbox_one_controller->MapKeyCode(BTN_TL, BTN_TL2);      // Map for left bumper.
+  xbox_one_controller->MapKeyCode(BTN_TR, BTN_TR2);  // Map for right bumper.
+
+  // Add key mappings for the PlayStation 4 controller.
+  ControllerTuning* ps4_controller = CreateControllerTuning();
+  RegisterControllerTuning("Sony Interactive Entertainment Wireless Controller",
+                           ps4_controller);
+  RegisterControllerTuning("Sony Computer Entertainment Wireless Controller",
+                           ps4_controller);
+  RegisterControllerTuning("Sony PLAYSTATION(R)3 Controller", ps4_controller);
+
+  ps4_controller->MapKeyCode(BTN_TL2, BTN_TL);  // Map for left trigger.
+  ps4_controller->MapKeyCode(BTN_TR2, BTN_TR);  // Map for right trigger.
+  ps4_controller->MapKeyCode(BTN_TL, BTN_TL2);  // Map for left bumper.
+  ps4_controller->MapKeyCode(BTN_TR, BTN_TR2);  // Map for right bumper.
+
+  // Add key mappings for the Horipad Switch wired controller.
+  ControllerTuning* switch_controller = CreateControllerTuning();
+  RegisterControllerTuning("HORI CO.,LTD. HORIPAD S", switch_controller);
+
+  switch_controller->MapKeyCode(BTN_C, BTN_SOUTH);     // Map for 'A'.
+  switch_controller->MapKeyCode(BTN_A, BTN_NORTH);     // Map for 'Y'.
+  switch_controller->MapKeyCode(BTN_NORTH, BTN_WEST);  // Map for 'X'.
+  switch_controller->MapKeyCode(BTN_WEST, BTN_TL2);    // Map for left bumper.
+  switch_controller->MapKeyCode(BTN_Z, BTN_TR2);       // Map for right bumper.
+
+  switch_controller->MapKeyCode(BTN_THUMBL, BTN_SELECT);  // Map for 'capture'.
+  switch_controller->MapKeyCode(BTN_MODE, KEY_HOME);      // Map for 'home'.
+
+  switch_controller->MapKeyCode(BTN_TL2, KEY_KPMINUS);  // Map for '-'.
+  switch_controller->MapKeyCode(BTN_TR2, KEY_KPPLUS);   // Map for '+'.
+
+  switch_controller->MapKeyCode(BTN_SELECT, BTN_THUMBL);  // Map for left hat.
+  switch_controller->MapKeyCode(BTN_START, BTN_THUMBR);   // Map for right hat.
+}
+
+void DeviceMap::RegisterControllerTuning(const std::string& device,
+                                         ControllerTuning* tuning) {
+  SB_DCHECK(GetControllerTuning(device) == NULL ||
+            GetControllerTuning(device) == tuning);
+  device_map_[device] = tuning;
+}
+
+ControllerTuning* DeviceMap::CreateControllerTuning() {
+  ControllerTuning* tuning = new ControllerTuning();
+  controller_tunings_.emplace_back(tuning);
+  return tuning;
+}
+
+ControllerTuning* DeviceMap::GetControllerTuning(
+    const std::string& device) const {
+  auto mapped_device = device_map_.find(device);
+  if (mapped_device != device_map_.end()) {
+    return mapped_device->second;
+  }
+  return NULL;
+}
+
+SB_ONCE_INITIALIZE_FUNCTION(DeviceMap, GetDeviceMap);
+
+DeviceMap* DeviceMap::Get() {
+  DeviceMap* device_map = GetDeviceMap();
+  return device_map;
+}
+
 struct InputDeviceInfo {
   InputDeviceInfo() : fd(-1), touchpad_position_state(kTouchPadPositionNone) {}
+
+  // Device Name
+  std::string name;
 
   // File descriptor open for the device
   FileDescriptor fd;
@@ -69,6 +501,7 @@ struct InputDeviceInfo {
   std::map<int, struct input_absinfo> axis_info;
   std::map<int, float> axis_value;
   int touchpad_position_state;
+  ControllerTuning* tuning;
 };
 
 bool IsTouchpadPositionKnown(InputDeviceInfo* device_info) {
@@ -92,21 +525,22 @@ class DevInputImpl : public DevInput {
   // Converts an input_event into a kSbEventInput Application::Event. The caller
   // is responsible for deleting the returned event.
   Event* InputToApplicationEvent(const struct input_event& event,
-                                 InputDeviceInfo* device_info,
-                                 int modifiers);
+                                 int modifiers,
+                                 InputDeviceInfo* device_info);
 
   // Converts an input_event containing a key input into a kSbEventInput
   // Application::Event. The caller is responsible for deleting the returned
   // event.
   Event* KeyInputToApplicationEvent(const struct input_event& event,
-                                    int modifiers);
+                                    int modifiers,
+                                    InputDeviceInfo* device_info);
 
   // Converts an input_event containing an axis event into a kSbEventInput
   // Application::Event. The caller is responsible for deleting the returned
   // event.
   Event* AxisInputToApplicationEvent(const struct input_event& event,
-                                     InputDeviceInfo* device_info,
-                                     int modifiers);
+                                     int modifiers,
+                                     InputDeviceInfo* device_info);
 
   // The window to attribute /dev/input events to.
   SbWindow window_;
@@ -432,34 +866,28 @@ SbKey KeyCodeToSbKey(uint16_t code) {
       return kSbKeyGamepadDPadLeft;
     case BTN_DPAD_RIGHT:
       return kSbKeyGamepadDPadRight;
-    // The mapping for the buttons below can vary from controller to controller.
-    // TODO: Include button mapping for controllers with different layout.
-    case BTN_B:
-      return kSbKeyGamepad1;
-    case BTN_C:
-      return kSbKeyGamepad2;
-    case BTN_A:
-      return kSbKeyGamepad3;
-    case BTN_X:
-      return kSbKeyGamepad4;
-    case BTN_Y:
-      return kSbKeyGamepadLeftBumper;
-    case BTN_Z:
-      return kSbKeyGamepadRightBumper;
     case BTN_TL2:
-      return kSbKeyGamepad5;
+      return kSbKeyGamepadLeftBumper;
     case BTN_TR2:
-      return kSbKeyGamepad6;
+      return kSbKeyGamepadRightBumper;
+    case BTN_SOUTH:
+      return kSbKeyGamepad1;
+    case BTN_EAST:
+      return kSbKeyGamepad2;
+    case BTN_WEST:
+      return kSbKeyGamepad3;
+    case BTN_NORTH:
+      return kSbKeyGamepad4;
     case BTN_SELECT:
-      return kSbKeyGamepadLeftStick;
+      return kSbKeyGamepad5;
     case BTN_START:
-      return kSbKeyGamepadRightStick;
+      return kSbKeyGamepad6;
     case BTN_MODE:
       return kSbKeyGamepadSystem;
     case BTN_THUMBL:
-      return kSbKeyGamepad1;
+      return kSbKeyGamepadLeftStick;
     case BTN_THUMBR:
-      return kSbKeyGamepad1;
+      return kSbKeyGamepadRightStick;
   }
   SB_DLOG(WARNING) << "Unknown code: 0x" << std::hex << code;
   return kSbKeyUnknown;
@@ -494,19 +922,26 @@ bool IsBitSet(const std::vector<uint8_t>& bitset, int bit) {
   return !!(bitset.at(bit / 8) & (1 << (bit % 8)));
 }
 
-bool IsAxisFlat(float median, const struct input_absinfo& axis_info) {
+bool IsAxisFlat(int minimum_flat,
+                float rest_value,
+                const struct input_absinfo& axis_info) {
   SB_DCHECK((axis_info.flat * 2) <= (axis_info.maximum - axis_info.minimum));
-  return (axis_info.flat != 0) && (axis_info.value > median - axis_info.flat) &&
-         (axis_info.value < median + axis_info.flat);
+  int flat = std::max(minimum_flat, axis_info.flat);
+  return (flat != 0) && (axis_info.value > rest_value - flat) &&
+         (axis_info.value < rest_value + flat);
 }
 
-float GetAxisValue(const struct input_absinfo& axis_info) {
+float GetAxisValue(bool is_trigger,
+                   float minimum_flat,
+                   const struct input_absinfo& axis_info) {
   float median =
       static_cast<float>(axis_info.maximum + axis_info.minimum) / 2.0f;
-  if (IsAxisFlat(median, axis_info))
-    return 0;
   float range = static_cast<float>(axis_info.maximum - axis_info.minimum);
   float radius = range / 2.0f;
+  if (IsAxisFlat(minimum_flat * radius, is_trigger ? axis_info.minimum : median,
+                 axis_info)) {
+    return is_trigger ? -1 : 0;
+  }
   // Scale the axis value to [-1, 1].
   float axis_value = (static_cast<float>(axis_info.value) - median) / radius;
 
@@ -532,11 +967,22 @@ void GetInputDeviceAbsoluteAxisInfo(int axis,
       return;
     }
     info->axis_info.insert(std::make_pair(axis, axis_info));
-    info->axis_value.insert(std::make_pair(axis, GetAxisValue(axis_info)));
+    bool is_trigger = axis == ABS_Z || axis == ABS_RZ;
+    info->axis_value.insert(std::make_pair(
+        axis,
+        GetAxisValue(is_trigger, info->tuning->GetMinimumFlat(), axis_info)));
   }
 }
 
 void GetInputDeviceInfo(InputDeviceInfo* info) {
+  char device_name[1024];
+  if (ioctl(info->fd, EVIOCGNAME(sizeof(device_name)), device_name) >= 0) {
+    size_t length = strnlen(device_name, sizeof(device_name));
+    info->name.assign(device_name, length);
+  }
+
+  info->tuning = DeviceMap::Get()->GetControllerTuning(info->name);
+
   std::vector<uint8_t> axis_bits(BytesNeededForBitSet(KEY_MAX));
   int result =
       ioctl(info->fd, EVIOCGBIT(EV_ABS, axis_bits.size()), axis_bits.data());
@@ -811,7 +1257,7 @@ DevInput::Event* DevInputImpl::PollNextSystemEvent() {
       continue;
     }
 
-    return InputToApplicationEvent(event, &device, modifiers);
+    return InputToApplicationEvent(event, modifiers, &device);
   }
   return NULL;
 }
@@ -892,6 +1338,9 @@ DevInput::Event* CreateAnalogButtonKeyEvent(SbWindow window,
 
   SbInputData* data = new SbInputData();
   SbMemorySet(data, 0, sizeof(*data));
+#if SB_API_VERSION >= 10
+  data->timestamp = SbTimeGetMonotonicNow();
+#endif  // SB_API_VERSION >= 10
   data->window = window;
   data->type = type;
   data->device_type = kSbInputDeviceTypeGamepad;
@@ -912,6 +1361,9 @@ DevInput::Event* CreateMoveEventWithKey(SbWindow window,
   SbInputData* data = new SbInputData();
   SbMemorySet(data, 0, sizeof(*data));
 
+#if SB_API_VERSION >= 10
+  data->timestamp = SbTimeGetMonotonicNow();
+#endif  // SB_API_VERSION >= 10
   data->window = window;
   data->type = kSbInputEventTypeMove;
   data->device_type = kSbInputDeviceTypeGamepad;
@@ -921,11 +1373,9 @@ DevInput::Event* CreateMoveEventWithKey(SbWindow window,
   data->key_location = location;
   data->key_modifiers = modifiers;
   data->position = input_vector;
-#if SB_API_VERSION >= 6
   data->pressure = NAN;
   data->size = {NAN, NAN};
   data->tilt = {NAN, NAN};
-#endif
 
   return new DevInput::Event(kSbEventTypeInput, data,
                              &Application::DeleteDestructor<SbInputData>);
@@ -940,6 +1390,9 @@ DevInput::Event* CreateTouchPadEvent(SbWindow window,
   SbInputData* data = new SbInputData();
   SbMemorySet(data, 0, sizeof(*data));
 
+#if SB_API_VERSION >= 10
+  data->timestamp = SbTimeGetMonotonicNow();
+#endif  // SB_API_VERSION >= 10
   data->window = window;
   data->type = type;
   data->device_type = kSbInputDeviceTypeTouchPad;
@@ -949,11 +1402,9 @@ DevInput::Event* CreateTouchPadEvent(SbWindow window,
   data->key_location = location;
   data->key_modifiers = modifiers;
   data->position = input_vector;
-#if SB_API_VERSION >= 6
   data->pressure = NAN;
   data->size = {NAN, NAN};
   data->tilt = {NAN, NAN};
-#endif
 
   return new DevInput::Event(kSbEventTypeInput, data,
                              &Application::DeleteDestructor<SbInputData>);
@@ -963,8 +1414,8 @@ DevInput::Event* CreateTouchPadEvent(SbWindow window,
 
 DevInput::Event* DevInputImpl::AxisInputToApplicationEvent(
     const struct input_event& event,
-    InputDeviceInfo* device_info,
-    int modifiers) {
+    int modifiers,
+    InputDeviceInfo* device_info) {
   SB_DCHECK(event.type == EV_ABS);
   SbKey key = kSbKeyUnknown;
   float axis_value = 0;
@@ -973,7 +1424,9 @@ DevInput::Event* DevInputImpl::AxisInputToApplicationEvent(
   if (axis_info_it != device_info->axis_info.end()) {
     struct input_absinfo& axis_info = axis_info_it->second;
     axis_info.value = event.value;
-    axis_value = GetAxisValue(axis_info);
+    bool is_trigger = event.code == ABS_Z || event.code == ABS_RZ;
+    axis_value = GetAxisValue(is_trigger, device_info->tuning->GetMinimumFlat(),
+                              axis_info);
     float& stored_axis_value = device_info->axis_value[event.code];
     previous_axis_value = stored_axis_value;
     if (previous_axis_value == axis_value) {
@@ -1004,21 +1457,21 @@ DevInput::Event* DevInputImpl::AxisInputToApplicationEvent(
       return CreateMoveEventWithKey(window_, key, location, modifiers,
                                     input_vector);
     }
-    case ABS_Z:
+    case ABS_RX:
       input_vector.x = axis_value;
       input_vector.y = device_info->axis_value[ABS_RZ];
       key = kSbKeyGamepadRightStickLeft;
       location = kSbKeyLocationRight;
       return CreateMoveEventWithKey(window_, key, location, modifiers,
                                     input_vector);
-    case ABS_RZ:
+    case ABS_RY:
       input_vector.x = device_info->axis_value[ABS_Z];
       input_vector.y = axis_value;
       key = kSbKeyGamepadRightStickUp;
       location = kSbKeyLocationRight;
       return CreateMoveEventWithKey(window_, key, location, modifiers,
                                     input_vector);
-    case ABS_RX: {
+    case ABS_Z: {
       key = kSbKeyGamepadLeftTrigger;
       location = kSbKeyLocationLeft;
       // For trigger buttons, the range is [0..1].
@@ -1028,7 +1481,7 @@ DevInput::Event* DevInputImpl::AxisInputToApplicationEvent(
                                         previous_trigger_value, key, location,
                                         modifiers, event);
     }
-    case ABS_RY: {
+    case ABS_RZ: {
       key = kSbKeyGamepadRightTrigger;
       location = kSbKeyLocationRight;
       // For trigger buttons, the range is [0..1].
@@ -1115,17 +1568,29 @@ DevInput::Event* DevInputImpl::AxisInputToApplicationEvent(
 
 DevInput::Event* DevInputImpl::KeyInputToApplicationEvent(
     const struct input_event& event,
-    int modifiers) {
+    int modifiers,
+    InputDeviceInfo* device_info) {
   SB_DCHECK(event.type == EV_KEY);
   SB_DCHECK(event.value <= 2);
+
+  SbKey key = KeyCodeToSbKey(device_info->tuning
+                                 ? device_info->tuning->GetKeyCode(event.code)
+                                 : event.code);
+  if (key == kSbKeyUnknown) {
+    return NULL;
+  }
+
   SbInputData* data = new SbInputData();
   SbMemorySet(data, 0, sizeof(*data));
+#if SB_API_VERSION >= 10
+  data->timestamp = SbTimeGetMonotonicNow();
+#endif  // SB_API_VERSION >= 10
   data->window = window_;
   data->type =
       (event.value == 0 ? kSbInputEventTypeUnpress : kSbInputEventTypePress);
   data->device_type = kSbInputDeviceTypeKeyboard;
   data->device_id = kKeyboardDeviceId;
-  data->key = KeyCodeToSbKey(event.code);
+  data->key = key;
   data->key_location = KeyCodeToSbKeyLocation(event.code);
   data->key_modifiers = modifiers;
   return new Event(kSbEventTypeInput, data,
@@ -1134,15 +1599,15 @@ DevInput::Event* DevInputImpl::KeyInputToApplicationEvent(
 
 DevInput::Event* DevInputImpl::InputToApplicationEvent(
     const struct input_event& event,
-    InputDeviceInfo* device_info,
-    int modifiers) {
+    int modifiers,
+    InputDeviceInfo* device_info) {
   // EV_ABS events are axis values: Sticks, dpad, and touchpad.
   // https://www.kernel.org/doc/Documentation/input/event-codes.txt
   switch (event.type) {
     case EV_ABS:
-      return AxisInputToApplicationEvent(event, device_info, modifiers);
+      return AxisInputToApplicationEvent(event, modifiers, device_info);
     case EV_KEY:
-      return KeyInputToApplicationEvent(event, modifiers);
+      return KeyInputToApplicationEvent(event, modifiers, device_info);
   }
   return NULL;
 }
@@ -1162,3 +1627,5 @@ DevInput* DevInput::Create(SbWindow window, int wake_up_fd) {
 }  // namespace dev_input
 }  // namespace shared
 }  // namespace starboard
+
+#endif

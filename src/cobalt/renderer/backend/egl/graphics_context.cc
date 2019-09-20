@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <GLES2/gl2.h>
 #include <algorithm>
+#include <memory>
 
 #include "cobalt/renderer/backend/egl/graphics_context.h"
 
 #include "base/debug/leak_annotations.h"
-#include "base/debug/trace_event.h"
+#include "base/trace_event/trace_event.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/renderer/backend/egl/framebuffer_render_target.h"
 #include "cobalt/renderer/backend/egl/graphics_system.h"
@@ -27,6 +27,7 @@
 #include "cobalt/renderer/backend/egl/texture.h"
 #include "cobalt/renderer/backend/egl/texture_data.h"
 #include "cobalt/renderer/backend/egl/utils.h"
+#include "cobalt/renderer/egl_and_gles.h"
 
 namespace cobalt {
 namespace renderer {
@@ -36,7 +37,7 @@ namespace {
 
 bool HasExtension(const char* extension) {
   const char* raw_extension_string =
-      reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
+      reinterpret_cast<const char*>(GL_CALL_SIMPLE(glGetString(GL_EXTENSIONS)));
   DCHECK(raw_extension_string);
 
   return strstr(raw_extension_string, extension) != NULL;
@@ -58,9 +59,9 @@ GraphicsContextEGL::GraphicsContextEGL(GraphicsSystem* parent_system,
   EGLint context_attrib_list[] = {
       EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE,
   };
-  context_ =
-      eglCreateContext(display, config, EGL_NO_CONTEXT, context_attrib_list);
-  CHECK_EQ(EGL_SUCCESS, eglGetError());
+  context_ = EGL_CALL_SIMPLE(
+      eglCreateContext(display, config, EGL_NO_CONTEXT, context_attrib_list));
+  CHECK_EQ(EGL_SUCCESS, EGL_CALL_SIMPLE(eglGetError()));
 #endif
 
   // Create a dummy EGLSurface object to be assigned as the target surface
@@ -106,8 +107,9 @@ bool GraphicsContextEGL::ComputeReadPixelsNeedVerticalFlip() {
 
   ScopedMakeCurrent scoped_make_current(this);
 
-  scoped_ptr<FramebufferEGL> framebuffer(new FramebufferEGL(this,
-      math::Size(kDummyTextureWidth, kDummyTextureHeight), GL_RGBA, GL_NONE));
+  std::unique_ptr<FramebufferEGL> framebuffer(new FramebufferEGL(
+      this, math::Size(kDummyTextureWidth, kDummyTextureHeight), GL_RGBA,
+      GL_NONE));
   GL_CALL(glBindFramebuffer(GL_FRAMEBUFFER, framebuffer->gl_handle()));
 
   {
@@ -140,8 +142,8 @@ bool GraphicsContextEGL::ComputeReadPixelsNeedVerticalFlip() {
     GL_CALL(glBindTexture(GL_TEXTURE_2D, 0));
 
     Blit(texture, 0, 0, kDummyTextureWidth, kDummyTextureHeight);
-    GL_CALL(glDeleteTextures(1, &texture));
     GL_CALL(glFinish());
+    GL_CALL(glDeleteTextures(1, &texture));
   }
 
   // Now read back the texture data using glReadPixels().
@@ -163,9 +165,9 @@ bool GraphicsContextEGL::ComputeReadPixelsNeedVerticalFlip() {
 
 void GraphicsContextEGL::SetupBlitObjects() {
   // Setup shaders used when blitting the current texture.
-  blit_program_ = glCreateProgram();
+  blit_program_ = GL_CALL_SIMPLE(glCreateProgram());
 
-  blit_vertex_shader_ = glCreateShader(GL_VERTEX_SHADER);
+  blit_vertex_shader_ = GL_CALL_SIMPLE(glCreateShader(GL_VERTEX_SHADER));
   const char* blit_vertex_shader_source =
       "attribute vec2 a_position;"
       "attribute vec2 a_tex_coord;"
@@ -180,7 +182,7 @@ void GraphicsContextEGL::SetupBlitObjects() {
   GL_CALL(glCompileShader(blit_vertex_shader_));
   GL_CALL(glAttachShader(blit_program_, blit_vertex_shader_));
 
-  blit_fragment_shader_ = glCreateShader(GL_FRAGMENT_SHADER);
+  blit_fragment_shader_ = GL_CALL_SIMPLE(glCreateShader(GL_FRAGMENT_SHADER));
   const char* blit_fragment_shader_source =
       "precision mediump float;"
       "varying vec2 v_tex_coord;"
@@ -231,7 +233,7 @@ GraphicsContextEGL::~GraphicsContextEGL() {
 
   ReleaseCurrentContext();
 
-  null_surface_ = NULL;
+  null_surface_ = nullptr;
 
   EGL_CALL(eglDestroyContext(display_, context_));
 }
@@ -256,8 +258,8 @@ void GraphicsContextEGL::SafeEglMakeCurrent(RenderTargetEGL* surface) {
     return;
   }
 
-  eglMakeCurrent(display_, egl_surface, egl_surface, context_);
-  EGLint make_current_error = eglGetError();
+  EGL_CALL_SIMPLE(eglMakeCurrent(display_, egl_surface, egl_surface, context_));
+  EGLint make_current_error = EGL_CALL_SIMPLE(eglGetError());
   if (make_current_error != EGL_SUCCESS) {
     LOG(ERROR) << "eglMakeCurrent ERROR: " << make_current_error;
     if (make_current_error == EGL_BAD_ALLOC ||
@@ -324,11 +326,11 @@ void GraphicsContextEGL::ResetCurrentSurface() {
       EGLSurface egl_surface = null_surface_->GetSurface();
       EGL_CALL(eglMakeCurrent(display_, egl_surface, egl_surface, context_));
     } else {
-      SafeEglMakeCurrent(current_surface_);
+      SafeEglMakeCurrent(current_surface_.get());
     }
 
     GL_CALL(glBindFramebuffer(GL_FRAMEBUFFER,
-        current_surface_->GetPlatformHandle()));
+                              current_surface_->GetPlatformHandle()));
   }
 }
 
@@ -337,7 +339,7 @@ void GraphicsContextEGL::MakeCurrent() {
   // frame very well, so with this change we avoid making a new surface
   // current if we don't actually care about what surface is current.
   if (!IsCurrent()) {
-    MakeCurrentWithSurface(null_surface_);
+    MakeCurrentWithSurface(null_surface_.get());
   }
 }
 
@@ -350,22 +352,22 @@ void GraphicsContextEGL::ReleaseCurrentContext() {
   is_current_ = false;
 }
 
-scoped_ptr<TextureEGL> GraphicsContextEGL::CreateTexture(
-    scoped_ptr<TextureDataEGL> texture_data) {
-  return make_scoped_ptr(
-      new TextureEGL(this, texture_data.Pass(), bgra_format_supported_));
+std::unique_ptr<TextureEGL> GraphicsContextEGL::CreateTexture(
+    std::unique_ptr<TextureDataEGL> texture_data) {
+  return std::unique_ptr<TextureEGL>(
+      new TextureEGL(this, std::move(texture_data), bgra_format_supported_));
 }
 
-scoped_ptr<TextureEGL> GraphicsContextEGL::CreateTextureFromRawMemory(
+std::unique_ptr<TextureEGL> GraphicsContextEGL::CreateTextureFromRawMemory(
     const scoped_refptr<ConstRawTextureMemoryEGL>& raw_texture_memory,
     intptr_t offset, const math::Size& size, GLenum format,
     int pitch_in_bytes) {
   const RawTextureMemoryEGL* texture_memory =
       &(raw_texture_memory->raw_texture_memory());
 
-  return make_scoped_ptr(new TextureEGL(this, texture_memory, offset, size,
-                                        format, pitch_in_bytes,
-                                        bgra_format_supported_));
+  return std::unique_ptr<TextureEGL>(
+      new TextureEGL(this, texture_memory, offset, size, format, pitch_in_bytes,
+                     bgra_format_supported_));
 }
 
 scoped_refptr<RenderTarget> GraphicsContextEGL::CreateOffscreenRenderTarget(
@@ -381,10 +383,10 @@ scoped_refptr<RenderTarget> GraphicsContextEGL::CreateOffscreenRenderTarget(
 }
 
 scoped_refptr<RenderTarget>
-  GraphicsContextEGL::CreateDownloadableOffscreenRenderTarget(
-      const math::Size& dimensions) {
-  scoped_refptr<RenderTarget> render_target(new FramebufferRenderTargetEGL(
-      this, dimensions));
+GraphicsContextEGL::CreateDownloadableOffscreenRenderTarget(
+    const math::Size& dimensions) {
+  scoped_refptr<RenderTarget> render_target(
+      new FramebufferRenderTargetEGL(this, dimensions));
 
   if (render_target->CreationError()) {
     return scoped_refptr<RenderTarget>();
@@ -411,7 +413,7 @@ void VerticallyFlipPixels(uint8_t* pixels, int pitch_in_bytes, int height) {
 }
 }  // namespace
 
-scoped_array<uint8_t> GraphicsContextEGL::DownloadPixelDataAsRGBA(
+std::unique_ptr<uint8_t[]> GraphicsContextEGL::DownloadPixelDataAsRGBA(
     const scoped_refptr<RenderTarget>& render_target) {
   TRACE_EVENT0("cobalt::renderer",
                "GraphicsContextEGL::DownloadPixelDataAsRGBA()");
@@ -419,17 +421,18 @@ scoped_array<uint8_t> GraphicsContextEGL::DownloadPixelDataAsRGBA(
 
   int pitch_in_bytes =
       render_target->GetSize().width() * BytesPerPixelForGLFormat(GL_RGBA);
-  scoped_array<uint8_t> pixels(
+  std::unique_ptr<uint8_t[]> pixels(
       new uint8_t[render_target->GetSize().height() * pitch_in_bytes]);
 
   if (render_target->GetPlatformHandle() == 0) {
     // Need to bind the PBufferSurface to a framebuffer object in order to
     // read its pixels.
     PBufferRenderTargetEGL* pbuffer_render_target =
-        base::polymorphic_downcast<PBufferRenderTargetEGL*>
-            (render_target.get());
+        base::polymorphic_downcast<PBufferRenderTargetEGL*>(
+            render_target.get());
 
-    scoped_ptr<TextureEGL> texture(new TextureEGL(this, pbuffer_render_target));
+    std::unique_ptr<TextureEGL> texture(
+        new TextureEGL(this, pbuffer_render_target));
     DCHECK(texture->GetSize() == render_target->GetSize());
 
     // This shouldn't be strictly necessary as glReadPixels() should implicitly
@@ -446,7 +449,7 @@ scoped_array<uint8_t> GraphicsContextEGL::DownloadPixelDataAsRGBA(
     GL_CALL(glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                                    GL_TEXTURE_2D, texture->gl_handle(), 0));
     DCHECK_EQ(GL_FRAMEBUFFER_COMPLETE,
-              glCheckFramebufferStatus(GL_FRAMEBUFFER));
+              GL_CALL_SIMPLE(glCheckFramebufferStatus(GL_FRAMEBUFFER)));
 
     GL_CALL(glReadPixels(0, 0, texture->GetSize().width(),
                          texture->GetSize().height(), GL_RGBA, GL_UNSIGNED_BYTE,
@@ -456,8 +459,8 @@ scoped_array<uint8_t> GraphicsContextEGL::DownloadPixelDataAsRGBA(
     GL_CALL(glDeleteFramebuffers(1, &texture_framebuffer));
   } else {
     // The render target is a framebuffer object, so just bind it and read.
-    GL_CALL(glBindFramebuffer(GL_FRAMEBUFFER,
-                              render_target->GetPlatformHandle()));
+    GL_CALL(
+        glBindFramebuffer(GL_FRAMEBUFFER, render_target->GetPlatformHandle()));
     GL_CALL(glReadPixels(0, 0, render_target->GetSize().width(),
                          render_target->GetSize().height(), GL_RGBA,
                          GL_UNSIGNED_BYTE, pixels.get()));
@@ -477,7 +480,7 @@ scoped_array<uint8_t> GraphicsContextEGL::DownloadPixelDataAsRGBA(
                          render_target->GetSize().height());
   }
 
-  return pixels.Pass();
+  return std::move(pixels);
 }
 
 void GraphicsContextEGL::Finish() {
@@ -527,12 +530,12 @@ void GraphicsContextEGL::SwapBuffers(RenderTargetEGL* surface) {
   // current implementation of eglSwapBuffers() does nothing for PBuffers,
   // so only check for framebuffer render targets.
   if (surface->GetPlatformHandle() == 0) {
-    eglSwapInterval(display_, COBALT_EGL_SWAP_INTERVAL);
-    eglSwapBuffers(display_, surface->GetSurface());
-    EGLint swap_err = eglGetError();
+    EGL_CALL_SIMPLE(eglSwapInterval(display_, COBALT_EGL_SWAP_INTERVAL));
+    EGL_CALL_SIMPLE(eglSwapBuffers(display_, surface->GetSurface()));
+    EGLint swap_err = EGL_CALL_SIMPLE(eglGetError());
     if (swap_err != EGL_SUCCESS) {
-      LOG(WARNING) << "Marking surface bad after swap error "
-                   << std::hex << swap_err;
+      LOG(WARNING) << "Marking surface bad after swap error " << std::hex
+                   << swap_err;
       surface->set_surface_bad();
       return;
     }

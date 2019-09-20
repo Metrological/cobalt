@@ -21,7 +21,7 @@
 
 #include "base/basictypes.h"
 #include "base/compiler_specific.h"
-#include "base/hash_tables.h"
+#include "base/containers/hash_tables.h"
 #include "base/memory/ref_counted.h"
 #include "cobalt/cssom/cascade_precedence.h"
 #include "cobalt/cssom/css_declared_style_data.h"
@@ -45,6 +45,7 @@ class CSSStyleRule : public CSSRule {
                const scoped_refptr<CSSRuleStyleDeclaration>& style);
 
   // Web API: CSSStyleRule
+  std::string selector_text() const;
   const scoped_refptr<CSSStyleDeclaration> style() const;
 
   // Web API: CSSRule

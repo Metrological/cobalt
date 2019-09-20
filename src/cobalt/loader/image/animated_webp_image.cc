@@ -66,7 +66,7 @@ AnimatedWebPImage::GetFrameProvider() {
 }
 
 void AnimatedWebPImage::Play(
-    const scoped_refptr<base::MessageLoopProxy>& message_loop) {
+    const scoped_refptr<base::SingleThreadTaskRunner>& task_runner) {
   TRACE_EVENT0("cobalt::loader::image", "AnimatedWebPImage::Play()");
   base::AutoLock lock(lock_);
 
@@ -75,7 +75,7 @@ void AnimatedWebPImage::Play(
   }
   is_playing_ = true;
 
-  message_loop_ = message_loop;
+  task_runner_ = task_runner;
   if (received_first_frame_) {
     PlayInternal();
   }
@@ -85,7 +85,7 @@ void AnimatedWebPImage::Stop() {
   TRACE_EVENT0("cobalt::loader::image", "AnimatedWebPImage::Stop()");
   base::AutoLock lock(lock_);
   if (is_playing_) {
-    message_loop_->PostTask(
+    task_runner_->PostTask(
         FROM_HERE,
         base::Bind(&AnimatedWebPImage::StopInternal, base::Unretained(this)));
   }
@@ -136,14 +136,14 @@ AnimatedWebPImage::~AnimatedWebPImage() {
     is_playing = is_playing_;
   }
   if (is_playing) {
-    message_loop_->WaitForFence();
+    task_runner_->WaitForFence();
   }
   WebPDemuxDelete(demux_);
 }
 
 void AnimatedWebPImage::StopInternal() {
   TRACE_EVENT0("cobalt::loader::image", "AnimatedWebPImage::StopInternal()");
-  DCHECK(message_loop_->BelongsToCurrentThread());
+  DCHECK(task_runner_->BelongsToCurrentThread());
   base::AutoLock lock(lock_);
   if (!decode_closure_.callback().is_null()) {
     is_playing_ = false;
@@ -154,16 +154,15 @@ void AnimatedWebPImage::StopInternal() {
 void AnimatedWebPImage::PlayInternal() {
   TRACE_EVENT0("cobalt::loader::image", "AnimatedWebPImage::PlayInternal()");
   current_frame_time_ = base::TimeTicks::Now();
-  message_loop_->PostTask(
-      FROM_HERE,
-      base::Bind(&AnimatedWebPImage::DecodeFrames, base::Unretained(this)));
+  task_runner_->PostTask(FROM_HERE, base::Bind(&AnimatedWebPImage::DecodeFrames,
+                                               base::Unretained(this)));
 }
 
 void AnimatedWebPImage::DecodeFrames() {
   TRACE_EVENT0("cobalt::loader::image", "AnimatedWebPImage::DecodeFrames()");
   TRACK_MEMORY_SCOPE("Rendering");
   DCHECK(is_playing_ && received_first_frame_);
-  DCHECK(message_loop_->BelongsToCurrentThread());
+  DCHECK(task_runner_->BelongsToCurrentThread());
 
   base::AutoLock lock(lock_);
 
@@ -191,8 +190,7 @@ void AnimatedWebPImage::DecodeFrames() {
       delay = min_delay;
     }
 
-    message_loop_->PostDelayedTask(FROM_HERE, decode_closure_.callback(),
-                                   delay);
+    task_runner_->PostDelayedTask(FROM_HERE, decode_closure_.callback(), delay);
   }
 }
 
@@ -206,8 +204,8 @@ void RecordImage(scoped_refptr<render_tree::Image>* image_pointer,
   *image_pointer = static_image->image();
 }
 
-void DecodeError(const std::string& error) {
-  LOG(ERROR) << error;
+void DecodeError(const base::Optional<std::string>& error) {
+  if (error) LOG(ERROR) << *error;
 }
 
 }  // namespace
@@ -215,7 +213,7 @@ void DecodeError(const std::string& error) {
 bool AnimatedWebPImage::DecodeOneFrame(int frame_index) {
   TRACE_EVENT0("cobalt::loader::image", "AnimatedWebPImage::DecodeOneFrame()");
   TRACK_MEMORY_SCOPE("Rendering");
-  DCHECK(message_loop_->BelongsToCurrentThread());
+  DCHECK(task_runner_->BelongsToCurrentThread());
   lock_.AssertAcquired();
 
   WebPIterator webp_iterator;
@@ -232,7 +230,7 @@ bool AnimatedWebPImage::DecodeOneFrame(int frame_index) {
 
     ImageDecoder image_decoder(
         resource_provider_, base::Bind(&RecordImage, &next_frame_image),
-        base::Bind(&DecodeError), ImageDecoder::kImageTypeWebP);
+        ImageDecoder::kImageTypeWebP, base::Bind(&DecodeError));
     image_decoder.DecodeChunk(
         reinterpret_cast<const char*>(webp_iterator.fragment.bytes),
         webp_iterator.fragment.size);
@@ -302,7 +300,7 @@ bool AnimatedWebPImage::DecodeOneFrame(int frame_index) {
 bool AnimatedWebPImage::AdvanceFrame() {
   TRACE_EVENT0("cobalt::loader::image", "AnimatedWebPImage::AdvanceFrame()");
   TRACK_MEMORY_SCOPE("Rendering");
-  DCHECK(message_loop_->BelongsToCurrentThread());
+  DCHECK(task_runner_->BelongsToCurrentThread());
   lock_.AssertAcquired();
 
   base::TimeTicks current_time = base::TimeTicks::Now();

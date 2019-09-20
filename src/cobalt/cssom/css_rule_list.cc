@@ -46,7 +46,7 @@ unsigned int CSSRuleList::InsertRule(const std::string& rule,
       parent_css_style_sheet_->css_parser()->ParseRule(
           rule, GetInlineSourceLocation());
 
-  if (css_rule == NULL) {
+  if (css_rule.get() == NULL) {
     // TODO: Throw a SyntaxError exception instead of logging.
     LOG(ERROR) << "SyntaxError";
     return 0;
@@ -82,7 +82,8 @@ void CSSRuleList::AppendCSSRule(const scoped_refptr<CSSRule>& css_rule) {
     css_rule->AttachToCSSStyleSheet(parent_css_style_sheet_);
     parent_css_style_sheet_->OnCSSMutation();
   }
-  css_rule->set_index(static_cast<int>(css_rules_.size()));
+  css_rule->SetIndex(next_index_);
+  next_index_ += css_rule->IndexWidth();
   css_rules_.push_back(css_rule);
 }
 

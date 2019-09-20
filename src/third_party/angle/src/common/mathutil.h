@@ -16,15 +16,19 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#if defined(STARBOARD)
+#include <common/third_party/numerics/base_copy/numerics/safe_math.h>
+#else
 #include <base/numerics/safe_math.h>
+#endif
 
 #include "common/debug.h"
 #include "common/platform.h"
 
 namespace angle
 {
-using base::CheckedNumeric;
-using base::IsValueInRangeForNumericType;
+using base_copy::CheckedNumeric;
+using base_copy::IsValueInRangeForNumericType;
 }
 
 namespace gl
