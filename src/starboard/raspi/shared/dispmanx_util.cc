@@ -117,32 +117,18 @@ DispmanxElement::DispmanxElement(const DispmanxDisplay& display,
                                  const DispmanxRect& dest_rect,
                                  const DispmanxResource& src,
                                  const DispmanxRect& src_rect) {
-#ifdef USE_COMPOSITOR
-  WPEFramework::Compositor::IDisplay *idisplay = display.handle();
-  std::string surfaceName = display.DisplayName() + "-" + std::to_string(layer);
-  isurface_ = idisplay->Create(surfaceName, dest_rect.width, dest_rect.height);
-
-  EGL_DISPMANX_WINDOW_T *nativeWindow =
-          static_cast<EGL_DISPMANX_WINDOW_T*>(isurface_->Native());
-  handle_ = nativeWindow->element;
-#else
   DispmanxAutoUpdate update;
   handle_ = vc_dispmanx_element_add(update.handle(), display.handle(), layer,
                                     &dest_rect, src.handle(), &src_rect,
                                     DISPMANX_PROTECTION_NONE, NULL /*alpha*/,
                                     NULL /*clamp*/, DISPMANX_NO_ROTATE);
   SB_DCHECK(handle_ != DISPMANX_NO_HANDLE);
-#endif
 }
 
 DispmanxElement::~DispmanxElement() {
-#ifdef USE_COMPOSITOR
-  isurface_->Release();
-#else
   DispmanxAutoUpdate update;
   int32_t result = vc_dispmanx_element_remove(update.handle(), handle_);
   SB_DCHECK(result == 0) << " result=" << result;
-#endif
 }
 
 void DispmanxElement::ChangeSource(const DispmanxResource& new_src) {

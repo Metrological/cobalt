@@ -19,9 +19,6 @@
 
     'sysroot%': '/',
     'gl_type': 'system_gles2',
-    
-    # This is to create cobalt shared library
-    'final_executable_type': '<!(echo $COBALT_EXECUTABLE_TYPE)',
 
     # Define platform specific compiler and linker flags.
     # Refer to base.gypi for a list of all available variables.
@@ -64,11 +61,6 @@
       '-I<(sysroot)/opt/vc/include',
       '-I<(sysroot)/opt/vc/include/interface/vcos/pthreads',
       '-I<(sysroot)/opt/vc/include/interface/vmcs_host/linux',
-
-      # GStreamer includes
-      '-I<(sysroot)/usr/include/gstreamer-1.0',
-      '-I<(sysroot)/usr/include/glib-2.0',
-      '-I<(sysroot)/usr/lib/glib-2.0/include/',
     ],
     'linker_flags': [
       '--sysroot=<(sysroot)',
@@ -128,21 +120,17 @@
     ],
     'platform_libraries': [
       '-lasound',
-      '-lgstreamer-1.0',
-      '-lgstvideo-1.0',
-      '-lgstapp-1.0',
-      '-lgobject-2.0',
-      '-lglib-2.0',
+      '-lavcodec',
+      '-lavformat',
+      '-lavutil',
       '-lEGL',
       '-lGLESv2',
       '-lpthread',
       '-lrt',
-      '-locdm',
       '-lopenmaxil',
       '-lbcm_host',
       '-lvcos',
       '-lvchiq_arm',
-      '-lvchostif'
     ],
     'conditions': [
       ['cobalt_fastbuild==0', {
@@ -155,18 +143,6 @@
         'compiler_flags_qa': [
         ],
         'compiler_flags_gold': [
-        ],
-      }],
-      ['"<!(echo $COBALT_USE_COMPOSITOR)"=="y"', {
-        'compiler_flags': [
-          '-DUSE_COMPOSITOR',
-          '-I<(sysroot)/usr/include/WPEFramework/compositor/',
-        ],
-        'platform_libraries': [
-          '-lWPEFrameworkCore',
-          '-lWPEFrameworkPlugins',
-          '-lWPEFrameworkProtocols',
-          '-lcompositorclient',
         ],
       }],
     ],
@@ -198,7 +174,7 @@
           # This decision should be revisited after raspi toolchain is upgraded.
           '-Wno-maybe-uninitialized',
           # Turn warnings into errors.
-          #'-Werror',
+          '-Werror',
         ],
       },{
         'cflags': [

@@ -48,9 +48,10 @@ SbWindow ApplicationDispmanx::CreateWindow(const SbWindowOptions* options) {
   InitializeDispmanx();
 
   SB_DCHECK(IsDispmanxInitialized());
-  video_renderer_.reset(new DispmanxVideoRenderer(*display_, kVideoLayer));
   window_ = new SbWindowPrivate(*display_, options);
   input_ = DevInput::Create(window_);
+
+  video_renderer_.reset(new DispmanxVideoRenderer(*display_, kVideoLayer));
 
   return window_;
 }
