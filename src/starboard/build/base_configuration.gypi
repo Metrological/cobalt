@@ -201,7 +201,6 @@
               '--std=gnu++11',
             ],
             'linker_flags_host%': [
-              '-target', 'i386-unknown-linux-gnu',
               '-pthread',
             ],
           }, {
