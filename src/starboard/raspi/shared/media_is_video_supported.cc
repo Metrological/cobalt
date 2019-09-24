@@ -42,7 +42,7 @@ SB_EXPORT bool SbMediaIsVideoSupported(SbMediaVideoCodec video_codec,
     // There currently is no Raspberry Pi 360 video implementation.
     return false;
   }
-  return video_codec == kSbMediaVideoCodecH264 && frame_width <= 1280 &&
-         frame_height <= 720 &&
+  return video_codec == kSbMediaVideoCodecH264 && frame_width <= 1920 &&
+         frame_height <= 1080 &&
          bitrate <= SB_MEDIA_MAX_VIDEO_BITRATE_IN_BITS_PER_SECOND && fps <= 30;
 }

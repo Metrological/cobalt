@@ -33,7 +33,7 @@ class RaspiPlatformConfig(platform_configuration.PlatformConfiguration):
     super(RaspiPlatformConfig, self).__init__(platform)
     self.AppendApplicationConfigurationPath(os.path.dirname(__file__))
     self.raspi_home = os.environ.get('RASPI_HOME', _UNDEFINED_RASPI_HOME)
-    self.sysroot = os.path.realpath(os.path.join(self.raspi_home, 'arm-buildroot-linux-gnueabihf/sysroot'))
+    self.sysroot = os.path.realpath(os.path.join(self.raspi_home, 'sysroot'))
 
   def GetBuildFormat(self):
     """Returns the desired build format."""
@@ -52,17 +52,16 @@ class RaspiPlatformConfig(platform_configuration.PlatformConfiguration):
     return variables
 
   def GetEnvironmentVariables(self):
-    env_variables = {}
+    env_variables = build.GetHostCompilerEnvironment(
+        clang.GetClangSpecification(), False)
     toolchain = os.path.realpath(
         os.path.join(
             self.raspi_home,
-            '.'))
+            'tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64'))
     toolchain_bin_dir = os.path.join(toolchain, 'bin')
     env_variables.update({
-        'CC': os.path.join(toolchain_bin_dir, 'arm-buildroot-linux-gnueabihf-gcc'),
-        'CXX': os.path.join(toolchain_bin_dir, 'arm-buildroot-linux-gnueabihf-g++'),
-        'CC_host': 'gcc -m32',        
-        'CXX_host': 'g++ -m32',
+        'CC': os.path.join(toolchain_bin_dir, 'arm-linux-gnueabihf-gcc'),
+        'CXX': os.path.join(toolchain_bin_dir, 'arm-linux-gnueabihf-g++'),
     })
     return env_variables
 

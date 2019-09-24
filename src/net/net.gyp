@@ -18,7 +18,6 @@
         # TODO[johnx]: find out how we can verify local cert issuer and
         # re-enable this test. Consider adding a binary cert for local issuer
         # for debug builds.
-        'STARBOARD_NO_LOCAL_ISSUER',
         'QUIC_TRACE_DISABLED',
         'COBALT_QUIC46',
         'COMMON_CERT_SET_DISABLED_FOR_STARBOARD',
@@ -27,7 +26,6 @@
         'defines': [
           'HTTP_CACHE_DISABLED_FOR_STARBOARD',
           'ENABLE_BUILT_IN_DNS',
-          'STARBOARD_NO_LOCAL_ISSUER',
           'QUIC_TRACE_DISABLED',
           'COBALT_QUIC46',
           'COMMON_CERT_SET_DISABLED_FOR_STARBOARD',
@@ -1966,12 +1964,10 @@
         'der/parser_unittest.cc',
 
         # dial is a legacy component we kept from old Chromium net.
-        # TODO[johnx]: re-enable dial tests. Currently they are crashing due to
-        # improper usage of modified net classes like HttpNetworkTransaction.
-        # 'dial/dial_http_server_unittest.cc',
-        # 'dial/dial_service_unittest.cc',
-        # 'dial/dial_test_helpers.h',
-        # 'dial/dial_udp_server_unittests.cc',
+        'dial/dial_http_server_unittest.cc',
+        'dial/dial_service_unittest.cc',
+        'dial/dial_test_helpers.h',
+        'dial/dial_udp_server_unittests.cc',
 
         # disk_cache component is disabled because only http cache depends on
         # it and Cobalt does not support http cache yet.
