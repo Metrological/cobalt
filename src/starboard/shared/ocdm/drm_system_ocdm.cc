@@ -6,8 +6,6 @@ namespace starboard {
 namespace shared {
 namespace ocdm {
 
-const char *kOcdmKeySystem[] = { "com.youtube.playready" };
-
 DrmSystemOcdm::DrmSystemOcdm(void *context,
         SbDrmSessionUpdateRequestFunc session_update_request_callback,
         SbDrmSessionUpdatedFunc session_updated_callback,
@@ -35,10 +33,8 @@ DrmSystemOcdm::~DrmSystemOcdm() {
 
 bool DrmSystemOcdm::IsKeySystemSupported(const char *key_system) {
 
-    for (auto ocdm_key_system : kOcdmKeySystem) {
-        if (SbStringCompareAll(key_system, ocdm_key_system) == 0) {
-            return true;
-        }
+    if (opencdm_is_type_supported(key_system, "video/mp4") == 0) {
+        return true;
     }
     return false;
 }
