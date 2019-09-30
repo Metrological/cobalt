@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
@@ -30,7 +31,12 @@ bool GetHomeDirectory(SbUser user, char* out_path, int path_size) {
     return false;
   }
 
-  const char* home_directory = getenv("HOME");
+  const char *home_directory = getenv("COBALT_HOME");
+  struct stat st = {0};
+  if (stat(home_directory, &st) == -1) {
+      mkdir(home_directory, 0755);
+  }
+
   if (home_directory) {
     SbStringCopy(out_path, home_directory, path_size);
     return true;

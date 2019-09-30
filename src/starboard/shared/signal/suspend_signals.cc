@@ -56,7 +56,7 @@ void SetSignalHandler(int signal_id, SignalHandlerFunction handler) {
 
 void SuspendDone(void* /*context*/) {
   // Stop all thread execution after fully transitioning into Suspended.
-  raise(SIGSTOP);
+  // raise(SIGSTOP);
 }
 
 void Suspend(int signal_id) {
