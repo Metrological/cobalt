@@ -22,5 +22,6 @@ SbDrmSystem SbDrmCreateSystem(const char *key_system, void *context,
     }
     return new DrmSystemOcdm(context, update_request_callback,
             session_updated_callback, key_statuses_changed_callback,
-            server_certificate_updated_callback, "Linux", "Linux");
+            server_certificate_updated_callback, session_closed_callback,
+            "Linux", "Linux");
 }

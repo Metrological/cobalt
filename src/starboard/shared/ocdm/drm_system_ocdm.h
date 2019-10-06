@@ -2,6 +2,7 @@
 #define STARBOARD_SHARED_OCDM_DRM_SYSTEM_OCDM_H_
 
 #include <map>
+#include <string>
 
 #include "starboard/shared/starboard/drm/drm_system_internal.h"
 #include "starboard/shared/starboard/thread_checker.h"
@@ -13,13 +14,6 @@
 namespace starboard {
 namespace shared {
 namespace ocdm {
-
-#define NEW_OCDM_INTERFACE 1
-#ifdef NEW_OCDM_INTERFACE
-typedef OpenCDMSystem OPEN_CDM_SYSTEM;
-#else
-typedef OpenCDMAccessor OPEN_CDM_SYSTEM;
-#endif
 
 struct OcdmCounterContext {
     uint64_t initialization_vector_;
@@ -45,6 +39,7 @@ public:
             SbDrmSessionUpdatedFunc session_updated_callback,
             SbDrmSessionKeyStatusesChangedFunc key_statuses_changed_callback,
             SbDrmServerCertificateUpdatedFunc server_certificate_updated_callback,
+            SbDrmSessionClosedFunc session_closed_callback,
             const std::string &company_name, const std::string &model_name);
 
     ~DrmSystemOcdm() override;
@@ -94,16 +89,20 @@ private:
     struct OpenCDMSession* SessionIdToSession(const void *session_id,
             int session_id_size);
 
+    static std::string key_system_str;
+
     void *const context_;
     int pre_session_ticket_;
     std::map<OpenCDMSession*, int> session_to_ticket_;
+    std::list<OpenCDMSession *> session_list;
 
     const SbDrmSessionUpdateRequestFunc session_update_request_callback_;
     const SbDrmSessionUpdatedFunc session_updated_callback_;
     const SbDrmSessionKeyStatusesChangedFunc key_statuses_changed_callback_;
     const SbDrmServerCertificateUpdatedFunc server_certificate_updated_callback_;
+    const SbDrmSessionClosedFunc session_closed_callback_;
 
-    OPEN_CDM_SYSTEM *ocdm_system_;
+    OpenCDMSystem *ocdm_system_;
     OpenCDMSessionCallbacks session_callbacks_;
 };
 
