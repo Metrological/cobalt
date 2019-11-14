@@ -453,6 +453,8 @@ enum class MediaType {
   kBoth = kAudio | kVideo
 };
 
+constexpr char kClearSamplesKey[] = "fake-key-magic";
+
 struct Task {
   virtual ~Task() {}
   virtual void Do() = 0;
@@ -646,7 +648,31 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
     GSource* src_{nullptr};
   };
 
-  struct PendingSample {
+  class PendingSample {
+   public:
+    PendingSample() = delete;
+    PendingSample& operator=(const PendingSample&) = delete;
+    PendingSample(const PendingSample&) = delete;
+
+    PendingSample& operator=(PendingSample&& other) {
+      type_ = other.type_;
+      buffer_ = other.buffer_;
+      other.buffer_ = nullptr;
+      buffer_copy_ = other.buffer_copy_;
+      other.buffer_copy_ = nullptr;
+      iv_ = other.iv_;
+      other.iv_ = nullptr;
+      subsamples_ = other.subsamples_;
+      other.subsamples_ = nullptr;
+      subsamples_count_ = other.subsamples_count_;
+      other.subsamples_count_ = 0;
+      key_ = other.key_;
+      other.key_ = nullptr;
+      return *this;
+    }
+
+    PendingSample(PendingSample&& other) { operator=(std::move(other)); }
+
     PendingSample(SbMediaType type,
                   GstBuffer* buffer,
                   GstBuffer* iv,
@@ -659,21 +685,36 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
           subsamples_(subsamples),
           subsamples_count_(subsamples_count),
           key_(key) {
-      gst_buffer_ref(buffer);
-      gst_buffer_ref(iv);
-      gst_buffer_ref(subsamples);
-      gst_buffer_ref(key);
+      DCHECK(gst_buffer_is_writable(buffer));
+      buffer_copy_ = gst_buffer_copy_deep(buffer);
     }
 
     ~PendingSample() {
-      gst_buffer_unref(key_);
-      gst_buffer_unref(subsamples_);
-      gst_buffer_unref(iv_);
-      gst_buffer_unref(buffer_);
+      if (key_)
+        gst_buffer_unref(key_);
+      if (subsamples_)
+        gst_buffer_unref(subsamples_);
+      if (iv_)
+        gst_buffer_unref(iv_);
+      if (buffer_)
+        gst_buffer_unref(buffer_);
+      if (buffer_copy_)
+        gst_buffer_unref(buffer_copy_);
     }
 
+    void Written() { buffer_copy_ = gst_buffer_copy_deep(buffer_); }
+
+    SbMediaType Type() const { return type_; }
+    GstBuffer* Buffer() const { return buffer_copy_; }
+    GstBuffer* Iv() const { return iv_; }
+    GstBuffer* Subsamples() const { return subsamples_; }
+    int32_t SubsamplesCount() const { return subsamples_count_; }
+    GstBuffer* Key() const { return key_; }
+
+   private:
     SbMediaType type_;
     GstBuffer* buffer_;
+    GstBuffer* buffer_copy_;
     GstBuffer* iv_;
     GstBuffer* subsamples_;
     int32_t subsamples_count_;
@@ -703,7 +744,7 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   bool ChangePipelineState(GstState state);
   void DispatchOnWorkerThread(Task* task);
   gint64 GetPosition() const;
-  void WriteSample(SbMediaType sample_type,
+  bool WriteSample(SbMediaType sample_type,
                    GstBuffer* buffer,
                    const std::string& session_id,
                    GstBuffer* subsample = nullptr,
@@ -733,9 +774,11 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   GstElement* video_appsrc_{nullptr};
   GstElement* audio_appsrc_{nullptr};
   GstElement* pipeline_{nullptr};
-  int source_id_;
+  int source_setup_id_{-1};
+  int bus_watch_id_{-1};
   SbThread playback_thread_;
   ::starboard::Mutex mutex_;
+  ::starboard::Mutex source_setup_mutex_;
   double rate_{1.0};
   int ticket_{SB_PLAYER_INITIAL_TICKET};
   SbTime seek_position_{kSbTimeMax};
@@ -808,7 +851,7 @@ PlayerImpl::PlayerImpl(SbPlayer player,
   g_object_set(pipeline_, "uri", "cobalt://", nullptr);
 
   GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline_));
-  source_id_ = gst_bus_add_watch(bus, &PlayerImpl::BusMessageCallback, this);
+  bus_watch_id_ = gst_bus_add_watch(bus, &PlayerImpl::BusMessageCallback, this);
   gst_bus_set_sync_handler(bus, &PlayerImpl::CreateVideoOverlay, this, nullptr);
   gst_object_unref(bus);
 
@@ -833,12 +876,18 @@ PlayerImpl::PlayerImpl(SbPlayer player,
 
 PlayerImpl::~PlayerImpl() {
   GST_DEBUG_OBJECT(pipeline_, "Destroying player");
-  g_source_remove(source_id_);
+  {
+    ::starboard::ScopedLock lock(source_setup_mutex_);
+    if (source_setup_id_ > -1) {
+      GST_INFO("CANCELLING %p %p %p", pipeline_, source_, this);
+      g_source_remove(source_setup_id_);
+    }
+  }
+  g_source_remove(bus_watch_id_);
+  ChangePipelineState(GST_STATE_NULL);
   GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline_));
   gst_bus_set_sync_handler(bus, nullptr, nullptr, nullptr);
   gst_object_unref(bus);
-  ChangePipelineState(GST_STATE_NULL);
-  window_->DestroyVideoOverlay(video_overlay_);
   DispatchOnWorkerThread(
       new DecoderStatusTask(decoder_status_func_, player_, ticket_, context_,
                             kSbPlayerDecoderStateDestroyed, MediaType::kBoth));
@@ -850,6 +899,7 @@ PlayerImpl::~PlayerImpl() {
   g_object_unref(pipeline_);
   if (drm_system_)
     drm_system_->RemoveObserver(this);
+  window_->DestroyVideoOverlay(video_overlay_);
   GST_DEBUG("BYE BYE player");
 }
 
@@ -905,40 +955,39 @@ gboolean PlayerImpl::BusMessageCallback(GstBus* bus,
                                           GST_DEBUG_GRAPH_SHOW_ALL,
                                           file_name.c_str());
 
-        int ticket = 0;
-        bool is_seek_pending = false;
-        bool is_rate_pending = false;
-        double rate = 0.;
-        SbTime pending_seek_pos = kSbTimeMax;
+        if (GST_STATE(self->pipeline_) >= GST_STATE_PAUSED) {
+          int ticket = 0;
+          bool is_seek_pending = false;
+          bool is_rate_pending = false;
+          double rate = 0.;
+          SbTime pending_seek_pos = kSbTimeMax;
 
-        {
-          ::starboard::ScopedLock lock(self->mutex_);
-          ticket = self->ticket_;
-          is_seek_pending = self->is_seek_pending_;
-          self->is_seek_pending_ = false;
-          is_rate_pending = self->is_rate_pending_;
-          self->is_rate_pending_ = false;
-          pending_seek_pos = self->seek_position_;
-          DCHECK(!is_seek_pending || self->seek_position_ != kSbTimeMax);
-          rate = self->rate_;
-        }
+          {
+            ::starboard::ScopedLock lock(self->mutex_);
+            ticket = self->ticket_;
+            is_seek_pending = self->is_seek_pending_;
+            is_rate_pending = self->is_rate_pending_;
+            pending_seek_pos = self->seek_position_;
+            DCHECK(!is_seek_pending || self->seek_position_ != kSbTimeMax);
+            rate = self->rate_;
+          }
 
-        // TODO(pstanek): This makes SetRate() and Seek() to be called from 2
-        // threads. Check if cobalts calls in on application's run loop and if
-        // that's the case consider posting these there too.
-        if (is_rate_pending && GST_STATE(self->pipeline_) > GST_STATE_PAUSED) {
-          GST_INFO("Sending pending SetRate(%lf)", rate);
-          self->SetRate(rate);
-        }
+          if (is_rate_pending &&
+              GST_STATE(self->pipeline_) > GST_STATE_PAUSED) {
+            GST_INFO("Sending pending SetRate(%lf)", rate);
+            self->SetRate(rate);
+          }
 
-        if (is_seek_pending && GST_STATE(self->pipeline_) >= GST_STATE_PAUSED) {
-          GST_INFO("Sending pending Seek(%" PRId64 ")", pending_seek_pos);
-          self->Seek(pending_seek_pos, ticket);
-        }
+          if (is_seek_pending &&
+              GST_STATE(self->pipeline_) >= GST_STATE_PAUSED) {
+            GST_INFO("Sending pending Seek(%" PRId64 ")", pending_seek_pos);
+            self->Seek(pending_seek_pos, ticket);
+          }
 
-        {
-          ::starboard::ScopedLock lock(self->mutex_);
-          DCHECK(!self->is_seek_pending_ && !self->is_rate_pending_);
+          {
+            ::starboard::ScopedLock lock(self->mutex_);
+            DCHECK(!self->is_seek_pending_ && !self->is_rate_pending_);
+          }
         }
       }
     } break;
@@ -948,15 +997,46 @@ gboolean PlayerImpl::BusMessageCallback(GstBus* bus,
         GST_INFO("===> ASYNC-DONE %s %d",
                  gst_element_state_get_name(GST_STATE(self->pipeline_)),
                  static_cast<int>(self->state_));
-        ::starboard::ScopedLock lock(self->mutex_);
         if (self->state_ == State::kPrerollAfterSeek ||
             self->state_ == State::kInitialPreroll) {
+          bool is_seek_pending = false;
+          bool is_rate_pending = false;
+          {
+            ::starboard::ScopedLock lock(self->mutex_);
+            is_seek_pending = self->is_seek_pending_;
+            is_rate_pending = self->is_rate_pending_;
+          }
+          if (!is_seek_pending && !is_rate_pending) {
+            int prev_has_data = static_cast<int>(MediaType::kNone);
+            {
+              ::starboard::ScopedLock lock(self->mutex_);
+              prev_has_data = static_cast<int>(self->has_enough_data_);
+              self->has_enough_data_ = static_cast<int>(MediaType::kBoth);
+            }
+            GST_INFO("===> Writing pending samples");
+            self->OnKeyReady(reinterpret_cast<const uint8_t*>(kClearSamplesKey),
+                             strlen(kClearSamplesKey));
+            if (self->drm_system_) {
+              for (auto& key : self->drm_system_->GetReadyKeys()) {
+                self->OnKeyReady(reinterpret_cast<const uint8_t*>(key.c_str()),
+                                 key.size());
+              }
+            }
+            {
+              ::starboard::ScopedLock lock(self->mutex_);
+              if (self->has_enough_data_ == static_cast<int>(MediaType::kBoth))
+                self->has_enough_data_ = prev_has_data;
+            }
+          }
           GST_INFO("===> Asuming preroll done");
-          self->seek_position_ = kSbTimeMax;
-          self->DispatchOnWorkerThread(new PlayerStatusTask(
-              self->player_status_func_, self->player_, self->ticket_,
-              self->context_, kSbPlayerStatePresenting));
-          self->state_ = State::kPresenting;
+          {
+            ::starboard::ScopedLock lock(self->mutex_);
+            self->seek_position_ = kSbTimeMax;
+            self->DispatchOnWorkerThread(new PlayerStatusTask(
+                self->player_status_func_, self->player_, self->ticket_,
+                self->context_, kSbPlayerStatePresenting));
+            self->state_ = State::kPresenting;
+          }
         }
       }
     } break;
@@ -1034,6 +1114,7 @@ void PlayerImpl::DispatchOnWorkerThread(Task* task) {
 // static
 gboolean PlayerImpl::FinishSourceSetup(gpointer user_data) {
   PlayerImpl* self = static_cast<PlayerImpl*>(user_data);
+  ::starboard::ScopedLock lock(self->source_setup_mutex_);
   DCHECK(self->source_);
   GstElement* source = self->source_;
   GstAppSrcCallbacks callbacks = {&PlayerImpl::AppSrcNeedData,
@@ -1048,6 +1129,7 @@ gboolean PlayerImpl::FinishSourceSetup(gpointer user_data) {
       source, self->video_appsrc_, !caps.empty() ? caps[0].c_str() : nullptr,
       &callbacks, self);
   gst_cobalt_src_all_app_srcs_added(self->source_);
+  self->source_setup_id_ = -1;
 
   return FALSE;
 }
@@ -1123,10 +1205,12 @@ gboolean PlayerImpl::AppSrcSeekData(GstAppSrc* src,
 void PlayerImpl::SetupSource(GstElement* pipeline,
                              GstElement* source,
                              PlayerImpl* self) {
+  ::starboard::ScopedLock lock(self->source_setup_mutex_);
   DCHECK(!self->source_);
   self->source_ = source;
   static constexpr int kAsyncSourceFinishTimeMs = 50;
-  g_timeout_add(kAsyncSourceFinishTimeMs, &PlayerImpl::FinishSourceSetup, self);
+  self->source_setup_id_ = g_timeout_add(kAsyncSourceFinishTimeMs,
+                                         &PlayerImpl::FinishSourceSetup, self);
 }
 
 void PlayerImpl::MarkEOS(SbMediaType stream_type) {
@@ -1149,7 +1233,7 @@ void PlayerImpl::MarkEOS(SbMediaType stream_type) {
   gst_app_src_end_of_stream(GST_APP_SRC(src));
 }
 
-void PlayerImpl::WriteSample(SbMediaType sample_type,
+bool PlayerImpl::WriteSample(SbMediaType sample_type,
                              GstBuffer* buffer,
                              const std::string& session_id,
                              GstBuffer* subsample,
@@ -1170,7 +1254,7 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
 
   bool decrypted = true;
   if (!session_id.empty()) {
-    GST_LOG_OBJECT(src, "Decrypting...");
+    GST_LOG_OBJECT(src, "Decrypting using %s...", session_id.c_str());
     DCHECK(drm_system_ && subsample && subsample_count && iv && key);
     decrypted = drm_system_->Decrypt(session_id, buffer, subsample,
                                      subsample_count, iv, key);
@@ -1186,7 +1270,7 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
     ++total_video_frames_;
   // Wait for need-data to trigger instead.
   if (state_ == State::kInitial || state_ == State::kInitialPreroll)
-    return;
+    return decrypted;
 
   bool has_enough =
       (sample_type == kSbMediaTypeVideo &&
@@ -1203,6 +1287,8 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
   } else {
     GST_LOG_OBJECT(src, "Has enough data");
   }
+
+  return decrypted;
 }
 
 void PlayerImpl::WriteSample(SbMediaType sample_type,
@@ -1231,8 +1317,15 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
     frame_height_ = sample_infos[0].video_sample_info.frame_height;
   }
 
+  std::string key_str;
+  bool keep_samples = false;
+  {
+    ::starboard::ScopedLock lock(mutex_);
+    keep_samples = is_seek_pending_ || is_rate_pending_;
+  }
   if (sample_infos[0].drm_info) {
-    GST_DEBUG("Encounterd encrypted sample");
+    GST_LOG("Encounterd encrypted %s sample",
+            sample_type == kSbMediaTypeVideo ? "video" : "audio");
     DCHECK(drm_system_);
     key = gst_buffer_new_allocate(
         nullptr, sample_infos[0].drm_info->identifier_size, nullptr);
@@ -1266,25 +1359,55 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
     session_id = drm_system_->SessionIdByKeyId(
         sample_infos[0].drm_info->identifier,
         sample_infos[0].drm_info->identifier_size);
-    if (session_id.empty()) {
-      GST_WARNING("No session. Bailing out!");
+    if (session_id.empty() || keep_samples) {
+      GST_INFO("No session/pending flushing operation. Storing sample");
       PendingSample sample(sample_type, buffer, iv, subsamples,
                            subsamples_count, key);
-      std::string key(
+      key_str = {
           reinterpret_cast<const char*>(sample_infos[0].drm_info->identifier),
-          sample_infos[0].drm_info->identifier_size);
-      pending_[key].emplace_back(sample);
-      return;
+          sample_infos[0].drm_info->identifier_size};
+      ::starboard::ScopedLock lock(mutex_);
+      pending_[key_str].emplace_back(std::move(sample));
+      if (session_id.empty())
+        return;
     }
   } else {
     GST_TRACE("Encounterd clear sample");
+    if (keep_samples) {
+      ::starboard::ScopedLock lock(mutex_);
+      GST_INFO("Pending flushing operation. Storing sample");
+      PendingSample sample(sample_type, buffer, nullptr, nullptr, 0, nullptr);
+      key_str = {kClearSamplesKey};
+      pending_[key_str].emplace_back(std::move(sample));
+    }
   }
 
-  WriteSample(sample_type, buffer, session_id, subsamples, subsamples_count, iv,
-              key);
+  if (keep_samples) {
+    PendingSamples local_samples;
+    {
+      ::starboard::ScopedLock lock(mutex_);
+      local_samples.swap(pending_[key_str]);
+    }
+
+    auto& sample = local_samples.back();
+    if (WriteSample(sample.Type(), sample.Buffer(), session_id,
+                    sample.Subsamples(), sample.SubsamplesCount(), sample.Iv(),
+                    sample.Key())) {
+      sample.Written();
+    }
+
+    {
+      ::starboard::ScopedLock lock(mutex_);
+      std::move(local_samples.begin(), local_samples.end(),
+                std::back_inserter(pending_[key_str]));
+    }
+  } else {
+    WriteSample(sample_type, buffer, session_id, subsamples, subsamples_count,
+                iv, key);
+  }
 
   GST_TRACE("Wrote sample. Cleaning up.");
-  if (!session_id.empty()) {
+  if (!session_id.empty() && !keep_samples) {
     gst_buffer_unref(iv);
     gst_buffer_unref(key);
     gst_buffer_unref(subsamples);
@@ -1385,27 +1508,33 @@ bool PlayerImpl::SetRate(double rate) {
       return false;
     }
 
+    /*
     ChangePipelineState(GST_STATE_PLAYING);
-    if (GST_STATE(pipeline_) < GST_STATE_PLAYING) {
+    if (GST_STATE(pipeline_) < GST_STATE_PAUSED) {
       GST_DEBUG_OBJECT(pipeline_, "===> Set rate postponed");
       ::starboard::ScopedLock lock(mutex_);
       is_rate_pending_ = true;
+      state_ = State::kPrerollAfterSeek;
+      seek_position_ = GetPosition();
+      return;
     } else {
       {
         ::starboard::ScopedLock lock(mutex_);
         is_rate_pending_ = false;
       }
 
-      GST_DEBUG("Calling non-flushing seek (set rate)");
+      GST_DEBUG("Calling seek (set rate)");
       success = gst_element_seek(
           pipeline_, rate, GST_FORMAT_TIME,
-          static_cast<GstSeekFlags>(GST_SEEK_FLAG_ACCURATE), GST_SEEK_TYPE_NONE,
-          GST_CLOCK_TIME_NONE, GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
+          static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH |
+                                    GST_SEEK_FLAG_ACCURATE),
+              GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE,
+              GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
     }
+    */
   }
 
   if (success) {
-    GST_DEBUG("Non-flushing seek (set rate) succeeded");
     ::starboard::ScopedLock lock(mutex_);
     rate_ = rate;
   } else {
@@ -1426,9 +1555,13 @@ void PlayerImpl::GetInfo(SbPlayerInfo2* out_player_info) {
 
   gint64 position = GetPosition();
 
-  GST_TRACE_OBJECT(pipeline_,
-                   "Position: %" GST_TIME_FORMAT " Duration: %" GST_TIME_FORMAT,
-                   GST_TIME_ARGS(position), GST_TIME_ARGS(duration));
+  GST_TRACE_OBJECT(
+      pipeline_,
+      "Position: %" GST_TIME_FORMAT " (Seek to: %" GST_TIME_FORMAT
+      ") Duration: %" GST_TIME_FORMAT,
+      GST_TIME_ARGS(position),
+      GST_TIME_ARGS(seek_position_ * kSbTimeNanosecondsPerMicrosecond),
+      GST_TIME_ARGS(duration));
 
   out_player_info->current_media_timestamp =
       GST_CLOCK_TIME_IS_VALID(position)
@@ -1478,14 +1611,39 @@ gint64 PlayerImpl::GetPosition() const {
 
 void PlayerImpl::OnKeyReady(const uint8_t* key, size_t key_len) {
   std::string key_str(reinterpret_cast<const char*>(key), key_len);
-  auto iter = pending_.find(key_str);
+  SamplesPendingKey::iterator iter;
+  bool keep_samples = false;
+  {
+    ::starboard::ScopedLock lock(mutex_);
+    iter = pending_.find(key_str);
+    keep_samples = is_seek_pending_ || is_rate_pending_;
+  }
+
   if (iter != pending_.end()) {
-    auto session_id = drm_system_->SessionIdByKeyId(key, key_len);
-    DCHECK(!session_id.empty());
-    for (auto& pending : iter->second) {
-      WriteSample(pending.type_, pending.buffer_, session_id,
-                  pending.subsamples_, pending.subsamples_count_, pending.iv_,
-                  pending.key_);
+    std::string session_id;
+    if (drm_system_) {
+      session_id = drm_system_->SessionIdByKeyId(key, key_len);
+      DCHECK(!session_id.empty());
+    }
+
+    PendingSamples local_samples;
+    {
+      ::starboard::ScopedLock lock(mutex_);
+      local_samples.swap(iter->second);
+    }
+
+    for (auto& sample : local_samples) {
+      if (WriteSample(sample.Type(), sample.Buffer(), session_id,
+                      sample.Subsamples(), sample.SubsamplesCount(),
+                      sample.Iv(), sample.Key())) {
+        sample.Written();
+      }
+    }
+
+    if (keep_samples) {
+      ::starboard::ScopedLock lock(mutex_);
+      std::move(local_samples.begin(), local_samples.end(),
+                std::back_inserter(pending_[key_str]));
     }
   }
 }

@@ -14,12 +14,12 @@
 
 #include "starboard/window.h"
 
-#include "third_party/starboard/wpe/shared/window_internal.h"
+#include "third_party/starboard/wpe/shared/window/window_internal.h"
 
 void* SbWindowGetPlatformHandle(SbWindow window) {
   if (!SbWindowIsValid(window)) {
     return NULL;
   }
   return reinterpret_cast<void*>(
-      static_cast<SbWindowPrivate*>(window)->window->Native());
+      static_cast<SbWindowPrivate*>(window)->window_->Native());
 }

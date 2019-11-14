@@ -15,7 +15,7 @@
 #include "starboard/common/log.h"
 #include "starboard/window.h"
 
-#include "third_party/starboard/wpe/shared/window_internal.h"
+#include "third_party/starboard/wpe/shared/window/window_internal.h"
 
 bool SbWindowGetSize(SbWindow window, SbWindowSize* size) {
   if (!SbWindowIsValid(window)) {
@@ -23,8 +23,8 @@ bool SbWindowGetSize(SbWindow window, SbWindowSize* size) {
     return false;
   }
 
-  size->width = static_cast<SbWindowPrivate*>(window)->window->Width();
-  size->height = static_cast<SbWindowPrivate*>(window)->window->Height();
+  size->width = static_cast<SbWindowPrivate*>(window)->window_->Width();
+  size->height = static_cast<SbWindowPrivate*>(window)->window_->Height();
   size->video_pixel_ratio = 1.0f;
   return true;
 }

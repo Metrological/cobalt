@@ -66,10 +66,7 @@ class GStreamerAudioSink : public SbAudioSinkPrivate {
   bool IsType(Type* type) override { return type_ == type; }
 
   void SetPlaybackRate(double playback_rate) override {
-    gst_element_seek(pipeline_, playback_rate, GST_FORMAT_TIME,
-                     GST_SEEK_FLAG_FLUSH, GST_SEEK_TYPE_NONE,
-                     GST_CLOCK_TIME_NONE, GST_SEEK_TYPE_NONE,
-                     GST_CLOCK_TIME_NONE);
+    NOTIMPLEMENTED();
   }
 
   void SetVolume(double volume) override {

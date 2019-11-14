@@ -276,7 +276,8 @@ void Session::OnKeyUpdated(struct OpenCDMSession* /*ocdm_session*/,
     return;
   }
 
-  session->drm_system_->OnKeyReady(key_id, length);
+  auto status = opencdm_session_status(session->session_.get(), key_id, length);
+  session->drm_system_->OnKeyUpdated(key_id, length, status == Usable);
 }
 
 // static
@@ -299,7 +300,7 @@ void Session::OnAllKeysUpdated(const struct OpenCDMSession* /*ocdm_session*/,
   session->session_updated_callback_(session->drm_system_, session->context_,
                                      ticket, kSbDrmStatusSuccess, nullptr,
                                      id.c_str(), id.size());
-  session->drm_system_->OnAllKeysReady();
+  session->drm_system_->OnAllKeysUpdated();
   LOG(INFO) << "Session update ended " << id;
 }
 
@@ -453,12 +454,19 @@ void DrmSystemOcdm::RemoveObserver(DrmSystemOcdm::Observer* obs) {
   observers_.erase(found);
 }
 
-void DrmSystemOcdm::OnKeyReady(const uint8_t* key, size_t key_len) {
+void DrmSystemOcdm::OnKeyUpdated(const uint8_t* key,
+                                 size_t key_len,
+                                 bool usable) {
   ::starboard::ScopedLock lock(mutex_);
-  keys_.insert(std::string(reinterpret_cast<const char*>(key), key_len));
+  std::string key_str{reinterpret_cast<const char*>(key), key_len};
+  if (usable) {
+    keys_.insert(key_str);
+  } else {
+    keys_.erase(key_str);
+  }
 }
 
-void DrmSystemOcdm::OnAllKeysReady() {
+void DrmSystemOcdm::OnAllKeysUpdated() {
   ::starboard::ScopedLock lock(mutex_);
   if (event_id_ != kSbEventIdInvalid)
     SbEventCancel(event_id_);
@@ -477,7 +485,7 @@ void DrmSystemOcdm::AnnounceKeys() {
       observer->OnKeyReady(reinterpret_cast<const uint8_t*>(key.c_str()),
                            key.size());
   }
-  keys_.clear();
+  event_id_ = kSbEventIdInvalid;
 }
 
 std::string DrmSystemOcdm::SessionIdByKeyId(const uint8_t* key,

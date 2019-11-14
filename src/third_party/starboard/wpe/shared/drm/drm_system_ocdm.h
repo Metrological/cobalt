@@ -64,8 +64,8 @@ class DrmSystemOcdm : public SbDrmSystemPrivate {
 
   void AddObserver(Observer* obs);
   void RemoveObserver(Observer* obs);
-  void OnKeyReady(const uint8_t* key, size_t key_len);
-  void OnAllKeysReady();
+  void OnKeyUpdated(const uint8_t* key, size_t key_len, bool usable);
+  void OnAllKeysUpdated();
   std::string SessionIdByKeyId(const uint8_t* key, uint8_t key_len);
   bool Decrypt(const std::string& id,
                _GstBuffer* buffer,
@@ -73,6 +73,7 @@ class DrmSystemOcdm : public SbDrmSystemPrivate {
                uint32_t sub_sample_count,
                _GstBuffer* iv,
                _GstBuffer* key_id);
+  std::set<std::string> GetReadyKeys() const { return keys_; }
 
  private:
   session::Session* GetSessionById(const std::string& id) const;
