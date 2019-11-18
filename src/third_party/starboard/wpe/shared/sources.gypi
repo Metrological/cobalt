@@ -13,6 +13,8 @@
 # limitations under the License.
 {
   'variables': {
+    'has_ocdm': '<!(echo $COBALT_HAS_OCDM)',
+    'common_defines': [],
     'use_system_libjpeg': 1,
     'audio_sink_sources': [
         '<(DEPTH)/starboard/shared/starboard/audio_sink/audio_sink_create.cc',
@@ -419,6 +421,13 @@
         '<(DEPTH)/third_party/starboard/wpe/shared/application_wpe.cc',
         '<(DEPTH)/third_party/starboard/wpe/shared/get_home_directory.cc',
         '<(DEPTH)/third_party/starboard/wpe/shared/main_wpe.cc',
+    ],
+    'conditions': [
+      ['<(has_ocdm)==1', {
+        'common_defines': [
+          'HAS_OCDM',
+        ],
+      }],
     ],
   },
 }

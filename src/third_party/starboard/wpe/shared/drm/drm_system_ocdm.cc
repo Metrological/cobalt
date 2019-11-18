@@ -1,3 +1,4 @@
+#if defined(HAS_OCDM)
 #include "third_party/starboard/wpe/shared/drm/drm_system_ocdm.h"
 
 #include "base/logging.h"
@@ -513,3 +514,4 @@ bool DrmSystemOcdm::Decrypt(const std::string& id,
 }  // namespace wpe
 }  // namespace starboard
 }  // namespace third_party
+#endif
