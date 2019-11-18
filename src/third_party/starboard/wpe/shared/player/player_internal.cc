@@ -879,7 +879,6 @@ PlayerImpl::~PlayerImpl() {
   {
     ::starboard::ScopedLock lock(source_setup_mutex_);
     if (source_setup_id_ > -1) {
-      GST_INFO("CANCELLING %p %p %p", pipeline_, source_, this);
       g_source_remove(source_setup_id_);
     }
   }
@@ -972,14 +971,12 @@ gboolean PlayerImpl::BusMessageCallback(GstBus* bus,
             rate = self->rate_;
           }
 
-          if (is_rate_pending &&
-              GST_STATE(self->pipeline_) > GST_STATE_PAUSED) {
+          if (is_rate_pending) {
             GST_INFO("Sending pending SetRate(%lf)", rate);
             self->SetRate(rate);
           }
 
-          if (is_seek_pending &&
-              GST_STATE(self->pipeline_) >= GST_STATE_PAUSED) {
+          if (is_seek_pending) {
             GST_INFO("Sending pending Seek(%" PRId64 ")", pending_seek_pos);
             self->Seek(pending_seek_pos, ticket);
           }
