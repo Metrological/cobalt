@@ -29,6 +29,7 @@ namespace audio_sink {
 // gst-launch-1.0 filesrc location=/dev/zero ! audio/x-raw, format=F32LE,
 // channels=2, layout=interleaved, rate=48000 ! audioconvert ! audioresample !
 // autoaudiosink &
+// Investigate.
 
 // static
 GStreamerAudioSinkType* GStreamerAudioSinkType::CreateInstance() {

@@ -34,7 +34,6 @@ namespace window {
 
 namespace {
 
-// TODO(pstanek): Get from config
 constexpr int kDefaultWidth = 1280;
 constexpr int kDefaultHeight = 720;
 
@@ -484,13 +483,15 @@ SbWindowPrivate::SbWindowPrivate(const SbWindowOptions* options) {
       options && options->size.height > 0
           ? options->size.height
           : third_party::starboard::wpe::shared::window::kDefaultHeight;
-  // TODO(pstanek): hack for RPI. The sufraces are stacked in order they are
-  // created with by default so make sure video is under gfx.
-  // TODO(pstanek): do it on platforms which need that.
+#if defined(SB_NEEDS_VIDEO_OVERLAY_SURFACE)
+  // The sufraces are stacked in order they are
+  // created with by default so make sure video is under gfx by creating
+  // it first.
   video_overlay_ =
       third_party::starboard::wpe::shared::window::GetDisplay()->Create(
           "CobaltVideoWindow" + std::to_string(SbTimeToPosix(SbTimeGetNow())),
           window_width, window_hight);
+#endif
   window_ = third_party::starboard::wpe::shared::window::GetDisplay()->Create(
       "CobaltWindow" + std::to_string(SbTimeToPosix(SbTimeGetNow())),
       window_width, window_hight);

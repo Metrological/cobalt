@@ -751,6 +751,7 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
                    int32_t subsamples_count = 0,
                    GstBuffer* iv = nullptr,
                    GstBuffer* key = nullptr);
+  MediaType GetBothMediaTypeTakingCodecsIntoAccount();
 
   SbPlayer player_;
   SbWindow window_;
@@ -781,7 +782,7 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   ::starboard::Mutex source_setup_mutex_;
   double rate_{1.0};
   int ticket_{SB_PLAYER_INITIAL_TICKET};
-  SbTime seek_position_{kSbTimeMax};
+  mutable SbTime seek_position_{kSbTimeMax};
   bool is_seek_pending_{false};
   bool is_rate_pending_{false};
   int has_enough_data_{static_cast<int>(MediaType::kBoth)};
@@ -830,6 +831,11 @@ PlayerImpl::PlayerImpl(SbPlayer player,
   GST_DEBUG_CATEGORY_INIT(cobalt_gst_player_debug, "gstplayer", 0,
                           "Cobalt player");
 
+#if SB_API_VERSION >= 11
+  GST_INFO("Creating player with max capabilities: %s",
+           max_video_capabilities_);
+#endif
+
   GstElementFactory* src_factory = gst_element_factory_find("cobaltsrc");
   if (!src_factory) {
     gst_element_register(0, "cobaltsrc", GST_RANK_PRIMARY + 100,
@@ -842,7 +848,10 @@ PlayerImpl::PlayerImpl(SbPlayer player,
   unsigned flagAudio = getGstPlayFlag("audio");
   unsigned flagVideo = getGstPlayFlag("video");
   unsigned flagNativeVideo = getGstPlayFlag("native-video");
-  unsigned flagNativeAudio = getGstPlayFlag("native-audio");
+  unsigned flagNativeAudio = 0;
+#if SB_HAS(NATIVE_AUDIO)
+  flagNativeAudio = getGstPlayFlag("native-audio");
+#endif
   g_object_set(pipeline_, "flags",
                flagAudio | flagVideo | flagNativeVideo | flagNativeAudio,
                nullptr);
@@ -889,7 +898,8 @@ PlayerImpl::~PlayerImpl() {
   gst_object_unref(bus);
   DispatchOnWorkerThread(
       new DecoderStatusTask(decoder_status_func_, player_, ticket_, context_,
-                            kSbPlayerDecoderStateDestroyed, MediaType::kBoth));
+                            kSbPlayerDecoderStateDestroyed,
+                            GetBothMediaTypeTakingCodecsIntoAccount()));
   DispatchOnWorkerThread(new PlayerDestroyedTask(
       player_status_func_, player_, ticket_, context_, main_loop_));
   SbThreadJoin(playback_thread_, nullptr);
@@ -1014,7 +1024,8 @@ gboolean PlayerImpl::BusMessageCallback(GstBus* bus,
             self->OnKeyReady(reinterpret_cast<const uint8_t*>(kClearSamplesKey),
                              strlen(kClearSamplesKey));
             if (self->drm_system_) {
-              for (auto& key : self->drm_system_->GetReadyKeys()) {
+              auto ready_keys = self->drm_system_->GetReadyKeys();
+              for (auto& key : ready_keys) {
                 self->OnKeyReady(reinterpret_cast<const uint8_t*>(key.c_str()),
                                  key.size());
               }
@@ -1028,7 +1039,9 @@ gboolean PlayerImpl::BusMessageCallback(GstBus* bus,
           GST_INFO("===> Asuming preroll done");
           {
             ::starboard::ScopedLock lock(self->mutex_);
-            self->seek_position_ = kSbTimeMax;
+            // The below code is good but on BRCM the decoder reports old
+            // position for some time which makes some YTLB 2020 test failing.
+            // self->seek_position_ = kSbTimeMax;
             self->DispatchOnWorkerThread(new PlayerStatusTask(
                 self->player_status_func_, self->player_, self->ticket_,
                 self->context_, kSbPlayerStatePresenting));
@@ -1118,13 +1131,17 @@ gboolean PlayerImpl::FinishSourceSetup(gpointer user_data) {
                                   &PlayerImpl::AppSrcEnoughData,
                                   &PlayerImpl::AppSrcSeekData, nullptr};
   auto caps = CodecToGstCaps(self->audio_codec_, self->audio_sample_info_);
-  gst_cobalt_src_setup_and_add_app_src(
-      source, self->audio_appsrc_, !caps.empty() ? caps[0].c_str() : nullptr,
-      &callbacks, self);
+  if (self->audio_codec_ != kSbMediaAudioCodecNone) {
+    gst_cobalt_src_setup_and_add_app_src(
+        source, self->audio_appsrc_, !caps.empty() ? caps[0].c_str() : nullptr,
+        &callbacks, self);
+  }
   caps = CodecToGstCaps(self->video_codec_);
-  gst_cobalt_src_setup_and_add_app_src(
-      source, self->video_appsrc_, !caps.empty() ? caps[0].c_str() : nullptr,
-      &callbacks, self);
+  if (self->video_codec_ != kSbMediaVideoCodecNone) {
+    gst_cobalt_src_setup_and_add_app_src(
+        source, self->video_appsrc_, !caps.empty() ? caps[0].c_str() : nullptr,
+        &callbacks, self);
+  }
   gst_cobalt_src_all_app_srcs_added(self->source_);
   self->source_setup_id_ = -1;
 
@@ -1158,7 +1175,8 @@ void PlayerImpl::AppSrcNeedData(GstAppSrc* src,
       return;
     }
 
-    need_data = static_cast<int>(MediaType::kBoth);
+    need_data =
+        static_cast<int>(self->GetBothMediaTypeTakingCodecsIntoAccount());
   }
 
   self->DispatchOnWorkerThread(new DecoderStatusTask(
@@ -1358,6 +1376,9 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
         sample_infos[0].drm_info->identifier_size);
     if (session_id.empty() || keep_samples) {
       GST_INFO("No session/pending flushing operation. Storing sample");
+      GST_INFO("SampleType:%d %" GST_TIME_FORMAT " b:%p, s:%p, iv:%p, k:%p",
+               sample_type, GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(buffer)), buffer,
+               subsamples, iv, key);
       PendingSample sample(sample_type, buffer, iv, subsamples,
                            subsamples_count, key);
       key_str = {
@@ -1373,6 +1394,9 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
     if (keep_samples) {
       ::starboard::ScopedLock lock(mutex_);
       GST_INFO("Pending flushing operation. Storing sample");
+      GST_INFO("SampleType:%d %" GST_TIME_FORMAT " b:%p, s:%p, iv:%p, k:%p",
+               sample_type, GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(buffer)), buffer,
+               subsamples, iv, key);
       PendingSample sample(sample_type, buffer, nullptr, nullptr, 0, nullptr);
       key_str = {kClearSamplesKey};
       pending_[key_str].emplace_back(std::move(sample));
@@ -1403,8 +1427,8 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
                 iv, key);
   }
 
-  GST_TRACE("Wrote sample. Cleaning up.");
   if (!session_id.empty() && !keep_samples) {
+    GST_TRACE("Wrote sample. Cleaning up.");
     gst_buffer_unref(iv);
     gst_buffer_unref(key);
     gst_buffer_unref(subsamples);
@@ -1469,6 +1493,9 @@ void PlayerImpl::Seek(SbTime seek_to_timestamp, int ticket) {
   }
 
   GST_DEBUG("Calling seek");
+  DispatchOnWorkerThread(new PlayerStatusTask(player_status_func_, player_,
+                                              ticket_, context_,
+                                              kSbPlayerStatePrerolling));
   if (!gst_element_seek(pipeline_, !rate ? 1.0 : rate, GST_FORMAT_TIME,
                         static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH |
                                                   GST_SEEK_FLAG_ACCURATE),
@@ -1476,14 +1503,13 @@ void PlayerImpl::Seek(SbTime seek_to_timestamp, int ticket) {
                         seek_to_timestamp * kSbTimeNanosecondsPerMicrosecond,
                         GST_SEEK_TYPE_NONE, 0)) {
     GST_ERROR_OBJECT(pipeline_, "Seek failed");
-    DispatchOnWorkerThread(new PlayerErrorTask(player_error_func_, player_,
-                                               context_, kSbPlayerErrorDecode,
-                                               "Seek failed"));
-  } else {
-    GST_DEBUG("Seek called with success");
+    ::starboard::ScopedLock lock(mutex_);
     DispatchOnWorkerThread(new PlayerStatusTask(player_status_func_, player_,
                                                 ticket_, context_,
-                                                kSbPlayerStatePrerolling));
+                                                kSbPlayerStatePresenting));
+    state_ = State::kPresenting;
+  } else {
+    GST_DEBUG("Seek called with success");
   }
 }
 
@@ -1497,15 +1523,6 @@ bool PlayerImpl::SetRate(double rate) {
   } else if (rate == 1. && (rate_ == 1. || rate_ == .0)) {
     ChangePipelineState(GST_STATE_PLAYING);
   } else {
-    // TODO(pstanek): Make it working:
-    if (rate != .0 && rate != 1.) {
-      GST_WARNING(
-          "Unsupported playback rate. Only 0 (PAUSED) and 1 (PLAY) "
-          "are supported");
-      return false;
-    }
-
-    /*
     ChangePipelineState(GST_STATE_PLAYING);
     if (GST_STATE(pipeline_) < GST_STATE_PAUSED) {
       GST_DEBUG_OBJECT(pipeline_, "===> Set rate postponed");
@@ -1513,7 +1530,7 @@ bool PlayerImpl::SetRate(double rate) {
       is_rate_pending_ = true;
       state_ = State::kPrerollAfterSeek;
       seek_position_ = GetPosition();
-      return;
+      return true;
     } else {
       {
         ::starboard::ScopedLock lock(mutex_);
@@ -1521,14 +1538,13 @@ bool PlayerImpl::SetRate(double rate) {
       }
 
       GST_DEBUG("Calling seek (set rate)");
-      success = gst_element_seek(
-          pipeline_, rate, GST_FORMAT_TIME,
-          static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH |
-                                    GST_SEEK_FLAG_ACCURATE),
-              GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE,
-              GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
+      success =
+          gst_element_seek(pipeline_, rate, GST_FORMAT_TIME,
+                           static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH |
+                                                     GST_SEEK_FLAG_ACCURATE),
+                           GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE,
+                           GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
     }
-    */
   }
 
   if (success) {
@@ -1552,13 +1568,11 @@ void PlayerImpl::GetInfo(SbPlayerInfo2* out_player_info) {
 
   gint64 position = GetPosition();
 
-  GST_TRACE_OBJECT(
-      pipeline_,
-      "Position: %" GST_TIME_FORMAT " (Seek to: %" GST_TIME_FORMAT
-      ") Duration: %" GST_TIME_FORMAT,
-      GST_TIME_ARGS(position),
-      GST_TIME_ARGS(seek_position_ * kSbTimeNanosecondsPerMicrosecond),
-      GST_TIME_ARGS(duration));
+  GST_TRACE("Position: %" GST_TIME_FORMAT " (Seek to: %" GST_TIME_FORMAT
+            ") Duration: %" GST_TIME_FORMAT,
+            GST_TIME_ARGS(position),
+            GST_TIME_ARGS(seek_position_ * kSbTimeNanosecondsPerMicrosecond),
+            GST_TIME_ARGS(duration));
 
   out_player_info->current_media_timestamp =
       GST_CLOCK_TIME_IS_VALID(position)
@@ -1571,8 +1585,33 @@ void PlayerImpl::GetInfo(SbPlayerInfo2* out_player_info) {
   out_player_info->volume = gst_stream_volume_get_volume(
       GST_STREAM_VOLUME(pipeline_), GST_STREAM_VOLUME_FORMAT_LINEAR);
   out_player_info->total_video_frames = total_video_frames_;
-  out_player_info->dropped_video_frames = 0;    // TODO(pstanek): get from GST
-  out_player_info->corrupted_video_frames = 0;  // TODO(pstanek): get from GST
+
+  GstElement* vid_sink = nullptr;
+  g_object_get(pipeline_, "video-sink", &vid_sink, nullptr);
+  if (vid_sink && g_object_class_find_property(G_OBJECT_GET_CLASS(vid_sink),
+                                               "frames-dropped")) {
+    GST_TRACE("Getting dropped frames count from the sink");
+    guint64 frames_dropped = 0;
+    g_object_get(vid_sink, "frames-dropped", &frames_dropped, nullptr);
+    out_player_info->dropped_video_frames = static_cast<int>(frames_dropped);
+  } else {
+    out_player_info->dropped_video_frames = 0;
+  }
+
+  if (vid_sink && g_object_class_find_property(G_OBJECT_GET_CLASS(vid_sink),
+                                               "frames-corrupted")) {
+    GST_TRACE("Getting corrupted frames count from the sink");
+    guint64 frames_corrupted = 0;
+    g_object_get(vid_sink, "frames-corrupted", &frames_corrupted, nullptr);
+    out_player_info->corrupted_video_frames =
+        static_cast<int>(frames_corrupted);
+  } else {
+    out_player_info->corrupted_video_frames = 0;
+  }
+
+  GST_LOG("Frames dropped: %d, Frames corrupted: %d",
+          out_player_info->dropped_video_frames,
+          out_player_info->corrupted_video_frames);
   out_player_info->playback_rate = rate_;
 }
 
@@ -1582,6 +1621,15 @@ void PlayerImpl::SetBounds(int zindex, int x, int y, int w, int h) {
     gst_video_overlay_set_render_rectangle(
         GST_VIDEO_OVERLAY(gst_video_overlay_), x, y, w, h);
     gst_video_overlay_expose(GST_VIDEO_OVERLAY(gst_video_overlay_));
+  } else {
+    GstElement* vid_sink = nullptr;
+    g_object_get(pipeline_, "video-sink", &vid_sink, nullptr);
+    if (vid_sink && g_object_class_find_property(G_OBJECT_GET_CLASS(vid_sink),
+                                                 "rectangle")) {
+      gchar* rect = g_strdup_printf("%d,%d,%d,%d", x, y, w, h);
+      g_object_set(vid_sink, "rectangle", rect, nullptr);
+      free(rect);
+    }
   }
 }
 
@@ -1592,15 +1640,26 @@ bool PlayerImpl::ChangePipelineState(GstState state) {
 }
 
 gint64 PlayerImpl::GetPosition() const {
-  gint64 position = seek_position_ * kSbTimeNanosecondsPerMicrosecond;
-  if (seek_position_ == kSbTimeMax) {
-    GstQuery* query = gst_query_new_position(GST_FORMAT_TIME);
-    if (gst_element_query(pipeline_, query)) {
-      gst_query_parse_position(query, 0, &position);
-    } else {
-      position = 0;
+  gint64 seek_pos_ns = seek_position_ * kSbTimeNanosecondsPerMicrosecond;
+  gint64 position = seek_pos_ns;
+  GstQuery* query = gst_query_new_position(GST_FORMAT_TIME);
+  if (gst_element_query(pipeline_, query)) {
+    gst_query_parse_position(query, 0, &position);
+  } else {
+    position = 0;
+  }
+  gst_query_unref(query);
+
+  if (seek_position_ != kSbTimeMax) {
+    if (GST_STATE(pipeline_) != GST_STATE_PLAYING)
+      return seek_pos_ns;
+
+    if ((rate_ >= 0. && position <= seek_pos_ns) ||
+        (rate_ < 0. && position >= seek_pos_ns)) {
+      return seek_pos_ns;
     }
-    gst_query_unref(query);
+
+    seek_position_ = kSbTimeMax;
   }
 
   return position;
@@ -1629,20 +1688,53 @@ void PlayerImpl::OnKeyReady(const uint8_t* key, size_t key_len) {
       local_samples.swap(iter->second);
     }
 
+    std::sort(local_samples.begin(), local_samples.end(),
+              [](const PendingSample& lhs, const PendingSample& rhs) -> bool {
+                return GST_BUFFER_TIMESTAMP(lhs.Buffer()) <
+                       GST_BUFFER_TIMESTAMP(rhs.Buffer());
+              });
+    GstClockTime prev_ts = -1;
     for (auto& sample : local_samples) {
+      GST_INFO("Writing pending: SampleType:%d %" GST_TIME_FORMAT
+               " b:%p, s:%p, iv:%p, k:%p",
+               sample.Type(),
+               GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(sample.Buffer())),
+               sample.Buffer(), sample.Subsamples(), sample.Iv(), sample.Key());
+      if (prev_ts == GST_BUFFER_TIMESTAMP(sample.Buffer())) {
+        GST_WARNING("Skipping %" GST_TIME_FORMAT ". Already written.",
+                    GST_TIME_ARGS(prev_ts));
+        continue;
+      }
+      prev_ts = GST_BUFFER_TIMESTAMP(sample.Buffer());
       if (WriteSample(sample.Type(), sample.Buffer(), session_id,
                       sample.Subsamples(), sample.SubsamplesCount(),
                       sample.Iv(), sample.Key())) {
+        GST_INFO("Pending sample was written.");
         sample.Written();
       }
     }
 
     if (keep_samples) {
+      GST_INFO("Storing sample again.");
       ::starboard::ScopedLock lock(mutex_);
       std::move(local_samples.begin(), local_samples.end(),
                 std::back_inserter(pending_[key_str]));
     }
   }
+}
+
+MediaType PlayerImpl::GetBothMediaTypeTakingCodecsIntoAccount() {
+  DCHECK(audio_codec_ != kSbMediaAudioCodecNone ||
+         video_codec_ == kSbMediaVideoCodecNone);
+  MediaType both_need_data = MediaType::kBoth;
+
+  if (audio_codec_ == kSbMediaAudioCodecNone)
+    both_need_data = MediaType::kVideo;
+
+  if (video_codec_ == kSbMediaVideoCodecNone)
+    both_need_data = MediaType::kAudio;
+
+  return both_need_data;
 }
 
 }  // namespace
@@ -1653,8 +1745,6 @@ void PlayerImpl::OnKeyReady(const uint8_t* key, size_t key_len) {
 }  // namespace third_party
 
 using third_party::starboard::wpe::shared::player::PlayerImpl;
-
-// TODO(pstanek): Handle audio/video only
 
 SbPlayerPrivate::SbPlayerPrivate(
     SbWindow window,

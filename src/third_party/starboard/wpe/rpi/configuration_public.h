@@ -363,6 +363,10 @@
 
 #define SB_MEDIA_MAX_VIDEO_FRAMERATE_IN_FRAMES_PER_SECOND (24)
 
+#define SB_MEDIA_MAX_VIDEO_FRAME_WIDTH (1920)
+
+#define SB_MEDIA_MAX_VIDEO_FRAME_HEIGHT (1080)
+
 // Specifies whether this platform has webm/vp9 support.  This should be set to
 // non-zero on platforms with webm/vp9 support.
 #define SB_HAS_MEDIA_WEBM_VP9_SUPPORT 0
@@ -493,6 +497,10 @@
 #define SB_USER_MAX_SIGNED_IN 1
 
 // --- Platform Specific Audits ----------------------------------------------
+
+#undef SB_HAS_NATIVE_AUDIO
+
+#define SB_NEEDS_VIDEO_OVERLAY_SURFACE 1
 
 #if !defined(__GNUC__)
 #error "Wpe builds need a GCC-like compiler (for the moment)."

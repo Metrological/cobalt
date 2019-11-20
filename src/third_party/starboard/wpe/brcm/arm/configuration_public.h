@@ -341,7 +341,7 @@
 // being played without audio for several seconds after seeking.  When the
 // following macro is defined, the app will append audio frames start from the
 // timestamp that is before the timestamp of the video key frame being appended.
-#undef SB_HAS_QUIRK_SEEK_TO_KEYFRAME
+#define SB_HAS_QUIRK_SEEK_TO_KEYFRAME 1
 
 // The implementation is allowed to support kSbMediaAudioSampleTypeInt16 only
 // when this macro is defined.
@@ -363,9 +363,13 @@
 
 #define SB_MEDIA_MAX_VIDEO_FRAMERATE_IN_FRAMES_PER_SECOND (60)
 
+#define SB_MEDIA_MAX_VIDEO_FRAME_WIDTH (3840)
+
+#define SB_MEDIA_MAX_VIDEO_FRAME_HEIGHT (2160)
+
 // Specifies whether this platform has webm/vp9 support.  This should be set to
 // non-zero on platforms with webm/vp9 support.
-#define SB_HAS_MEDIA_WEBM_VP9_SUPPORT 0
+#define SB_HAS_MEDIA_WEBM_VP9_SUPPORT 1
 
 // Specifies whether this platform updates audio frames asynchronously.  In such
 // case an extra parameter will be added to |SbAudioSinkConsumeFramesFunc| to
@@ -493,6 +497,10 @@
 #define SB_USER_MAX_SIGNED_IN 1
 
 // --- Platform Specific Audits ----------------------------------------------
+
+#undef SB_HAS_NATIVE_AUDIO
+
+#undef SB_NEEDS_VIDEO_OVERLAY_SURFACE
 
 #if !defined(__GNUC__)
 #error "Wpe builds need a GCC-like compiler (for the moment)."

@@ -4,6 +4,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "starboard/common/mutex.h"
@@ -30,6 +31,13 @@ class DrmSystemOcdm : public SbDrmSystemPrivate {
     virtual ~Observer() {}
     virtual void OnKeyReady(const uint8_t* key, size_t key_len) = 0;
   };
+
+  struct KeyWithStatus {
+    SbDrmKeyId key;
+    SbDrmKeyStatus status;
+  };
+
+  using KeysWithStatus = std::vector<KeyWithStatus>;
 
   DrmSystemOcdm(
       const char* key_system,
@@ -64,7 +72,9 @@ class DrmSystemOcdm : public SbDrmSystemPrivate {
 
   void AddObserver(Observer* obs);
   void RemoveObserver(Observer* obs);
-  void OnKeyUpdated(const uint8_t* key, size_t key_len, bool usable);
+  void OnKeyUpdated(const std::string& session_id,
+                    SbDrmKeyId&& key_id,
+                    SbDrmKeyStatus status);
   void OnAllKeysUpdated();
   std::string SessionIdByKeyId(const uint8_t* key, uint8_t key_len);
   bool Decrypt(const std::string& id,
@@ -73,11 +83,14 @@ class DrmSystemOcdm : public SbDrmSystemPrivate {
                uint32_t sub_sample_count,
                _GstBuffer* iv,
                _GstBuffer* key_id);
-  std::set<std::string> GetReadyKeys() const { return keys_; }
+  std::set<std::string> GetReadyKeys() const;
+  KeysWithStatus GetSessionKeys(const std::string& session_id) const;
 
  private:
   session::Session* GetSessionById(const std::string& id) const;
   void AnnounceKeys();
+
+  std::set<std::string> GetReadyKeysUnlocked() const;
 
   std::string key_system_;
   void* context_;
@@ -91,7 +104,8 @@ class DrmSystemOcdm : public SbDrmSystemPrivate {
 
   OpenCDMSystem* ocdm_system_;
   std::vector<Observer*> observers_;
-  std::set<std::string> keys_;
+  std::unordered_map<std::string, KeysWithStatus> session_keys_;
+  mutable std::set<std::string> cached_ready_keys_;
   SbEventId event_id_;
   ::starboard::Mutex mutex_;
 };

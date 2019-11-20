@@ -41,8 +41,9 @@ SB_EXPORT bool SbMediaIsVideoSupported(SbMediaVideoCodec video_codec,
                  << frame_height;
     return false;
   }
-  // TODO(pstanek): Take frame size from config
-  return frame_width <= 1920 && frame_height <= 1080 &&
+
+  return frame_width <= SB_MEDIA_MAX_VIDEO_FRAME_WIDTH &&
+         frame_height <= SB_MEDIA_MAX_VIDEO_FRAME_HEIGHT &&
          bitrate <= SB_MEDIA_MAX_VIDEO_BITRATE_IN_BITS_PER_SECOND &&
          fps <= SB_MEDIA_MAX_VIDEO_FRAMERATE_IN_FRAMES_PER_SECOND &&
          third_party::starboard::wpe::shared::media::

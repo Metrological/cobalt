@@ -27,6 +27,26 @@ using ScopedOcdmSession = std::unique_ptr<OpenCDMSession, OcdmSessionDeleter>;
 
 namespace session {
 
+SbDrmKeyStatus KeyStatus2DrmKeyStatus(KeyStatus status) {
+  switch (status) {
+    case Usable:
+      return kSbDrmKeyStatusUsable;
+    case Expired:
+      return kSbDrmKeyStatusExpired;
+    case Released:
+      return kSbDrmKeyStatusReleased;
+    case OutputRestricted:
+      return kSbDrmKeyStatusRestricted;
+    case OutputDownscaled:
+      return kSbDrmKeyStatusDownscaled;
+    case StatusPending:
+      return kSbDrmKeyStatusPending;
+    default:
+    case InternalError:
+      return kSbDrmKeyStatusError;
+  }
+}
+
 class Session {
  public:
   Session(Session&) = delete;
@@ -278,7 +298,11 @@ void Session::OnKeyUpdated(struct OpenCDMSession* /*ocdm_session*/,
   }
 
   auto status = opencdm_session_status(session->session_.get(), key_id, length);
-  session->drm_system_->OnKeyUpdated(key_id, length, status == Usable);
+  SbDrmKeyId drm_key_id;
+  std::copy_n(key_id, length, drm_key_id.identifier);
+  drm_key_id.identifier_size = length;
+  session->drm_system_->OnKeyUpdated(id, std::move(drm_key_id),
+                                     KeyStatus2DrmKeyStatus(status));
 }
 
 // static
@@ -298,10 +322,23 @@ void Session::OnAllKeysUpdated(const struct OpenCDMSession* /*ocdm_session*/,
     LOG(WARNING) << "Updating closed session ?";
     return;
   }
+
   session->session_updated_callback_(session->drm_system_, session->context_,
                                      ticket, kSbDrmStatusSuccess, nullptr,
                                      id.c_str(), id.size());
   session->drm_system_->OnAllKeysUpdated();
+
+  auto session_keys = session->drm_system_->GetSessionKeys(id);
+  std::vector<SbDrmKeyId> keys;
+  std::vector<SbDrmKeyStatus> statuses;
+  for (auto& session_key : session_keys) {
+    keys.push_back(session_key.key);
+    statuses.push_back(session_key.status);
+  }
+  session->key_statuses_changed_callback_(
+      session->drm_system_, session->context_, id.c_str(), id.size(),
+      session_keys.size(), keys.data(), statuses.data());
+
   LOG(INFO) << "Session update ended " << id;
 }
 
@@ -455,20 +492,35 @@ void DrmSystemOcdm::RemoveObserver(DrmSystemOcdm::Observer* obs) {
   observers_.erase(found);
 }
 
-void DrmSystemOcdm::OnKeyUpdated(const uint8_t* key,
-                                 size_t key_len,
-                                 bool usable) {
+void DrmSystemOcdm::OnKeyUpdated(const std::string& session_id,
+                                 SbDrmKeyId&& key_id,
+                                 SbDrmKeyStatus status) {
   ::starboard::ScopedLock lock(mutex_);
-  std::string key_str{reinterpret_cast<const char*>(key), key_len};
-  if (usable) {
-    keys_.insert(key_str);
+  auto session_key = session_keys_.find(session_id);
+  KeyWithStatus key_with_status;
+  key_with_status.key = std::move(key_id);
+  key_with_status.status = status;
+  if (session_key == session_keys_.end()) {
+    session_keys_[session_id].emplace_back(std::move(key_with_status));
   } else {
-    keys_.erase(key_str);
+    auto key_entry = std::find_if(
+        session_key->second.begin(), session_key->second.end(),
+        [&key_id](const KeyWithStatus& key_with_status) {
+          return memcmp(key_id.identifier, key_with_status.key.identifier,
+                        std::min(key_with_status.key.identifier_size,
+                                 key_id.identifier_size)) == 0;
+        });
+    if (key_entry != session_key->second.end()) {
+      key_entry->status = status;
+    } else {
+      session_key->second.emplace_back(std::move(key_with_status));
+    }
   }
 }
 
 void DrmSystemOcdm::OnAllKeysUpdated() {
   ::starboard::ScopedLock lock(mutex_);
+  cached_ready_keys_.clear();
   if (event_id_ != kSbEventIdInvalid)
     SbEventCancel(event_id_);
   event_id_ = SbEventSchedule(
@@ -479,12 +531,40 @@ void DrmSystemOcdm::OnAllKeysUpdated() {
       this, 0);
 }
 
+std::set<std::string> DrmSystemOcdm::GetReadyKeysUnlocked() const {
+  if (cached_ready_keys_.empty()) {
+    for (auto& session_key : session_keys_) {
+      for (auto& key_with_status : session_key.second) {
+        cached_ready_keys_.emplace(std::string{
+            reinterpret_cast<const char*>(key_with_status.key.identifier),
+            key_with_status.key.identifier_size});
+      }
+    }
+  }
+
+  return cached_ready_keys_;
+}
+
+std::set<std::string> DrmSystemOcdm::GetReadyKeys() const {
+  ::starboard::ScopedLock lock(mutex_);
+  return GetReadyKeysUnlocked();
+}
+
+DrmSystemOcdm::KeysWithStatus DrmSystemOcdm::GetSessionKeys(
+    const std::string& session_id) const {
+  auto session_key = session_keys_.find(session_id);
+  return session_key != session_keys_.end() ? session_key->second
+                                            : DrmSystemOcdm::KeysWithStatus{};
+}
+
 void DrmSystemOcdm::AnnounceKeys() {
   ::starboard::ScopedLock lock(mutex_);
-  for (auto observer : observers_) {
-    for (auto& key : keys_)
+  auto ready_keys = GetReadyKeysUnlocked();
+  for (auto* observer : observers_) {
+    for (auto& key : ready_keys) {
       observer->OnKeyReady(reinterpret_cast<const uint8_t*>(key.c_str()),
                            key.size());
+    }
   }
   event_id_ = kSbEventIdInvalid;
 }

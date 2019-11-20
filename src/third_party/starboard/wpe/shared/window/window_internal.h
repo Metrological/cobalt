@@ -82,8 +82,8 @@ struct SbWindowPrivate {
   WPEFramework::Compositor::IDisplay::ISurface* CreateVideoOverlay();
   void DestroyVideoOverlay(WPEFramework::Compositor::IDisplay::ISurface*);
 
-  WPEFramework::Compositor::IDisplay::ISurface* window_;
-  WPEFramework::Compositor::IDisplay::ISurface* video_overlay_;
+  WPEFramework::Compositor::IDisplay::ISurface* window_{nullptr};
+  WPEFramework::Compositor::IDisplay::ISurface* video_overlay_{nullptr};
   third_party::starboard::wpe::shared::window::KeyboardHandler kb_handler_;
 };
 
