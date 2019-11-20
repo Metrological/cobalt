@@ -28,7 +28,7 @@ using UniqueCaps = std::unique_ptr<GstCaps, CapsDeleter>;
 UniqueFeatureList GetFactoryForCaps(GList* elements,
                                     UniqueCaps&& caps,
                                     GstPadDirection direction) {
-  LOG(INFO) << __FUNCTION__ << ": " << gst_caps_to_string(caps.get());
+  DLOG(INFO) << __FUNCTION__ << ": " << gst_caps_to_string(caps.get());
   DCHECK(direction != GST_PAD_UNKNOWN);
   UniqueFeatureList candidates{
       gst_element_factory_list_filter(elements, caps.get(), direction, false)};
@@ -54,7 +54,7 @@ bool GstRegistryHasElementForCodec(C codec) {
 
   caps = CodecToGstCaps(codec);
   if (caps.empty()) {
-    LOG(INFO) << "No caps for codec " << codec;
+    DLOG(INFO) << "No caps for codec " << codec;
     return false;
   }
 
@@ -63,7 +63,7 @@ bool GstRegistryHasElementForCodec(C codec) {
     elements = std::move(GetFactoryForCaps(decoder_factories.get(),
                                            std::move(gst_caps), GST_PAD_SINK));
     if (elements) {
-      LOG(INFO) << "Found decoder for " << single_caps;
+      DLOG(INFO) << "Found decoder for " << single_caps;
       break;
     }
   }
@@ -73,7 +73,7 @@ bool GstRegistryHasElementForCodec(C codec) {
     return true;
   }
 
-  LOG(INFO) << "No decoder for codec " << codec << ". Falling back to parsers.";
+  DLOG(INFO) << "No decoder for codec " << codec << ". Falling back to parsers.";
   // No decoder. Check if there's a parser and a decoder accepting its caps.
   for (auto single_caps : caps) {
     UniqueCaps gst_caps{gst_caps_from_string(single_caps.c_str())};
@@ -94,7 +94,7 @@ bool GstRegistryHasElementForCodec(C codec) {
             UniqueCaps pad_caps{gst_static_pad_template_get_caps(pad_template)};
             if (GetFactoryForCaps(decoder_factories.get(), std::move(pad_caps),
                                   GST_PAD_SINK)) {
-              LOG(INFO) << "Found parser for " << single_caps
+              DLOG(INFO) << "Found parser for " << single_caps
                         << " and decoder"
                            " accepting parser's src caps.";
               return true;
@@ -105,7 +105,7 @@ bool GstRegistryHasElementForCodec(C codec) {
     }
   }
 
-  LOG(INFO) << "Can not play codec " << codec;
+  LOG(WARNING) << "Can not play codec " << codec;
   return false;
 }
 
