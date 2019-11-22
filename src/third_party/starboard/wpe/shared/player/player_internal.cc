@@ -446,6 +446,8 @@ static void gst_cobalt_src_class_init(GstCobaltSrcClass* klass) {
 // ********************************* Player ******************************** //
 namespace {
 
+const int kMaxIvSize = 16;
+
 enum class MediaType {
   kNone = 0,
   kAudio = 1,
@@ -1346,10 +1348,16 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
         nullptr, sample_infos[0].drm_info->identifier_size, nullptr);
     gst_buffer_fill(key, 0, sample_infos[0].drm_info->identifier,
                     sample_infos[0].drm_info->identifier_size);
-    iv = gst_buffer_new_allocate(
-        nullptr, sample_infos[0].drm_info->initialization_vector_size, nullptr);
+    size_t iv_size = sample_infos[0].drm_info->initialization_vector_size;
+    const int8_t kEmptyArray[kMaxIvSize / 2] = {0};
+    if (iv_size == kMaxIvSize &&
+        memcmp(sample_infos[0].drm_info->initialization_vector + kMaxIvSize / 2,
+               kEmptyArray, kMaxIvSize / 2) == 0)
+      iv_size /= 2;
+
+    iv = gst_buffer_new_allocate(nullptr, iv_size, nullptr);
     gst_buffer_fill(iv, 0, sample_infos[0].drm_info->initialization_vector,
-                    sample_infos[0].drm_info->initialization_vector_size);
+                    iv_size);
     subsamples_count = sample_infos[0].drm_info->subsample_count;
     auto subsamples_raw_size =
         subsamples_count * (sizeof(guint16) + sizeof(guint32));
