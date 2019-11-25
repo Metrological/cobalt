@@ -38,7 +38,7 @@ UniqueFeatureList GetFactoryForCaps(GList* elements,
 template <typename C>
 bool GstRegistryHasElementForCodec(C codec) {
   static_assert(std::is_same<C, SbMediaVideoCodec>::value ||
-                std::is_same<C, SbMediaAudioCodec>::value);
+                std::is_same<C, SbMediaAudioCodec>::value, "Invalid codec");
   auto type = std::is_same<C, SbMediaVideoCodec>::value
                   ? GST_ELEMENT_FACTORY_TYPE_MEDIA_VIDEO
                   : GST_ELEMENT_FACTORY_TYPE_MEDIA_AUDIO;
