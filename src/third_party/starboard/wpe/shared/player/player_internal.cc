@@ -630,6 +630,12 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
     kPresenting,
   };
 
+  enum MediaTimestampIndex {
+    kAudioIndex,
+    kVideoIndex,
+    kMediaNumber,
+  };
+
   struct DispatchData {
     DispatchData& operator=(DispatchData&) = delete;
     DispatchData(const DispatchData&) = delete;
@@ -743,8 +749,8 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   static GstBusSyncReply CreateVideoOverlay(GstBus* bus,
                                             GstMessage* message,
                                             gpointer user_data);
-  bool ChangePipelineState(GstState state);
-  void DispatchOnWorkerThread(Task* task);
+  bool ChangePipelineState(GstState state) const;
+  void DispatchOnWorkerThread(Task* task) const;
   gint64 GetPosition() const;
   bool WriteSample(SbMediaType sample_type,
                    GstBuffer* buffer,
@@ -753,7 +759,9 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
                    int32_t subsamples_count = 0,
                    GstBuffer* iv = nullptr,
                    GstBuffer* key = nullptr);
-  MediaType GetBothMediaTypeTakingCodecsIntoAccount();
+  MediaType GetBothMediaTypeTakingCodecsIntoAccount() const;
+  void RecordTimestamp(SbMediaType type, SbTime timestamp);
+  SbTime MinTimestamp(MediaType* origin) const;
 
   SbPlayer player_;
   SbWindow window_;
@@ -785,6 +793,9 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   double rate_{1.0};
   int ticket_{SB_PLAYER_INITIAL_TICKET};
   mutable SbTime seek_position_{kSbTimeMax};
+  SbTime max_sample_timestamp_[kMediaNumber]{0};
+  SbTime min_sample_timestamp_{kSbTimeMax};
+  MediaType min_sample_timestamp_origin_{MediaType::kNone};
   bool is_seek_pending_{false};
   bool is_rate_pending_{false};
   int has_enough_data_{static_cast<int>(MediaType::kBoth)};
@@ -795,6 +806,8 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   GstElement* gst_video_overlay_{nullptr};
   State state_{State::kNull};
   SamplesPendingKey pending_;
+  mutable gint64 cached_position_ns_{0};
+  mutable SbTime position_update_time_us_{0};
 };
 
 PlayerImpl::PlayerImpl(SbPlayer player,
@@ -1105,7 +1118,7 @@ void* PlayerImpl::ThreadEntryPoint(void* context) {
   return nullptr;
 }
 
-void PlayerImpl::DispatchOnWorkerThread(Task* task) {
+void PlayerImpl::DispatchOnWorkerThread(Task* task) const {
   GSource* src = g_source_new(&SourceFunctions, sizeof(GSource));
   g_source_set_ready_time(src, 0);
   DispatchData* data = new DispatchData(task, src);
@@ -1248,6 +1261,7 @@ void PlayerImpl::MarkEOS(SbMediaType stream_type) {
   }
 
   gst_app_src_end_of_stream(GST_APP_SRC(src));
+  RecordTimestamp(stream_type, kSbTimeMax);
 }
 
 bool PlayerImpl::WriteSample(SbMediaType sample_type,
@@ -1333,6 +1347,16 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
     frame_width_ = sample_infos[0].video_sample_info.frame_width;
     frame_height_ = sample_infos[0].video_sample_info.frame_height;
   }
+
+  RecordTimestamp(sample_type,
+                  sample_infos[0].timestamp * kSbTimeNanosecondsPerMicrosecond);
+
+  if (MinTimestamp(nullptr) == GST_BUFFER_TIMESTAMP(buffer) &&
+      GST_STATE(pipeline_) == GST_STATE_PAUSED &&
+      (GST_STATE_PENDING(pipeline_) == GST_STATE_VOID_PENDING ||
+       GST_STATE_PENDING(pipeline_) == GST_STATE_PAUSED) &&
+      rate_ > .0)
+    ChangePipelineState(GST_STATE_PLAYING);
 
   std::string key_str;
   bool keep_samples = false;
@@ -1528,7 +1552,9 @@ bool PlayerImpl::SetRate(double rate) {
 
   if (rate == .0) {
     ChangePipelineState(GST_STATE_PAUSED);
+    GetPosition();  // Update cached.
   } else if (rate == 1. && (rate_ == 1. || rate_ == .0)) {
+    GetPosition();  // Update cached.
     ChangePipelineState(GST_STATE_PLAYING);
   } else {
     ChangePipelineState(GST_STATE_PLAYING);
@@ -1641,13 +1667,16 @@ void PlayerImpl::SetBounds(int zindex, int x, int y, int w, int h) {
   }
 }
 
-bool PlayerImpl::ChangePipelineState(GstState state) {
+bool PlayerImpl::ChangePipelineState(GstState state) const {
   GST_DEBUG_OBJECT(pipeline_, "Changing state to %s",
                    gst_element_state_get_name(state));
   return gst_element_set_state(pipeline_, state) != GST_STATE_CHANGE_FAILURE;
 }
 
 gint64 PlayerImpl::GetPosition() const {
+  auto last_update = position_update_time_us_;
+  position_update_time_us_ = SbTimeGetMonotonicNow();
+
   gint64 seek_pos_ns = seek_position_ * kSbTimeNanosecondsPerMicrosecond;
   gint64 position = seek_pos_ns;
   GstQuery* query = gst_query_new_position(GST_FORMAT_TIME);
@@ -1667,9 +1696,45 @@ gint64 PlayerImpl::GetPosition() const {
       return seek_pos_ns;
     }
 
+    cached_position_ns_ = kSbTimeMax;
     seek_position_ = kSbTimeMax;
   }
 
+  MediaType origin = MediaType::kNone;
+  constexpr SbTime kMarginNs =
+      350 * kSbTimeMillisecond * kSbTimeNanosecondsPerMicrosecond;
+  SbTime min_ts = MinTimestamp(&origin);
+  if (min_ts != kSbTimeMax && min_ts + kMarginNs <= position &&
+      GST_STATE(pipeline_) == GST_STATE_PLAYING) {
+    DispatchOnWorkerThread(
+        new DecoderStatusTask(decoder_status_func_, player_, ticket_, context_,
+                              kSbPlayerDecoderStateNeedsData, origin));
+    GST_WARNING("Force setting to PAUSED");
+    ChangePipelineState(GST_STATE_PAUSED);
+    cached_position_ns_ = position;
+  }
+
+  constexpr int kPositionUpdateMinIntervalMs = 250 * kSbTimeMillisecond;
+  if (position_update_time_us_ - last_update <= kPositionUpdateMinIntervalMs &&
+      cached_position_ns_ != kSbTimeMax) {
+    if (rate_ == .0 || GST_STATE(pipeline_) == GST_STATE_PAUSED) {
+      GST_TRACE("Checking position after %" PRId64
+                " ms. Using cached %" GST_TIME_FORMAT " PAUSED.",
+                (position_update_time_us_ - last_update) / kSbTimeMillisecond,
+                GST_TIME_ARGS(cached_position_ns_));
+      return cached_position_ns_;
+    }
+    cached_position_ns_ =
+        cached_position_ns_ + (position_update_time_us_ - last_update) * rate_ *
+                                  kSbTimeNanosecondsPerMicrosecond;
+    GST_TRACE("Checking position after %" PRId64
+              " ms. Using cached %" GST_TIME_FORMAT,
+              (position_update_time_us_ - last_update) / kSbTimeMillisecond,
+              GST_TIME_ARGS(cached_position_ns_));
+    return cached_position_ns_;
+  }
+
+  cached_position_ns_ = position;
   return position;
 }
 
@@ -1731,7 +1796,7 @@ void PlayerImpl::OnKeyReady(const uint8_t* key, size_t key_len) {
   }
 }
 
-MediaType PlayerImpl::GetBothMediaTypeTakingCodecsIntoAccount() {
+MediaType PlayerImpl::GetBothMediaTypeTakingCodecsIntoAccount() const {
   DCHECK(audio_codec_ != kSbMediaAudioCodecNone ||
          video_codec_ == kSbMediaVideoCodecNone);
   MediaType both_need_data = MediaType::kBoth;
@@ -1743,6 +1808,37 @@ MediaType PlayerImpl::GetBothMediaTypeTakingCodecsIntoAccount() {
     both_need_data = MediaType::kAudio;
 
   return both_need_data;
+}
+
+void PlayerImpl::RecordTimestamp(SbMediaType type, SbTime timestamp) {
+  if (type == kSbMediaTypeVideo) {
+    max_sample_timestamp_[kVideoIndex] =
+        std::max(max_sample_timestamp_[kVideoIndex], timestamp);
+  } else if (type == kSbMediaTypeAudio) {
+    max_sample_timestamp_[kAudioIndex] =
+        std::max(max_sample_timestamp_[kAudioIndex], timestamp);
+  }
+
+  if (audio_codec_ == kSbMediaAudioCodecNone) {
+    min_sample_timestamp_origin_ = MediaType::kVideo;
+    min_sample_timestamp_ = max_sample_timestamp_[kVideoIndex];
+  } else if (video_codec_ == kSbMediaVideoCodecNone) {
+    min_sample_timestamp_origin_ = MediaType::kAudio;
+    min_sample_timestamp_ = max_sample_timestamp_[kAudioIndex];
+  } else {
+    min_sample_timestamp_ = std::min(max_sample_timestamp_[kVideoIndex],
+                                     max_sample_timestamp_[kAudioIndex]);
+    if (min_sample_timestamp_ == max_sample_timestamp_[kVideoIndex])
+      min_sample_timestamp_origin_ = MediaType::kVideo;
+    else
+      min_sample_timestamp_origin_ = MediaType::kAudio;
+  }
+}
+
+SbTime PlayerImpl::MinTimestamp(MediaType* origin) const {
+  if (origin)
+    *origin = min_sample_timestamp_origin_;
+  return min_sample_timestamp_;
 }
 
 }  // namespace
