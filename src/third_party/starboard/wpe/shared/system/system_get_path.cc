@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <cstdlib>
 #include <cstring>
 
 #include "starboard/common/log.h"
@@ -29,7 +30,6 @@
 namespace {
 const int kMaxPathSize = SB_FILE_MAX_PATH;
 
-// TODO(pstanek): Get proper WPE path
 // Gets the path to the cache directory, using the user's home directory.
 bool GetCacheDirectory(char* out_path, int path_size) {
   char home_path[kMaxPathSize + 1];
@@ -103,9 +103,14 @@ bool GetExecutableName(char* out_path, int path_size) {
   return true;
 }
 
-// TODO(pstanek): Same as above
 // Gets the path to a temporary directory that is unique to this process.
 bool GetTemporaryDirectory(char* out_path, int path_size) {
+  auto* temp = std::getenv("COBALT_TEMP");
+  if (temp) {
+    out_path = temp;
+    return true;
+  }
+
   char binary_name[kMaxPathSize] = {0};
   if (!GetExecutableName(binary_name, kMaxPathSize)) {
     return false;
@@ -133,7 +138,8 @@ bool SbSystemGetPath(SbSystemPathId path_id, char* out_path, int path_size) {
 
   switch (path_id) {
     case kSbSystemPathContentDirectory:
-      if (!GetExecutableDirectory(path, kPathSize)) {
+      if (!SbUserGetProperty(SbUserGetCurrent(), kSbUserPropertyHomeDirectory,
+                             path, kPathSize)) {
         return false;
       }
       if (SbStringConcat(path, "/content/data", kPathSize) >= kPathSize) {

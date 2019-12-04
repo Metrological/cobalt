@@ -22,7 +22,6 @@
 
 namespace {
 
-const char kFriendlyName[] = "WPE Reference";
 const char kPlatformName[] = "Linux";
 
 bool CopyStringAndTestIfSuccess(char* out_value,
@@ -43,23 +42,35 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
     return false;
   }
 
-  // TODO(pstanek): Implement (from config?)
   switch (property_id) {
     case kSbSystemPropertyBrandName:
+    return CopyStringAndTestIfSuccess(out_value, value_length,
+                                      SB_PLATFORM_OPERATOR_NAME);
     case kSbSystemPropertyChipsetModelNumber:
+      return CopyStringAndTestIfSuccess(
+            out_value, value_length, SB_PLATFORM_CHIPSET_MODEL_NUMBER_STRING);
     case kSbSystemPropertyFirmwareVersion:
+      return CopyStringAndTestIfSuccess(out_value, value_length,
+                                        SB_PLATFORM_FIRMWARE_VERSION_STRING);
     case kSbSystemPropertyModelName:
+      return CopyStringAndTestIfSuccess(out_value, value_length,
+                                        SB_PLATFORM_MODEL_NAME);
     case kSbSystemPropertyModelYear:
+      return CopyStringAndTestIfSuccess(out_value, value_length,
+          std::to_string(SB_PLATFORM_MODEL_YEAR).c_str());
 #if SB_API_VERSION >= 11
     case kSbSystemPropertyOriginalDesignManufacturerName:
 #else
     case kSbSystemPropertyNetworkOperatorName:
 #endif
+      return CopyStringAndTestIfSuccess(out_value, value_length,
+                                        SB_PLATFORM_MANUFACTURER_NAME);
     case kSbSystemPropertySpeechApiKey:
       return false;
 
     case kSbSystemPropertyFriendlyName:
-      return CopyStringAndTestIfSuccess(out_value, value_length, kFriendlyName);
+      return CopyStringAndTestIfSuccess(out_value, value_length,
+                                        SB_PLATFORM_FRIENDLY_NAME);
 
     case kSbSystemPropertyPlatformName:
       return CopyStringAndTestIfSuccess(out_value, value_length, kPlatformName);

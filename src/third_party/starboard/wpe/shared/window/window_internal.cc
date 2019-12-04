@@ -479,10 +479,20 @@ SbWindowPrivate::SbWindowPrivate(const SbWindowOptions* options) {
       options && options->size.width > 0
           ? options->size.width
           : third_party::starboard::wpe::shared::window::kDefaultWidth;
-  auto window_hight =
+  auto window_height =
       options && options->size.height > 0
           ? options->size.height
           : third_party::starboard::wpe::shared::window::kDefaultHeight;
+  auto* env_width  = std::getenv("COBALT_RESOLUTION_WIDTH");
+  if (env_width) {
+    window_width = atoi(env_width);
+  }
+
+  auto* env_height  = std::getenv("COBALT_RESOLUTION_HEIGHT");
+  if (env_height) {
+    window_height = atoi(env_height);
+  }
+
 #if defined(SB_NEEDS_VIDEO_OVERLAY_SURFACE)
   // The sufraces are stacked in order they are
   // created with by default so make sure video is under gfx by creating
@@ -490,11 +500,11 @@ SbWindowPrivate::SbWindowPrivate(const SbWindowOptions* options) {
   video_overlay_ =
       third_party::starboard::wpe::shared::window::GetDisplay()->Create(
           "CobaltVideoWindow" + std::to_string(SbTimeToPosix(SbTimeGetNow())),
-          window_width, window_hight);
+          window_width, window_height);
 #endif
   window_ = third_party::starboard::wpe::shared::window::GetDisplay()->Create(
       "CobaltWindow" + std::to_string(SbTimeToPosix(SbTimeGetNow())),
-      window_width, window_hight);
+      window_width, window_height);
   kb_handler_.SetWindow(this);
 }
 
