@@ -138,11 +138,8 @@ bool SbSystemGetPath(SbSystemPathId path_id, char* out_path, int path_size) {
 
   switch (path_id) {
     case kSbSystemPathContentDirectory:
-      if (!SbUserGetProperty(SbUserGetCurrent(), kSbUserPropertyHomeDirectory,
-                             path, kPathSize)) {
-        return false;
-      }
-      if (SbStringConcat(path, "/content/data", kPathSize) >= kPathSize) {
+      if (SbStringConcat(path,
+                         "/usr/share/content/data", kPathSize) >= kPathSize) {
         return false;
       }
       break;

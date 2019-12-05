@@ -27,7 +27,7 @@ _UNDEFINED_BUILDROOT_HOME = '/UNDEFINED/BUILDROOT_HOME'
 
 
 class WpePlatformConfig(platform_configuration.PlatformConfiguration):
-  """Starboard Raspberry Pi platform configuration."""
+  """Starboard WPE BRCM ARM platform configuration."""
 
   def __init__(self, platform):
     super(WpePlatformConfig, self).__init__(platform)
@@ -51,6 +51,8 @@ class WpePlatformConfig(platform_configuration.PlatformConfiguration):
     variables.update({
         'javascript_engine': 'v8',
         'cobalt_enable_jit': 1,
+        'include_path_platform_deploy_gypi':
+             'third_party/starboard/wpe/brcm/arm/platform_deploy.gypi',
     })
 
 
