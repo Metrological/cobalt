@@ -1,5 +1,5 @@
 {
     'dependencies': [
-      '<(DEPTH)/third_party/starboard/wpe/rpi/platform_deploy.gyp:deploy',
+      '<(DEPTH)/third_party/starboard/wpe/brcm/arm/platform_deploy.gyp:deploy',
     ],
 }
