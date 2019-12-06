@@ -13,7 +13,6 @@
     'product': '<(PRODUCT_DIR)/cobalt',
     'output_product_dir' : '<(sysroot)/usr/bin',
     'install_dir' : '<(target_dir)/usr/bin',
-    'install_contents_dir' : '<(target_dir)/usr/share',
     'output_generic_include_dir' : '<(sysroot)/usr/include/starboard',
     'output_wpe_shared_include_dir' : '<(sysroot)/usr/include/third_party/starboard/wpe/shared',
     'output_wpe_platform_include_dir' : '<(sysroot)/usr/include/third_party/starboard/wpe/<(wpe_platform_dir)',
@@ -51,23 +50,6 @@
     {
       'destination' : '<(install_dir)',
       'files': [ '<(product)' ]
-    },
-  ],
-  'actions': [
-    {
-      'action_name': 'copy_contents',
-      'inputs': [
-        '<!@pymod_do_main(starboard.build.copy_data --inputs <(sb_static_contents_output_base_dir))',
-      ],
-      'outputs': [
-        '<!@pymod_do_main(starboard.build.copy_data -o <(install_contents_dir) --outputs <(sb_static_contents_output_base_dir))',
-      ],
-      'action': [
-        'python',
-        '<(DEPTH)/starboard/build/copy_data.py',
-        '-o', '<(install_contents_dir)',
-        '<@(sb_static_contents_output_base_dir)',
-      ],
     },
   ],
 }
