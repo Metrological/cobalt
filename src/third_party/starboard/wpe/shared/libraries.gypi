@@ -13,6 +13,7 @@
 # limitations under the License.
 {
   'variables': {
+    'has_ocdm': '<!(echo $COBALT_HAS_OCDM)',
     'common_libs': [
       '-lEGL',
       '-lGLESv2',
@@ -29,7 +30,6 @@
       '-lgstvideo-1.0',
       '-lgstapp-1.0',
       '-lgobject-2.0',
-      '-locdm',
       '-lpthread',
 
     ],
@@ -37,4 +37,11 @@
       '-Wl,--wrap=eglGetDisplay',
     ],
   },
+  'conditions': [
+      ['<(has_ocdm)==1', {
+        'common_libs': [
+          '-locdm',
+        ],
+      }],
+    ],
 }
