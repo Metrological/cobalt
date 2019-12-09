@@ -38,7 +38,7 @@
       'variables': {
         'content_test_input_files': ['<!@(python <(DEPTH)/starboard/build/list_dmp_files.py "starboard/shared/starboard/player/testdata")'],
         'content_test_output_subdir': 'starboard/shared/starboard/player/testdata',
-        'depot_tools_path': [],
+        'depot_tools_path': ['<!@(python <(DEPTH)/build/find_depot_tools_escaped.py)'],
       },
       'actions' : [
         {

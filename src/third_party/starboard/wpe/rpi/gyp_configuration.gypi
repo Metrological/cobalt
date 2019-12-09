@@ -30,6 +30,8 @@
       '<@(common_libs)',
     ],
 
+    'linker_flags_host': [ '-pthread' ],
+
     # Define platform specific compiler and linker flags.
     # Refer to base.gypi for a list of all available variables.
     'compiler_flags_host': [
