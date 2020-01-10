@@ -355,7 +355,7 @@ IDisplay* GetDisplay() {
 }
 
 std::string DisplayName() {
-  std::string name = Compositor::IDisplay::SuggestedName();
+  static std::string name = Compositor::IDisplay::SuggestedName();
 
   if (name.empty()) {
     name = "CobaltBrowser" + std::to_string(SbTimeToPosix(SbTimeGetNow()));
@@ -499,12 +499,13 @@ SbWindowPrivate::SbWindowPrivate(const SbWindowOptions* options) {
   // it first.
   video_overlay_ =
       third_party::starboard::wpe::shared::window::GetDisplay()->Create(
-          "CobaltVideoWindow" + std::to_string(SbTimeToPosix(SbTimeGetNow())),
-          window_width, window_height);
+          third_party::starboard::wpe::shared::window::DisplayName() + "-"
+              + std::string("video"), window_width, window_height);
 #endif
+
   window_ = third_party::starboard::wpe::shared::window::GetDisplay()->Create(
-      "CobaltWindow" + std::to_string(SbTimeToPosix(SbTimeGetNow())),
-      window_width, window_height);
+      third_party::starboard::wpe::shared::window::DisplayName() + "-"
+          + std::string("graphics"), window_width, window_height);
   kb_handler_.SetWindow(this);
 }
 
