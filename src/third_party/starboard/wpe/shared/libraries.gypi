@@ -31,17 +31,16 @@
       '-lgstapp-1.0',
       '-lgobject-2.0',
       '-lpthread',
-
     ],
     'common_linker_flags': [
       '-Wl,--wrap=eglGetDisplay',
     ],
-  },
-  'conditions': [
+    'conditions': [
       ['<(has_ocdm)==1', {
         'common_libs': [
           '-locdm',
         ],
       }],
     ],
+  },
 }
