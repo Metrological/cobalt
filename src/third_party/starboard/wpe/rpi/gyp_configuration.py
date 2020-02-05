@@ -14,7 +14,6 @@
 """Starboard Raspberry Pi platform configuration."""
 
 import os
-
 from starboard.build import clang
 from starboard.build import platform_configuration
 from starboard.tools import build
@@ -25,6 +24,8 @@ from starboard.tools.testing import test_filter
 # will show up in an error message when that fails.
 _UNDEFINED_BUILDROOT_HOME = '/UNDEFINED/BUILDROOT_HOME'
 
+_UNDEFINED_OE_HOME = '/UNDEFINED/OE_HOME'
+_UNDEFINED_OE_NATIVE = '/UNDEFINED/OE_NATIVE'
 
 class WpePlatformConfig(platform_configuration.PlatformConfiguration):
   """Starboard Raspberry Pi platform configuration."""
@@ -32,8 +33,15 @@ class WpePlatformConfig(platform_configuration.PlatformConfiguration):
   def __init__(self, platform):
     super(WpePlatformConfig, self).__init__(platform)
     self.AppendApplicationConfigurationPath(os.path.dirname(__file__))
-    self.buildroot_home = os.environ.get('BUILDROOT_HOME', _UNDEFINED_BUILDROOT_HOME)
-    self.sysroot = os.path.realpath(os.path.join(self.buildroot_home, 'arm-buildroot-linux-gnueabihf/sysroot'))
+    self.build_home = os.environ.get('BUILDROOT_HOME', _UNDEFINED_BUILDROOT_HOME)
+    if self.build_home != _UNDEFINED_BUILDROOT_HOME:
+      self.sysroot = os.path.realpath(os.path.join(self.build_home, 'arm-buildroot-linux-gnueabihf/sysroot'))
+      self.toolchain = 'arm-buildroot-linux-gnueabihf-'
+    else:
+      self.build_home = os.environ.get('OE_HOME', _UNDEFINED_OE_HOME)
+      if self.build_home != _UNDEFINED_OE_HOME:
+        self.sysroot = os.path.realpath(os.path.join(self.build_home, ''))
+        self.toolchain = os.environ.get('OE_NATIVE', _UNDEFINED_OE_NATIVE)
 
   def GetBuildFormat(self):
     """Returns the desired build format."""
@@ -60,27 +68,28 @@ class WpePlatformConfig(platform_configuration.PlatformConfiguration):
 
   def GetEnvironmentVariables(self):
     env_variables = {}
-    toolchain = os.path.realpath(
-        os.path.join(
-            self.buildroot_home,
-            '.'))
-    toolchain_bin_dir = os.path.join(toolchain, 'bin')
+    if self.build_home != _UNDEFINED_BUILDROOT_HOME:
+        toolchain = os.path.realpath(
+            os.path.join(
+                self.build_home,
+                '.'))
+        toolchain_bin_dir = os.path.join(toolchain, 'bin')
+
     env_variables.update({
-        'CC': os.path.join(toolchain_bin_dir, 'arm-buildroot-linux-gnueabihf-gcc'),
-        'CXX': os.path.join(toolchain_bin_dir, 'arm-buildroot-linux-gnueabihf-g++'),
+        'CC': os.path.join(toolchain_bin_dir, self.toolchain + 'gcc'),
+        'CXX': os.path.join(toolchain_bin_dir, self.toolchain + 'g++'),
         'CC_host': 'gcc -m32',
         'CXX_host': 'g++ -m32',
     })
-
     return env_variables
 
   def SetupPlatformTools(self, build_number):
     # Nothing to setup, but validate that BUILDROOT_HOME is correct.
-    if self.buildroot_home == _UNDEFINED_BUILDROOT_HOME:
-      raise RuntimeError('Wpe builds require the "BUILDROOT_HOME" '
+    if self.build_home == _UNDEFINED_BUILDROOT_HOME and self.build_home == _UNDEFINED_OE_HOME:
+      raise RuntimeError('Wpe builds require the "BUILDROOT_HOME or OE_HOME" '
                          'environment variable to be set.')
     if not os.path.isdir(self.sysroot):
-      raise RuntimeError('Wpe builds require $BUILDROOT_HOME/sysroot '
+      raise RuntimeError('Wpe builds require $BUILDROOT_HOME or OE_HOME sysroot '
                          'to be a valid directory.')
 
   def GetLauncherPath(self):
