@@ -65,7 +65,7 @@ class DrmSystemOcdm : public SbDrmSystemPrivate {
                      const void* session_id,
                      int session_id_size) override;
   DecryptStatus Decrypt(InputBuffer* buffer) override;
-  bool IsServerCertificateUpdatable() override { return false; }
+  bool IsServerCertificateUpdatable() override { return true; }
   void UpdateServerCertificate(int ticket,
                                const void* certificate,
                                int certificate_size) override;
