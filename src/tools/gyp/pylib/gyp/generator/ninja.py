@@ -2116,8 +2116,7 @@ def GenerateOutputForConfig(target_list, target_dicts, data, params,
     master_ninja.variable('cc', cc)
     cxx = GetEnvironFallback(['CXX_target', 'CXX'], cxx)
     master_ninja.variable('cxx', cxx)
-    # Use default value for LD
-    # ld = GetEnvironFallback(['LD_target', 'LD'], ld)
+    ld = GetEnvironFallback(['LD_target', 'LD'], ld)
     rc = GetEnvironFallback(['RC'], 'rc.exe')
 
     if not cc_host:
