@@ -24,8 +24,8 @@ from starboard.tools.testing import test_filter
 # will show up in an error message when that fails.
 _UNDEFINED_BUILDROOT_HOME = '/UNDEFINED/BUILDROOT_HOME'
 
-_UNDEFINED_OE_HOME = '/UNDEFINED/OE_HOME'
-_UNDEFINED_OE_NATIVE = '/UNDEFINED/OE_NATIVE'
+_UNDEFINED_OE_STAGING_DIR = '/UNDEFINED/OE_STAGING_DIR'
+_UNDEFINED_OE_TOOLCHAIN_PREFIX = '/UNDEFINED/OE_TOOLCHAIN_PREFIX'
 
 class WpePlatformConfig(platform_configuration.PlatformConfiguration):
   """Starboard WPE BRCM ARM platform configuration."""
@@ -38,10 +38,10 @@ class WpePlatformConfig(platform_configuration.PlatformConfiguration):
       self.sysroot = os.path.realpath(os.path.join(self.build_home, 'arm-buildroot-linux-gnueabihf/sysroot'))
       self.toolchain = 'arm-buildroot-linux-gnueabihf-'
     else:
-      self.build_home = os.environ.get('OE_HOME', _UNDEFINED_OE_HOME)
-      if self.build_home != _UNDEFINED_OE_HOME:
+      self.build_home = os.environ.get('OE_STAGING_DIR', _UNDEFINED_OE_STAGING_DIR)
+      if self.build_home != _UNDEFINED_OE_STAGING_DIR:
         self.sysroot = os.path.realpath(os.path.join(self.build_home, ''))
-        self.toolchain = os.environ.get('OE_NATIVE', _UNDEFINED_OE_NATIVE)
+        self.toolchain = os.environ.get('OE_TOOLCHAIN_PREFIX', _UNDEFINED_OE_TOOLCHAIN_PREFIX)
 
   def GetBuildFormat(self):
     """Returns the desired build format."""
@@ -85,11 +85,11 @@ class WpePlatformConfig(platform_configuration.PlatformConfiguration):
 
   def SetupPlatformTools(self, build_number):
     # Nothing to setup, but validate that BUILDROOT_HOME is correct.
-    if self.build_home == _UNDEFINED_BUILDROOT_HOME and self.build_home == _UNDEFINED_OE_HOME:
-      raise RuntimeError('Wpe builds require the "BUILDROOT_HOME or OE_HOME" '
+    if self.build_home == _UNDEFINED_BUILDROOT_HOME and self.build_home == _UNDEFINED_OE_STAGING_DIR:
+      raise RuntimeError('Wpe builds require the "BUILDROOT_HOME or OE_STAGING_DIR" '
                          'environment variable to be set.')
     if not os.path.isdir(self.sysroot):
-      raise RuntimeError('Wpe builds require $BUILDROOT_HOME or OE_HOME sysroot '
+      raise RuntimeError('Wpe builds require $BUILDROOT_HOME or OE_STAGING_DIR sysroot '
                          'to be a valid directory.')
 
   def GetLauncherPath(self):
