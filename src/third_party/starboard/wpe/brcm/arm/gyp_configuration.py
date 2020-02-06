@@ -14,17 +14,16 @@
 """Starboard Raspberry Pi platform configuration."""
 
 import os
-
 from starboard.build import clang
 from starboard.build import platform_configuration
 from starboard.tools import build
 from starboard.tools.testing import test_filter
 
-# Use a bogus path instead of None so that anything based on $BUILDROOT_HOME won't
-# inadvertently end up pointing to something in the root directory, and this
-# will show up in an error message when that fails.
-_UNDEFINED_BUILDROOT_HOME = '/UNDEFINED/BUILDROOT_HOME'
-
+# Use a bogus path instead of None so that anything based on COBALT_STAGING_DIR and
+# COBALT_TOOLCHAIN_PRFIX won't inadvertently end up pointing to something in the root directory,
+# and this will show up in an error message when that fails.
+_UNDEFINED_COBALT_STAGING_DIR = '/UNDEFINED/COBALT_STAGING_DIR'
+_UNDEFINED_COBALT_TOOLCHAIN_PREFIX = '/UNDEFINED/COBALT_TOOLCHAIN_PREFIX'
 
 class WpePlatformConfig(platform_configuration.PlatformConfiguration):
   """Starboard WPE BRCM ARM platform configuration."""
@@ -32,8 +31,10 @@ class WpePlatformConfig(platform_configuration.PlatformConfiguration):
   def __init__(self, platform):
     super(WpePlatformConfig, self).__init__(platform)
     self.AppendApplicationConfigurationPath(os.path.dirname(__file__))
-    self.buildroot_home = os.environ.get('BUILDROOT_HOME', _UNDEFINED_BUILDROOT_HOME)
-    self.sysroot = os.path.realpath(os.path.join(self.buildroot_home, 'arm-buildroot-linux-gnueabihf/sysroot'))
+    self.build_home = os.environ.get('COBALT_STAGING_DIR', _UNDEFINED_COBALT_STAGING_DIR)
+    if self.build_home != _UNDEFINED_COBALT_STAGING_DIR:
+      self.sysroot = os.path.realpath(os.path.join(self.build_home, ''))
+      self.toolchain = os.environ.get('COBALT_TOOLCHAIN_PREFIX', _UNDEFINED_COBALT_TOOLCHAIN_PREFIX)
 
   def GetBuildFormat(self):
     """Returns the desired build format."""
@@ -60,27 +61,22 @@ class WpePlatformConfig(platform_configuration.PlatformConfiguration):
 
   def GetEnvironmentVariables(self):
     env_variables = {}
-    toolchain = os.path.realpath(
-        os.path.join(
-            self.buildroot_home,
-            '.'))
-    toolchain_bin_dir = os.path.join(toolchain, 'bin')
+
     env_variables.update({
-        'CC': os.path.join(toolchain_bin_dir, 'arm-buildroot-linux-gnueabihf-gcc'),
-        'CXX': os.path.join(toolchain_bin_dir, 'arm-buildroot-linux-gnueabihf-g++'),
+        'CC': self.toolchain + 'gcc',
+        'CXX': self.toolchain + 'g++',
         'CC_host': 'gcc -m32',
         'CXX_host': 'g++ -m32',
     })
-
     return env_variables
 
   def SetupPlatformTools(self, build_number):
-    # Nothing to setup, but validate that BUILDROOT_HOME is correct.
-    if self.buildroot_home == _UNDEFINED_BUILDROOT_HOME:
-      raise RuntimeError('Wpe builds require the "BUILDROOT_HOME" '
+    # Nothing to setup, but validate that COBALT_STAGING_DIR is correct.
+    if self.build_home == _UNDEFINED_COBALT_STAGING_DIR:
+      raise RuntimeError('Wpe builds require the "COBALT_STAGING_DIR" '
                          'environment variable to be set.')
     if not os.path.isdir(self.sysroot):
-      raise RuntimeError('Wpe builds require $BUILDROOT_HOME/sysroot '
+      raise RuntimeError('Wpe builds require COBALT_STAGING_DIR sysroot '
                          'to be a valid directory.')
 
   def GetLauncherPath(self):
