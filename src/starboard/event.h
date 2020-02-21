@@ -274,6 +274,10 @@ typedef enum SbEventType {
   // has changed.
   kSbEventTypeAccessibilityCaptionSettingsChanged,
 #endif  // SB_HAS(CAPTIONS)
+#if SB_HAS(WPE_FRAMEWORK)
+  // The platform requested to change URL of app which Cobalt is hosting
+  kSbEventTypeNavigate,
+#endif
 } SbEventType;
 
 // Structure representing a Starboard event and its data.

@@ -19,6 +19,7 @@
 #include "starboard/common/log.h"
 #include "starboard/event.h"
 #include "starboard/shared/starboard/audio_sink/audio_sink_internal.h"
+#include "starboard/string.h"
 
 #include "third_party/starboard/wpe/shared/window/window_internal.h"
 
@@ -27,12 +28,22 @@ namespace starboard {
 namespace wpe {
 namespace shared {
 
+std::mutex Application::_lock;
+std::condition_variable Application::_finishedInit;
+bool Application::_initialized = false;
+
 Application::Application() {}
 
 Application::~Application() {}
 
 void Application::Initialize() {
   SbAudioSinkPrivate::Initialize();
+
+  _lock.lock();
+  _initialized = true;
+  _lock.unlock();
+
+  _finishedInit.notify_all();
 }
 
 void Application::Teardown() {
@@ -78,6 +89,17 @@ bool Application::DestroyWindow(SbWindow window) {
 void Application::InjectInputEvent(SbInputData* data) {
   Inject(new Event(kSbEventTypeInput, data,
                    &Application::DeleteDestructor<SbInputData>));
+}
+
+void Application::NavitgateTo(const char* url) {
+  Inject(new Event(kSbEventTypeNavigate, SbStringDuplicate(url),
+                  SbMemoryDeallocate));
+}
+
+void Application::WaitForInit() {
+  std::unique_lock<std::mutex> lk(_lock);
+
+  _finishedInit.wait(lk, [&]{return _initialized;});
 }
 
 void Application::Inject(Event* e) {
