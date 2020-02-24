@@ -21,8 +21,6 @@
 #include "starboard/shared/starboard/application.h"
 #include "starboard/shared/starboard/queue_application.h"
 #include "starboard/types.h"
-#include <mutex>              
-#include <condition_variable>
 
 namespace third_party {
 namespace starboard {
@@ -40,13 +38,10 @@ class Application : public ::starboard::shared::starboard::QueueApplication {
         ::starboard::shared::starboard::Application::Get());
   }
 
-  static void WaitForInit();
-
   SbWindow CreateWindow(const SbWindowOptions* options);
   bool DestroyWindow(SbWindow window);
   void InjectInputEvent(SbInputData* data);
 
-  void NavitgateTo(const char* url);
  protected:
   // --- Application overrides ---
   void Initialize() override;
@@ -58,9 +53,6 @@ class Application : public ::starboard::shared::starboard::QueueApplication {
   Event* PollNextSystemEvent() override;
   Event* WaitForSystemEventWithTimeout(SbTime time) override;
   void WakeSystemEventWait() override;
-
-  static std::mutex g_lock;
-  static std::condition_variable g_finished_init;
 };
 
 }  // namespace shared

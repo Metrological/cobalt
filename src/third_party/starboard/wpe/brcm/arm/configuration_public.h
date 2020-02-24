@@ -514,6 +514,4 @@
 #define SB_PLATFORM_CHIPSET_MODEL_NUMBER_STRING "BRCM"
 #define SB_PLATFORM_MANUFACTURER_NAME "Broadcom"
 
-#include "third_party/starboard/wpe/shared/configuration_public.h"
-
 #endif  // THIRD_PARTY_STARBOARD_WPE_BRCM_ARM_CONFIGURATION_PUBLIC_H_
