@@ -419,6 +419,7 @@
         '<(DEPTH)/starboard/shared/nouser/user_get_signed_in.cc',
         '<(DEPTH)/starboard/shared/nouser/user_internal.cc',
         '<(DEPTH)/third_party/starboard/wpe/shared/application_wpe.cc',
+        '<(DEPTH)/third_party/starboard/wpe/shared/cobalt_api_wpe.cc',
         '<(DEPTH)/third_party/starboard/wpe/shared/get_home_directory.cc',
         '<(DEPTH)/third_party/starboard/wpe/shared/main_wpe.cc',
     ],

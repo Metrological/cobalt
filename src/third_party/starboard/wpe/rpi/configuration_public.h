@@ -514,4 +514,6 @@
 #define SB_PLATFORM_CHIPSET_MODEL_NUMBER_STRING "Raspi3"
 #define SB_PLATFORM_MANUFACTURER_NAME "RaspberryPiFoundation"
 
+#include "third_party/starboard/wpe/shared/configuration_public.h"
+
 #endif  // THIRD_PARTY_STARBOARD_WPE_RPI_CONFIGURATION_PUBLIC_H_

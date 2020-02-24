@@ -885,6 +885,13 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
     case kSbEventTypeNetworkConnect:
     case kSbEventTypeNetworkDisconnect:
 #endif  // SB_API_VERSION < 11
+#if SB_HAS(WPE_FRAMEWORK)
+    case kSbEventTypeNavigate: {
+      const char* url = static_cast<const char*>(starboard_event->data);
+      browser_module_->Navigate(GURL(url));
+      break;
+    }
+#endif // SB_HAS(WPE_FRAMEWORK)
     case kSbEventTypeScheduled:
     case kSbEventTypeStart:
     case kSbEventTypeStop:
@@ -971,6 +978,9 @@ void Application::OnApplicationEvent(SbEventType event_type) {
     case kSbEventTypeNetworkConnect:
     case kSbEventTypeNetworkDisconnect:
 #endif  // SB_API_VERSION < 11
+#if SB_HAS(WPE_FRAMEWORK)
+    case kSbEventTypeNavigate:
+#endif // SB_HAS(WPE_FRAMEWORK)
     case kSbEventTypeScheduled:
     case kSbEventTypeUser:
     case kSbEventTypeVerticalSync:

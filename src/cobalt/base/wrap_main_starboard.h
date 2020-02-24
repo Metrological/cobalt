@@ -127,6 +127,9 @@ void BaseEventHandler(const SbEvent* event) {
 #if SB_HAS(CAPTIONS)
     case kSbEventTypeAccessibilityCaptionSettingsChanged:
 #endif  // SB_HAS(CAPTIONS)
+#if SB_HAS(WPE_FRAMEWORK)
+    case kSbEventTypeNavigate:
+#endif // SB_HAS(WPE_FRAMEWORK)
       event_function(event);
       break;
   }
