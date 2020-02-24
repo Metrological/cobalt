@@ -369,6 +369,7 @@
     'dependencies': [
         '<(DEPTH)/third_party/libevent/libevent.gyp:libevent',
         '<(DEPTH)/third_party/libjpeg/libjpeg.gyp:libjpeg',
+        '<(DEPTH)/third_party/starboard/wpe/shared/libraries.gyp:pkg_libs',
     ],
 
     'sources': [

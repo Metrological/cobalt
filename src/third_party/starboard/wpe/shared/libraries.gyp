@@ -11,35 +11,31 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 {
+  'includes': [
+    'libraries.gypi',
+  ],
   'variables': {
-    'has_ocdm': '<!(echo $COBALT_HAS_OCDM)',
-    'common_libs': [
-      '-lpthread',
-    ],
-    'pkg_libs': [
-      'WPEFrameworkCore',
-      'WPEFrameworkDefinitions',
-      'WPEFrameworkPlugins',
-      'compositorclient',
-      'gstreamer-1.0',
-      'gstreamer-app-1.0',
-      'gstreamer-base-1.0',
-      'gstreamer-video-1.0',
-      'gstreamer-audio-1.0',
-      'glib-2.0',
-      'gobject-2.0',
-      'egl',
-    ],
-    'common_linker_flags': [
-      '-Wl,--wrap=eglGetDisplay',
-    ],
-    'conditions': [
-      ['<(has_ocdm)==1', {
-        'pkg_libs': [
-          'ocdm',
-        ],
-      }],
-    ],
+    'pkg-config': 'pkg-config',  
   },
+  'targets': [
+    {
+      'target_name': 'pkg_libs',
+      'type': 'none',
+      'direct_dependent_settings': {
+        'cflags': [
+          '<!@(<(pkg-config) --cflags <(pkg_libs))',
+        ],
+      },
+      'link_settings': {
+        'ldflags': [
+          '<!@(<(pkg-config) --libs-only-L --libs-only-other <(pkg_libs))',
+        ],
+        'libraries': [
+          '<!@(<(pkg-config) --libs-only-l <(pkg_libs))',
+        ],
+      },
+    },
+  ],
 }
