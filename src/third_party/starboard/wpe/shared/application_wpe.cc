@@ -28,9 +28,8 @@ namespace starboard {
 namespace wpe {
 namespace shared {
 
-std::mutex Application::_lock;
-std::condition_variable Application::_finishedInit;
-bool Application::_initialized = false;
+std::mutex Application::g_lock;
+std::condition_variable Application::g_finished_init;
 
 Application::Application() {}
 
@@ -39,11 +38,7 @@ Application::~Application() {}
 void Application::Initialize() {
   SbAudioSinkPrivate::Initialize();
 
-  _lock.lock();
-  _initialized = true;
-  _lock.unlock();
-
-  _finishedInit.notify_all();
+  g_finished_init.notify_all();
 }
 
 void Application::Teardown() {
@@ -97,9 +92,9 @@ void Application::NavitgateTo(const char* url) {
 }
 
 void Application::WaitForInit() {
-  std::unique_lock<std::mutex> lk(_lock);
+  std::unique_lock<std::mutex> lk(g_lock);
 
-  _finishedInit.wait(lk, [&]{return _initialized;});
+  g_finished_init.wait(lk, [&]{return Get() != nullptr;});
 }
 
 void Application::Inject(Event* e) {

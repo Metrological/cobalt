@@ -59,9 +59,8 @@ class Application : public ::starboard::shared::starboard::QueueApplication {
   Event* WaitForSystemEventWithTimeout(SbTime time) override;
   void WakeSystemEventWait() override;
 
-  static std::mutex _lock;
-  static std::condition_variable _finishedInit;
-  static bool _initialized;
+  static std::mutex g_lock;
+  static std::condition_variable g_finished_init;
 };
 
 }  // namespace shared
