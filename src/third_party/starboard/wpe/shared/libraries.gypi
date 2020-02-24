@@ -29,7 +29,6 @@
       'gstreamer-audio-1.0',
       'glib-2.0',
       'gobject-2.0',
-      'egl',
     ],
     'common_linker_flags': [
       '-Wl,--wrap=eglGetDisplay',
