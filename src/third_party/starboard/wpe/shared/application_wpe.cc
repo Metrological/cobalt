@@ -20,8 +20,8 @@
 #include "starboard/event.h"
 #include "starboard/shared/starboard/audio_sink/audio_sink_internal.h"
 #include "starboard/string.h"
-
 #include "third_party/starboard/wpe/shared/window/window_internal.h"
+#include "third_party/starboard/wpe/shared/events/system_events.h"
 
 namespace third_party {
 namespace starboard {
@@ -65,11 +65,14 @@ Application::PollNextSystemEvent() {
 
 ::starboard::shared::starboard::Application::Event*
 Application::WaitForSystemEventWithTimeout(SbTime time) {
-  SB_UNREFERENCED_PARAMETER(time);
-  return NULL;
+  SystemEvents::Get().WaitForEvent(time);
+
+  return PollNextSystemEvent();
 }
 
-void Application::WakeSystemEventWait() {}
+void Application::WakeSystemEventWait() {
+  SystemEvents::Get().WakeEventWait();
+}
 
 SbWindow Application::CreateWindow(const SbWindowOptions* options) {
   SbWindow window = new SbWindowPrivate(options);

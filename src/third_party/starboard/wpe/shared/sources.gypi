@@ -366,6 +366,10 @@
         '<(DEPTH)/third_party/starboard/wpe/shared/window/window_internal.cc',
     ],
 
+    'event_sources': [
+        '<(DEPTH)/third_party/starboard/wpe/shared/events/system_events.cc',
+    ],
+
     'dependencies': [
         '<(DEPTH)/third_party/libevent/libevent.gyp:libevent',
         '<(DEPTH)/third_party/libjpeg/libjpeg.gyp:libjpeg',
@@ -388,6 +392,7 @@
         '<@(time_sources)',
         '<@(threading_sources)',
         '<@(window_sources)',
+        '<@(event_sources)',
         '<(DEPTH)/starboard/shared/libjpeg/image_decode.cc',
         '<(DEPTH)/starboard/shared/libjpeg/image_is_decode_supported.cc',
         '<(DEPTH)/starboard/shared/libjpeg/jpeg_image_decoder.cc',

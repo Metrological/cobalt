@@ -43,6 +43,7 @@
 
       # Force char to be signed.
       '-fsigned-char',
+
       # Disable strict aliasing.
       '-fno-strict-aliasing',
 
@@ -64,6 +65,9 @@
       # matters: Wall implies Wunused-parameter and Wno-unused-parameter
       # has no effect if specified before Wall.
       '-Wno-unused-parameter',
+
+      # For some reason Thumb build is broken
+      '-marm',
 
       # Specify the sysroot with all your include dependencies.
       '--sysroot=<(sysroot)',

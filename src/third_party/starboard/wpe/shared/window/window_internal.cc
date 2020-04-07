@@ -22,6 +22,7 @@
 #include "starboard/input.h"
 #include "starboard/key.h"
 #include "third_party/starboard/wpe/shared/application_wpe.h"
+#include "third_party/starboard/wpe/shared/events/system_events.h"
 
 using namespace WPEFramework;
 using namespace WPEFramework::Compositor;
@@ -364,7 +365,7 @@ std::string DisplayName() {
 }
 
 KeyboardHandler::KeyboardHandler()
-    : key_repeat_interval_(kKeyRepeatTime), key_repeat_delay_(kKeyHoldTime) {}
+    : key_repeat_interval_(kKeyRepeatTime), key_repeat_delay_(kKeyHoldTime) { }
 
 void KeyboardHandler::Modifiers(uint32_t mods_depressed,
                                 uint32_t mods_latched,
@@ -396,7 +397,7 @@ void KeyboardHandler::Repeat(int32_t rate, int32_t delay) {
   }
 }
 
-void KeyboardHandler::Direct(const uint32_t key, const state action) {
+void KeyboardHandler::Direct(const uint32_t key, const state action) {  
   bool repeatable =
       (key == KEY_LEFT || key == KEY_RIGHT || key == KEY_UP || key == KEY_DOWN);
   SB_DLOG(INFO) << "[Key] Key :" << key << ", state:" << action
@@ -428,6 +429,7 @@ void KeyboardHandler::CreateKey(int key, state action, bool is_repeat) {
   data->key_location = KeyCodeToSbKeyLocation(key);
   data->key_modifiers = key_modifiers_;
   Application::Get()->InjectInputEvent(data);
+  SystemEvents::Get().WakeEventWait();
   ;
   DeleteRepeatKey();
 
@@ -503,10 +505,13 @@ SbWindowPrivate::SbWindowPrivate(const SbWindowOptions* options) {
               + std::string("video"), window_width, window_height);
 #endif
 
-  window_ = third_party::starboard::wpe::shared::window::GetDisplay()->Create(
+  auto* display = third_party::starboard::wpe::shared::window::GetDisplay();
+  window_ = display->Create(
       third_party::starboard::wpe::shared::window::DisplayName() + "-"
           + std::string("graphics"), window_width, window_height);
   kb_handler_.SetWindow(this);
+
+  third_party::starboard::wpe::shared::SystemEvents::Get().AddEventSource(display->FileDescriptor());
 }
 
 SbWindowPrivate::~SbWindowPrivate() {
