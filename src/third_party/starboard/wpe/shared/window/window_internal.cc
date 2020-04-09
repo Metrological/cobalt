@@ -501,13 +501,13 @@ SbWindowPrivate::SbWindowPrivate(const SbWindowOptions* options) {
   // it first.
   video_overlay_ =
       third_party::starboard::wpe::shared::window::GetDisplay()->Create(
-          third_party::starboard::wpe::shared::window::DisplayName() + "-"
+          third_party::starboard::wpe::shared::window::DisplayName() + ":"
               + std::string("video"), window_width, window_height);
 #endif
 
   auto* display = third_party::starboard::wpe::shared::window::GetDisplay();
   window_ = display->Create(
-      third_party::starboard::wpe::shared::window::DisplayName() + "-"
+      third_party::starboard::wpe::shared::window::DisplayName() + ":"
           + std::string("graphics"), window_width, window_height);
   kb_handler_.SetWindow(this);
 
