@@ -45,17 +45,25 @@ void Application::Teardown() {
   SbAudioSinkPrivate::TearDown();
 }
 
+void Application::OnSuspend() {
+  if (window_) {
+      window_->DestroyDisplay();
+  }
+}
+
+void Application::OnResume() {
+   if (window_) {
+       window_->CreateDisplay();
+    }
+}
+
 bool Application::MayHaveSystemEvents() {
   return true;
 }
 
 ::starboard::shared::starboard::Application::Event*
 Application::PollNextSystemEvent() {
-  auto* display = window::GetDisplay();
-  int fd = display->FileDescriptor();
-  int flags = fcntl(fd, F_GETFL, 0);
-  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-  display->Process(1);
+  window_->PollNextSystemEvent();
   return NULL;
 }
 
@@ -72,11 +80,15 @@ void Application::WakeSystemEventWait() {
 
 SbWindow Application::CreateWindow(const SbWindowOptions* options) {
   SbWindow window = new SbWindowPrivate(options);
+  window_ = window;
+
   return window;
 }
 
 bool Application::DestroyWindow(SbWindow window) {
+  SB_DCHECK(window_ == window);
   delete window;
+  window_ = kSbWindowInvalid;
   return true;
 }
 

@@ -52,6 +52,8 @@ class Application : public ::starboard::shared::starboard::QueueApplication {
   // --- Application overrides ---
   void Initialize() override;
   void Teardown() override;
+  void OnSuspend() override;
+  void OnResume() override;
   void Inject(Event* e) override;
 
   // --- QueueApplication overrides ---
@@ -66,6 +68,9 @@ protected:
 
   static std::mutex g_lock;
   static std::condition_variable g_finished_init;
+
+ private:
+  SbWindow window_;
 };
 
 }  // namespace shared

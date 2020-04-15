@@ -347,15 +347,24 @@ SbKeyLocation KeyCodeToSbKeyLocation(uint16_t code) {
 
 }  // namespace
 
+WPEFramework::Compositor::IDisplay* display_{nullptr};
 IDisplay* GetDisplay() {
-  static WPEFramework::Compositor::IDisplay* g_display = nullptr;
-  if (!g_display)
-    g_display = IDisplay::Instance(DisplayName());
-
-  return g_display;
+  if (!display_) {
+    display_ = IDisplay::Instance(DisplayName());
+  }
+  return display_;
 }
 
-std::string DisplayName() {
+bool DisplayIsReady() {
+    return (display_ != nullptr);
+}
+
+void DestroyDisplay() {
+   display_->Release();
+   display_ = nullptr;
+}
+
+std::string DisplayName()
   static std::string name = Compositor::IDisplay::SuggestedName();
 
   if (name.empty()) {
@@ -477,13 +486,18 @@ void KeyboardHandler::SetWindow(SbWindow window) {
 }  // namespace third_party
 
 SbWindowPrivate::SbWindowPrivate(const SbWindowOptions* options) {
+    options_ = options;
+    CreateDisplay();
+}
+
+void SbWindowPrivate::CreateDisplay() {
   auto window_width =
-      options && options->size.width > 0
-          ? options->size.width
+      options_ && options_->size.width > 0
+          ? options_->size.width
           : third_party::starboard::wpe::shared::window::kDefaultWidth;
   auto window_height =
-      options && options->size.height > 0
-          ? options->size.height
+      options_ && options_->size.height > 0
+          ? options_->size.height
           : third_party::starboard::wpe::shared::window::kDefaultHeight;
   auto* env_width  = std::getenv("COBALT_RESOLUTION_WIDTH");
   if (env_width) {
@@ -515,9 +529,19 @@ SbWindowPrivate::SbWindowPrivate(const SbWindowOptions* options) {
 }
 
 SbWindowPrivate::~SbWindowPrivate() {
+    DestroyDisplay();
+}
+
+void SbWindowPrivate::DestroyDisplay() {
   if (window_) {
     window_->Release();
   }
+  window_ = nullptr;
+  if (video_overlay_) {
+    video_overlay_->Release();
+  }
+  video_overlay_ = nullptr;
+  third_party::starboard::wpe::shared::window::DestroyDisplay();
 }
 
 WPEFramework::Compositor::IDisplay::ISurface*
@@ -527,3 +551,13 @@ SbWindowPrivate::CreateVideoOverlay() {
 
 void SbWindowPrivate::DestroyVideoOverlay(
     WPEFramework::Compositor::IDisplay::ISurface* surface) {}
+
+void SbWindowPrivate::PollNextSystemEvent() {
+  if (third_party::starboard::wpe::shared::window::DisplayIsReady() == true) {
+      auto* display = third_party::starboard::wpe::shared::window::GetDisplay();
+      int fd = display->FileDescriptor();
+      int flags = fcntl(fd, F_GETFL, 0);
+      fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+      display->Process(1);
+  }
+}
