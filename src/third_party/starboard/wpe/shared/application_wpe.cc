@@ -47,14 +47,16 @@ void Application::Teardown() {
 
 void Application::OnSuspend() {
   if (window_) {
-      window_->DestroyDisplay();
+    ::starboard::ScopedLock lock(mutex_);
+    window_->DestroyDisplay();
   }
 }
 
 void Application::OnResume() {
-   if (window_) {
-       window_->CreateDisplay();
-    }
+  if (window_) {
+    ::starboard::ScopedLock lock(mutex_);
+    window_->CreateDisplay();
+  }
 }
 
 bool Application::MayHaveSystemEvents() {
@@ -63,6 +65,7 @@ bool Application::MayHaveSystemEvents() {
 
 ::starboard::shared::starboard::Application::Event*
 Application::PollNextSystemEvent() {
+  ::starboard::ScopedLock lock(mutex_);
   window_->PollNextSystemEvent();
   return NULL;
 }

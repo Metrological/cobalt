@@ -356,15 +356,15 @@ IDisplay* GetDisplay() {
 }
 
 bool DisplayIsReady() {
-    return (display_ != nullptr);
+  return (display_ != nullptr);
 }
 
 void DestroyDisplay() {
-   display_->Release();
-   display_ = nullptr;
+  display_->Release();
+  display_ = nullptr;
 }
 
-std::string DisplayName()
+std::string DisplayName() {
   static std::string name = Compositor::IDisplay::SuggestedName();
 
   if (name.empty()) {

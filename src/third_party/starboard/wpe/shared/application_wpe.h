@@ -71,6 +71,7 @@ protected:
 
  private:
   SbWindow window_;
+  ::starboard::Mutex mutex_;
 };
 
 }  // namespace shared
