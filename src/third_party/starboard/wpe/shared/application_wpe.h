@@ -29,7 +29,6 @@ namespace starboard {
 namespace wpe {
 namespace shared {
 
-// Stub application engine using the generic queue and a stub implementation.
 class Application : public ::starboard::shared::starboard::QueueApplication {
  public:
   Application();
@@ -46,7 +45,9 @@ class Application : public ::starboard::shared::starboard::QueueApplication {
   bool DestroyWindow(SbWindow window);
   void InjectInputEvent(SbInputData* data);
 
-  void NavitgateTo(const char* url);
+  void NavigateTo(const char* url);
+  void Suspend();
+  void Resume();
  protected:
   // --- Application overrides ---
   void Initialize() override;
@@ -58,6 +59,10 @@ class Application : public ::starboard::shared::starboard::QueueApplication {
   Event* PollNextSystemEvent() override;
   Event* WaitForSystemEventWithTimeout(SbTime time) override;
   void WakeSystemEventWait() override;
+
+protected:
+  // guarantees suspend & resume events order
+  std::mutex suspend_lock;
 
   static std::mutex g_lock;
   static std::condition_variable g_finished_init;

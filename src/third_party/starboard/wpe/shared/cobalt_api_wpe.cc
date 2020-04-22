@@ -11,10 +11,22 @@ void SetURL(const char* link_data)
     ::third_party::starboard::wpe::shared::Application::WaitForInit(); // Make sure that Application Singleton exists
 
     auto* application_wpe = static_cast<Application*>(::starboard::shared::starboard::Application::Get());
-    application_wpe->NavitgateTo(link_data);
+    application_wpe->NavigateTo(link_data);
+}
+
+void Suspend() 
+{
+    Application::WaitForInit(); 
+    Application::Get()->Suspend();
+}
+
+void Resume()
+{
+    Application::WaitForInit(); 
+    Application::Get()->Resume();
 }
 
 }  // namespace shared
 }  // namespace wpe
 }  // namespace starboard
-}  // namespace third_party1
+}  // namespace third_party

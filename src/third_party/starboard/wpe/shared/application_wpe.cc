@@ -49,10 +49,6 @@ bool Application::MayHaveSystemEvents() {
   return true;
 }
 
-// This is a bit of the shortcut. We could implement PollNextSystemEvent(),
-// WaitForSystemEventWithTimeout() and WakeSystemEventWait() properly
-// but instead PollNextSystemEvent() injects a new event which will be processed
-// just after PollNextSystemEvent() if it returns nullptr
 ::starboard::shared::starboard::Application::Event*
 Application::PollNextSystemEvent() {
   auto* display = window::GetDisplay();
@@ -89,9 +85,27 @@ void Application::InjectInputEvent(SbInputData* data) {
                    &Application::DeleteDestructor<SbInputData>));
 }
 
-void Application::NavitgateTo(const char* url) {
+void Application::NavigateTo(const char* url) {
   Inject(new Event(kSbEventTypeNavigate, SbStringDuplicate(url),
                   SbMemoryDeallocate));
+}
+
+void Application::Suspend()
+{
+  suspend_lock.lock();
+  ::starboard::shared::starboard::Application::Suspend(this, 
+    [](void* application) {
+      reinterpret_cast<Application*>(application)->suspend_lock.unlock();
+    });
+}
+
+void Application::Resume()
+{
+  suspend_lock.lock();
+  ::starboard::shared::starboard::Application::Resume(this, 
+    [](void* application) {
+      reinterpret_cast<Application*>(application)->suspend_lock.unlock();
+    });
 }
 
 void Application::WaitForInit() {
@@ -101,10 +115,6 @@ void Application::WaitForInit() {
 }
 
 void Application::Inject(Event* e) {
-  if (e->event->type == kSbEventTypeSuspend) {
-    e->destructor = nullptr;
-  }
-
   QueueApplication::Inject(e);
 }
 
