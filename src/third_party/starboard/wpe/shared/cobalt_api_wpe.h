@@ -21,6 +21,8 @@ namespace wpe {
 namespace shared {
 
 void SetURL(const char* link_data);
+void Resume();
+void Suspend();
 
 }  // namespace shared
 }  // namespace wpe
