@@ -62,14 +62,15 @@ class Application : public ::starboard::shared::starboard::QueueApplication {
 
 protected:
   // guarantees suspend & resume events order
-  std::mutex suspend_lock;
+  std::mutex suspend_lock_;
 
-  static std::mutex g_lock;
-  static std::condition_variable g_finished_init;
+  static std::mutex g_lock_;
+  static std::condition_variable g_finished_init_;
 
  private:
-  SbWindow window_;
-  ::starboard::Mutex mutex_;
+  SbWindow window_{nullptr};
+  ::starboard::Mutex window_lock_;
+  bool display_released_{false};
 };
 
 }  // namespace shared
