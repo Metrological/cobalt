@@ -45,20 +45,6 @@ void Application::Teardown() {
   SbAudioSinkPrivate::TearDown();
 }
 
-void Application::OnSuspend() {
-  if (window_) {
-    ::starboard::ScopedLock lock(mutex_);
-    window_->DestroyDisplay();
-  }
-}
-
-void Application::OnResume() {
-  if (window_) {
-    ::starboard::ScopedLock lock(mutex_);
-    window_->CreateDisplay();
-  }
-}
-
 bool Application::MayHaveSystemEvents() {
   return true;
 }
@@ -112,6 +98,11 @@ void Application::Suspend()
     [](void* application) {
       reinterpret_cast<Application*>(application)->suspend_lock.unlock();
     });
+
+  if (window_) {
+    ::starboard::ScopedLock lock(mutex_);
+    window_->DestroyDisplay();
+  }
 }
 
 void Application::Resume()
@@ -121,6 +112,11 @@ void Application::Resume()
     [](void* application) {
       reinterpret_cast<Application*>(application)->suspend_lock.unlock();
     });
+  if (window_) {
+    ::starboard::ScopedLock lock(mutex_);
+    window_->CreateDisplay();
+  }
+
 }
 
 void Application::WaitForInit() {
