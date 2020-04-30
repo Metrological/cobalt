@@ -77,7 +77,6 @@ SbWindow Application::CreateWindow(const SbWindowOptions* options) {
     ::starboard::ScopedLock lock(window_lock_);
     window_ = window;
   }
-
   return window;
 }
 
@@ -108,7 +107,10 @@ void Application::Suspend()
     [](void* application) {
       reinterpret_cast<Application*>(application)->suspend_lock_.unlock();
     });
+}
 
+void Application::OnSuspend()
+{
   ::starboard::ScopedLock lock(window_lock_);
   if (window_) {
     window_->DestroyDisplay();
@@ -118,19 +120,20 @@ void Application::Suspend()
 
 void Application::Resume()
 {
-  {
-    ::starboard::ScopedLock lock(window_lock_);
-    if (window_ && display_released_) {
-      window_->CreateDisplay();
-      display_released_ = false;
-    }
-  }
   suspend_lock_.lock();
   ::starboard::shared::starboard::Application::Resume(this, 
     [](void* application) {
       reinterpret_cast<Application*>(application)->suspend_lock_.unlock();
     });
+}
 
+void Application::OnResume()
+{
+  ::starboard::ScopedLock lock(window_lock_);
+  if (window_ && display_released_) {
+    window_->CreateDisplay();
+    display_released_ = false;
+  }
 }
 
 void Application::WaitForInit() {
