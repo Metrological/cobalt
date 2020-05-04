@@ -29,6 +29,8 @@ namespace shared {
 namespace window {
 
 WPEFramework::Compositor::IDisplay* GetDisplay();
+bool DisplayIsReady();
+void DestroyDisplay();
 std::string DisplayName();
 
 // FIXME PST: Move to separate files.
@@ -79,11 +81,16 @@ struct SbWindowPrivate {
   SbWindowPrivate(const SbWindowOptions* options);
   ~SbWindowPrivate();
 
+  void CreateDisplay();
+  void DestroyDisplay();
+  void PollNextSystemEvent();
+
   WPEFramework::Compositor::IDisplay::ISurface* CreateVideoOverlay();
   void DestroyVideoOverlay(WPEFramework::Compositor::IDisplay::ISurface*);
 
   WPEFramework::Compositor::IDisplay::ISurface* window_{nullptr};
   WPEFramework::Compositor::IDisplay::ISurface* video_overlay_{nullptr};
+  const SbWindowOptions* options_{nullptr};
   third_party::starboard::wpe::shared::window::KeyboardHandler kb_handler_;
 };
 

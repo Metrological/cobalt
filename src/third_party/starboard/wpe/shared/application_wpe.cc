@@ -28,8 +28,8 @@ namespace starboard {
 namespace wpe {
 namespace shared {
 
-std::mutex Application::g_lock;
-std::condition_variable Application::g_finished_init;
+std::mutex Application::g_lock_;
+std::condition_variable Application::g_finished_init_;
 
 Application::Application() {}
 
@@ -38,7 +38,7 @@ Application::~Application() {}
 void Application::Initialize() {
   SbAudioSinkPrivate::Initialize();
 
-  g_finished_init.notify_all();
+  g_finished_init_.notify_all();
 }
 
 void Application::Teardown() {
@@ -51,11 +51,12 @@ bool Application::MayHaveSystemEvents() {
 
 ::starboard::shared::starboard::Application::Event*
 Application::PollNextSystemEvent() {
-  auto* display = window::GetDisplay();
-  int fd = display->FileDescriptor();
-  int flags = fcntl(fd, F_GETFL, 0);
-  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-  display->Process(1);
+  {
+    ::starboard::ScopedLock lock(window_lock_);
+    if (window_) {
+      window_->PollNextSystemEvent();
+    }
+  }
   return NULL;
 }
 
@@ -72,11 +73,20 @@ void Application::WakeSystemEventWait() {
 
 SbWindow Application::CreateWindow(const SbWindowOptions* options) {
   SbWindow window = new SbWindowPrivate(options);
+  {
+    ::starboard::ScopedLock lock(window_lock_);
+    window_ = window;
+  }
   return window;
 }
 
 bool Application::DestroyWindow(SbWindow window) {
-  delete window;
+  {
+    ::starboard::ScopedLock lock(window_lock_);
+    SB_DCHECK(window_ == window);
+    delete window;
+    window_ = kSbWindowInvalid;
+  }
   return true;
 }
 
@@ -92,26 +102,44 @@ void Application::NavigateTo(const char* url) {
 
 void Application::Suspend()
 {
-  suspend_lock.lock();
+  suspend_lock_.lock();
   ::starboard::shared::starboard::Application::Suspend(this, 
     [](void* application) {
-      reinterpret_cast<Application*>(application)->suspend_lock.unlock();
+      reinterpret_cast<Application*>(application)->suspend_lock_.unlock();
     });
+}
+
+void Application::OnSuspend()
+{
+  ::starboard::ScopedLock lock(window_lock_);
+  if (window_) {
+    window_->DestroyDisplay();
+    display_released_ = true;
+  }
 }
 
 void Application::Resume()
 {
-  suspend_lock.lock();
+  suspend_lock_.lock();
   ::starboard::shared::starboard::Application::Resume(this, 
     [](void* application) {
-      reinterpret_cast<Application*>(application)->suspend_lock.unlock();
+      reinterpret_cast<Application*>(application)->suspend_lock_.unlock();
     });
 }
 
-void Application::WaitForInit() {
-  std::unique_lock<std::mutex> lk(g_lock);
+void Application::OnResume()
+{
+  ::starboard::ScopedLock lock(window_lock_);
+  if (window_ && display_released_) {
+    window_->CreateDisplay();
+    display_released_ = false;
+  }
+}
 
-  g_finished_init.wait(lk, [&]{return Get() != nullptr;});
+void Application::WaitForInit() {
+  std::unique_lock<std::mutex> lk(g_lock_);
+
+  g_finished_init_.wait(lk, [&]{return Get() != nullptr;});
 }
 
 void Application::Inject(Event* e) {
