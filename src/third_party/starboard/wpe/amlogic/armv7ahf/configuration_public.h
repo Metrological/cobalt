@@ -361,11 +361,11 @@
 // video.
 #define SB_MEDIA_MAX_VIDEO_BITRATE_IN_BITS_PER_SECOND (200 * 1024 * 1024)
 
-#define SB_MEDIA_MAX_VIDEO_FRAMERATE_IN_FRAMES_PER_SECOND (24)
+#define SB_MEDIA_MAX_VIDEO_FRAMERATE_IN_FRAMES_PER_SECOND (60)
 
-#define SB_MEDIA_MAX_VIDEO_FRAME_WIDTH (1920)
+#define SB_MEDIA_MAX_VIDEO_FRAME_WIDTH (3840)
 
-#define SB_MEDIA_MAX_VIDEO_FRAME_HEIGHT (1080)
+#define SB_MEDIA_MAX_VIDEO_FRAME_HEIGHT (2160)
 
 // Specifies whether this platform has webm/vp9 support.  This should be set to
 // non-zero on platforms with webm/vp9 support.
