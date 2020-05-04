@@ -1354,6 +1354,12 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
   DCHECK(number_of_sample_infos == kMaxNumberOfSamplesPerWrite);
   GstBuffer* buffer =
       gst_buffer_new_allocate(nullptr, sample_infos[0].buffer_size, nullptr);
+
+  if (NULL == buffer) {
+    GST_ERROR("gst_buffer_new_allocate failed for buffer; sample will be dropped.");
+    return;
+  }
+
   gst_buffer_fill(buffer, 0, sample_infos[0].buffer,
                   sample_infos[0].buffer_size);
   GST_BUFFER_TIMESTAMP(buffer) =
@@ -1396,6 +1402,13 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
     DCHECK(drm_system_);
     key = gst_buffer_new_allocate(
         nullptr, sample_infos[0].drm_info->identifier_size, nullptr);
+
+    if (NULL == key) {
+      GST_ERROR("gst_buffer_new_allocate failed for key.");
+      gst_buffer_unref(buffer);
+      return;
+    }
+
     gst_buffer_fill(key, 0, sample_infos[0].drm_info->identifier,
                     sample_infos[0].drm_info->identifier_size);
     size_t iv_size = sample_infos[0].drm_info->initialization_vector_size;
@@ -1406,6 +1419,14 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
       iv_size /= 2;
 
     iv = gst_buffer_new_allocate(nullptr, iv_size, nullptr);
+
+    if (NULL == iv) {
+      GST_ERROR("gst_buffer_new_allocate failed for iv.");
+      gst_buffer_unref(buffer);
+      gst_buffer_unref(key);
+      return;
+    }
+
     gst_buffer_fill(iv, 0, sample_infos[0].drm_info->initialization_vector,
                     iv_size);
     subsamples_count = sample_infos[0].drm_info->subsample_count;
