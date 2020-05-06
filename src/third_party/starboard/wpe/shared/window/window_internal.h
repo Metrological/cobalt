@@ -90,7 +90,8 @@ struct SbWindowPrivate {
 
   WPEFramework::Compositor::IDisplay::ISurface* window_{nullptr};
   WPEFramework::Compositor::IDisplay::ISurface* video_overlay_{nullptr};
-  const SbWindowOptions* options_{nullptr};
+  int window_width_{0};
+  int window_height_{0};
   third_party::starboard::wpe::shared::window::KeyboardHandler kb_handler_;
 };
 

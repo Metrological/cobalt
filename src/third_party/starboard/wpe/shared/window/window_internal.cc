@@ -486,28 +486,29 @@ void KeyboardHandler::SetWindow(SbWindow window) {
 }  // namespace third_party
 
 SbWindowPrivate::SbWindowPrivate(const SbWindowOptions* options) {
-    options_ = options;
-    CreateDisplay();
-}
-
-void SbWindowPrivate::CreateDisplay() {
-  auto window_width =
-      options_ && options_->size.width > 0
-          ? options_->size.width
+  window_width_ =
+      options && options->size.width > 0
+          ? options->size.width
           : third_party::starboard::wpe::shared::window::kDefaultWidth;
-  auto window_height =
-      options_ && options_->size.height > 0
-          ? options_->size.height
+  window_height_ =
+      options && options->size.height > 0
+          ? options->size.height
           : third_party::starboard::wpe::shared::window::kDefaultHeight;
+
   auto* env_width  = std::getenv("COBALT_RESOLUTION_WIDTH");
   if (env_width) {
-    window_width = atoi(env_width);
+    window_width_ = atoi(env_width);
   }
 
   auto* env_height  = std::getenv("COBALT_RESOLUTION_HEIGHT");
   if (env_height) {
-    window_height = atoi(env_height);
+    window_height_ = atoi(env_height);
   }
+
+  CreateDisplay();
+}
+
+void SbWindowPrivate::CreateDisplay() {
 
 #if defined(SB_NEEDS_VIDEO_OVERLAY_SURFACE)
   // The sufraces are stacked in order they are
@@ -516,13 +517,13 @@ void SbWindowPrivate::CreateDisplay() {
   video_overlay_ =
       third_party::starboard::wpe::shared::window::GetDisplay()->Create(
           third_party::starboard::wpe::shared::window::DisplayName() + ":"
-              + std::string("video"), window_width, window_height);
+              + std::string("video"), window_width_, window_height_);
 #endif
 
   auto* display = third_party::starboard::wpe::shared::window::GetDisplay();
   window_ = display->Create(
       third_party::starboard::wpe::shared::window::DisplayName() + ":"
-          + std::string("graphics"), window_width, window_height);
+          + std::string("graphics"), window_width_, window_height_);
   kb_handler_.SetWindow(this);
 
   third_party::starboard::wpe::shared::SystemEvents::Get().AddEventSource(display->FileDescriptor());
