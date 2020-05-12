@@ -218,6 +218,23 @@ void Session::Update(const void* key, int key_size, int ticket) {
                               kSbDrmStatusUnknownError, nullptr, id.c_str(),
                               id.size());
   }
+  else {
+    // OnAllKeysUpdated() cb is not called for every opencdm_session_update().
+    // If it is not called, reset the _ticket and invoke session_updated_callback_.
+    ticket = kSbDrmTicketInvalid;
+    {
+      ::starboard::ScopedLock lock(mutex_);
+      if (ticket_ != kSbDrmTicketInvalid) {
+        operation_ = Operation::kNone;
+        ticket = ticket_;
+        ticket_ = kSbDrmTicketInvalid;
+      }
+    }
+    if (ticket != kSbDrmTicketInvalid) {
+      session_updated_callback_(drm_system_, context_, ticket,
+          kSbDrmStatusSuccess, nullptr, id.c_str(), id.size());
+    }
+  }
 }
 
 // static
