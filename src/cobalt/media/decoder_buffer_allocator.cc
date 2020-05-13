@@ -339,7 +339,6 @@ bool DecoderBufferAllocator::UpdateAllocationRecord(
     // TODO: Enable the following line once PrintAllocations() accepts max line
     // as a parameter.
     // reuse_allocator_->PrintAllocations();
-    return false;
   }
 #endif  // !defined(COBALT_BUILD_TYPE_GOLD)
 #if COBALT_MEDIA_BUFFER_MAX_CAPACITY_1080P > 0 || \
