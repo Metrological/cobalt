@@ -374,7 +374,7 @@ std::string DisplayName() {
 }
 
 KeyboardHandler::KeyboardHandler()
-    : key_repeat_interval_(kKeyRepeatTime), key_repeat_delay_(kKeyHoldTime) { }
+    : key_repeat_interval_(kKeyHoldTime), key_repeat_delay_(kKeyHoldTime) {}
 
 void KeyboardHandler::Modifiers(uint32_t mods_depressed,
                                 uint32_t mods_latched,
