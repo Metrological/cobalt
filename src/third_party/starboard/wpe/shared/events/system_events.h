@@ -34,6 +34,7 @@ namespace shared {
     static SystemEvents& Get();
 
     void AddEventSource(int event_fd);
+    void RemoveEventSource(int event_fd);
     void WakeEventWait();
     void WaitForEvent(SbTime max_time);
   private:   

@@ -534,6 +534,10 @@ SbWindowPrivate::~SbWindowPrivate() {
 }
 
 void SbWindowPrivate::DestroyDisplay() {
+
+  auto* display = third_party::starboard::wpe::shared::window::GetDisplay();
+  third_party::starboard::wpe::shared::SystemEvents::Get().RemoveEventSource(display->FileDescriptor());
+
   if (window_) {
     window_->Release();
   }
