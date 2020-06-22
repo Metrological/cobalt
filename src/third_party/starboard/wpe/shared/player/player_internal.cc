@@ -591,6 +591,7 @@ class PlayerErrorTask : public Task {
 class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
  public:
   PlayerImpl(SbPlayer player,
+             int player_index,
              SbWindow window,
              SbMediaVideoCodec video_codec,
              SbMediaAudioCodec audio_codec,
@@ -758,6 +759,9 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   static void SetupSource(GstElement* pipeline,
                           GstElement* source,
                           PlayerImpl* self);
+  static void ElementAdded(GstElement* pipeline,
+                           GstElement* element,
+                           PlayerImpl* self);
   static GstBusSyncReply CreateVideoOverlay(GstBus* bus,
                                             GstMessage* message,
                                             gpointer user_data);
@@ -776,6 +780,7 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   SbTime MinTimestamp(MediaType* origin) const;
 
   SbPlayer player_;
+  int player_index_;
   SbWindow window_;
   SbMediaVideoCodec video_codec_;
   SbMediaAudioCodec audio_codec_;
@@ -825,6 +830,7 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
 };
 
 PlayerImpl::PlayerImpl(SbPlayer player,
+                       int player_index,
                        SbWindow window,
                        SbMediaVideoCodec video_codec,
                        SbMediaAudioCodec audio_codec,
@@ -841,6 +847,7 @@ PlayerImpl::PlayerImpl(SbPlayer player,
                        SbPlayerOutputMode output_mode,
                        SbDecodeTargetGraphicsContextProvider* provider)
     : player_(player),
+      player_index_(player_index),
       window_(window),
       video_codec_(video_codec),
       audio_codec_(audio_codec),
@@ -886,6 +893,8 @@ PlayerImpl::PlayerImpl(SbPlayer player,
                nullptr);
   g_signal_connect(pipeline_, "source-setup",
                    G_CALLBACK(&PlayerImpl::SetupSource), this);
+  g_signal_connect(pipeline_, "element-added",
+                   G_CALLBACK(&PlayerImpl::ElementAdded), this);
   g_object_set(pipeline_, "uri", "cobalt://", nullptr);
 
   GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline_));
@@ -1264,6 +1273,21 @@ void PlayerImpl::SetupSource(GstElement* pipeline,
   static constexpr int kAsyncSourceFinishTimeMs = 50;
   self->source_setup_id_ = g_timeout_add(kAsyncSourceFinishTimeMs,
                                          &PlayerImpl::FinishSourceSetup, self);
+}
+
+void PlayerImpl::ElementAdded(GstElement* pipeline,
+                              GstElement* element,
+                              PlayerImpl* self)
+{
+  if ((g_strrstr(GST_ELEMENT_NAME(element), "uridecodebin"))
+      || (g_strrstr(GST_ELEMENT_NAME(element), "decodebin"))) {
+    g_signal_connect(element, "element-added",
+        G_CALLBACK(&PlayerImpl::ElementAdded), self);
+  }
+  if (g_strrstr(GST_ELEMENT_NAME(element), "brcmvideodecoder")) {
+    if (self->player_index_ == 1)
+      g_object_set(element, "pip", TRUE, NULL);
+  }
 }
 
 void PlayerImpl::MarkEOS(SbMediaType stream_type) {
@@ -1913,6 +1937,8 @@ SbTime PlayerImpl::MinTimestamp(MediaType* origin) const {
 
 using third_party::starboard::wpe::shared::player::PlayerImpl;
 
+int SbPlayerPrivate::player_index_ = -1;
+
 SbPlayerPrivate::SbPlayerPrivate(
     SbWindow window,
     SbMediaVideoCodec video_codec,
@@ -1930,6 +1956,7 @@ SbPlayerPrivate::SbPlayerPrivate(
     SbPlayerOutputMode output_mode,
     SbDecodeTargetGraphicsContextProvider* provider)
     : player_(new PlayerImpl(this,
+                             ++player_index_,
                              window,
                              video_codec,
                              audio_codec,
