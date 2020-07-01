@@ -63,10 +63,10 @@ class KeyboardHandler : public WPEFramework::Compositor::IDisplay::IKeyboard {
   int key_repeat_key_{0};
   state key_repeat_state_{released};
   SbEventId key_repeat_event_id_{0};
-  SbTime key_hold_time_{0};
-  SbTime key_repeat_time_{0};
+  SbTime default_key_repeat_start_{0};
+  SbTime default_key_repeat_interval_{0};
   SbTime key_repeat_interval_{0};
-  SbTime key_repeat_delay_{0};
+  SbTime key_repeat_start_{0};
   unsigned int key_modifiers_{0};
   SbWindow window_{};
 

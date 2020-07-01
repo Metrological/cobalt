@@ -371,19 +371,19 @@ std::string DisplayName() {
 //        MUST repeat every 50ms until a user stops holding the key down.
 //  * Window.keyup
 KeyboardHandler::KeyboardHandler()
-    : key_hold_time_(500 * kSbTimeMillisecond)
-    , key_repeat_time_(50 * kSbTimeMillisecond) {
+    : default_key_repeat_start_(500 * kSbTimeMillisecond)
+    , default_key_repeat_interval_(50 * kSbTimeMillisecond) {
 
-  auto* env_key_hold_time = std::getenv("COBALT_KEY_HOLD_TIME");
-  if (env_key_hold_time) {
-    key_hold_time_ = atoi(env_key_hold_time) * kSbTimeMillisecond;
+  auto* env_key_repeat_start = std::getenv("COBALT_KEY_REPEAT_START");
+  if (env_key_repeat_start) {
+    default_key_repeat_start_ = atoi(env_key_repeat_start) * kSbTimeMillisecond;
   }
-  auto* env_key_repeat_time = std::getenv("COBALT_KEY_REPEAT_TIME");
-  if (env_key_repeat_time) {
-    key_repeat_time_ = atoi(env_key_repeat_time) * kSbTimeMillisecond;
+  auto* env_key_repeat_interval = std::getenv("COBALT_KEY_REPEAT_INTERVAL");
+  if (env_key_repeat_interval) {
+    default_key_repeat_interval_ = atoi(env_key_repeat_interval) * kSbTimeMillisecond;
   }
-  key_repeat_interval_ = key_hold_time_;
-  key_repeat_delay_ = key_hold_time_;
+  key_repeat_interval_ = default_key_repeat_start_;
+  key_repeat_start_ = default_key_repeat_start_;
 }
 
 void KeyboardHandler::Modifiers(uint32_t mods_depressed,
@@ -411,8 +411,8 @@ void KeyboardHandler::Repeat(int32_t rate, int32_t delay) {
   if (rate == 0) {
     DeleteRepeatKey();
   } else {
-    key_repeat_interval_ = std::min(key_repeat_time_, static_cast<SbTime>(rate));
-    key_repeat_delay_ = std::min(key_repeat_delay_, key_hold_time_);
+    key_repeat_interval_ = std::min(default_key_repeat_interval_, static_cast<SbTime>(rate));
+    key_repeat_start_ = std::min(key_repeat_start_, default_key_repeat_start_);
   }
 }
 
@@ -462,7 +462,7 @@ void KeyboardHandler::CreateKey(int key, state action, bool is_repeat) {
         },
         this, key_repeat_interval_);
   } else {
-    key_repeat_interval_ = std::min(key_repeat_delay_, key_hold_time_);
+    key_repeat_interval_ = std::min(key_repeat_start_, default_key_repeat_start_);
   }
 }
 
@@ -471,7 +471,7 @@ void KeyboardHandler::CreateRepeatKey() {
     return;
   }
 
-  key_repeat_interval_ = std::min(key_repeat_time_, key_repeat_interval_);
+  key_repeat_interval_ = std::min(default_key_repeat_interval_, key_repeat_interval_);
 
   CreateKey(key_repeat_key_, key_repeat_state_, true);
 }
