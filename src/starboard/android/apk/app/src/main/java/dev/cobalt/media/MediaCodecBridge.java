@@ -101,6 +101,7 @@ class MediaCodecBridge {
     public static final String VIDEO_H265 = "video/hevc";
     public static final String VIDEO_VP8 = "video/x-vnd.on2.vp8";
     public static final String VIDEO_VP9 = "video/x-vnd.on2.vp9";
+    public static final String VIDEO_AV1 = "video/av01";
   }
 
   private BitrateAdjustmentTypes mBitrateAdjustmentType = BitrateAdjustmentTypes.NO_ADJUSTMENT;
@@ -326,6 +327,7 @@ class MediaCodecBridge {
       hdrStaticInfo.putShort((short) (minMasteringLuminance + 0.5f));
       hdrStaticInfo.putShort((short) DEFAULT_MAX_CLL);
       hdrStaticInfo.putShort((short) DEFAULT_MAX_FALL);
+      hdrStaticInfo.rewind();
       this.hdrStaticInfo = hdrStaticInfo;
     }
   }
@@ -494,7 +496,7 @@ class MediaCodecBridge {
     boolean shouldConfigureHdr =
         android.os.Build.VERSION.SDK_INT >= 24
             && colorInfo != null
-            && MediaCodecUtil.isHdrCapableVp9Decoder(findVideoDecoderResult);
+            && MediaCodecUtil.isHdrCapableVideoDecoder(mime, findVideoDecoderResult);
     if (shouldConfigureHdr) {
       Log.d(TAG, "Setting HDR info.");
       mediaFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER, colorInfo.colorTransfer);
@@ -858,6 +860,7 @@ class MediaCodecBridge {
         break;
       case MimeTypes.VIDEO_H265:
       case MimeTypes.VIDEO_VP9:
+      case MimeTypes.VIDEO_AV1:
         maxPixels = maxWidth * maxHeight;
         minCompressionRatio = 4;
         break;
