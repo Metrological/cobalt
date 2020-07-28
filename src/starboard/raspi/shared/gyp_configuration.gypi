@@ -52,6 +52,8 @@
       # matters: Wall implies Wunused-parameter and Wno-unused-parameter
       # has no effect if specified before Wall.
       '-Wno-unused-parameter',
+      # gcc 9.x throws #if macros definitions as error (warnings as errors)
+      '-Wno-expansion-to-defined',
 
       # Specify the sysroot with all your include dependencies.
       '--sysroot=<(sysroot)',
