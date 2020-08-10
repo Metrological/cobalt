@@ -14,6 +14,7 @@
 
 #include "system_events.h"
 #include <unistd.h>
+#include <algorithm>
 
 namespace third_party {
 namespace starboard {
@@ -32,6 +33,14 @@ namespace shared {
   void SystemEvents::AddEventSource(int event_fd) {
     std::unique_lock<std::mutex> lk(lock_);
     observed_fds_.push_back(event_fd);
+    polled_fds_need_update_ = true;
+  }
+
+  void SystemEvents::RemoveEventSource(int event_fd) {
+    std::unique_lock<std::mutex> lk(lock_);
+    auto it = std::find(observed_fds_.begin(), observed_fds_.end(), event_fd);
+    if (it != observed_fds_.end())
+      observed_fds_.erase(it);
     polled_fds_need_update_ = true;
   }
 

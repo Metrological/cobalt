@@ -82,9 +82,13 @@ std::string CodecToMimeType(SbMediaAudioCodec codec) {
 SB_EXPORT bool SbMediaIsSupported(SbMediaVideoCodec video_codec,
                                   SbMediaAudioCodec audio_codec,
                                   const char* key_system) {
+#if defined(HAS_OCDM)
   using third_party::starboard::wpe::shared::drm::DrmSystemOcdm;
   return DrmSystemOcdm::IsKeySystemSupported(
       key_system, CodecToMimeType(video_codec).c_str()) &&
       DrmSystemOcdm::IsKeySystemSupported(
             key_system, CodecToMimeType(audio_codec).c_str());
+#else
+  return false;
+#endif
 }

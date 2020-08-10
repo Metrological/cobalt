@@ -374,7 +374,7 @@ std::string DisplayName() {
 }
 
 KeyboardHandler::KeyboardHandler()
-    : key_repeat_interval_(kKeyRepeatTime), key_repeat_delay_(kKeyHoldTime) { }
+    : key_repeat_interval_(kKeyHoldTime), key_repeat_delay_(kKeyHoldTime) {}
 
 void KeyboardHandler::Modifiers(uint32_t mods_depressed,
                                 uint32_t mods_latched,
@@ -534,6 +534,10 @@ SbWindowPrivate::~SbWindowPrivate() {
 }
 
 void SbWindowPrivate::DestroyDisplay() {
+
+  auto* display = third_party::starboard::wpe::shared::window::GetDisplay();
+  third_party::starboard::wpe::shared::SystemEvents::Get().RemoveEventSource(display->FileDescriptor());
+
   if (window_) {
     window_->Release();
   }
