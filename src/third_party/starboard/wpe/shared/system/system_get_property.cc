@@ -43,35 +43,77 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
   }
 
   switch (property_id) {
-    case kSbSystemPropertyBrandName:
-    return CopyStringAndTestIfSuccess(out_value, value_length,
-                                      SB_PLATFORM_OPERATOR_NAME);
-    case kSbSystemPropertyChipsetModelNumber:
-      return CopyStringAndTestIfSuccess(
-            out_value, value_length, SB_PLATFORM_CHIPSET_MODEL_NUMBER_STRING);
-    case kSbSystemPropertyFirmwareVersion:
-      return CopyStringAndTestIfSuccess(out_value, value_length,
-                                        SB_PLATFORM_FIRMWARE_VERSION_STRING);
-    case kSbSystemPropertyModelName:
-      return CopyStringAndTestIfSuccess(out_value, value_length,
-                                        SB_PLATFORM_MODEL_NAME);
-    case kSbSystemPropertyModelYear:
-      return CopyStringAndTestIfSuccess(out_value, value_length,
-          std::to_string(SB_PLATFORM_MODEL_YEAR).c_str());
+    case kSbSystemPropertyBrandName: {
+      auto* property_name = std::getenv("COBALT_OPERATOR_NAME");
+      if (property_name) {
+        return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
+      } else {
+        return CopyStringAndTestIfSuccess(out_value, value_length,
+            SB_PLATFORM_OPERATOR_NAME);
+      }
+    }
+    case kSbSystemPropertyChipsetModelNumber: {
+      auto* property_name = std::getenv("COBALT_CHIPSET_MODEL_NUMBER");
+      if (property_name) {
+        return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
+      } else {
+        return CopyStringAndTestIfSuccess(out_value, value_length,
+            SB_PLATFORM_CHIPSET_MODEL_NUMBER_STRING);
+      }
+    }
+    case kSbSystemPropertyFirmwareVersion: {
+      auto* property_name = std::getenv("COBALT_FIRMWARE_VERSION");
+      if (property_name) {
+        return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
+      } else {
+        return CopyStringAndTestIfSuccess(out_value, value_length,
+            SB_PLATFORM_FIRMWARE_VERSION_STRING);
+      }
+    }
+    case kSbSystemPropertyModelName: {
+      auto* property_name = std::getenv("COBALT_MODEL_NAME");
+      if (property_name) {
+        return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
+      } else {
+        return CopyStringAndTestIfSuccess(out_value, value_length,
+            SB_PLATFORM_MODEL_NAME);
+      }
+    }
+    case kSbSystemPropertyModelYear: {
+      auto* property_name = std::getenv("COBALT_MODEL_YEAR");
+      if (property_name) {
+        return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
+      } else {
+        return CopyStringAndTestIfSuccess(out_value, value_length,
+            std::to_string(SB_PLATFORM_MODEL_YEAR).c_str());
+      }
+    }
 #if SB_API_VERSION >= 11
     case kSbSystemPropertyOriginalDesignManufacturerName:
 #else
     case kSbSystemPropertyNetworkOperatorName:
 #endif
-      return CopyStringAndTestIfSuccess(out_value, value_length,
-                                        SB_PLATFORM_MANUFACTURER_NAME);
+    {
+      auto* property_name = std::getenv("COBALT_MANUFACTURER_NAME");
+      if (property_name) {
+        return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
+      } else {
+        return CopyStringAndTestIfSuccess(out_value, value_length,
+            SB_PLATFORM_MANUFACTURER_NAME);
+      }
+    }
     case kSbSystemPropertySpeechApiKey:
       return false;
 
-    case kSbSystemPropertyFriendlyName:
-      return CopyStringAndTestIfSuccess(out_value, value_length,
-                                        SB_PLATFORM_FRIENDLY_NAME);
-
+    case kSbSystemPropertyFriendlyName: {
+      auto* property_name = std::getenv("COBALT_FRIENDLY_NAME");
+      if (property_name) {
+        return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
+      } else {
+        return CopyStringAndTestIfSuccess(out_value, value_length,
+            SB_PLATFORM_FRIENDLY_NAME);
+      }
+    }
     case kSbSystemPropertyPlatformName:
       return CopyStringAndTestIfSuccess(out_value, value_length, kPlatformName);
 
