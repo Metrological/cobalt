@@ -759,6 +759,9 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   static void SetupSource(GstElement* pipeline,
                           GstElement* source,
                           PlayerImpl* self);
+  static void ElementAdded(GstElement* pipeline,
+                           GstElement* element,
+                           PlayerImpl* self);
   static GstBusSyncReply CreateVideoOverlay(GstBus* bus,
                                             GstMessage* message,
                                             gpointer user_data);
@@ -890,6 +893,8 @@ PlayerImpl::PlayerImpl(SbPlayer player,
                nullptr);
   g_signal_connect(pipeline_, "source-setup",
                    G_CALLBACK(&PlayerImpl::SetupSource), this);
+  g_signal_connect(pipeline_, "element-added",
+                   G_CALLBACK(&PlayerImpl::ElementAdded), this);
   g_object_set(pipeline_, "uri", "cobalt://", nullptr);
 
 #if defined(WESTEROS_SINK)
@@ -899,8 +904,17 @@ PlayerImpl::PlayerImpl(SbPlayer player,
   if (player_index_ >= 1) {
     if (g_object_class_find_property(G_OBJECT_GET_CLASS(video_sink), "pip")) {
       g_object_set(G_OBJECT(video_sink), "pip", TRUE, NULL);
+      /* TODO: Do not start audio for the pip window */
     }
   }
+  g_object_set(pipeline_, "video-sink", video_sink, NULL);
+
+#endif
+
+#if defined(BRCMVIDEOSINK)
+
+  GstElement* video_sink = gst_element_factory_make("brcmvideosink",
+      "videosink");
   g_object_set(pipeline_, "video-sink", video_sink, NULL);
 
 #endif
@@ -1172,6 +1186,28 @@ void PlayerImpl::DispatchOnWorkerThread(Task* task) const {
                         },
                         data, nullptr);
   g_source_attach(src, main_loop_context_);
+}
+
+void PlayerImpl::ElementAdded(GstElement* pipeline,
+                              GstElement* element,
+                              PlayerImpl* self) {
+  if ((g_strrstr(GST_ELEMENT_NAME(element), "uridecodebin"))
+      || (g_strrstr(GST_ELEMENT_NAME(element), "decodebin"))) {
+    g_signal_connect(element, "element-added",
+        G_CALLBACK(&PlayerImpl::ElementAdded), self);
+  }
+#if defined(BRCMVIDEOSINK)
+  if (g_strrstr(GST_ELEMENT_NAME(element), "brcmvideodecoder")) {
+    if (self->player_index_ == 1)
+      g_object_set(element, "pip", TRUE, NULL);
+  }
+  if (g_strrstr(GST_ELEMENT_NAME(element), "brcmaudiodecoder")) {
+    g_object_set(element, "use-primer", TRUE, NULL);
+    if (self->player_index_ == 1) { // Do not start audio decoder for pip window
+      g_object_set(element, "prime", TRUE, NULL);
+    }
+  }
+#endif
 }
 
 // static
