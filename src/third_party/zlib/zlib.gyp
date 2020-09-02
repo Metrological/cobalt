@@ -4,7 +4,6 @@
 
 {
   'variables': {
-    'optimize_target_for_speed': 1,
     'conditions': [
       [ 'OS == "none"', {
         # Because we have a patched zlib, we cannot use the system libz.

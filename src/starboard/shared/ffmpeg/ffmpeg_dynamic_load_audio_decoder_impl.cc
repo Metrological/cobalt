@@ -50,12 +50,8 @@ AudioDecoder* AudioDecoder::Create(
       audio_decoder =
           AudioDecoderImpl<571>::Create(audio_codec, audio_sample_info);
       break;
-    case 581:
-      audio_decoder =
-          AudioDecoderImpl<581>::Create(audio_codec, audio_sample_info);
-      break;
     default:
-      SB_LOG(WARNING) << "Unsupported FFMPEG specialization "
+      SB_LOG(WARNING) << "Unsupported FFMPEG specialization " << std::hex
                       << ffmpeg->specialization_version();
       break;
   }

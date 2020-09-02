@@ -52,7 +52,6 @@
 #include "cobalt/script/v8c/v8c_property_enumerator.h"
 #include "cobalt/script/v8c/v8c_value_handle.h"
 #include "cobalt/script/v8c/wrapper_private.h"
-#include "cobalt/script/v8c/common_v8c_bindings_code.h"
 #include "v8/include/v8.h"
 
 
@@ -128,24 +127,31 @@ void Constructor(const v8::FunctionCallbackInfo<v8::Value>& info) {
 void getInterfaceSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cSequenceUser::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cSequenceUser::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  SequenceUser* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             SequenceUser>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  SequenceUser* impl =
+      wrapper_private->wrappable<SequenceUser>().get();
 
   if (!exception_state.is_exception_set()) {
     ToJSValue(isolate,
               impl->GetInterfaceSequence(),
               &result_value);
-}
+  }
   if (!exception_state.is_exception_set()) {
     info.GetReturnValue().Set(result_value);
   }
@@ -157,24 +163,31 @@ void getInterfaceSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info)
 void getInterfaceSequenceSequenceSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cSequenceUser::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cSequenceUser::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  SequenceUser* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             SequenceUser>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  SequenceUser* impl =
+      wrapper_private->wrappable<SequenceUser>().get();
 
   if (!exception_state.is_exception_set()) {
     ToJSValue(isolate,
               impl->GetInterfaceSequenceSequenceSequence(),
               &result_value);
-}
+  }
   if (!exception_state.is_exception_set()) {
     info.GetReturnValue().Set(result_value);
   }
@@ -186,24 +199,31 @@ void getInterfaceSequenceSequenceSequenceMethod(const v8::FunctionCallbackInfo<v
 void getLongSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cSequenceUser::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cSequenceUser::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  SequenceUser* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             SequenceUser>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  SequenceUser* impl =
+      wrapper_private->wrappable<SequenceUser>().get();
 
   if (!exception_state.is_exception_set()) {
     ToJSValue(isolate,
               impl->GetLongSequence(),
               &result_value);
-}
+  }
   if (!exception_state.is_exception_set()) {
     info.GetReturnValue().Set(result_value);
   }
@@ -215,24 +235,31 @@ void getLongSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
 void getStringSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cSequenceUser::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cSequenceUser::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  SequenceUser* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             SequenceUser>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  SequenceUser* impl =
+      wrapper_private->wrappable<SequenceUser>().get();
 
   if (!exception_state.is_exception_set()) {
     ToJSValue(isolate,
               impl->GetStringSequence(),
               &result_value);
-}
+  }
   if (!exception_state.is_exception_set()) {
     info.GetReturnValue().Set(result_value);
   }
@@ -244,24 +271,31 @@ void getStringSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
 void getStringSequenceSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cSequenceUser::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cSequenceUser::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  SequenceUser* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             SequenceUser>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  SequenceUser* impl =
+      wrapper_private->wrappable<SequenceUser>().get();
 
   if (!exception_state.is_exception_set()) {
     ToJSValue(isolate,
               impl->GetStringSequenceSequence(),
               &result_value);
-}
+  }
   if (!exception_state.is_exception_set()) {
     info.GetReturnValue().Set(result_value);
   }
@@ -273,24 +307,31 @@ void getStringSequenceSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& 
 void getUnionOfStringAndStringSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cSequenceUser::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cSequenceUser::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  SequenceUser* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             SequenceUser>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  SequenceUser* impl =
+      wrapper_private->wrappable<SequenceUser>().get();
 
   if (!exception_state.is_exception_set()) {
     ToJSValue(isolate,
               impl->GetUnionOfStringAndStringSequence(),
               &result_value);
-}
+  }
   if (!exception_state.is_exception_set()) {
     info.GetReturnValue().Set(result_value);
   }
@@ -302,24 +343,31 @@ void getUnionOfStringAndStringSequenceMethod(const v8::FunctionCallbackInfo<v8::
 void getUnionSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cSequenceUser::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cSequenceUser::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  SequenceUser* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             SequenceUser>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  SequenceUser* impl =
+      wrapper_private->wrappable<SequenceUser>().get();
 
   if (!exception_state.is_exception_set()) {
     ToJSValue(isolate,
               impl->GetUnionSequence(),
               &result_value);
-}
+  }
   if (!exception_state.is_exception_set()) {
     info.GetReturnValue().Set(result_value);
   }
@@ -331,18 +379,25 @@ void getUnionSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
 void setInterfaceSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cSequenceUser::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cSequenceUser::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  SequenceUser* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             SequenceUser>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  SequenceUser* impl =
+      wrapper_private->wrappable<SequenceUser>().get();
   const size_t kMinArguments = 1;
   if (info.Length() < kMinArguments) {
     exception_state.SetSimpleException(script::kInvalidNumberOfArguments);
@@ -361,7 +416,7 @@ void setInterfaceSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info)
   }
 
   impl->SetInterfaceSequence(elements);
-result_value = v8::Undefined(isolate);
+  result_value = v8::Undefined(isolate);
 
 }
 
@@ -370,18 +425,25 @@ result_value = v8::Undefined(isolate);
 void setInterfaceSequenceSequenceSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cSequenceUser::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cSequenceUser::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  SequenceUser* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             SequenceUser>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  SequenceUser* impl =
+      wrapper_private->wrappable<SequenceUser>().get();
   const size_t kMinArguments = 1;
   if (info.Length() < kMinArguments) {
     exception_state.SetSimpleException(script::kInvalidNumberOfArguments);
@@ -400,7 +462,7 @@ void setInterfaceSequenceSequenceSequenceMethod(const v8::FunctionCallbackInfo<v
   }
 
   impl->SetInterfaceSequenceSequenceSequence(elements);
-result_value = v8::Undefined(isolate);
+  result_value = v8::Undefined(isolate);
 
 }
 
@@ -409,18 +471,25 @@ result_value = v8::Undefined(isolate);
 void setLongSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cSequenceUser::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cSequenceUser::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  SequenceUser* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             SequenceUser>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  SequenceUser* impl =
+      wrapper_private->wrappable<SequenceUser>().get();
   const size_t kMinArguments = 1;
   if (info.Length() < kMinArguments) {
     exception_state.SetSimpleException(script::kInvalidNumberOfArguments);
@@ -439,7 +508,7 @@ void setLongSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   }
 
   impl->SetLongSequence(elements);
-result_value = v8::Undefined(isolate);
+  result_value = v8::Undefined(isolate);
 
 }
 
@@ -448,18 +517,25 @@ result_value = v8::Undefined(isolate);
 void setStringSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cSequenceUser::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cSequenceUser::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  SequenceUser* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             SequenceUser>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  SequenceUser* impl =
+      wrapper_private->wrappable<SequenceUser>().get();
   const size_t kMinArguments = 1;
   if (info.Length() < kMinArguments) {
     exception_state.SetSimpleException(script::kInvalidNumberOfArguments);
@@ -478,7 +554,7 @@ void setStringSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   }
 
   impl->SetStringSequence(elements);
-result_value = v8::Undefined(isolate);
+  result_value = v8::Undefined(isolate);
 
 }
 
@@ -487,18 +563,25 @@ result_value = v8::Undefined(isolate);
 void setStringSequenceSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cSequenceUser::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cSequenceUser::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  SequenceUser* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             SequenceUser>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  SequenceUser* impl =
+      wrapper_private->wrappable<SequenceUser>().get();
   const size_t kMinArguments = 1;
   if (info.Length() < kMinArguments) {
     exception_state.SetSimpleException(script::kInvalidNumberOfArguments);
@@ -517,7 +600,7 @@ void setStringSequenceSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& 
   }
 
   impl->SetStringSequenceSequence(elements);
-result_value = v8::Undefined(isolate);
+  result_value = v8::Undefined(isolate);
 
 }
 
@@ -526,18 +609,25 @@ result_value = v8::Undefined(isolate);
 void setUnionOfStringAndStringSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cSequenceUser::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cSequenceUser::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  SequenceUser* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             SequenceUser>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  SequenceUser* impl =
+      wrapper_private->wrappable<SequenceUser>().get();
   const size_t kMinArguments = 1;
   if (info.Length() < kMinArguments) {
     exception_state.SetSimpleException(script::kInvalidNumberOfArguments);
@@ -556,7 +646,7 @@ void setUnionOfStringAndStringSequenceMethod(const v8::FunctionCallbackInfo<v8::
   }
 
   impl->SetUnionOfStringAndStringSequence(elements);
-result_value = v8::Undefined(isolate);
+  result_value = v8::Undefined(isolate);
 
 }
 
@@ -565,18 +655,25 @@ result_value = v8::Undefined(isolate);
 void setUnionSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cSequenceUser::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cSequenceUser::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  SequenceUser* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             SequenceUser>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  SequenceUser* impl =
+      wrapper_private->wrappable<SequenceUser>().get();
   const size_t kMinArguments = 1;
   if (info.Length() < kMinArguments) {
     exception_state.SetSimpleException(script::kInvalidNumberOfArguments);
@@ -595,7 +692,7 @@ void setUnionSequenceMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   }
 
   impl->SetUnionSequence(elements);
-result_value = v8::Undefined(isolate);
+  result_value = v8::Undefined(isolate);
 
 }
 

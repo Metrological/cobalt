@@ -240,8 +240,7 @@ void VideoDecoder::DecodeOneBuffer(
     }
   }
 
-  if (aom_image->bit_depth != 8 && aom_image->bit_depth != 10 &&
-      aom_image->bit_depth != 12) {
+  if (aom_image->bit_depth != 8 && aom_image->bit_depth != 10) {
     SB_DLOG(ERROR) << "Unsupported bit depth " << aom_image->bit_depth;
     ReportError(
         FormatString("Unsupported bit depth %d.", aom_image->bit_depth));

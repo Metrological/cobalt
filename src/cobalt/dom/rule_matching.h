@@ -19,7 +19,6 @@
 
 #include "base/memory/ref_counted.h"
 #include "cobalt/cssom/css_parser.h"
-#include "cobalt/cssom/css_style_rule.h"
 
 namespace cobalt {
 namespace dom {
@@ -48,9 +47,6 @@ scoped_refptr<Element> QuerySelector(Node* node, const std::string& selectors,
 scoped_refptr<NodeList> QuerySelectorAll(Node* node,
                                          const std::string& selectors,
                                          cssom::CSSParser* css_parser);
-
-// Returns true  if any of the selectors in the rule matches the given element.
-bool MatchRuleAndElement(cssom::CSSStyleRule* rule, Element* element);
 
 }  // namespace dom
 }  // namespace cobalt

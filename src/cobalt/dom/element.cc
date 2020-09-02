@@ -32,10 +32,8 @@
 #include "cobalt/dom/html_element_context.h"
 #include "cobalt/dom/mutation_reporter.h"
 #include "cobalt/dom/named_node_map.h"
-#include "cobalt/dom/node.h"
 #include "cobalt/dom/parser.h"
 #include "cobalt/dom/pointer_state.h"
-#include "cobalt/dom/rule_matching.h"
 #include "cobalt/dom/serializer.h"
 #include "cobalt/dom/text.h"
 #include "cobalt/math/rect_f.h"
@@ -106,36 +104,6 @@ bool Element::HasAttributeNS(const std::string& namespace_uri,
   NOTIMPLEMENTED();
   SB_UNREFERENCED_PARAMETER(namespace_uri);
   return HasAttribute(name);
-}
-
-bool Element::Matches(const std::string& selectors,
-                             script::ExceptionState* exception_state) {
-  TRACK_MEMORY_SCOPE("DOM");
-  // Referenced from:
-  // https://dom.spec.whatwg.org/#dom-element-matches
-
-  // 1. Let s be the result of parse a selector from selectors.
-  cssom::CSSParser* css_parser =
-      this->node_document()->html_element_context()->css_parser();
-  scoped_refptr<cssom::CSSRule> css_rule =
-      css_parser->ParseRule(selectors + " {}", this->GetInlineSourceLocation());
-
-  // 2. If s is failure, throw a "SyntaxError" DOMException.
-  if (!css_rule) {
-    DOMException::Raise(dom::DOMException::kSyntaxErr, exception_state);
-    return false;
-  }
-  scoped_refptr<cssom::CSSStyleRule> css_style_rule =
-      css_rule->AsCSSStyleRule();
-  if (!css_style_rule) {
-    DOMException::Raise(dom::DOMException::kSyntaxErr, exception_state);
-    return false;
-  }
-
-  // 3. Return true if the result of match a selector against an element,
-  //    using s, element, and :scope element context object, returns success,
-  //    and false otherwise.
-  return MatchRuleAndElement(css_style_rule, this);
 }
 
 scoped_refptr<NamedNodeMap> Element::attributes() {
@@ -679,10 +647,8 @@ void Element::RegisterIntersectionObserverTarget(
 
 void Element::UnregisterIntersectionObserverTarget(
     IntersectionObserver* observer) {
-  if (element_intersection_observer_module_) {
-    element_intersection_observer_module_
-        ->UnregisterIntersectionObserverForTarget(observer);
-  }
+  element_intersection_observer_module_
+      ->UnregisterIntersectionObserverForTarget(observer);
 }
 
 ElementIntersectionObserverModule::LayoutIntersectionObserverRootVector

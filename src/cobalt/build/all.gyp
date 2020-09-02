@@ -31,6 +31,7 @@
       'type': 'none',
       'dependencies': [
         '<(DEPTH)/base/base.gyp:base_unittests',
+        '<(DEPTH)/cobalt/accessibility/accessibility_test.gyp:*',
         '<(DEPTH)/cobalt/audio/audio.gyp:*',
         '<(DEPTH)/cobalt/audio/audio_test.gyp:*',
         '<(DEPTH)/cobalt/base/base.gyp:*',
@@ -85,6 +86,7 @@
         '<(DEPTH)/cobalt/websocket/websocket.gyp:*',
         '<(DEPTH)/cobalt/xhr/xhr.gyp:*',
         '<(DEPTH)/crypto/crypto.gyp:crypto_unittests',
+        '<(DEPTH)/third_party/boringssl/boringssl_tool.gyp:*',
         '<(DEPTH)/net/net.gyp:net_unittests',
         '<(DEPTH)/sql/sql.gyp:sql_unittests',
       ],

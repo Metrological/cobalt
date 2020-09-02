@@ -14,61 +14,50 @@
 
 #include "starboard/common/rwlock.h"
 
-#include "starboard/common/log.h"
-
 namespace starboard {
 
-// Write-preferring lock.
-// https://en.wikipedia.org/wiki/Readers%E2%80%93writer_lock
-RWLock::RWLock()
-    : readers_(0),
-      writing_(false) {
-  SB_CHECK(SbMutexCreate(&mutex_));
-  SB_CHECK(SbConditionVariableCreate(&condition_, &mutex_));
-}
+RWLock::RWLock() : num_readers_(0), reader_(), writer_(1) {}
 
-RWLock::~RWLock() {
-  SbConditionVariableDestroy(&condition_);
-  SbMutexDestroy(&mutex_);
-}
+RWLock::~RWLock() {}
 
 void RWLock::AcquireReadLock() {
-  SB_CHECK(SbMutexAcquire(&mutex_) == kSbMutexAcquired);
-  while (writing_) {
-    SB_CHECK(SbConditionVariableWait(&condition_, &mutex_) !=
-             kSbConditionVariableFailed);
+  reader_.Acquire();
+  if (0 == num_readers_++) {
+    AcquireWriteLock();
   }
-  ++readers_;
-  SB_CHECK(SbMutexRelease(&mutex_));
+  reader_.Release();
 }
 
 void RWLock::ReleaseReadLock() {
-  SB_CHECK(SbMutexAcquire(&mutex_) == kSbMutexAcquired);
-  if (--readers_ == 0) {
-    SB_CHECK(SbConditionVariableBroadcast(&condition_));
+  reader_.Acquire();
+  if (--num_readers_ == 0) {
+    ReleaseWriteLock();
   }
-  SB_CHECK(SbMutexRelease(&mutex_));
+  reader_.Release();
 }
 
 void RWLock::AcquireWriteLock() {
-  SB_CHECK(SbMutexAcquire(&mutex_) == kSbMutexAcquired);
-  while (writing_) {
-    SB_CHECK(SbConditionVariableWait(&condition_, &mutex_) !=
-             kSbConditionVariableFailed);
-  }
-  writing_ = true;
-  while (readers_ > 0) {
-    SB_CHECK(SbConditionVariableWait(&condition_, &mutex_) !=
-             kSbConditionVariableFailed);
-  }
-  SB_CHECK(SbMutexRelease(&mutex_));
+  writer_.Take();
 }
 
 void RWLock::ReleaseWriteLock() {
-  SB_CHECK(SbMutexAcquire(&mutex_) == kSbMutexAcquired);
-  writing_ = false;
-  SB_CHECK(SbConditionVariableBroadcast(&condition_));
-  SB_CHECK(SbMutexRelease(&mutex_));
+  writer_.Put();
+}
+
+ScopedReadLock::ScopedReadLock(RWLock* rw_lock) : rw_lock_(rw_lock) {
+  rw_lock_->AcquireReadLock();
+}
+
+ScopedReadLock::~ScopedReadLock() {
+  rw_lock_->ReleaseReadLock();
+}
+
+ScopedWriteLock::ScopedWriteLock(RWLock* rw_lock) : rw_lock_(rw_lock) {
+  rw_lock_->AcquireWriteLock();
+}
+
+ScopedWriteLock::~ScopedWriteLock() {
+  rw_lock_->ReleaseWriteLock();
 }
 
 }  // namespace starboard

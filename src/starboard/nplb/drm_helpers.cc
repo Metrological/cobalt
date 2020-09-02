@@ -67,6 +67,7 @@ void DummySessionUpdatedFunc(SbDrmSystem drm_system,
 
 #endif  // SB_API_VERSION >= 10
 
+#if SB_HAS(DRM_KEY_STATUSES)
 void DummySessionKeyStatusesChangedFunc(SbDrmSystem drm_system,
                                         void* context,
                                         const void* session_id,
@@ -74,6 +75,7 @@ void DummySessionKeyStatusesChangedFunc(SbDrmSystem drm_system,
                                         int number_of_keys,
                                         const SbDrmKeyId* key_ids,
                                         const SbDrmKeyStatus* key_statuses) {}
+#endif  // SB_HAS(DRM_KEY_STATUSES)
 
 void DummySessionClosedFunc(SbDrmSystem drm_system,
                             void* context,
@@ -91,11 +93,15 @@ SbDrmSystem CreateDummyDrmSystem(const char* key_system) {
       key_system, NULL /* context */, DummySessionUpdateRequestFunc,
       DummySessionUpdatedFunc, DummySessionKeyStatusesChangedFunc,
       DummySessionClosedFunc);
-#else   // SB_HAS(DRM_SESSION_CLOSED)
+#elif SB_HAS(DRM_KEY_STATUSES)
   return SbDrmCreateSystem(
       key_system, NULL /* context */, DummySessionUpdateRequestFunc,
       DummySessionUpdatedFunc, DummySessionKeyStatusesChangedFunc);
-#endif  // SB_HAS(DRM_SESSION_CLOSED)
+#else   // SB_HAS(DRM_KEY_STATUSES)
+  return SbDrmCreateSystem(key_system, NULL /* context */,
+                           DummySessionUpdateRequestFunc,
+                           DummySessionUpdatedFunc);
+#endif  // SB_HAS(DRM_KEY_STATUSES)
 }
 
 }  // namespace nplb

@@ -29,10 +29,6 @@ namespace mozjs {
 ReferencedObjectMap::ReferencedObjectMap(JSContext* context)
     : context_(context) {}
 
-ReferencedObjectMap::~ReferencedObjectMap() {
-  DCHECK(referenced_objects_.empty());
-}
-
 // Add/Remove a reference from a WrapperPrivate to a JSValue.
 void ReferencedObjectMap::AddReferencedObject(Wrappable* wrappable,
                                               JS::HandleValue referee) {

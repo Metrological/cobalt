@@ -14,7 +14,6 @@
 
 {
   'variables': {
-    'optimize_target_for_speed': 1,
     'sb_pedantic_warnings': 1,
   },
   'targets': [
@@ -206,7 +205,6 @@
         '<(input_directory)/black_splash_screen.html',
         '<(input_directory)/cobalt_splash_screen.css',
         '<(input_directory)/cobalt_splash_screen.html',
-        '<(input_directory)/cobalt_word_logo_356.png',
         '<(input_directory)/dialog.css',
         '<(input_directory)/dialog.js',
         '<(input_directory)/equirectangular_40_40.msh',

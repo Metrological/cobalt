@@ -927,7 +927,7 @@ void Document::UpdateSelectorTree() {
 
     scoped_refptr<HTMLHtmlElement> current_html = html();
     if (current_html) {
-      current_html->ClearRuleMatchingStateOnElementAndSiblingsAndDescendants();
+      current_html->ClearRuleMatchingStateOnElementAndDescendants();
     }
 
     is_selector_tree_dirty_ = false;

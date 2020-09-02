@@ -56,6 +56,21 @@ base::Optional<int> DebugConsoleModeStringToInt(
   }
 }
 
+// Convert from mode to string.
+std::string DebugConsoleModeIntToString(int mode) {
+  switch (mode) {
+    case debug::console::DebugHub::kDebugConsoleHud:
+      return kDebugConsoleHudString;
+    case debug::console::DebugHub::kDebugConsoleOn:
+      return kDebugConsoleOnString;
+    case debug::console::DebugHub::kDebugConsoleOff:
+      return kDebugConsoleOffString;
+    default:
+      NOTREACHED();
+      return kDebugConsoleOffString;
+  }
+}
+
 // Returns the debug console mode as specified by the command line.
 // If unspecified by the command line, base::nullopt is returned.
 base::Optional<int> GetDebugConsoleModeFromCommandLine() {
@@ -71,6 +86,45 @@ base::Optional<int> GetDebugConsoleModeFromCommandLine() {
   return base::nullopt;
 }
 
+// Returns the path of the temporary file used to store debug console visibility
+// mode preferences.
+bool GetDebugConsoleModeStoragePath(base::FilePath* out_file_path) {
+  DCHECK(out_file_path);
+  if (base::PathService::Get(cobalt::paths::DIR_COBALT_DEBUG_OUT,
+                             out_file_path)) {
+    *out_file_path = out_file_path->Append("last_debug_console_mode.txt");
+    return true;
+  } else {
+    return false;
+  }
+}
+
+// Saves the specified visibility mode preferences to disk so that they can
+// be restored in another session.  Since this functionality is not critical,
+// we silently do nothing if there is a failure.
+void SaveModeToPreferences(int mode) {
+  std::string mode_string = DebugConsoleModeIntToString(mode);
+  base::FilePath preferences_file;
+  if (GetDebugConsoleModeStoragePath(&preferences_file)) {
+    base::WriteFile(preferences_file, mode_string.c_str(),
+                    static_cast<int>(mode_string.size()));
+  }
+}
+
+// Load debug console visibility mode preferences from disk.  Since this
+// functionality is not critical, we silently do nothing if there is a failure.
+base::Optional<int> LoadModeFromPreferences() {
+  std::string saved_contents;
+  base::FilePath preferences_file;
+  if (GetDebugConsoleModeStoragePath(&preferences_file)) {
+    if (base::ReadFileToString(preferences_file, &saved_contents)) {
+      return DebugConsoleModeStringToInt(saved_contents);
+    }
+  }
+
+  return base::nullopt;
+}
+
 // Returns the debug console's initial visibility mode.
 int GetInitialMode() {
   // First check to see if the mode is explicitly set from the command line.
@@ -80,7 +134,13 @@ int GetInitialMode() {
     return *mode_from_command_line;
   }
 
-  // By default the debug console is off.
+  // Now check to see if mode preferences have been saved to disk.
+  base::Optional<int> mode_from_preferences = LoadModeFromPreferences();
+  if (mode_from_preferences) {
+    return *mode_from_preferences;
+  }
+
+  // If all else fails, default the debug console to off.
   return debug::console::DebugHub::kDebugConsoleOff;
 }
 
@@ -179,13 +239,23 @@ bool DebugConsole::InjectOnScreenKeyboardInputEvent(
 #endif  // SB_HAS(ON_SCREEN_KEYBOARD)
 
 void DebugConsole::SetMode(int mode) {
-  base::AutoLock lock(mode_mutex_);
-  mode_ = mode;
+  int mode_to_save;
+  {
+    base::AutoLock lock(mode_mutex_);
+    mode_ = mode;
+    mode_to_save = mode_;
+  }
+  SaveModeToPreferences(mode_to_save);
 }
 
 void DebugConsole::CycleMode() {
-  base::AutoLock lock(mode_mutex_);
-  mode_ = (mode_ + 1) % debug::console::DebugHub::kDebugConsoleNumModes;
+  int mode_to_save;
+  {
+    base::AutoLock lock(mode_mutex_);
+    mode_ = (mode_ + 1) % debug::console::DebugHub::kDebugConsoleNumModes;
+    mode_to_save = mode_;
+  }
+  SaveModeToPreferences(mode_to_save);
 }
 
 int DebugConsole::GetMode() {

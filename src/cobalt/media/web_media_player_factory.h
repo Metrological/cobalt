@@ -17,7 +17,6 @@
 
 #include <memory>
 
-#include "base/callback.h"
 #include "cobalt/media/player/web_media_player.h"
 
 namespace cobalt {
@@ -25,14 +24,8 @@ namespace media {
 
 class WebMediaPlayerFactory {
  public:
-  typedef base::RepeatingCallback<void(const WebMediaPlayer*)>
-      EnumeratePlayersCB;
-
   virtual std::unique_ptr<WebMediaPlayer> CreateWebMediaPlayer(
       WebMediaPlayerClient* client) = 0;
-
-  virtual void EnumerateWebMediaPlayers(
-      const EnumeratePlayersCB& enumerate_callback) const = 0;
 
  protected:
   WebMediaPlayerFactory() {}

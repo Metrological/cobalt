@@ -64,22 +64,13 @@ class AnimatedWebPImage : public AnimatedImage {
  private:
   ~AnimatedWebPImage() override;
 
-  // Starts playback of the animated image, or sets a flag indicating that we
-  // would like to start playing as soon as we can.
-  void PlayInternal();
-
   // To be called the decoding thread, to cancel future decodings.
   void StopInternal();
 
-  // Starts the process of decoding frames.  It assumes frames are available to
-  // decode.
-  void StartDecoding();
+  void PlayInternal();
 
-  // Decodes all frames until current time.  Assumes |lock_| is acquired.
+  // Decodes all frames until current time.
   void DecodeFrames();
-
-  // Acquires |lock_| and calls DecodeFrames().
-  void LockAndDecodeFrames();
 
   // Decodes the frame with the given index, returns if it succeeded.
   bool DecodeOneFrame(int frame_index);
@@ -118,11 +109,6 @@ class AnimatedWebPImage : public AnimatedImage {
   scoped_refptr<render_tree::Image> current_canvas_;
   scoped_refptr<FrameProvider> frame_provider_;
   base::Lock lock_;
-
-  // Makes sure that the thread that sets the task_runner is always consistent.
-  // This is the thread sending Play()/Stop() calls, and is not necessarily
-  // the same thread that the task_runner itself is running on.
-  THREAD_CHECKER(task_runner_thread_checker_);
 };
 
 }  // namespace image

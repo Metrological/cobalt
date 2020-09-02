@@ -37,8 +37,8 @@ class AnimationSet {
    public:
     virtual void OnAnimationStarted(const Animation& animation,
                                     AnimationSet* animation_set) = 0;
-    virtual void OnAnimationEnded(const Animation& animation) = 0;
-    virtual void OnAnimationRemoved(const Animation& animation) = 0;
+    virtual void OnAnimationRemoved(const Animation& animation,
+                                    Animation::IsCanceled is_canceled) = 0;
   };
 
   // Create an Animation with the specified EventHandler, whose methods will
@@ -62,13 +62,7 @@ class AnimationSet {
  private:
   // Our internal collection of animations, mapping 'animation-name' to
   // a Animation object.
-  struct AnimationEntry {
-    explicit AnimationEntry(Animation&& in_animation)
-        : animation(std::move(in_animation)) {}
-    Animation animation;
-    bool ended = false;
-  };
-  typedef std::map<std::string, AnimationEntry> InternalAnimationMap;
+  typedef std::map<std::string, Animation> InternalAnimationMap;
 
   EventHandler* event_handler_;
   InternalAnimationMap animations_;

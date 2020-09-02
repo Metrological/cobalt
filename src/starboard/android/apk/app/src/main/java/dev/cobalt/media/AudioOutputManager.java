@@ -46,9 +46,9 @@ public class AudioOutputManager implements CobaltMediaSession.UpdateVolumeListen
   @SuppressWarnings("unused")
   @UsedByNative
   AudioTrackBridge createAudioTrackBridge(
-      int sampleType, int sampleRate, int channelCount, int preferredBufferSizeInBytes) {
+      int sampleType, int sampleRate, int channelCount, int framesPerChannel) {
     AudioTrackBridge audioTrackBridge =
-        new AudioTrackBridge(sampleType, sampleRate, channelCount, preferredBufferSizeInBytes);
+        new AudioTrackBridge(sampleType, sampleRate, channelCount, framesPerChannel);
     if (!audioTrackBridge.isAudioTrackValid()) {
       Log.e(TAG, "AudioTrackBridge has invalid audio track");
       return null;

@@ -17,7 +17,6 @@
 #include <algorithm>
 #include <vector>
 
-#include "base/trace_event/trace_event.h"
 #include "cobalt/cssom/computed_style_utils.h"
 #include "cobalt/cssom/keyword_value.h"
 #include "cobalt/layout/box.h"
@@ -30,9 +29,6 @@ namespace layout {
 
 void IntersectionObserverTarget::UpdateIntersectionObservationsForTarget(
     ContainerBox* target_box) {
-  TRACE_EVENT0(
-      "cobalt::layout",
-      "IntersectionObserverTarget::UpdateIntersectionObservationsForTarget()");
   // Walk up the containing block chain looking for the box referencing the
   // IntersectionObserverRoot corresponding to this IntersectionObserverTarget.
   // Skip further processing for the target if it is not a descendant of the
@@ -48,8 +44,7 @@ void IntersectionObserverTarget::UpdateIntersectionObservationsForTarget(
 
   // Let targetRect be target's bounding border box.
   RectLayoutUnit target_transformed_border_box(
-      target_box->GetTransformedBoxFromRoot(
-          target_box->GetBorderBoxFromMarginBox()));
+      target_box->GetTransformedBorderBoxFromRoot());
   math::RectF target_rect =
       math::RectF(target_transformed_border_box.x().toFloat(),
                   target_transformed_border_box.y().toFloat(),
@@ -69,14 +64,16 @@ void IntersectionObserverTarget::UpdateIntersectionObservationsForTarget(
   // Let intersectionArea be intersectionRect's area.
   float intersection_area = intersection_rect.size().GetArea();
 
+  // Let isIntersecting be true if targetRect and rootBounds intersect or are
+  // edge-adjacent, even if the intersection has zero area (because rootBounds
+  // or targetRect have zero area); otherwise, let isIntersecting be false.
+  bool is_intersecting =
+      intersection_rect.width() != 0 || intersection_rect.height() != 0;
+
   // If targetArea is non-zero, let intersectionRatio be intersectionArea
   // divided by targetArea. Otherwise, let intersectionRatio be 1 if
-  // targetRect and rootBounds are edge-adjacent (in the case that targetRect or
-  // rootbounds have zero area), and 0 otherwise.
-  float intersection_ratio =
-      (intersection_rect.width() != 0 || intersection_rect.height() != 0)
-          ? 1.0f
-          : 0.0f;
+  // isIntersecting is true, or 0 if isIntersecting is false.
+  float intersection_ratio = is_intersecting ? 1.0f : 0.0f;
   if (target_area != 0) {
     intersection_ratio = intersection_area / target_area;
   }
@@ -94,9 +91,6 @@ void IntersectionObserverTarget::UpdateIntersectionObservationsForTarget(
       break;
     }
   }
-
-  // Set isIntersecting to true if |threshold_index| > 0, and false otherwise.
-  bool is_intersecting = threshold_index > 0;
 
   // If thresholdIndex does not equal previousThresholdIndex or if
   // isIntersecting does not equal previousIsIntersecting, queue an
@@ -142,8 +136,7 @@ math::RectF IntersectionObserverTarget::GetRootBounds(
     // Otherwise, it's the result of running the getBoundingClientRect()
     // algorithm on the intersection root.
     RectLayoutUnit root_transformed_border_box(
-        root_box->GetTransformedBoxFromRoot(
-            root_box->GetBorderBoxFromMarginBox()));
+        root_box->GetTransformedBorderBoxFromRoot());
     root_bounds_without_margins =
         math::RectF(root_transformed_border_box.x().toFloat(),
                     root_transformed_border_box.y().toFloat(),
@@ -191,14 +184,10 @@ math::RectF IntersectionObserverTarget::ComputeIntersectionBetweenTargetAndRoot(
   math::RectF intersection_rect = target_rect;
 
   // Let container be the containing block of the target.
+  math::Vector2dF total_offset_from_containing_block =
+      target_box->GetBorderBoxOffsetFromContainingBlock();
   const ContainerBox* prev_container = target_box;
   const ContainerBox* container = prev_container->GetContainingBlock();
-  RectLayoutUnit box_from_containing_block =
-      target_box->GetTransformedBoxFromContainingBlock(
-          container, target_box->GetBorderBoxFromMarginBox());
-  math::Vector2dF total_offset_from_containing_block =
-      math::Vector2dF(box_from_containing_block.x().toFloat(),
-                      box_from_containing_block.y().toFloat());
 
   // While container is not the intersection root:
   while (container != root_box) {
@@ -231,18 +220,12 @@ math::RectF IntersectionObserverTarget::ComputeIntersectionBetweenTargetAndRoot(
     // container. (Note: The containing block of an element with 'position:
     // absolute' is formed by the padding edge of the ancestor.
     // https://www.w3.org/TR/CSS2/visudet.html)
-    RectLayoutUnit next_box_from_containing_block =
+    math::Vector2dF next_offset_from_containing_block =
         prev_container->computed_style()->position() ==
                 cssom::KeywordValue::GetAbsolute()
-            ? container->GetTransformedBoxFromContainingBlock(
-                  container->GetContainingBlock(),
-                  container->GetPaddingBoxFromMarginBox())
-            : container->GetTransformedBoxFromContainingBlockContentBox(
-                  container->GetContainingBlock(),
-                  container->GetContentBoxFromMarginBox());
-    math::Vector2dF next_offset_from_containing_block =
-        math::Vector2dF(next_box_from_containing_block.x().toFloat(),
-                        next_box_from_containing_block.y().toFloat());
+            ? container->GetPaddingBoxOffsetFromContainingBlock()
+            : container->GetContentBoxOffsetFromContainingBlockContentBox(
+                  container->GetContainingBlock());
     total_offset_from_containing_block += next_offset_from_containing_block;
 
     prev_container = container;
@@ -254,17 +237,14 @@ math::RectF IntersectionObserverTarget::ComputeIntersectionBetweenTargetAndRoot(
   // (Note: The containing block of an element with 'position: absolute'
   // is formed by the padding edge of the ancestor.
   // https://www.w3.org/TR/CSS2/visudet.html)
-  RectLayoutUnit containing_block_box_from_origin =
+  math::Vector2dF containing_block_offset_from_origin =
       prev_container->computed_style()->position() ==
                   cssom::KeywordValue::GetAbsolute() &&
               !IsOverflowCropped(container->computed_style())
-          ? container->GetTransformedBoxFromRoot(
-                container->GetPaddingBoxFromMarginBox())
-          : container->GetTransformedBoxFromRoot(
-                container->GetContentBoxFromMarginBox());
-  math::Vector2dF containing_block_offset_from_origin =
-      math::Vector2dF(containing_block_box_from_origin.x().toFloat(),
-                      containing_block_box_from_origin.y().toFloat());
+          ? container->GetPaddingBoxOffsetFromRoot(
+                false /*transform_forms_root*/)
+          : container->GetContentBoxOffsetFromRoot(
+                false /*transform_forms_root*/);
 
   intersection_rect.set_x(total_offset_from_containing_block.x() +
                           containing_block_offset_from_origin.x());

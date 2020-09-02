@@ -3,9 +3,6 @@
 # found in the LICENSE file.
 
 {
-  'variables': {
-    'optimize_target_for_speed': 1,
-  },
   'targets': [
     {
       'target_name': 'media',

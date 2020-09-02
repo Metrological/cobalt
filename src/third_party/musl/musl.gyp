@@ -77,25 +77,19 @@
       'conditions': [
         ['musl_arch in ["i386", "x86_64", "aarch64"]', {
           'sources': [
-            'src/fenv/<(musl_arch)/fenv.s',
-            'src/setjmp/<(musl_arch)/setjmp.s',
-            'src/setjmp/<(musl_arch)/longjmp.s',
+            'src/fenv/<(musl_arch)/fenv.s'
           ],
         }],
         ['musl_arch == "arm"', {
           'sources': [
             'src/fenv/arm/fenv.c',
-            'src/fenv/arm/fenv-hf.S',
-            'src/setjmp/<(musl_arch)/setjmp.s',
-            'src/setjmp/<(musl_arch)/longjmp.s',
+            'src/fenv/arm/fenv-hf.S'
           ],
         }],
         ['musl_arch == "mips"', {
           'sources': [
             'src/fenv/mips/fenv.S,',
-            'src/fenv/mips/fenv-sf.c',
-            'src/setjmp/<(musl_arch)/setjmp.S',
-            'src/setjmp/<(musl_arch)/longjmp.S',
+            'src/fenv/mips/fenv-sf.c'
           ],
         }],
         ['musl_arch in ["i386", "x86_64"]', {
@@ -129,7 +123,6 @@
             'src/starboard/ctype/__ctype_get_mb_cur_max.c',
             'src/starboard/errno/__errno_location.c',
             'src/starboard/exit/abort.c',
-            'src/starboard/hwcap/sethwcap.c',
             'src/starboard/locale/freelocale.c',
             'src/starboard/locale/langinfo.c',
             'src/starboard/locale/localeconv.c',

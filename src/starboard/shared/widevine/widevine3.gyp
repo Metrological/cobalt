@@ -20,7 +20,6 @@
   ],
   'variables': {
     'oemcrypto_target': 'oemcrypto',
-    'optimize_target_for_speed': 1,
 
     # Use the protoc supplied in src/tools as precompiled executable.
     'protoc_dir': '<(DEPTH)/tools',

@@ -65,6 +65,7 @@ FilterBasedPlayerWorkerHandler::FilterBasedPlayerWorkerHandler(
   if (audio_codec != kSbMediaAudioCodecNone) {
     audio_sample_info_ = *audio_sample_info;
 
+#if SB_HAS(AUDIO_SPECIFIC_CONFIG_AS_POINTER)
     if (audio_sample_info_.audio_specific_config_size > 0) {
       audio_specific_config_.reset(
           new int8_t[audio_sample_info_.audio_specific_config_size]);
@@ -73,6 +74,7 @@ FilterBasedPlayerWorkerHandler::FilterBasedPlayerWorkerHandler(
                    audio_sample_info->audio_specific_config_size);
       audio_sample_info_.audio_specific_config = audio_specific_config_.get();
     }
+#endif  // SB_HAS(AUDIO_SPECIFIC_CONFIG_AS_POINTER)
   }
 
   update_job_ = std::bind(&FilterBasedPlayerWorkerHandler::Update, this);
@@ -493,14 +495,9 @@ void FilterBasedPlayerWorkerHandler::Stop() {
 }
 
 SbDecodeTarget FilterBasedPlayerWorkerHandler::GetCurrentDecodeTarget() {
-  SbDecodeTarget decode_target = kSbDecodeTargetInvalid;
-  if (video_renderer_existence_mutex_.AcquireTry()) {
-    if (video_renderer_) {
-      decode_target = video_renderer_->GetCurrentDecodeTarget();
-    }
-    video_renderer_existence_mutex_.Release();
-  }
-  return decode_target;
+  ::starboard::ScopedLock lock(video_renderer_existence_mutex_);
+  return video_renderer_ ? video_renderer_->GetCurrentDecodeTarget()
+                         : kSbDecodeTargetInvalid;
 }
 
 MediaTimeProvider* FilterBasedPlayerWorkerHandler::GetMediaTimeProvider()

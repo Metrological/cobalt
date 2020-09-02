@@ -61,7 +61,6 @@ class DrmSystem : public ::SbDrmSystemPrivate {
 
   jobject GetMediaCrypto() const { return j_media_crypto_; }
   void CallUpdateRequestCallback(int ticket,
-                                 SbDrmSessionRequestType request_type,
                                  const void* session_id,
                                  int session_id_size,
                                  const void* content,

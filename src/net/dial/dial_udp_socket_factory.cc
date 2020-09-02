@@ -27,10 +27,8 @@ std::unique_ptr<UDPSocket> UdpSocketFactory::CreateAndBind(
     return NULL;
   }
 
-  int set_socket_reuse_success = sock->AllowAddressReuse();
-  if (set_socket_reuse_success != OK) {
-    LOG(WARNING) << "AllowAddressReuse failed on DIAL UDP socket with code "
-                 << set_socket_reuse_success;
+  if (!sock->AllowAddressReuse()) {
+    LOG(WARNING) << "AllowAddressReuse failed on DIAL UDP socket.";
   }
 
   if (sock->Bind(address) != net::OK) {

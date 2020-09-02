@@ -15,7 +15,6 @@
 #include "starboard/blitter.h"
 
 #include <EGL/egl.h>
-#include <sanitizer/lsan_interface.h>
 
 #include <memory>
 
@@ -97,27 +96,13 @@ void DummyDraw(SbBlitterContext context) {
   SbBlitterDestroySurface(dummy_surface);
 }
 
-#if defined ADDRESS_SANITIZER
-
-class ScopedLeakSanitizerDisabler {
- public:
-  ScopedLeakSanitizerDisabler() { __lsan_disable(); }
-  ~ScopedLeakSanitizerDisabler() { __lsan_enable(); }
-};
-#define ANNOTATE_SCOPED_MEMORY_LEAK \
-    ScopedLeakSanitizerDisabler leak_sanitizer_disabler; static_cast<void>(0)
-
-#else
-
-#define ANNOTATE_SCOPED_MEMORY_LEAK ((void)0)
-
-#endif
 }  // namespace
 
 SbBlitterDevice SbBlitterCreateDefaultDevice() {
   starboard::shared::blittergles::SbBlitterDeviceRegistry* device_registry =
       starboard::shared::blittergles::GetBlitterDeviceRegistry();
   starboard::ScopedLock lock(device_registry->mutex);
+
   if (device_registry->default_device) {
     SB_DLOG(ERROR) << ": Default device has already been created.";
     return kSbBlitterInvalidDevice;
@@ -130,14 +115,18 @@ SbBlitterDevice SbBlitterCreateDefaultDevice() {
     return kSbBlitterInvalidDevice;
   }
 
-  {
-    // Despite eglTerminate() being used in SbBlitterDestroyDevice(), the
-    // current mesa egl drivers still leak memory.
-    ANNOTATE_SCOPED_MEMORY_LEAK;
-    if (!eglInitialize(device->display, NULL, NULL)) {
-      SB_DLOG(ERROR) << ": Failed to initialize device.";
-      return kSbBlitterInvalidDevice;
-    }
+  // When running on Xvfb, sometimes ANGLE fails to open the default X display.
+  // By retrying, we increase the chances that eglInitialize() will succeed.
+  // This is a temporary fix.
+  int max_tries = 3, num_tries = 0;
+  bool initialized = false;
+  do {
+    initialized = eglInitialize(device->display, NULL, NULL);
+    ++num_tries;
+  } while (!initialized && num_tries < max_tries);
+  if (!initialized) {
+    SB_DLOG(ERROR) << ": Failed to initialize device.";
+    return kSbBlitterInvalidDevice;
   }
 
   starboard::optional<EGLConfig> config = GetEGLConfig(device->display);

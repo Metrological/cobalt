@@ -42,11 +42,6 @@ bool IsSupportedAudioCodec(const MimeType& mime_type,
   if (audio_codec == kSbMediaAudioCodecNone) {
     return false;
   }
-
-  // TODO: allow platform-specific rejection of a combination of codec &
-  // number of channels, by passing channels to SbMediaAudioIsSupported and /
-  // or SbMediaIsSupported.
-
   if (SbStringGetLength(key_system) != 0) {
     if (!SbMediaIsSupported(kSbMediaVideoCodecNone, audio_codec, key_system)) {
       return false;
@@ -115,19 +110,15 @@ bool IsSupportedVideoCodec(const MimeType& mime_type,
 
   std::string eotf = mime_type.GetParamStringValue("eotf", "");
   if (!eotf.empty()) {
-    SbMediaTransferId transfer_id_from_eotf = GetTransferIdFromString(eotf);
+    SB_LOG_IF(WARNING, transfer_id != kSbMediaTransferIdUnspecified)
+        << "transfer_id " << transfer_id << " set by the codec string \""
+        << codec << "\" will be overwritten by the eotf attribute " << eotf;
+    transfer_id = GetTransferIdFromString(eotf);
     // If the eotf is not known, reject immediately - without checking with
     // the platform.
-    if (transfer_id_from_eotf == kSbMediaTransferIdUnknown) {
+    if (transfer_id == kSbMediaTransferIdUnknown) {
       return false;
     }
-    if (transfer_id != kSbMediaTransferIdUnspecified &&
-        transfer_id != transfer_id_from_eotf) {
-      SB_LOG_IF(WARNING, transfer_id != kSbMediaTransferIdUnspecified)
-          << "transfer_id " << transfer_id << " set by the codec string \""
-          << codec << "\" will be overwritten by the eotf attribute " << eotf;
-    }
-    transfer_id = transfer_id_from_eotf;
 #if !SB_HAS(MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
     if (!SbMediaIsTransferCharacteristicsSupported(transfer_id)) {
       return false;
@@ -226,20 +217,17 @@ bool IsSDRVideo(int bit_depth,
   }
 
   if (primary_id != kSbMediaPrimaryIdBt709 &&
-      primary_id != kSbMediaPrimaryIdUnspecified &&
-      primary_id != kSbMediaPrimaryIdSmpte170M) {
+      primary_id != kSbMediaPrimaryIdUnspecified) {
     return false;
   }
 
   if (transfer_id != kSbMediaTransferIdBt709 &&
-      transfer_id != kSbMediaTransferIdUnspecified &&
-      transfer_id != kSbMediaTransferIdSmpte170M) {
+      transfer_id != kSbMediaTransferIdUnspecified) {
     return false;
   }
 
   if (matrix_id != kSbMediaMatrixIdBt709 &&
-      matrix_id != kSbMediaMatrixIdUnspecified &&
-      matrix_id != kSbMediaMatrixIdSmpte170M) {
+      matrix_id != kSbMediaMatrixIdUnspecified) {
     return false;
   }
 

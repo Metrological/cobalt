@@ -77,12 +77,8 @@ class MediaSession : public script::Wrappable {
   DEFINE_WRAPPABLE_TYPE(MediaSession);
   void TraceMembers(script::Tracer* tracer) override;
 
-  // Check whether a change task has been queued. Should only be called by
-  // unit tests.
-  bool IsChangeTaskQueuedForTesting() const;
-
  private:
-  void MaybeQueueChangeTask(base::TimeDelta delay);
+  void MaybeQueueChangeTask();
   void OnChanged();
 
   // Returns a time representing right now - may be overridden for testing.

@@ -50,7 +50,6 @@
 #include "cobalt/script/v8c/v8c_property_enumerator.h"
 #include "cobalt/script/v8c/v8c_value_handle.h"
 #include "cobalt/script/v8c/wrapper_private.h"
-#include "cobalt/script/v8c/common_v8c_bindings_code.h"
 #include "v8/include/v8.h"
 
 
@@ -111,20 +110,40 @@ void DummyConstructor(const v8::FunctionCallbackInfo<v8::Value>& info) {
 
 void supportedAttributeAttributeGetter(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
-  script::v8c::shared_bindings::AttributeGetterImpl<InterfaceWithUnsupportedProperties,
-                                                    V8cInterfaceWithUnsupportedProperties>(
-                    info,
-                    false,
-                    false,
-                    [](v8::Isolate* isolate, InterfaceWithUnsupportedProperties* impl,
-                       cobalt::script::ExceptionState& exception_state,
-                       v8::Local<v8::Value>& result_value) {
-  
-      ToJSValue(isolate,
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Object> object = info.Holder();
+
+
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cInterfaceWithUnsupportedProperties::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
+    return;
+  }
+  V8cExceptionState exception_state{isolate};
+  v8::Local<v8::Value> result_value;
+
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
+    return;
+  }
+  InterfaceWithUnsupportedProperties* impl =
+      wrapper_private->wrappable<InterfaceWithUnsupportedProperties>().get();
+
+
+  if (!exception_state.is_exception_set()) {
+    ToJSValue(isolate,
               impl->supported_attribute(),
               &result_value);
-
-  });
+  }
+  if (exception_state.is_exception_set()) {
+    return;
+  }
+  info.GetReturnValue().Set(result_value);
 }
 
 
@@ -184,23 +203,38 @@ void InitializeTemplate(v8::Isolate* isolate) {
   // corresponding property. The characteristics of this property are as
   // follows:
   {
+    // The name of the property is the identifier of the attribute.
+    v8::Local<v8::String> name = NewInternalString(
+        isolate,
+        "supportedAttribute");
 
-    script::v8c::shared_bindings::set_property_for_nonconstructor_attribute(
-                  isolate,
     // The property has attributes { [[Get]]: G, [[Set]]: S, [[Enumerable]]:
     // true, [[Configurable]]: configurable }, where: configurable is false if
     // the attribute was declared with the [Unforgeable] extended attribute and
     // true otherwise;
-                  true,
-                  false,
-                  false,
-                  false,
-                  function_template,
-                  instance_template,
-                  prototype_template,
-                  "supportedAttribute"
-                  ,supportedAttributeAttributeGetter
-                  );
+    bool configurable = true;
+    v8::PropertyAttribute attributes = static_cast<v8::PropertyAttribute>(
+        configurable ? v8::None : v8::DontDelete);
+
+    // G is the attribute getter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property;
+    // and
+    //
+    // S is the attribute setter created given the attribute, the interface, and
+    // the relevant Realm of the object that is the location of the property.
+    v8::Local<v8::FunctionTemplate> getter =
+        v8::FunctionTemplate::New(isolate, supportedAttributeAttributeGetter);
+    v8::Local<v8::FunctionTemplate> setter;
+
+    // The location of the property is determined as follows:
+    // Otherwise, the property exists solely on the interface's interface
+    // prototype object.
+    prototype_template->
+        SetAccessorProperty(
+            name,
+            getter,
+            setter,
+            attributes);
 
   }
 

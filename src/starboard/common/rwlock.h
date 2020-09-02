@@ -20,8 +20,8 @@
 #ifndef STARBOARD_COMMON_RWLOCK_H_
 #define STARBOARD_COMMON_RWLOCK_H_
 
-#include "starboard/condition_variable.h"
-#include "starboard/mutex.h"
+#include "starboard/common/mutex.h"
+#include "starboard/common/semaphore.h"
 
 namespace starboard {
 
@@ -33,7 +33,8 @@ namespace starboard {
 // This RWLock is non-upgradeable, if the read lock is held then it must
 // be released before the write lock can be used.
 //
-// This implementation favors writers over readers.
+// This implementation favors readers over writers. This implementation was
+// first described by Michel Raynal.
 //
 // Example:
 //   std::map<...> my_map = ...;
@@ -42,14 +43,15 @@ namespace starboard {
 //
 //   bool Exists() {                     // This function is concurrent.
 //     rw_lock.AcquireReadLock();
-//     bool found = my_map.find(...) != my_map.end();
+//     bool found = my_map.find(...);
 //     rw_lock.ReleaseReadLock();
 //     return found;
 //   }
-//   void Add(...) {                     // Write operations are exclusive.
+//   bool Add(...) {                     // Write operations are exclusive.
 //     rw_lock.AcquireWriteLock();
-//     my_map.insert(...);
+//     bool erased = my_map.erase(...);
 //     rw_lock.ReleaseWriteLock();
+//     return erased;
 //   }
 class RWLock {
  public:
@@ -63,20 +65,18 @@ class RWLock {
   void ReleaseWriteLock();
 
  private:
-  SbMutex mutex_;
-  SbConditionVariable condition_;
-  int32_t readers_;
-  bool writing_;
-
+  Mutex reader_;
+  // Semaphore is necessary because of shared ownership: a different
+  // thread can unlock a writer than the one that locks it.
+  Semaphore writer_;
+  int num_readers_;
   SB_DISALLOW_COPY_AND_ASSIGN(RWLock);
 };
 
 class ScopedReadLock {
  public:
-  explicit ScopedReadLock(RWLock* rw_lock) : rw_lock_(rw_lock) {
-    rw_lock_->AcquireReadLock();
-  }
-  ~ScopedReadLock() { rw_lock_->ReleaseReadLock(); }
+  explicit ScopedReadLock(RWLock* rw_lock);
+  ~ScopedReadLock();
 
  private:
   RWLock* rw_lock_;
@@ -85,10 +85,8 @@ class ScopedReadLock {
 
 class ScopedWriteLock {
  public:
-  explicit ScopedWriteLock(RWLock* rw_lock) : rw_lock_(rw_lock) {
-    rw_lock_->AcquireWriteLock();
-  }
-  ~ScopedWriteLock() { rw_lock_->ReleaseWriteLock(); }
+  explicit ScopedWriteLock(RWLock* rw_lock);
+  ~ScopedWriteLock();
 
  private:
   RWLock* rw_lock_;

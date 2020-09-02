@@ -27,13 +27,8 @@ class LinuxX64X11MockConfiguration(
     return 'ninja,qtcreator_ninja'
 
   def GetVariables(self, configuration):
-    variables = super(LinuxX64X11MockConfiguration, self).GetVariables(
+    return super(LinuxX64X11MockConfiguration, self).GetVariables(
         configuration, use_clang=1)
-    variables.update({
-        'javascript_engine': 'mozjs-45',
-        'cobalt_enable_jit': 0,
-    })
-    return variables
 
   def GetGeneratorVariables(self, configuration):
     del configuration

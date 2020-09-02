@@ -15,9 +15,6 @@
 #ifndef COBALT_LAYOUT_FLEX_CONTAINER_BOX_H_
 #define COBALT_LAYOUT_FLEX_CONTAINER_BOX_H_
 
-#include <memory>
-
-#include "base/optional.h"
 #include "cobalt/cssom/css_computed_style_declaration.h"
 #include "cobalt/layout/base_direction.h"
 #include "cobalt/layout/block_container_box.h"
@@ -91,10 +88,10 @@ class FlexContainerBox : public BlockContainerBox {
   base::Optional<LayoutUnit> main_space_;
   base::Optional<LayoutUnit> cross_space_;
 
-  base::Optional<LayoutUnit> min_main_space_;
+  LayoutUnit min_main_space_;
   base::Optional<LayoutUnit> max_main_space_;
 
-  base::Optional<LayoutUnit> min_cross_space_;
+  LayoutUnit min_cross_space_;
   base::Optional<LayoutUnit> max_cross_space_;
 
   LayoutUnit baseline_;
@@ -117,11 +114,12 @@ class FlexContainerBox : public BlockContainerBox {
 
   // First step of the line length determination.
   void DetermineAvailableSpace(const LayoutParams& layout_params,
-                               bool main_direction_is_horizontal,
-                               bool width_depends_on_containing_block,
-                               const base::Optional<LayoutUnit>& maybe_width,
-                               bool height_depends_on_containing_block,
-                               const base::Optional<LayoutUnit>& maybe_height);
+                               bool main_direction_is_horizontal);
+
+  // Determine the flex base size and hypothetical main size of the item.
+  //   https://www.w3.org/TR/css-flexbox-1/#algo-main-item
+  LayoutUnit DetermineFlexBaseSize(Box* item, const LayoutParams& layout_params,
+                                   bool container_shrink_to_fit_width_forced);
 
   AnonymousBlockBox* GetLastChildAsAnonymousBlockBox();
   AnonymousBlockBox* GetOrAddAnonymousBlockBox();

@@ -4304,12 +4304,8 @@ intersection_observer_root_margin_property_value:
 
 // Specifies the minimum content height of boxes.
 //   https://www.w3.org/TR/CSS21/visudet.html#propdef-min-height
-//   https://www.w3.org/TR/css-sizing-3/#min-size-properties
 min_height_property_value:
-    kAutoToken maybe_whitespace {
-    $$ = AddRef(cssom::KeywordValue::GetAuto().get());
-  }
-  | positive_length_percent_property_value
+    positive_length_percent_property_value
   | common_values
   ;
 
@@ -5740,12 +5736,8 @@ width_property_value:
 
 // Specifies the minimum content width of boxes.
 //   https://www.w3.org/TR/CSS2/visudet.html#propdef-min-width
-//   https://www.w3.org/TR/css-sizing-3/#min-size-properties
 min_width_property_value:
-    kAutoToken maybe_whitespace {
-    $$ = AddRef(cssom::KeywordValue::GetAuto().get());
-  }
-  | positive_length_percent_property_value
+    positive_length_percent_property_value
   | common_values
   ;
 
@@ -5943,9 +5935,6 @@ flex_two_property_values:
     std::unique_ptr<FlexShorthand> flex(new FlexShorthand());
     flex->grow = new cssom::NumberValue($1);
     flex->shrink = new cssom::NumberValue($2);
-    // When omitted from the flex shorthand, flex-basis specified value is 0.
-    //  https://www.w3.org/TR/css-flexbox-1/#valdef-flex-flex-basis
-    flex->basis = new cssom::LengthValue(0, cssom::kPixelsUnit);
     $$ = flex.release();
   }
   | non_negative_number flex_basis_element {

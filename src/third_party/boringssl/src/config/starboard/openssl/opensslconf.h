@@ -36,9 +36,10 @@
 # define OPENSSL_NO_POSIX_IO
 #endif
 
-#ifndef OPENSSL_NO_FP_API
-# define OPENSSL_NO_FP_API
-#endif
+// Benchmarking tool requires FP API to read certs and keys
+//#ifndef OPENSSL_NO_FP_API
+// # define OPENSSL_NO_FP_API
+//#endif
 
 #ifndef OPENSSL_NO_DSO
 # define OPENSSL_NO_DSO
@@ -96,6 +97,11 @@
 #ifndef OPENSSL_NO_WHIRLPOOL
 # define OPENSSL_NO_WHIRLPOOL
 #endif
+// We set OPENSSL_NO_THREADS in boringssl.gyp. Set OPENSSL_THREADS here makes no
+// sense.
+// #ifndef OPENSSL_THREADS
+// # define OPENSSL_THREADS
+// #endif
 
 #ifndef OPENSSL_NO_DYNAMIC_ENGINE
 # define OPENSSL_NO_DYNAMIC_ENGINE

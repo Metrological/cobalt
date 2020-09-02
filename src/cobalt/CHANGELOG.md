@@ -49,8 +49,7 @@ This document records all notable changes made to Cobalt since the last release.
  - **Added support for Device Authentication URL signing.**
 
    Cobalt will now add URL parameters signed with the device's secret key and
-   certification scope to the initial URL.  For more information, see
-   [doc/device_authentication.md](doc/device_authentication.md).
+   certification scope to the initial URL.
 
  - **Updated Chromium net and base libraries from m25 to m70.**
 
@@ -131,7 +130,7 @@ This document records all notable changes made to Cobalt since the last release.
    options to be instead run-time options.  This will primarily be enabled
    by the new Starboard extensions framework.  An example of an platform
    specific option added in this way can be found in
-   `cobalt/extension/graphics.h`.
+   `cobalt/extension/graphis.h`.
 
  - **Cobalt code assumes that no errors are generated for unused parameters**
 
@@ -158,15 +157,6 @@ This document records all notable changes made to Cobalt since the last release.
   `MediaSessionClient` now provides an immutable `MediaSessionState` object
   that may be copied and queried on any thread to get a coherent view of
   attributes set by the the web app on the `MediaSession`.
-
-- **Add support for size vs speed compiler flags**
-
-  Performance-critical gyp targets now specify `optimize_target_for_speed`: 1.
-  For gold configs, these targets will use compiler flags `compiler_flags_gold`
-  and `compiler_flags_gold_speed`; other targets will use `compiler_flags_gold`
-  and `compiler_flags_gold_size`. For qa configs, the respective variables are
-  `compiler_flags_qa_speed` and `compiler_flags_qa_size`. Only the qa and gold
-  configs support these types of compiler flag gyp variables.
 
  - **Improvements and Bug Fixes**
 

@@ -36,8 +36,6 @@ class _PlatformConfig(config.starboard.PlatformConfigStarboard):
     variables = super(_PlatformConfig, self).GetVariables(configuration)
     variables.update({
         'clang': 0,
-        'javascript_engine': 'v8',
-        'cobalt_enable_jit': 1,
     })
 
     return variables

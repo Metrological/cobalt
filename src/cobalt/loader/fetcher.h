@@ -74,23 +74,33 @@ class Fetcher {
   };
 
   // Concrete Fetcher subclass should start fetching immediately in constructor.
-  explicit Fetcher(Handler* handler) : handler_(handler) {}
+  explicit Fetcher(Handler* handler)
+      : handler_(handler), did_fail_from_transient_error_(false) {}
+
+  const Origin& last_url_origin() const { return last_url_origin_; }
+
+  bool did_fail_from_transient_error() const {
+    return did_fail_from_transient_error_;
+  }
 
   // Concrete Fetcher subclass should cancel fetching in destructor.
   virtual ~Fetcher() = 0;
 
-  // Indicates whether the resource is cross-origin.
-  virtual Origin last_url_origin() const { return Origin(); }
-
-  // Whether or not the fetcher failed from an error that is considered
-  // transient, indicating that the same fetch may later succeed.
-  virtual bool did_fail_from_transient_error() const { return false; }
-
  protected:
   Handler* handler() const { return handler_; }
 
+  void SetLastUrlOrigin(const Origin& origin) { last_url_origin_ = origin; }
+  void SetFailedFromTransientError() { did_fail_from_transient_error_ = true; }
+
  private:
   Handler* handler_;
+
+  // Indicates whether the resource is cross-origin.
+  Origin last_url_origin_;
+
+  // Whether or not the fetcher failed from an error that is considered
+  // transient, indicating that the same fetch may later succeed.
+  bool did_fail_from_transient_error_;
 };
 
 }  // namespace loader

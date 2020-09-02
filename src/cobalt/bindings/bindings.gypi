@@ -224,7 +224,6 @@
         'generated_type_conversion',
         'global_constructors_idls',
         'interfaces_info_overall',
-        '<(DEPTH)/cobalt/script/engine.gyp:engine',
         '<@(bindings_dependencies)',
       ],
       'export_dependent_settings': [

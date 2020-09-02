@@ -13,9 +13,6 @@
 # limitations under the License.
 
 {
-  'variables': {
-    'optimize_target_for_speed': 1,
-  },
   'targets': [
     {
       # This target provides (not production suitable) utility code for decoding

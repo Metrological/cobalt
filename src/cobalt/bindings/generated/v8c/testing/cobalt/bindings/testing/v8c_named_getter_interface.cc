@@ -50,7 +50,6 @@
 #include "cobalt/script/v8c/v8c_property_enumerator.h"
 #include "cobalt/script/v8c/v8c_value_handle.h"
 #include "cobalt/script/v8c/wrapper_private.h"
-#include "cobalt/script/v8c/common_v8c_bindings_code.h"
 #include "v8/include/v8.h"
 
 
@@ -103,12 +102,14 @@ void NamedPropertyGetterCallback(
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  NamedGetterInterface* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             NamedGetterInterface>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  NamedGetterInterface* impl =
+      wrapper_private->wrappable<NamedGetterInterface>().get();
   std::string property_name = *v8::String::Utf8Value(isolate, property);
   if (!impl->CanQueryNamedProperty(property_name)) {
     return;
@@ -118,7 +119,7 @@ void NamedPropertyGetterCallback(
     ToJSValue(isolate,
               impl->NamedGetter(property_name),
               &result_value);
-}
+  }
   if (exception_state.is_exception_set()) {
     return;
   }
@@ -137,12 +138,14 @@ void NamedPropertyQueryCallback(
     const v8::PropertyCallbackInfo<v8::Integer>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  NamedGetterInterface* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             NamedGetterInterface>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  NamedGetterInterface* impl =
+      wrapper_private->wrappable<NamedGetterInterface>().get();
   std::string property_name = *v8::String::Utf8Value(isolate, property);
   bool result = impl->CanQueryNamedProperty(property_name);
   if (!result) {
@@ -171,12 +174,14 @@ void NamedPropertyEnumeratorCallback(
     const v8::PropertyCallbackInfo<v8::Array>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  NamedGetterInterface* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             NamedGetterInterface>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  NamedGetterInterface* impl =
+      wrapper_private->wrappable<NamedGetterInterface>().get();
   v8::Local<v8::Array> array = v8::Array::New(isolate);
   V8cPropertyEnumerator property_enumerator(isolate, &array);
   impl->EnumerateNamedProperties(&property_enumerator);
@@ -193,12 +198,14 @@ void NamedPropertySetterCallback(
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  NamedGetterInterface* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             NamedGetterInterface>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  NamedGetterInterface* impl =
+      wrapper_private->wrappable<NamedGetterInterface>().get();
   std::string property_name = *v8::String::Utf8Value(isolate, property);
   TypeTraits<std::string>::ConversionType native_value;
   FromJSValue(isolate, value, kNoConversionFlags,
@@ -208,7 +215,7 @@ void NamedPropertySetterCallback(
   }
 
   impl->NamedSetter(property_name, native_value);
-result_value = v8::Undefined(isolate);
+  result_value = v8::Undefined(isolate);
   if (exception_state.is_exception_set()) {
     return;
   }
@@ -232,19 +239,21 @@ void NamedPropertyDeleterCallback(
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  NamedGetterInterface* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             NamedGetterInterface>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  NamedGetterInterface* impl =
+      wrapper_private->wrappable<NamedGetterInterface>().get();
   std::string property_name = *v8::String::Utf8Value(isolate, property);
   if (!impl->CanQueryNamedProperty(property_name)) {
     return;
   }
 
   impl->NamedDeleter(property_name);
-result_value = v8::Undefined(isolate);
+  result_value = v8::Undefined(isolate);
   if (exception_state.is_exception_set()) {
     return;
   }
@@ -276,18 +285,25 @@ void DummyConstructor(const v8::FunctionCallbackInfo<v8::Value>& info) {
 void namedDeleterMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cNamedGetterInterface::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cNamedGetterInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  NamedGetterInterface* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             NamedGetterInterface>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  NamedGetterInterface* impl =
+      wrapper_private->wrappable<NamedGetterInterface>().get();
   const size_t kMinArguments = 1;
   if (info.Length() < kMinArguments) {
     exception_state.SetSimpleException(script::kInvalidNumberOfArguments);
@@ -306,7 +322,7 @@ void namedDeleterMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   }
 
   impl->NamedDeleter(name);
-result_value = v8::Undefined(isolate);
+  result_value = v8::Undefined(isolate);
 
 }
 
@@ -315,18 +331,25 @@ result_value = v8::Undefined(isolate);
 void namedGetterMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cNamedGetterInterface::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cNamedGetterInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  NamedGetterInterface* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             NamedGetterInterface>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  NamedGetterInterface* impl =
+      wrapper_private->wrappable<NamedGetterInterface>().get();
   const size_t kMinArguments = 1;
   if (info.Length() < kMinArguments) {
     exception_state.SetSimpleException(script::kInvalidNumberOfArguments);
@@ -348,7 +371,7 @@ void namedGetterMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
     ToJSValue(isolate,
               impl->NamedGetter(name),
               &result_value);
-}
+  }
   if (!exception_state.is_exception_set()) {
     info.GetReturnValue().Set(result_value);
   }
@@ -360,18 +383,25 @@ void namedGetterMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
 void namedSetterMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cNamedGetterInterface::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cNamedGetterInterface::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  NamedGetterInterface* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             NamedGetterInterface>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  NamedGetterInterface* impl =
+      wrapper_private->wrappable<NamedGetterInterface>().get();
   const size_t kMinArguments = 2;
   if (info.Length() < kMinArguments) {
     exception_state.SetSimpleException(script::kInvalidNumberOfArguments);
@@ -400,7 +430,7 @@ void namedSetterMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   }
 
   impl->NamedSetter(name, value);
-result_value = v8::Undefined(isolate);
+  result_value = v8::Undefined(isolate);
 
 }
 

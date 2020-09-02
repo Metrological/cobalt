@@ -138,8 +138,9 @@ static base::LazyInstance<MozjsBaseInterfaceHandler>::DestructorAtExit
 
 bool Constructor(JSContext* context, unsigned int argc, JS::Value* vp);
 
+
 bool HasInstance(JSContext *context, JS::HandleObject type,
-                 JS::MutableHandleValue vp, bool *success) {
+                   JS::MutableHandleValue vp, bool *success) {
   JS::RootedObject global_object(
       context, JS_GetGlobalForObject(context, type));
   DCHECK(global_object);
@@ -291,7 +292,10 @@ bool fcn_baseOperation(
   return !exception_state.is_exception_set();
 }
 
+
+
 const JSPropertySpec prototype_properties[] = {
+
   {  // Readonly attribute
     "baseAttribute",
     JSPROP_SHARED | JSPROP_ENUMERATE,
@@ -309,6 +313,7 @@ const JSFunctionSpec prototype_functions[] = {
 };
 
 const JSPropertySpec interface_object_properties[] = {
+
   JS_PS_END
 };
 
@@ -383,11 +388,10 @@ void InitializePrototypeAndInterfaceObject(
       JSPROP_READONLY, NULL, NULL);
   DCHECK(success);
 
-  // Define interface object properties (excluding constants).
+  // Define interface object properties (including constants).
   success = JS_DefineProperties(context, rooted_interface_object,
                                 interface_object_properties);
   DCHECK(success);
-
   // Define interface object functions (static).
   success = JS_DefineFunctions(context, rooted_interface_object,
                                interface_object_functions);

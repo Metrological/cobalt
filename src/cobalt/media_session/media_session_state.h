@@ -53,9 +53,6 @@ class MediaSessionState {
     return metadata_;
   }
 
-  // Returns whether media position state was specified.
-  bool has_position_state() const { return last_position_updated_time_ != 0; }
-
   // Returns the position of the current playback.
   // https://wicg.github.io/mediasession/#current-playback-position
   // Returns the position

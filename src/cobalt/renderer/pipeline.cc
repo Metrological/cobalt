@@ -175,19 +175,17 @@ Pipeline::~Pipeline() {
       FROM_HERE,
       base::Bind(&Pipeline::ShutdownSubmissionQueue, base::Unretained(this)));
 
+  // This potential reference to a render tree whose animations may have ended
+  // must be destroyed before we shutdown the rasterizer thread since it may
+  // contain references to render tree nodes and resources.
+  last_render_tree_ = NULL;
+  last_animated_render_tree_ = NULL;
+
   // Submit a shutdown task to the rasterizer thread so that it can shutdown
   // anything that must be shutdown from that thread.
-  rasterizer_thread_.message_loop()->task_runner()->PostBlockingTask(
+  rasterizer_thread_.message_loop()->task_runner()->PostTask(
       FROM_HERE,
       base::Bind(&Pipeline::ShutdownRasterizerThread, base::Unretained(this)));
-
-  // Finally shutdown the rasterizer. Do this after ShutdownRasterizerThread()
-  // has run, just in case it posted more tasks to the rasterizer thread. This
-  // will free the rasterizer after the posted tasks have executed (unless they
-  // were delayed tasks).
-  rasterizer_thread_.message_loop()->task_runner()->PostBlockingTask(
-      FROM_HERE,
-      base::Bind(&Pipeline::ShutdownRasterizer, base::Unretained(this)));
 
   rasterizer_thread_.Stop();
 }
@@ -586,11 +584,8 @@ void Pipeline::ShutdownRasterizerThread() {
         render_target_);
   }
 
-  // This potential reference to a render tree whose animations may have ended
-  // must be destroyed before we shutdown the rasterizer thread since it may
-  // contain references to render tree nodes and resources.
-  last_render_tree_ = NULL;
-  last_animated_render_tree_ = NULL;
+  // Finally, destroy the rasterizer.
+  rasterizer_.reset();
 }
 
 #if defined(ENABLE_DEBUGGER)

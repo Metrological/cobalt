@@ -47,9 +47,6 @@ namespace renderer {
 namespace rasterizer {
 namespace egl {
 
-using common::utils::IsOpaque;
-using common::utils::IsTransparent;
-
 namespace {
 
 typedef float ColorTransformMatrix[16];
@@ -78,6 +75,8 @@ const ColorTransformMatrix& GetColorTransformMatrixInColumnMajor(
   DCHECK_EQ(format, kMultiPlaneImageFormatYUV3PlaneBT709);
   return kBT709ColorTransformMatrixInColumnMajor;
 }
+
+bool IsOpaque(float opacity) { return opacity >= 0.999f; }
 
 bool IsUniformSolidColor(const render_tree::Border& border) {
   return border.left.style == render_tree::kBorderStyleSolid &&
@@ -109,13 +108,8 @@ math::Matrix3F GetTexcoordTransform(
 }
 
 bool ImageNodeSupportedNatively(render_tree::ImageNode* image_node) {
-  // Ensure any required backend processing is done to create the necessary
-  // GPU resource. This must be done to verify whether the GPU resource can
-  // be rendered by the shader.
   skia::Image* skia_image =
       base::polymorphic_downcast<skia::Image*>(image_node->data().source.get());
-  skia_image->EnsureInitialized();
-
   if (skia_image->GetTypeId() == base::GetTypeId<skia::MultiPlaneImage>()) {
     skia::HardwareMultiPlaneImage* hardware_image =
         base::polymorphic_downcast<skia::HardwareMultiPlaneImage*>(skia_image);
@@ -419,10 +413,10 @@ void RenderTreeNodeVisitor::Visit(render_tree::FilterNode* filter_node) {
   if (data.opacity_filter && !data.viewport_filter && !data.blur_filter &&
       !data.map_to_mesh_filter) {
     const float filter_opacity = data.opacity_filter->opacity();
-    if (IsTransparent(filter_opacity)) {
+    if (filter_opacity <= 0.0f) {
       // Totally transparent. Ignore the source.
       return;
-    } else if (IsOpaque(filter_opacity)) {
+    } else if (filter_opacity >= 1.0f) {
       // Totally opaque. Render like normal.
       data.source->Accept(this);
       return;
@@ -505,6 +499,10 @@ void RenderTreeNodeVisitor::Visit(render_tree::ImageNode* image_node) {
   skia::Image* skia_image =
       base::polymorphic_downcast<skia::Image*>(data.source.get());
   bool is_opaque = skia_image->IsOpaque() && IsOpaque(draw_state_.opacity);
+
+  // Ensure any required backend processing is done to create the necessary
+  // GPU resource.
+  skia_image->EnsureInitialized();
 
   // Calculate matrix to transform texture coordinates according to the local
   // transform.
@@ -1113,7 +1111,7 @@ void RenderTreeNodeVisitor::AddClear(const math::RectF& rect,
   // clear command instead of a more general draw command, to give the GL
   // driver a better chance to optimize.
   if (!draw_state_.rounded_scissor_corners &&
-      draw_state_.transform.IsIdentity() && IsOpaque(draw_state_.opacity)) {
+      draw_state_.transform.IsIdentity() && draw_state_.opacity == 1.0f) {
     math::Rect old_scissor = draw_state_.scissor;
     draw_state_.scissor.Intersect(math::Rect::RoundFromRectF(rect));
     std::unique_ptr<DrawObject> draw_clear(

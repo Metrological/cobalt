@@ -2022,7 +2022,10 @@ void RegExpBuiltinsAssembler::RegExpPrototypeMatchBody(Node* const context,
             Node* const result_fixed_array = LoadElements(result);
             Node* const match = LoadFixedArrayElement(result_fixed_array, 0);
 
-            var_match.Bind(ToString_Inline(context, match));
+            // The match is guaranteed to be a string on the fast path.
+            CSA_ASSERT(this, IsString(match));
+
+            var_match.Bind(match);
             Goto(&if_didmatch);
           }
 

@@ -50,7 +50,6 @@
 #include "cobalt/script/v8c/v8c_property_enumerator.h"
 #include "cobalt/script/v8c/v8c_value_handle.h"
 #include "cobalt/script/v8c/wrapper_private.h"
-#include "cobalt/script/v8c/common_v8c_bindings_code.h"
 #include "v8/include/v8.h"
 
 
@@ -124,24 +123,31 @@ void Constructor(const v8::FunctionCallbackInfo<v8::Value>& info) {
 void getAnyMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cInterfaceWithAnyDictionary::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cInterfaceWithAnyDictionary::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  InterfaceWithAnyDictionary* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             InterfaceWithAnyDictionary>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  InterfaceWithAnyDictionary* impl =
+      wrapper_private->wrappable<InterfaceWithAnyDictionary>().get();
 
   if (!exception_state.is_exception_set()) {
     ToJSValue(isolate,
               impl->GetAny(),
               &result_value);
-}
+  }
   if (!exception_state.is_exception_set()) {
     info.GetReturnValue().Set(result_value);
   }
@@ -153,24 +159,31 @@ void getAnyMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
 void hasAnyMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cInterfaceWithAnyDictionary::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cInterfaceWithAnyDictionary::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  InterfaceWithAnyDictionary* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             InterfaceWithAnyDictionary>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  InterfaceWithAnyDictionary* impl =
+      wrapper_private->wrappable<InterfaceWithAnyDictionary>().get();
 
   if (!exception_state.is_exception_set()) {
     ToJSValue(isolate,
               impl->HasAny(),
               &result_value);
-}
+  }
   if (!exception_state.is_exception_set()) {
     info.GetReturnValue().Set(result_value);
   }
@@ -182,24 +195,31 @@ void hasAnyMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
 void hasAnyDefaultMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cInterfaceWithAnyDictionary::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cInterfaceWithAnyDictionary::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  InterfaceWithAnyDictionary* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             InterfaceWithAnyDictionary>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  InterfaceWithAnyDictionary* impl =
+      wrapper_private->wrappable<InterfaceWithAnyDictionary>().get();
 
   if (!exception_state.is_exception_set()) {
     ToJSValue(isolate,
               impl->HasAnyDefault(),
               &result_value);
-}
+  }
   if (!exception_state.is_exception_set()) {
     info.GetReturnValue().Set(result_value);
   }
@@ -211,18 +231,25 @@ void hasAnyDefaultMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
 void setAnyMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  if (!script::v8c::shared_bindings::object_implements_interface(V8cInterfaceWithAnyDictionary::GetTemplate(isolate), isolate, object)) {
+  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
+  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
+  if (!WrapperPrivate::HasWrapperPrivate(object) ||
+      !V8cInterfaceWithAnyDictionary::GetTemplate(isolate)->HasInstance(object)) {
+    V8cExceptionState exception(isolate);
+    exception.SetSimpleException(script::kDoesNotImplementInterface);
     return;
   }
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  InterfaceWithAnyDictionary* impl =
-          script::v8c::shared_bindings::get_impl_from_object<
-             InterfaceWithAnyDictionary>(object);
-  if (!impl) {
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  if (!wrapper_private) {
+    NOTIMPLEMENTED();
     return;
   }
+  InterfaceWithAnyDictionary* impl =
+      wrapper_private->wrappable<InterfaceWithAnyDictionary>().get();
   const size_t kMinArguments = 1;
   if (info.Length() < kMinArguments) {
     exception_state.SetSimpleException(script::kInvalidNumberOfArguments);
@@ -241,7 +268,7 @@ void setAnyMethod(const v8::FunctionCallbackInfo<v8::Value>& info) {
   }
 
   impl->SetAny(value);
-result_value = v8::Undefined(isolate);
+  result_value = v8::Undefined(isolate);
 
 }
 

@@ -72,13 +72,11 @@ class WebSocketImpl : public base::RefCountedThreadSafe<WebSocketImpl> {
   void Close(const net::WebSocketError code, const std::string& reason);
 
   // These are legacy API from old net::SocketStream::Delegate.
-  // TODO: investigate if we need to remove these.
+  // TODO[johnx]: investigate if we need to remove these.
   // Called when the socket stream has been closed.
   void OnClose(bool was_clean = true,
                int error_code = net::kWebSocketNormalClosure,
                const std::string& close_reason = std::string());
-
-  void OnWriteDone(uint64_t bytes_written);
 
   void OnWebSocketReceivedData(bool is_text_frame,
                                scoped_refptr<net::IOBufferWithSize> data);
@@ -112,9 +110,6 @@ class WebSocketImpl : public base::RefCountedThreadSafe<WebSocketImpl> {
   void OnWebSocketConnected(const std::string& selected_subprotocol);
   void OnWebSocketDisconnected(bool was_clean, uint16 code,
                                const std::string& reason);
-  void OnWebSocketWriteDone(uint64_t bytes_written);
-
-  void ResetChannel();
 
   THREAD_CHECKER(thread_checker_);
 

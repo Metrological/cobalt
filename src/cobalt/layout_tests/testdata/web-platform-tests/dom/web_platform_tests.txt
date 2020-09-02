@@ -1,6 +1,3 @@
-# AbortController and AbortSignal
-abort/event.any.html,PASS
-
 # MutationObserver tests
 
 # Disabled, until test driver executes fully without Javascript errors

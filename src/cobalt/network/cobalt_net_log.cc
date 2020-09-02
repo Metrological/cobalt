@@ -16,7 +16,6 @@
 
 #include <algorithm>
 
-#include "base/callback.h"
 #include "base/logging.h"
 #include "base/values.h"
 
@@ -24,15 +23,14 @@ namespace cobalt {
 namespace network {
 
 CobaltNetLog::CobaltNetLog(const base::FilePath& log_path,
-                           net::NetLogCaptureMode capture_mode)
-    : net_log_logger_(
-          net::FileNetLogObserver::CreateUnbounded(log_path, nullptr)) {
+                           net::NetLogCaptureMode capture_mode) {
+  net_log_logger_.reset(new NetLogLogger(log_path));
   net_log_logger_->StartObserving(this, capture_mode);
 }
 
 CobaltNetLog::~CobaltNetLog() {
   // Remove the observers we own before we're destroyed.
-  net_log_logger_->StopObserving(nullptr, base::OnceClosure());
+  if (net_log_logger_.get()) RemoveObserver(net_log_logger_.get());
 }
 
 }  // namespace network

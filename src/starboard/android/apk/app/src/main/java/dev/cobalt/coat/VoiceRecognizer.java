@@ -14,8 +14,6 @@
 
 package dev.cobalt.coat;
 
-import static dev.cobalt.util.Log.TAG;
-
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
@@ -26,7 +24,6 @@ import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import dev.cobalt.util.Holder;
-import dev.cobalt.util.Log;
 import dev.cobalt.util.UsedByNative;
 import java.util.ArrayList;
 
@@ -178,12 +175,7 @@ public class VoiceRecognizer {
   }
 
   private void reset() {
-    try {
-      speechRecognizer.destroy();
-    } catch (IllegalArgumentException ex) {
-      // Soft handling
-      Log.e(TAG, "Error in speechRecognizer.destroy()!", ex);
-    }
+    speechRecognizer.destroy();
     speechRecognizer = null;
 
     nativeSpeechRecognizerImpl = 0;

@@ -81,9 +81,6 @@ namespace renderer {
 namespace rasterizer {
 namespace skia {
 
-using common::utils::IsOpaque;
-using common::utils::IsTransparent;
-
 RenderTreeNodeVisitor::RenderTreeNodeVisitor(
     SkCanvas* render_target,
     const CreateScratchSurfaceFunction* create_scratch_surface_function,
@@ -453,13 +450,13 @@ void RenderTreeNodeVisitor::Visit(render_tree::FilterNode* filter_node) {
 #endif  // ENABLE_RENDER_TREE_VISITOR_TRACING
 
   if (filter_node->data().opacity_filter &&
-      IsTransparent(filter_node->data().opacity_filter->opacity())) {
+      filter_node->data().opacity_filter->opacity() <= 0.0f) {
     // The opacity 0, so we have nothing to render.
     return;
   }
 
   if ((!filter_node->data().opacity_filter ||
-       IsOpaque(filter_node->data().opacity_filter->opacity())) &&
+       filter_node->data().opacity_filter->opacity() == 1.0f) &&
       !filter_node->data().viewport_filter &&
       (!filter_node->data().blur_filter ||
        filter_node->data().blur_filter->blur_sigma() == 0.0f)) {
@@ -560,7 +557,7 @@ SkPaint CreateSkPaintForImageRendering(
   // |kLow_SkFilterQuality| is used for bilinear interpolation of images.
   paint.setFilterQuality(kLow_SkFilterQuality);
 
-  if (!IsOpaque(draw_state.opacity)) {
+  if (draw_state.opacity < 1.0f) {
     paint.setAlpha(draw_state.opacity * 255);
   } else if (is_opaque && draw_state.clip_is_rect) {
     paint.setBlendMode(SkBlendMode::kSrc);
@@ -814,7 +811,7 @@ void SkiaBrushVisitor::Visit(
   const cobalt::render_tree::ColorRGBA& color = solid_color_brush->color();
 
   float alpha = color.a() * draw_state_.opacity;
-  if (IsOpaque(alpha)) {
+  if (alpha == 1.0f) {
     paint_->setBlendMode(SkBlendMode::kSrc);
   } else {
     paint_->setBlendMode(SkBlendMode::kSrcOver);
@@ -865,10 +862,10 @@ void SkiaBrushVisitor::Visit(
       SkGradientShader::kInterpolateColorsInPremul_Flag, NULL));
   paint_->setShader(shader);
 
-  if (!skia_color_stops.has_alpha && IsOpaque(draw_state_.opacity)) {
+  if (!skia_color_stops.has_alpha && draw_state_.opacity == 1.0f) {
     paint_->setBlendMode(SkBlendMode::kSrc);
   } else {
-    if (!IsOpaque(draw_state_.opacity)) {
+    if (draw_state_.opacity < 1.0f) {
       paint_->setAlpha(255 * draw_state_.opacity);
     }
     paint_->setBlendMode(SkBlendMode::kSrcOver);
@@ -903,10 +900,10 @@ void SkiaBrushVisitor::Visit(
       SkGradientShader::kInterpolateColorsInPremul_Flag, &local_matrix));
   paint_->setShader(shader);
 
-  if (!skia_color_stops.has_alpha && IsOpaque(draw_state_.opacity)) {
+  if (!skia_color_stops.has_alpha && draw_state_.opacity == 1.0f) {
     paint_->setBlendMode(SkBlendMode::kSrc);
   } else {
-    if (!IsOpaque(draw_state_.opacity)) {
+    if (draw_state_.opacity < 1.0f) {
       paint_->setAlpha(255 * draw_state_.opacity);
     }
     paint_->setBlendMode(SkBlendMode::kSrcOver);
@@ -988,7 +985,7 @@ void DrawUniformSolidNonRoundRectBorder(
   paint.setARGB(alpha * 255, border_color.r() * 255, border_color.g() * 255,
                 border_color.b() * 255);
   paint.setAntiAlias(anti_alias);
-  if (IsOpaque(alpha)) {
+  if (alpha == 1.0f) {
     paint.setBlendMode(SkBlendMode::kSrc);
   } else {
     paint.setBlendMode(SkBlendMode::kSrcOver);
@@ -1015,7 +1012,7 @@ void DrawQuadWithColorIfBorderIsSolid(
     paint.setARGB(alpha * 255, color.r() * 255, color.g() * 255,
                   color.b() * 255);
     paint.setAntiAlias(anti_alias);
-    if (IsOpaque(alpha)) {
+    if (alpha == 1.0f) {
       paint.setBlendMode(SkBlendMode::kSrc);
     } else {
       paint.setBlendMode(SkBlendMode::kSrcOver);
@@ -1131,7 +1128,7 @@ void DrawSolidRoundedRectBorderToRenderTarget(
   float alpha = color.a();
   alpha *= draw_state->opacity;
   paint.setARGB(alpha * 255, color.r() * 255, color.g() * 255, color.b() * 255);
-  if (IsOpaque(alpha)) {
+  if (alpha == 1.0f) {
     paint.setBlendMode(SkBlendMode::kSrc);
   } else {
     paint.setBlendMode(SkBlendMode::kSrcOver);

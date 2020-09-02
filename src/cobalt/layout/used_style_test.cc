@@ -436,15 +436,13 @@ TEST(UsedStyleTest, UsedFlexBasisAutoDependsOnFlexContainer) {
   SizeLayoutUnit flex_container_size(LayoutUnit(200), LayoutUnit(80));
   bool depends_on_flex_container = false;
   auto used_flex_basis = GetUsedFlexBasisIfNotContent(
-      computed_style, true, flex_container_size.width(),
-      &depends_on_flex_container);
+      computed_style, true, flex_container_size, &depends_on_flex_container);
   EXPECT_TRUE(depends_on_flex_container);
   EXPECT_FALSE(used_flex_basis);
 
   depends_on_flex_container = false;
-  used_flex_basis = GetUsedFlexBasisIfNotContent(computed_style, false,
-                                                 flex_container_size.height(),
-                                                 &depends_on_flex_container);
+  used_flex_basis = GetUsedFlexBasisIfNotContent(
+      computed_style, false, flex_container_size, &depends_on_flex_container);
   EXPECT_TRUE(depends_on_flex_container);
   EXPECT_FALSE(used_flex_basis);
 }
@@ -456,16 +454,14 @@ TEST(UsedStyleTest, UsedFlexBasisPercentDependsOnFlexContainerMainSize) {
   SizeLayoutUnit flex_container_size(LayoutUnit(200), LayoutUnit(80));
   bool depends_on_flex_container = false;
   auto used_flex_basis = GetUsedFlexBasisIfNotContent(
-      computed_style, true, flex_container_size.width(),
-      &depends_on_flex_container);
+      computed_style, true, flex_container_size, &depends_on_flex_container);
   EXPECT_TRUE(depends_on_flex_container);
   EXPECT_TRUE(used_flex_basis);
   EXPECT_EQ(*used_flex_basis, LayoutUnit(50));
 
   depends_on_flex_container = false;
-  used_flex_basis = GetUsedFlexBasisIfNotContent(computed_style, false,
-                                                 flex_container_size.height(),
-                                                 &depends_on_flex_container);
+  used_flex_basis = GetUsedFlexBasisIfNotContent(
+      computed_style, false, flex_container_size, &depends_on_flex_container);
   EXPECT_TRUE(depends_on_flex_container);
   EXPECT_TRUE(used_flex_basis);
   EXPECT_EQ(*used_flex_basis, LayoutUnit(20));
@@ -479,16 +475,14 @@ TEST(UsedStyleTest, UsedFlexBasisLengthValue) {
   SizeLayoutUnit flex_container_size(LayoutUnit(200), LayoutUnit(80));
   bool depends_on_flex_container = false;
   auto used_flex_basis = GetUsedFlexBasisIfNotContent(
-      computed_style, true, flex_container_size.width(),
-      &depends_on_flex_container);
+      computed_style, true, flex_container_size, &depends_on_flex_container);
   EXPECT_FALSE(depends_on_flex_container);
   EXPECT_TRUE(used_flex_basis);
   EXPECT_EQ(*used_flex_basis, LayoutUnit(25));
 
   depends_on_flex_container = false;
-  used_flex_basis = GetUsedFlexBasisIfNotContent(computed_style, false,
-                                                 flex_container_size.height(),
-                                                 &depends_on_flex_container);
+  used_flex_basis = GetUsedFlexBasisIfNotContent(
+      computed_style, false, flex_container_size, &depends_on_flex_container);
   EXPECT_FALSE(depends_on_flex_container);
   EXPECT_TRUE(used_flex_basis);
   EXPECT_EQ(*used_flex_basis, LayoutUnit(25));
@@ -532,7 +526,7 @@ TEST(UsedStyleTest, UsedWidthLengthValue) {
   EXPECT_EQ(*used_width, LayoutUnit(25.0f));
 }
 
-TEST(UsedStyleTest, UsedMaxHeightNone) {
+TEST(UsedStyleTest, UsedMaxHeightNoneDependsOnContainingBlock) {
   scoped_refptr<cssom::MutableCSSComputedStyleData> computed_style(
       new cssom::MutableCSSComputedStyleData());
   computed_style->set_max_height(cssom::KeywordValue::GetNone());
@@ -604,25 +598,14 @@ TEST(UsedStyleTest, UsedMaxWidthLengthValue) {
   EXPECT_EQ(*used_max_width, LayoutUnit(25.0f));
 }
 
-TEST(UsedStyleTest, UsedMinHeightAuto) {
-  scoped_refptr<cssom::MutableCSSComputedStyleData> computed_style(
-      new cssom::MutableCSSComputedStyleData());
-  computed_style->set_min_height(cssom::KeywordValue::GetAuto());
-  SizeLayoutUnit containing_block_size(LayoutUnit(200.0f), LayoutUnit(400.0f));
-  auto used_min_height =
-      GetUsedMinHeightIfNotAuto(computed_style, containing_block_size);
-  EXPECT_FALSE(used_min_height);
-}
-
 TEST(UsedStyleTest, UsedMinHeightPercentDependsOnContainingBlockHeight) {
   scoped_refptr<cssom::MutableCSSComputedStyleData> computed_style(
       new cssom::MutableCSSComputedStyleData());
   computed_style->set_min_height(new cssom::PercentageValue(0.25f));
   SizeLayoutUnit containing_block_size(LayoutUnit(200.0f), LayoutUnit(400.0f));
   auto used_min_height =
-      GetUsedMinHeightIfNotAuto(computed_style, containing_block_size);
-  EXPECT_TRUE(used_min_height);
-  EXPECT_EQ(*used_min_height, LayoutUnit(100.0f));
+      GetUsedMinHeight(computed_style, containing_block_size);
+  EXPECT_EQ(used_min_height, LayoutUnit(100.0f));
 }
 
 TEST(UsedStyleTest, UsedMinHeightLengthValue) {
@@ -632,21 +615,8 @@ TEST(UsedStyleTest, UsedMinHeightLengthValue) {
       new cssom::LengthValue(25.0f, cssom::kPixelsUnit));
   SizeLayoutUnit containing_block_size(LayoutUnit(200.0f), LayoutUnit(400.0f));
   auto used_min_height =
-      GetUsedMinHeightIfNotAuto(computed_style, containing_block_size);
-  EXPECT_TRUE(used_min_height);
-  EXPECT_EQ(*used_min_height, LayoutUnit(25.0f));
-}
-
-TEST(UsedStyleTest, UsedMinWidthAutoDoesNotDependOnContainingBlockWidth) {
-  scoped_refptr<cssom::MutableCSSComputedStyleData> computed_style(
-      new cssom::MutableCSSComputedStyleData());
-  computed_style->set_min_width(cssom::KeywordValue::GetAuto());
-  SizeLayoutUnit containing_block_size(LayoutUnit(200.0f), LayoutUnit(400.0f));
-  bool depends_on_containing_block = false;
-  auto used_min_width = GetUsedMinWidthIfNotAuto(
-      computed_style, containing_block_size, &depends_on_containing_block);
-  EXPECT_FALSE(depends_on_containing_block);
-  EXPECT_FALSE(used_min_width);
+      GetUsedMinHeight(computed_style, containing_block_size);
+  EXPECT_EQ(used_min_height, LayoutUnit(25.0f));
 }
 
 TEST(UsedStyleTest, UsedMinWidthPercentDependsOnContainingBlockWidth) {
@@ -655,11 +625,10 @@ TEST(UsedStyleTest, UsedMinWidthPercentDependsOnContainingBlockWidth) {
   computed_style->set_min_width(new cssom::PercentageValue(0.25f));
   SizeLayoutUnit containing_block_size(LayoutUnit(200.0f), LayoutUnit(400.0f));
   bool depends_on_containing_block = false;
-  auto used_min_width = GetUsedMinWidthIfNotAuto(
-      computed_style, containing_block_size, &depends_on_containing_block);
+  auto used_min_width = GetUsedMinWidth(computed_style, containing_block_size,
+                                        &depends_on_containing_block);
   EXPECT_TRUE(depends_on_containing_block);
-  EXPECT_TRUE(used_min_width);
-  EXPECT_EQ(*used_min_width, LayoutUnit(50.0f));
+  EXPECT_EQ(used_min_width, LayoutUnit(50.0f));
 }
 
 TEST(UsedStyleTest, UsedMinWidthLengthValue) {
@@ -669,11 +638,10 @@ TEST(UsedStyleTest, UsedMinWidthLengthValue) {
       new cssom::LengthValue(25.0f, cssom::kPixelsUnit));
   SizeLayoutUnit containing_block_size(LayoutUnit(200.0f), LayoutUnit(400.0f));
   bool depends_on_containing_block = false;
-  auto used_min_width = GetUsedMinWidthIfNotAuto(
-      computed_style, containing_block_size, &depends_on_containing_block);
+  auto used_min_width = GetUsedMinWidth(computed_style, containing_block_size,
+                                        &depends_on_containing_block);
   EXPECT_FALSE(depends_on_containing_block);
-  EXPECT_TRUE(used_min_width);
-  EXPECT_EQ(*used_min_width, LayoutUnit(25.0f));
+  EXPECT_EQ(used_min_width, LayoutUnit(25.0f));
 }
 
 TEST(UsedStyleTest, UsedHeightAutoDependsOnContainingBlock) {

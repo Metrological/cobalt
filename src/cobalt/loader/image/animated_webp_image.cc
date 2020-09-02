@@ -56,7 +56,6 @@ AnimatedWebPImage::AnimatedWebPImage(
       frame_provider_(new FrameProvider()) {
   TRACE_EVENT0("cobalt::loader::image",
                "AnimatedWebPImage::AnimatedWebPImage()");
-  DETACH_FROM_THREAD(task_runner_thread_checker_);
 }
 
 scoped_refptr<AnimatedImage::FrameProvider>
@@ -69,32 +68,27 @@ AnimatedWebPImage::GetFrameProvider() {
 void AnimatedWebPImage::Play(
     const scoped_refptr<base::SingleThreadTaskRunner>& task_runner) {
   TRACE_EVENT0("cobalt::loader::image", "AnimatedWebPImage::Play()");
-  // This function may be called from a thread that is not the task runner
-  // thread, but it must be consistent (and consistent with Stop() also).
-  // This ensures that it's safe to set |task_runner_| without holding a lock.
-  DCHECK_CALLED_ON_VALID_THREAD(task_runner_thread_checker_);
-  if (!task_runner_) {
-    task_runner_ = task_runner;
-  } else {
-    DCHECK_EQ(task_runner_, task_runner);
-  }
+  base::AutoLock lock(lock_);
 
-  task_runner_->PostTask(FROM_HERE, base::Bind(&AnimatedWebPImage::PlayInternal,
-                                               base::Unretained(this)));
+  if (is_playing_) {
+    return;
+  }
+  is_playing_ = true;
+
+  task_runner_ = task_runner;
+  if (received_first_frame_) {
+    PlayInternal();
+  }
 }
 
 void AnimatedWebPImage::Stop() {
   TRACE_EVENT0("cobalt::loader::image", "AnimatedWebPImage::Stop()");
-  // This function may be called from a thread that is not the task runner
-  // thread, but it must be consistent (and consistent with Play() also).
-  DCHECK_CALLED_ON_VALID_THREAD(task_runner_thread_checker_);
-  if (!task_runner_) {
-    // The image has not started playing yet.
-    return;
+  base::AutoLock lock(lock_);
+  if (is_playing_) {
+    task_runner_->PostTask(
+        FROM_HERE,
+        base::Bind(&AnimatedWebPImage::StopInternal, base::Unretained(this)));
   }
-
-  task_runner_->PostTask(FROM_HERE, base::Bind(&AnimatedWebPImage::StopInternal,
-                                               base::Unretained(this)));
 }
 
 void AnimatedWebPImage::AppendChunk(const uint8* data, size_t size) {
@@ -126,7 +120,7 @@ void AnimatedWebPImage::AppendChunk(const uint8* data, size_t size) {
                                (background_color >> 0 & 0xff) / 255.0f);
 
     if (is_playing_) {
-      StartDecoding();
+      PlayInternal();
     }
   }
   frame_count_ = new_frame_count;
@@ -135,75 +129,46 @@ void AnimatedWebPImage::AppendChunk(const uint8* data, size_t size) {
 AnimatedWebPImage::~AnimatedWebPImage() {
   TRACE_EVENT0("cobalt::loader::image",
                "AnimatedWebPImage::~AnimatedWebPImage()");
-  if (task_runner_) {
-    Stop();
+  Stop();
+  bool is_playing = false;
+  {
+    base::AutoLock lock(lock_);
+    is_playing = is_playing_;
+  }
+  if (is_playing) {
     task_runner_->WaitForFence();
   }
-
   WebPDemuxDelete(demux_);
-}
-
-void AnimatedWebPImage::PlayInternal() {
-  TRACE_EVENT0("cobalt::loader::image", "AnimatedWebPImage::PlayInternal()");
-  base::AutoLock lock(lock_);
-
-  if (is_playing_) {
-    return;
-  }
-  is_playing_ = true;
-
-  if (received_first_frame_) {
-    StartDecoding();
-  }
 }
 
 void AnimatedWebPImage::StopInternal() {
   TRACE_EVENT0("cobalt::loader::image", "AnimatedWebPImage::StopInternal()");
   DCHECK(task_runner_->BelongsToCurrentThread());
   base::AutoLock lock(lock_);
-  if (!is_playing_) {
-    return;
-  }
-
   if (!decode_closure_.callback().is_null()) {
     is_playing_ = false;
     decode_closure_.Cancel();
   }
 }
 
-void AnimatedWebPImage::StartDecoding() {
-  TRACE_EVENT0("cobalt::loader::image", "AnimatedWebPImage::StartDecoding()");
-  lock_.AssertAcquired();
+void AnimatedWebPImage::PlayInternal() {
+  TRACE_EVENT0("cobalt::loader::image", "AnimatedWebPImage::PlayInternal()");
   current_frame_time_ = base::TimeTicks::Now();
-  if (task_runner_->BelongsToCurrentThread()) {
-    DecodeFrames();
-  } else {
-    task_runner_->PostTask(FROM_HERE,
-                           base::Bind(&AnimatedWebPImage::LockAndDecodeFrames,
-                                      base::Unretained(this)));
-  }
-}
-
-void AnimatedWebPImage::LockAndDecodeFrames() {
-  TRACE_EVENT0("cobalt::loader::image",
-               "AnimatedWebPImage::LockAndDecodeFrames()");
-  DCHECK(task_runner_->BelongsToCurrentThread());
-
-  base::AutoLock lock(lock_);
-  DecodeFrames();
+  task_runner_->PostTask(FROM_HERE, base::Bind(&AnimatedWebPImage::DecodeFrames,
+                                               base::Unretained(this)));
 }
 
 void AnimatedWebPImage::DecodeFrames() {
   TRACE_EVENT0("cobalt::loader::image", "AnimatedWebPImage::DecodeFrames()");
   TRACK_MEMORY_SCOPE("Rendering");
-  lock_.AssertAcquired();
   DCHECK(is_playing_ && received_first_frame_);
   DCHECK(task_runner_->BelongsToCurrentThread());
 
+  base::AutoLock lock(lock_);
+
   if (decode_closure_.callback().is_null()) {
     decode_closure_.Reset(
-        base::Bind(&AnimatedWebPImage::LockAndDecodeFrames,
-                   base::Unretained(this)));
+        base::Bind(&AnimatedWebPImage::DecodeFrames, base::Unretained(this)));
   }
 
   if (AdvanceFrame()) {

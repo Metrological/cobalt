@@ -71,8 +71,6 @@ SbPlayerPrivate::SbPlayerPrivate(
       this, context));
 
   ++number_of_players_;
-  SB_DLOG(INFO) << "Creating SbPlayerPrivate. There are " << number_of_players_
-                << " players.";
 }
 
 // static

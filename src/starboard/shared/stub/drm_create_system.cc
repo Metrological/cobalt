@@ -52,7 +52,7 @@ SbDrmSystem SbDrmCreateSystem(
   return kSbDrmSystemInvalid;
 }
 
-#else  // SB_HAS(DRM_SESSION_CLOSED)
+#elif SB_HAS(DRM_KEY_STATUSES)
 
 SbDrmSystem SbDrmCreateSystem(
     const char* key_system,
@@ -68,4 +68,18 @@ SbDrmSystem SbDrmCreateSystem(
   return kSbDrmSystemInvalid;
 }
 
-#endif  // SB_HAS(DRM_SESSION_CLOSED)
+#else  // SB_API_VERSION >= 10
+
+SbDrmSystem SbDrmCreateSystem(
+    const char* key_system,
+    void* context,
+    SbDrmSessionUpdateRequestFunc update_request_callback,
+    SbDrmSessionUpdatedFunc session_updated_callback) {
+  SB_UNREFERENCED_PARAMETER(context);
+  SB_UNREFERENCED_PARAMETER(key_system);
+  SB_UNREFERENCED_PARAMETER(update_request_callback);
+  SB_UNREFERENCED_PARAMETER(session_updated_callback);
+  return kSbDrmSystemInvalid;
+}
+
+#endif  // SB_API_VERSION >= 10

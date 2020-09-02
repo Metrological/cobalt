@@ -274,13 +274,30 @@ class AndroidConfiguration(PlatformConfiguration):
   # A map of failing or crashing tests per target.
   __FILTERED_TESTS = {  # pylint: disable=invalid-name
       'player_filter_tests': [
-          # GetMaxNumberOfCachedFrames() on Android is device dependent,
-          # and Android doesn't provide an API to get it. So, this function
-          # doesn't make sense on Android. But HoldFramesUntilFull tests depend
-          # on this number strictly.
-          'VideoDecoderTests/VideoDecoderTest.HoldFramesUntilFull/*',
-
-          # Currently, invalid input tests are not supported.
+          'VideoDecoderTests/VideoDecoderTest.DecodeFullGOP/0',
+          'VideoDecoderTests/VideoDecoderTest.DecodeFullGOP/1',
+          'VideoDecoderTests/VideoDecoderTest.DecodeFullGOP/2',
+          'VideoDecoderTests/VideoDecoderTest.DecodeFullGOP/3',
+          'VideoDecoderTests/VideoDecoderTest.EndOfStreamWithoutAnyInput/0',
+          'VideoDecoderTests/VideoDecoderTest.EndOfStreamWithoutAnyInput/1',
+          'VideoDecoderTests/VideoDecoderTest.EndOfStreamWithoutAnyInput/2',
+          'VideoDecoderTests/VideoDecoderTest.EndOfStreamWithoutAnyInput/3',
+          'VideoDecoderTests/VideoDecoderTest'
+          '.GetCurrentDecodeTargetBeforeWriteInputBuffer/0',
+          'VideoDecoderTests/VideoDecoderTest'
+          '.GetCurrentDecodeTargetBeforeWriteInputBuffer/2',
+          'VideoDecoderTests/VideoDecoderTest.HoldFramesUntilFull/0',
+          'VideoDecoderTests/VideoDecoderTest.HoldFramesUntilFull/1',
+          'VideoDecoderTests/VideoDecoderTest.ResetBeforeInput/0',
+          'VideoDecoderTests/VideoDecoderTest.ResetBeforeInput/1',
+          'VideoDecoderTests/VideoDecoderTest.ResetBeforeInput/2',
+          'VideoDecoderTests/VideoDecoderTest.ResetBeforeInput/3',
+          'VideoDecoderTests/VideoDecoderTest.Preroll/0',
+          'VideoDecoderTests/VideoDecoderTest.Preroll/1',
+          'VideoDecoderTests/VideoDecoderTest.SingleInput/0',
+          'VideoDecoderTests/VideoDecoderTest.SingleInput/1',
+          'VideoDecoderTests/VideoDecoderTest.SingleInput/2',
+          'VideoDecoderTests/VideoDecoderTest.SingleInput/3',
           'VideoDecoderTests/VideoDecoderTest.SingleInvalidInput/*',
           'VideoDecoderTests/VideoDecoderTest'
           '.MultipleValidInputsAfterInvalidKeyFrame/*',
@@ -288,11 +305,9 @@ class AndroidConfiguration(PlatformConfiguration):
 
           # Android currently does not support multi-video playback, which
           # the following tests depend upon.
-          'VideoDecoderTests/VideoDecoderTest.ThreeMoreDecoders/*',
-      ],
-      'nplb': [
-          # This test is failing because localhost is not defined for IPv6 in
-          # /etc/hosts.
-          'SbSocketAddressTypes/SbSocketResolveTest.Localhost/1',
+          'VideoDecoderTests/VideoDecoderTest.ThreeMoreDecoders/0',
+          'VideoDecoderTests/VideoDecoderTest.ThreeMoreDecoders/1',
+          'VideoDecoderTests/VideoDecoderTest.ThreeMoreDecoders/2',
+          'VideoDecoderTests/VideoDecoderTest.ThreeMoreDecoders/3',
       ],
   }

@@ -235,9 +235,7 @@ class CertVerifierJob {
   void set_is_first_job(bool is_first_job) { is_first_job_ = is_first_job; }
 
 #if defined(STARBOARD) && defined(ENABLE_IGNORE_CERTIFICATE_ERRORS)
-  void set_ignore_certificate_errors(bool ignore_certificate_errors) {
-    ignore_certificate_errors_ = ignore_certificate_errors;
-  }
+  void set_ignore_errors(bool ignore_errors) { ignore_errors_ = ignore_errors; }
 #endif
 
   const CertVerifier::RequestParams& key() const { return key_; }
@@ -323,7 +321,7 @@ class CertVerifierJob {
         cert_verifier_->RemoveJob(this);
 
 #if defined(STARBOARD) && defined(ENABLE_IGNORE_CERTIFICATE_ERRORS)
-    if (ignore_certificate_errors_) {
+    if (ignore_errors_) {
       verify_result->result.verified_cert = key_.certificate();
       verify_result->result.cert_status = MapNetErrorToCertStatus(OK);
       verify_result->error = OK;
@@ -360,7 +358,7 @@ class CertVerifierJob {
 
   bool is_first_job_;
 #if defined(STARBOARD) && defined(ENABLE_IGNORE_CERTIFICATE_ERRORS)
-  bool ignore_certificate_errors_ = false;
+  bool ignore_errors_ = false;
 #endif
   base::WeakPtrFactory<CertVerifierJob> weak_ptr_factory_;
 };
@@ -409,7 +407,7 @@ int MultiThreadedCertVerifier::Verify(const RequestParams& params,
     std::unique_ptr<CertVerifierJob> new_job =
         std::make_unique<CertVerifierJob>(params, net_log.net_log(), this);
 #if defined(STARBOARD) && defined(ENABLE_IGNORE_CERTIFICATE_ERRORS)
-    new_job->set_ignore_certificate_errors(ignore_certificate_errors_);
+    new_job->set_ignore_errors(ignore_errors_);
 #endif
 
     new_job->Start(verify_proc_, config_, config_id_);

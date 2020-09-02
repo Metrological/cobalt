@@ -62,11 +62,7 @@ struct SbPlayerPrivate {
 
   SbDecodeTarget GetCurrentDecodeTarget();
 
-  ~SbPlayerPrivate() {
-    --number_of_players_;
-    SB_DLOG(INFO) << "Destroying SbPlayerPrivate. There are "
-                  << number_of_players_ << " players.";
-  }
+  ~SbPlayerPrivate() { --number_of_players_; }
 
   static int number_of_players() { return number_of_players_; }
 

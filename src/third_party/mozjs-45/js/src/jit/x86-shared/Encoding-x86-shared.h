@@ -244,16 +244,6 @@ inline bool IsXMMReversedOperands(TwoByteOpcodeID opcode)
       case OP2_MOVSD_WsdVsd: // also OP2_MOVPS_WpsVps
       case OP2_MOVAPS_WsdVsd:
       case OP2_MOVDQ_WdqVdq:
-        return true;
-      default:
-        break;
-    }
-    return false;
-}
-
-inline bool IsXMMReversedOperands(ThreeByteOpcodeID opcode)
-{
-    switch (opcode) {
       case OP3_PEXTRD_EdVdqIb:
         return true;
       default:

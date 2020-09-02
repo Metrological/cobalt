@@ -261,7 +261,6 @@ bool AlsaAudioSink::IdleLoop() {
     {
       ScopedLock lock(mutex_);
       if (destroying_) {
-        SB_DLOG(INFO) << "alsa::AlsaAudioSink exits idle loop : destroying";
         break;
       }
       playback_rate = playback_rate_;
@@ -271,9 +270,6 @@ bool AlsaAudioSink::IdleLoop() {
     update_source_status_func_(&frames_in_buffer, &offset_in_frames,
                                &is_playing, &is_eos_reached, context_);
     if (is_playing && frames_in_buffer > 0 && playback_rate > 0.0) {
-      SB_DLOG(INFO) << "alsa::AlsaAudioSink exits idle loop : is playing "
-                    << is_playing << " frames in buffer " << frames_in_buffer
-                    << " playback_rate " << playback_rate;
       return true;
     }
     if (drain) {
@@ -298,8 +294,6 @@ bool AlsaAudioSink::PlaybackLoop() {
       ScopedTryLock lock(mutex_);
       if (lock.is_locked()) {
         if (destroying_) {
-          SB_DLOG(INFO)
-              << "alsa::AlsaAudioSink exits playback loop : destroying";
           break;
         }
         playback_rate = playback_rate_;
@@ -308,8 +302,6 @@ bool AlsaAudioSink::PlaybackLoop() {
 
     if (delayed_frame < kMinimumFramesInALSA) {
       if (playback_rate == 0.0) {
-        SB_DLOG(INFO)
-            << "alsa::AlsaAudioSink exits playback loop: playback rate 0";
         return true;
       }
       int frames_in_buffer, offset_in_frames;
@@ -317,8 +309,6 @@ bool AlsaAudioSink::PlaybackLoop() {
       update_source_status_func_(&frames_in_buffer, &offset_in_frames,
                                  &is_playing, &is_eos_reached, context_);
       if (!is_playing || frames_in_buffer == 0) {
-        SB_DLOG(INFO) << "alsa::AlsaAudioSink exits playback loop: is playing "
-                      << is_playing << " frames in buffer " << frames_in_buffer;
         return true;
       }
       WriteFrames(playback_rate, std::min(kFramesPerRequest, frames_in_buffer),
@@ -348,9 +338,6 @@ void AlsaAudioSink::WriteFrames(double playback_rate,
           frames_to_buffer_end);
       consume_frame_func_(consumed, context_);
       if (consumed != frames_to_buffer_end) {
-        SB_DLOG(INFO) << "alsa::AlsaAudioSink exits write frames : consumed "
-                      << consumed << " frames, with " << frames_to_buffer_end
-                      << " frames to buffer end";
         return;
       }
 

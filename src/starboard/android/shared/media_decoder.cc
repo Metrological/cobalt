@@ -303,11 +303,7 @@ void MediaDecoder::JoinOnThreads() {
 
   if (is_valid()) {
     host_->OnFlushing();
-    // After |decoder_thread_| is ended and before |media_codec_bridge_| is
-    // flushed, OnMediaCodecOutputBufferAvailable() would still be called.
-    // So that, |dequeue_output_results_| may not be empty. As we call
-    // JoinOnThreads() in destructor and DequeueOutputResult is consisted of
-    // plain data, it's fine to let destructor delete |dequeue_output_results_|.
+
     jint status = media_codec_bridge_->Flush();
     if (status != MEDIA_CODEC_OK) {
       SB_LOG(ERROR) << "Failed to flush media codec.";
@@ -466,15 +462,8 @@ void MediaDecoder::HandleError(const char* action_name, jint status) {
     is_output_restricted_ = true;
     drm_system_->OnInsufficientOutputProtection();
   } else {
-    if (media_type_ == kSbMediaTypeAudio) {
-      error_cb_(kSbPlayerErrorDecode,
-                FormatString("%s failed with status %d (audio).", action_name,
-                             status));
-    } else {
-      error_cb_(kSbPlayerErrorDecode,
-                FormatString("%s failed with status %d (video).", action_name,
-                             status));
-    }
+    error_cb_(kSbPlayerErrorDecode,
+              FormatString("%s failed with status %d.", action_name, status));
   }
 
   if (retry) {
@@ -496,15 +485,7 @@ void MediaDecoder::OnMediaCodecError(bool is_recoverable,
                   << " error with message: " << diagnostic_info;
 
   if (!is_transient) {
-    if (media_type_ == kSbMediaTypeAudio) {
-      error_cb_(kSbPlayerErrorDecode,
-                "OnMediaCodecError (audio): " + diagnostic_info +
-                    (is_recoverable ? ", recoverable " : ", unrecoverable "));
-    } else {
-      error_cb_(kSbPlayerErrorDecode,
-                "OnMediaCodecError (video): " + diagnostic_info +
-                    (is_recoverable ? ", recoverable " : ", unrecoverable "));
-    }
+    error_cb_(kSbPlayerErrorDecode, "OnMediaCodecError");
   }
 }
 

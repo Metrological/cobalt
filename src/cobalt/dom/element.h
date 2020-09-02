@@ -99,7 +99,6 @@ class Element : public Node {
                                              const std::string& name) const;
   bool HasAttributeNS(const std::string& namespace_uri,
                       const std::string& name) const;
-  bool Matches(const std::string& selectors,script::ExceptionState* exception_state);
 
   scoped_refptr<HTMLCollection> GetElementsByTagName(
       const std::string& local_name) const;

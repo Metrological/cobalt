@@ -41,11 +41,6 @@ class Raspi0PlatformConfig(shared_configuration.RaspiPlatformConfig):
           # TODO: debug these failures.
           'SbPlayerTest.MultiPlayer',  # crashes
       ],
-      # Temporarily disable most of the tests until we can narrow it down to the
-      # minimum number of cases that are real test failures.
-      'player_filter_tests': [
-          'VideoDecoderTests/VideoDecoderTest.DecodeFullGOP/0'
-      ]
   }
 
 

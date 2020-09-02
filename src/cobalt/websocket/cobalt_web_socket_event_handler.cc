@@ -66,9 +66,7 @@ void CobaltWebSocketEventHandler::OnDataFrame(
   if (message_type_ == net::WebSocketFrameHeader::kOpCodeControlUnused) {
     message_type_ = type;
   }
-  if (type != net::WebSocketFrameHeader::kOpCodeContinuation) {
-    DCHECK_EQ(message_type_, type);
-  }
+  DCHECK_EQ(message_type_, type);
   frame_data_.push_back(std::make_pair(std::move(buffer), buffer_size));
   if (fin) {
     std::size_t message_length = GetMessageLength(frame_data_);
@@ -112,7 +110,7 @@ void CobaltWebSocketEventHandler::OnSSLCertificateError(
     std::unique_ptr<net::WebSocketEventInterface::SSLErrorCallbacks>
         ssl_error_callbacks,
     const GURL& /*url*/, const net::SSLInfo& /*ssl_info*/, bool /*fatal*/) {
-  // TODO: determine if there are circumstances we want to continue
+  // TODO[johnx]: determine if there are circumstances we want to continue
   // the request.
   DLOG(WARNING) << "SSL cert failure occured, cancelling connection";
   ssl_error_callbacks->CancelSSLRequest(net::ERR_BAD_SSL_CLIENT_AUTH_CERT,
@@ -126,10 +124,6 @@ int CobaltWebSocketEventHandler::OnAuthRequired(
     base::Optional<net::AuthCredentials>* /*credentials*/) {
   NOTIMPLEMENTED();
   return net::OK;
-}
-
-void CobaltWebSocketEventHandler::OnWriteDone(uint64_t bytes_written) {
-  creator_->OnWriteDone(bytes_written);
 }
 
 }  // namespace websocket

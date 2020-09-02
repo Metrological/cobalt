@@ -520,13 +520,7 @@ TEST_F(CertNetFetcherImplTest, CancelAfterRunningMessageLoop) {
 
 // Fetch the same URLs in parallel and verify that only 1 request is made per
 // URL.
-#if defined(STARBOARD)
-// STARBOARD does not use CertNetFetcher at all, but this test fails on some
-// platform.
-TEST_F(CertNetFetcherImplTest, DISABLED_ParallelFetchDuplicates) {
-#else
 TEST_F(CertNetFetcherImplTest, ParallelFetchDuplicates) {
-#endif
   ASSERT_TRUE(test_server_.Start());
 
   CreateFetcher();
@@ -592,13 +586,7 @@ TEST_F(CertNetFetcherImplTest, CancelThenStart) {
 }
 
 // Start duplicate requests and then cancel all of them.
-#if defined(STARBOARD)
-// STARBOARD does not use CertNetFetcher at all, but this test fails on some
-// platform.
-TEST_F(CertNetFetcherImplTest, DISABLED_CancelAll) {
-#else
 TEST_F(CertNetFetcherImplTest, CancelAll) {
-#endif
   ASSERT_TRUE(test_server_.Start());
 
   CreateFetcher();

@@ -421,10 +421,9 @@ public class StarboardBridge {
       String title,
       String artist,
       String album,
-      MediaImage[] artwork,
-      long duration) {
+      MediaImage[] artwork) {
     cobaltMediaSession.updateMediaSession(
-        playbackState, actions, positionMs, speed, title, artist, album, artwork, duration);
+        playbackState, actions, positionMs, speed, title, artist, album, artwork);
   }
 
   /** Returns string for kSbSystemPropertyUserAgentAuxField */
@@ -525,11 +524,6 @@ public class StarboardBridge {
     return false;
   }
 
-  /** Return the CobaltMediaSession. */
-  public CobaltMediaSession cobaltMediaSession() {
-    return cobaltMediaSession;
-  }
-
   public void registerCobaltService(CobaltService.Factory factory) {
     cobaltServiceFactories.put(factory.getServiceName(), factory);
   }
@@ -555,7 +549,6 @@ public class StarboardBridge {
     }
     CobaltService service = factory.createCobaltService(nativeService);
     if (service != null) {
-      service.receiveStarboardBridge(this);
       cobaltServices.put(serviceName, service);
     }
     return service;
