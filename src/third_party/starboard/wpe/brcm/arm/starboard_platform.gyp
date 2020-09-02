@@ -42,6 +42,7 @@
         '<(DEPTH)/third_party/starboard/wpe/brcm/arm/media/media_get_audio_output_count.cc',
         '<@(sources)',
         'atomic_public.h',
+        'player/player_video_sink.cc',
         'audio_sink/gstreamer_audio_sink_type_lifecycle.cc',
         'thread_types_public.h',
       ],
