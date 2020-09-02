@@ -47,13 +47,16 @@ struct SbPlayerPrivate {
                   void* context,
                   SbPlayerOutputMode output_mode,
                   SbDecodeTargetGraphicsContextProvider* provider);
-  ~SbPlayerPrivate() {}
+  ~SbPlayerPrivate() {
+    --player_index_;
+  }
 
   int MaxNumberOfSamplesPerWrite() const {
     using third_party::starboard::wpe::shared::player::Player;
     return Player::MaxNumberOfSamplesPerWrite();
   }
   std::unique_ptr<third_party::starboard::wpe::shared::player::Player> player_;
+  static int player_index_;
 };
 
 #endif  // THIRD_PARTY_STARBOARD_WPE_SHARED_PLAYER_PLAYER_INTERNAL_H_
