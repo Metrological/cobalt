@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "starboard/configuration.h"
+
+#if SB_API_VERSION >= 12 || SB_HAS(GLES2)
+
 #include "cobalt/renderer/rasterizer/skia/hardware_resource_provider.h"
 
 #include <memory>
@@ -30,6 +34,7 @@
 #include "cobalt/renderer/rasterizer/skia/hardware_mesh.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkFontMgr_cobalt.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkTypeface_cobalt.h"
+#include "cobalt/renderer/rasterizer/skia/skottie_animation.h"
 #include "cobalt/renderer/rasterizer/skia/typeface.h"
 #include "third_party/ots/include/opentype-sanitiser.h"
 #include "third_party/ots/include/ots-memory-stream.h"
@@ -55,12 +60,14 @@ HardwareResourceProvider::HardwareResourceProvider(
       submit_offscreen_callback_(submit_offscreen_callback),
       purge_skia_font_caches_on_destruction_(
           purge_skia_font_caches_on_destruction),
-      max_texture_size_(gr_context->caps()->maxTextureSize()),
-      self_message_loop_(base::MessageLoop::current()) {
+      max_texture_size_(gr_context->maxTextureSize()) {
+  if (base::MessageLoop::current()) {
+    rasterizer_task_runner_ = base::MessageLoop::current()->task_runner();
+  }
+
   // Initialize the font manager now to ensure that it doesn't get initialized
   // on multiple threads simultaneously later.
   SkFontMgr::RefDefault();
-#if SB_HAS(GRAPHICS)
   decode_target_graphics_context_provider_.egl_display =
       cobalt_context_->system_egl()->GetDisplay();
   decode_target_graphics_context_provider_.egl_context =
@@ -68,7 +75,6 @@ HardwareResourceProvider::HardwareResourceProvider(
   decode_target_graphics_context_provider_.gles_context_runner =
       &HardwareResourceProvider::GraphicsContextRunner;
   decode_target_graphics_context_provider_.gles_context_runner_context = this;
-#endif  // SB_HAS(GRAPHICS)
 }
 
 HardwareResourceProvider::~HardwareResourceProvider() {
@@ -85,8 +91,9 @@ HardwareResourceProvider::~HardwareResourceProvider() {
 void HardwareResourceProvider::Finish() {
   // Wait for any resource-related to complete (by waiting for all tasks to
   // complete).
-  if (base::MessageLoop::current() != self_message_loop_) {
-    self_message_loop_->task_runner()->WaitForFence();
+  if (rasterizer_task_runner_ &&
+      !rasterizer_task_runner_->BelongsToCurrentThread()) {
+    rasterizer_task_runner_->WaitForFence();
   }
 }
 
@@ -155,10 +162,9 @@ scoped_refptr<render_tree::Image> HardwareResourceProvider::CreateImage(
   // any subsequently submitted render trees referencing the frontend image.
   return base::WrapRefCounted(new HardwareFrontendImage(
       std::move(skia_hardware_source_data), cobalt_context_, gr_context_,
-      self_message_loop_));
+      rasterizer_task_runner_));
 }
 
-#if SB_HAS(GRAPHICS)
 namespace {
 
 uint32_t DecodeTargetFormatToGLFormat(
@@ -211,9 +217,7 @@ uint32_t DecodeTargetFormatToGLFormat(
       }
 #endif  // SB_API_VERSION >= 7
     } break;
-#if SB_API_VERSION >= 10
     case kSbDecodeTargetFormat3Plane10BitYUVI420:
-#endif
     case kSbDecodeTargetFormat3PlaneYUVI420: {
       DCHECK_LT(plane, 3);
 #if SB_API_VERSION >= 7 && defined(GL_RED_EXT)
@@ -239,11 +243,9 @@ DecodeTargetFormatToRenderTreeMultiPlaneFormat(SbDecodeTargetFormat format) {
     case kSbDecodeTargetFormat3PlaneYUVI420: {
       return render_tree::kMultiPlaneImageFormatYUV3PlaneBT709;
     } break;
-#if SB_API_VERSION >= 10
     case kSbDecodeTargetFormat3Plane10BitYUVI420: {
       return render_tree::kMultiPlaneImageFormatYUV3Plane10BitBT2020;
     } break;
-#endif
     default: { NOTREACHED(); }
   }
   return render_tree::kMultiPlaneImageFormatYUV2PlaneBT709;
@@ -323,7 +325,8 @@ HardwareResourceProvider::CreateImageFromSbDecodeTarget(
 
     planes.push_back(base::WrapRefCounted(new HardwareFrontendImage(
         std::move(texture), alpha_format, cobalt_context_, gr_context_,
-        std::move(content_region), self_message_loop_, alternate_rgba_format)));
+        std::move(content_region), rasterizer_task_runner_,
+        alternate_rgba_format)));
   }
 
   if (planes_per_format == 1) {
@@ -357,13 +360,14 @@ void HardwareResourceProvider::GraphicsContextRunner(
       reinterpret_cast<HardwareResourceProvider*>(
           graphics_context_provider->gles_context_runner_context);
 
-  if (base::MessageLoop::current() != provider->self_message_loop_) {
+  if (provider->rasterizer_task_runner_ &&
+      !provider->rasterizer_task_runner_->BelongsToCurrentThread()) {
     // Post a task to the rasterizer thread to have it run the requested
     // function, and wait for it to complete before returning.
     base::WaitableEvent done_event(
         base::WaitableEvent::ResetPolicy::MANUAL,
         base::WaitableEvent::InitialState::NOT_SIGNALED);
-    provider->self_message_loop_->task_runner()->PostTask(
+    provider->rasterizer_task_runner_->PostTask(
         FROM_HERE, base::Bind(&RunGraphicsContextRunnerOnRasterizerThread,
                               target_function, target_function_context,
                               provider->cobalt_context_, &done_event));
@@ -376,8 +380,6 @@ void HardwareResourceProvider::GraphicsContextRunner(
     target_function(target_function_context);
   }
 }
-
-#endif  // SB_HAS(GRAPHICS)
 
 std::unique_ptr<RawImageMemory>
 HardwareResourceProvider::AllocateRawImageMemory(size_t size_in_bytes,
@@ -413,7 +415,7 @@ HardwareResourceProvider::CreateMultiPlaneImageFromRawMemory(
 
   return base::WrapRefCounted(new HardwareMultiPlaneImage(
       std::move(skia_hardware_raw_image_memory), descriptor, cobalt_context_,
-      gr_context_, self_message_loop_));
+      gr_context_, rasterizer_task_runner_));
 }
 
 bool HardwareResourceProvider::HasLocalFontFamily(
@@ -509,7 +511,7 @@ HardwareResourceProvider::CreateTypefaceFromRawData(
 
   sk_sp<SkTypeface_Cobalt> typeface(
       base::polymorphic_downcast<SkTypeface_Cobalt*>(
-          SkTypeface::MakeFromStream(stream.release()).release()));
+          SkTypeface::MakeFromStream(std::move(stream)).release()));
   if (typeface) {
     return scoped_refptr<render_tree::Typeface>(new SkiaTypeface(typeface));
   } else {
@@ -543,6 +545,14 @@ float HardwareResourceProvider::GetTextWidth(
                                    font_provider, maybe_used_fonts);
 }
 
+scoped_refptr<render_tree::LottieAnimation>
+HardwareResourceProvider::CreateLottieAnimation(const char* data,
+                                                size_t length) {
+  TRACE_EVENT0("cobalt::renderer",
+               "HardwareResourceProvider::CreateLottieAnimation()");
+  return base::WrapRefCounted(new SkottieAnimation(data, length));
+}
+
 scoped_refptr<render_tree::Mesh> HardwareResourceProvider::CreateMesh(
     std::unique_ptr<std::vector<render_tree::Mesh::Vertex> > vertices,
     render_tree::Mesh::DrawMode draw_mode) {
@@ -553,10 +563,12 @@ scoped_refptr<render_tree::Image> HardwareResourceProvider::DrawOffscreenImage(
     const scoped_refptr<render_tree::Node>& root) {
   return base::WrapRefCounted(new HardwareFrontendImage(
       root, submit_offscreen_callback_, cobalt_context_, gr_context_,
-      self_message_loop_));
+      rasterizer_task_runner_));
 }
 
 }  // namespace skia
 }  // namespace rasterizer
 }  // namespace renderer
 }  // namespace cobalt
+
+#endif  // SB_API_VERSION >= 12 || SB_HAS(GLES2)

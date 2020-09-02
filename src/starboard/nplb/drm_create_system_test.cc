@@ -40,11 +40,9 @@ TEST(SbDrmTest, AnySupportedKeySystems) {
   EXPECT_TRUE(any_supported_key_systems) << " no DRM key systems supported";
 }
 
-#if SB_API_VERSION >= 10
 TEST(SbDrmTest, NullCallbacks) {
   for (int i = 0; i < SB_ARRAY_SIZE_INT(kKeySystems); ++i) {
     const char* key_system = kKeySystems[i];
-#if SB_API_VERSION >= 10
     {
       SbDrmSystem drm_system = SbDrmCreateSystem(
           key_system, NULL /* context */,
@@ -86,83 +84,9 @@ TEST(SbDrmTest, NullCallbacks) {
       EXPECT_FALSE(SbDrmSystemIsValid(drm_system));
       SbDrmDestroySystem(drm_system);
     }
-#elif SB_HAS(DRM_SESSION_CLOSED)
-    {
-      SbDrmSystem drm_system = SbDrmCreateSystem(
-          key_system, NULL /* context */,
-          NULL /* session_update_request_func */, DummySessionUpdatedFunc,
-          DummySessionKeyStatusesChangedFunc, DummySessionClosedFunc);
-      EXPECT_FALSE(SbDrmSystemIsValid(drm_system));
-      SbDrmDestroySystem(drm_system);
-    }
-    {
-      SbDrmSystem drm_system = SbDrmCreateSystem(
-          key_system, NULL /* context */, DummySessionUpdateRequestFunc,
-          NULL /*session_updated_func */, DummySessionKeyStatusesChangedFunc,
-          DummySessionClosedFunc);
-      EXPECT_FALSE(SbDrmSystemIsValid(drm_system));
-      SbDrmDestroySystem(drm_system);
-    }
-    {
-      SbDrmSystem drm_system = SbDrmCreateSystem(
-          key_system, NULL /* context */, DummySessionUpdateRequestFunc,
-          DummySessionUpdatedFunc, NULL /* session_key_statuses_changed_func */,
-          DummySessionClosedFunc);
-      EXPECT_FALSE(SbDrmSystemIsValid(drm_system));
-      SbDrmDestroySystem(drm_system);
-    }
-    {
-      SbDrmSystem drm_system = SbDrmCreateSystem(
-          key_system, NULL /* context */, DummySessionUpdateRequestFunc,
-          DummySessionUpdatedFunc, DummySessionKeyStatusesChangedFunc,
-          NULL /* session_closed_func */);
-      EXPECT_FALSE(SbDrmSystemIsValid(drm_system));
-      SbDrmDestroySystem(drm_system);
-    }
-#elif SB_HAS(DRM_KEY_STATUSES)
-    {
-      SbDrmSystem drm_system = SbDrmCreateSystem(
-          key_system, NULL /* context */,
-          NULL /* session_update_request_func */, DummySessionUpdatedFunc,
-          DummySessionKeyStatusesChangedFunc);
-      EXPECT_FALSE(SbDrmSystemIsValid(drm_system));
-      SbDrmDestroySystem(drm_system);
-    }
-    {
-      SbDrmSystem drm_system = SbDrmCreateSystem(
-          key_system, NULL /* context */, DummySessionUpdateRequestFunc,
-          NULL /* session_updated_func */, DummySessionKeyStatusesChangedFunc);
-      EXPECT_FALSE(SbDrmSystemIsValid(drm_system));
-      SbDrmDestroySystem(drm_system);
-    }
-    {
-      SbDrmSystem drm_system = SbDrmCreateSystem(
-          key_system, NULL /* context */, DummySessionUpdateRequestFunc,
-          DummySessionUpdatedFunc,
-          NULL /* session_key_statuses_changed_func */);
-      EXPECT_FALSE(SbDrmSystemIsValid(drm_system));
-      SbDrmDestroySystem(drm_system);
-    }
-#else
-    {
-      SbDrmSystem drm_system = SbDrmCreateSystem(
-          key_system, NULL /* context */,
-          NULL /* session_update_request_func */, DummySessionUpdatedFunc);
-      EXPECT_FALSE(SbDrmSystemIsValid(drm_system));
-    }
-    {
-      SbDrmSystem drm_system = SbDrmCreateSystem(
-          key_system, NULL /* context */, DummySessionUpdateRequestFunc,
-          NULL /* session_updated_func */);
-      EXPECT_FALSE(SbDrmSystemIsValid(drm_system));
-      SbDrmDestroySystem(drm_system);
-    }
-#endif  // SB_HAS(DRM_KEY_STATUSES)
   }
 }
-#endif  // SB_API_VERSION >= 10
 
-#if SB_API_VERSION >= 10
 TEST(SbDrmTest, MultiDrm) {
   const int kMaxPlayersPerKeySystem = 16;
   std::vector<SbDrmSystem> created_drm_systems;
@@ -186,7 +110,6 @@ TEST(SbDrmTest, MultiDrm) {
     SbDrmDestroySystem(drm_system);
   }
 }
-#endif  // SB_API_VERSION >= 10
 
 }  // namespace
 }  // namespace nplb

@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "base/threading/thread.h"
-#include "cobalt/loader/cobalt_url_fetcher_string_writer.h"
+#include "cobalt/loader/url_fetcher_string_writer.h"
 #include "cobalt/media/base/shell_audio_bus.h"
 #include "cobalt/network/network_module.h"
 #include "cobalt/speech/audio_encoder_flac.h"
@@ -69,10 +69,10 @@ class GoogleSpeechService : public net::URLFetcherDelegate {
   // net::URLFetcherDelegate interface
   void OnURLFetchDownloadProgress(const net::URLFetcher* source,
                                   int64_t current, int64_t total,
-                                  int64_t /*current_network_bytes*/) override;
+                                  int64_t current_network_bytes) override;
   void OnURLFetchComplete(const net::URLFetcher* source) override;
-  void OnURLFetchUploadProgress(const net::URLFetcher* /*source*/,
-                                int64 /*current*/, int64 /*total*/) override {}
+  void OnURLFetchUploadProgress(const net::URLFetcher* source, int64 current,
+                                int64 total) override {}
 
   static base::Optional<std::string> GetSpeechAPIKey();
 
@@ -108,7 +108,7 @@ class GoogleSpeechService : public net::URLFetcherDelegate {
   // Speech recognizer is operating in its own thread.
   base::Thread thread_;
   // Stores fetched response.
-  CobaltURLFetcherStringWriter* download_data_writer_ = nullptr;
+  loader::URLFetcherStringWriter* download_data_writer_ = nullptr;
 
   // Use a task runner to deal with all wrappables.
   base::WeakPtrFactory<GoogleSpeechService> weak_ptr_factory_;

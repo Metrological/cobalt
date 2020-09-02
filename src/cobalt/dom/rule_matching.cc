@@ -175,7 +175,7 @@ class SelectorMatcher : public cssom::SelectorVisitor {
   // The universal selector represents the qualified name of any element type.
   //   https://www.w3.org/TR/selectors4/#universal-selector
   void VisitUniversalSelector(
-      cssom::UniversalSelector* /* universal_selector */) override {}
+      cssom::UniversalSelector* universal_selector) override {}
 
   // A type selector represents an instance of the element type in the document
   // tree.
@@ -354,18 +354,6 @@ Element* MatchSelectorAndElement(cssom::Selector* selector, Element* element,
   SelectorMatcher selector_matcher(element, matching_combinators);
   selector->Accept(&selector_matcher);
   return selector_matcher.element();
-}
-
-bool MatchRuleAndElement(cssom::CSSStyleRule* rule, Element* element) {
-  for (cssom::Selectors::const_iterator selector_iterator =
-           rule->selectors().begin();
-       selector_iterator != rule->selectors().end(); ++selector_iterator) {
-    DCHECK(*selector_iterator);
-    if (MatchSelectorAndElement(selector_iterator->get(), element, true)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 void GatherCandidateNodesFromSelectorNodesMap(
@@ -958,6 +946,18 @@ scoped_refptr<Element> QuerySelector(Node* node, const std::string& selectors,
     child = iterator.Next();
   }
   return NULL;
+}
+
+bool MatchRuleAndElement(cssom::CSSStyleRule* rule, Element* element) {
+  for (cssom::Selectors::const_iterator selector_iterator =
+           rule->selectors().begin();
+       selector_iterator != rule->selectors().end(); ++selector_iterator) {
+    DCHECK(*selector_iterator);
+    if (MatchSelectorAndElement(selector_iterator->get(), element, true)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 scoped_refptr<NodeList> QuerySelectorAll(Node* node,

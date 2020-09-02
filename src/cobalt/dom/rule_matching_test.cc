@@ -32,8 +32,11 @@
 #include "cobalt/dom/node.h"
 #include "cobalt/dom/node_descendants_iterator.h"
 #include "cobalt/dom/node_list.h"
+#include "cobalt/dom/testing/stub_environment_settings.h"
 #include "cobalt/dom/testing/stub_window.h"
 #include "cobalt/dom_parser/parser.h"
+#include "cobalt/script/script_exception.h"
+#include "cobalt/script/testing/mock_exception_state.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 using cobalt::cssom::ViewportSize;
@@ -41,15 +44,19 @@ using cobalt::cssom::ViewportSize;
 namespace cobalt {
 namespace dom {
 
+using script::testing::MockExceptionState;
+using ::testing::StrictMock;
+
 class RuleMatchingTest : public ::testing::Test {
  protected:
   RuleMatchingTest()
       : css_parser_(css_parser::Parser::Create()),
         dom_parser_(new dom_parser::Parser()),
         dom_stat_tracker_(new DomStatTracker("RuleMatchingTest")),
-        html_element_context_(NULL, NULL, css_parser_.get(), dom_parser_.get(),
+        html_element_context_(&environment_settings_, NULL, NULL,
+                              css_parser_.get(), dom_parser_.get(), NULL, NULL,
                               NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                              NULL, NULL, NULL, dom_stat_tracker_.get(), "",
+                              NULL, dom_stat_tracker_.get(), "",
                               base::kApplicationStateStarted, NULL),
         document_(new Document(&html_element_context_)),
         root_(document_->CreateElement("html")->AsHTMLElement()),
@@ -69,6 +76,7 @@ class RuleMatchingTest : public ::testing::Test {
     return document_->style_sheets()->Item(index)->AsCSSStyleSheet();
   }
 
+  testing::StubEnvironmentSettings environment_settings_;
   std::unique_ptr<css_parser::Parser> css_parser_;
   std::unique_ptr<dom_parser::Parser> dom_parser_;
   std::unique_ptr<DomStatTracker> dom_stat_tracker_;
@@ -774,6 +782,13 @@ TEST_F(RuleMatchingTest, QuerySelectorAllShouldReturnAllMatches) {
 
   node_list = QuerySelectorAll(document_, "span", css_parser_.get());
   EXPECT_EQ(0, node_list->length());
+}
+
+TEST_F(RuleMatchingTest, ElementMatches) {
+  scoped_refptr<Element> root = new Element(document_, base::Token("root"));
+  StrictMock<MockExceptionState> exception_state;
+  EXPECT_TRUE(root->Matches("root", &exception_state));
+  EXPECT_FALSE(root->Matches("r", &exception_state));
 }
 
 TEST_F(RuleMatchingTest, StyleElementRemoval) {

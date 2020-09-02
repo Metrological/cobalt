@@ -13,6 +13,9 @@
 # limitations under the License.
 
 {
+  'variables': {
+    'optimize_target_for_speed': 1,
+  },
   'targets': [
     {
       # This target conveniently aggregates all sub-modules required to declare
@@ -37,12 +40,7 @@
         'submission_queue.cc',
         'submission_queue.h',
       ],
-      'defines': [
-        'COBALT_MINIMUM_FRAME_TIME_IN_MILLISECONDS=<(cobalt_minimum_frame_time_in_milliseconds)',
-      ],
-      'includes': [
-        'renderer_parameters_setup.gypi',
-      ],
+
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
         '<(DEPTH)/cobalt/content/fonts/fonts.gyp:copy_font_data',
@@ -59,6 +57,11 @@
         ['OS=="starboard"', {
           'dependencies': [
             '<(default_renderer_options_dependency)',
+          ],
+        }],
+        ['cobalt_minimum_frame_time_in_milliseconds != -1', {
+          'defines': [
+            'COBALT_MINIMUM_FRAME_TIME_IN_MILLISECONDS=<(cobalt_minimum_frame_time_in_milliseconds)',
           ],
         }],
       ],
@@ -98,17 +101,19 @@
       ],
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
-        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
         'render_tree_pixel_tester',
         'renderer_copy_test_data',
       ],
       'conditions': [
-        ['enable_map_to_mesh == 1', {
-          'defines' : ['ENABLE_MAP_TO_MESH'],
+        ['enable_map_to_mesh != -1', {
+          'defines' : [
+            'ENABLE_MAP_TO_MESH=<(enable_map_to_mesh)',
+          ],
         }],
       ],
+      'includes': [ '<(DEPTH)/cobalt/test/test.gypi' ],
     },
     {
       'target_name': 'renderer_copy_test_data',
@@ -132,6 +137,5 @@
       },
       'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
-
   ],
 }

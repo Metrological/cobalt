@@ -149,6 +149,12 @@ class NET_EXPORT HttpNetworkSession {
     bool enable_quic_proxies_for_https_urls;
 #endif
 
+#if defined(STARBOARD)
+    // If true, request to an origin without recorded alt-svc info will
+    // try to establish both QUIC and TCP connections and use the faster one.
+    bool use_quic_for_unknown_origins;
+#endif
+
     // QUIC runtime configuration options.
 
     // Versions of QUIC which may be used.
@@ -334,11 +340,7 @@ class NET_EXPORT HttpNetworkSession {
     return websocket_endpoint_lock_manager_.get();
   }
   SpdySessionPool* spdy_session_pool() {
-#if defined(COBALT_DISABLE_SPDY)
-    return NULL;
-#else
     return &spdy_session_pool_;
-#endif  // defined(COBALT_DISABLE_SPDY)
   }
 #if !defined(QUIC_DISABLED_FOR_STARBOARD)
   QuicStreamFactory* quic_stream_factory() { return &quic_stream_factory_; }
@@ -400,6 +402,16 @@ class NET_EXPORT HttpNetworkSession {
   // Disable QUIC for new streams.
   void DisableQuic();
 
+#if defined(STARBOARD)
+  // Toggle QUIC support for new streams.
+  void ToggleQuic();
+
+  void SetEnableQuic(bool enable_quic);
+
+  // Whether to try QUIC connection for origins without alt-svc on record.
+  bool UseQuicForUnknownOrigin() const;
+#endif  // defined(STARBOARD)
+
  private:
   friend class HttpNetworkSessionPeer;
 
@@ -427,9 +439,7 @@ class NET_EXPORT HttpNetworkSession {
 #if !defined(QUIC_DISABLED_FOR_STARBOARD)
   QuicStreamFactory quic_stream_factory_;
 #endif
-#if !defined(COBALT_DISABLE_SPDY)
   SpdySessionPool spdy_session_pool_;
-#endif  // !defined(COBALT_DISABLE_SPDY)
   std::unique_ptr<HttpStreamFactory> http_stream_factory_;
   std::map<HttpResponseBodyDrainer*, std::unique_ptr<HttpResponseBodyDrainer>>
       response_drainers_;

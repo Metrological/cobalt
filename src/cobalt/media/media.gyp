@@ -3,6 +3,9 @@
 # found in the LICENSE file.
 
 {
+  'variables': {
+    'optimize_target_for_speed': 1,
+  },
   'targets': [
     {
       'target_name': 'media',
@@ -58,6 +61,8 @@
         'base/demuxer_stream_provider.h',
         'base/drm_system.cc',
         'base/drm_system.h',
+        "base/encryption_pattern.cc",
+        "base/encryption_pattern.h",
         'base/encryption_scheme.cc',
         'base/encryption_scheme.h',
         'base/hdr_metadata.cc',
@@ -76,6 +81,8 @@
         'base/mime_util.h',
         'base/mime_util_internal.cc',
         'base/mime_util_internal.h',
+        'base/playback_statistics.cc',
+        'base/playback_statistics.h',
         'base/ranges.cc',
         'base/ranges.h',
         'base/sample_format.cc',
@@ -229,7 +236,6 @@
       'dependencies': [
         'media',
         '<(DEPTH)/cobalt/base/base.gyp:base',
-        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
       ],
@@ -238,6 +244,7 @@
         'filters/shell_mp4_map_unittest.cc',
         'filters/shell_rbsp_stream_unittest.cc',
       ],
+      'includes': [ '<(DEPTH)/cobalt/test/test.gypi' ],
     },
     {
       'target_name': 'media_test_deploy',

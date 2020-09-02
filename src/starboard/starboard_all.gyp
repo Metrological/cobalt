@@ -17,12 +17,12 @@
 
 {
   'variables': {
-    'has_platform_tests%' : '<!(python ../build/file_exists.py <(DEPTH)/<(starboard_path)/starboard_platform_tests.gyp)',
+    'has_platform_tests%' : '<!(python <(DEPTH)/build/file_exists.py <(DEPTH)/<(starboard_path)/starboard_platform_tests.gyp)',
   },
   'conditions': [
     # If 'starboard_platform_tests' is not defined by the platform, then an
     # empty 'starboard_platform_tests' target is defined.
-    ['has_platform_tests=="False"', {
+    ['has_platform_tests==0', {
       'targets': [
         {
           'target_name': 'starboard_platform_tests',
@@ -61,17 +61,21 @@
         '<(DEPTH)/starboard/client_porting/eztime/eztime_test.gyp:*',
         '<(DEPTH)/starboard/client_porting/icu_init/icu_init.gyp:*',
         '<(DEPTH)/starboard/client_porting/poem/poem.gyp:*',
-	# glclear.gyp is not included as a dependency since the change to the
-	# EGL and GLES interfaces are breaking for previous versions of the
-	# Starboard API.
         '<(DEPTH)/starboard/examples/blitter/blitter.gyp:*',
         '<(DEPTH)/starboard/examples/window/window.gyp:*',
         '<(DEPTH)/starboard/nplb/blitter_pixel_tests/blitter_pixel_tests.gyp:*',
+        '<(DEPTH)/starboard/nplb/nplb_evergreen_compat_tests/nplb_evergreen_compat_tests.gyp:*',
         '<(DEPTH)/starboard/nplb/nplb.gyp:*',
         '<(DEPTH)/starboard/starboard.gyp:*',
+        '<(DEPTH)/starboard/tools/tools.gyp:*',
       ],
       'conditions': [
-        ['has_platform_tests=="True"', {
+        ['gl_type != "none"', {
+          'dependencies': [
+            '<(DEPTH)/starboard/examples/glclear/glclear.gyp:starboard_glclear_example',
+          ],
+        }],
+        ['has_platform_tests==1', {
           'dependencies': [
             '<(DEPTH)/<(starboard_path)/starboard_platform_tests.gyp:*',
           ],
@@ -82,10 +86,20 @@
         }],
         ['sb_filter_based_player==1', {
           'dependencies': [
-            '<(DEPTH)/starboard/shared/starboard/player/filter/testing/player_filter_tests.gyp:*',
+            '<(DEPTH)/starboard/shared/starboard/player/filter/testing/player_filter_tests.gyp:player_filter_tests_deploy',
             '<(DEPTH)/starboard/shared/starboard/player/filter/tools/tools.gyp:*',
           ],
         }],
+        ['sb_enable_benchmark==1', {
+          'dependencies': [
+            '<(DEPTH)/starboard/benchmark/benchmark.gyp:*',
+          ],
+        }],
+        ['sb_evergreen==0', {
+          'dependencies': [
+            '<(DEPTH)/third_party/crashpad/crashpad.gyp:*',
+          ],
+        }]
       ],
     },
   ],

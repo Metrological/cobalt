@@ -1362,14 +1362,13 @@ TEST_F(ParserTest, ParsesLonghandPropertyKeywords) {
    public:
     KeywordProvider() : is_keyword_(false) {}
     bool is_keyword() { return is_keyword_; }
-    void VisitKeyword(cssom::KeywordValue* /* keyword */) override {
+    void VisitKeyword(cssom::KeywordValue* keyword) override {
       is_keyword_ = true;
     }
-    void VisitFontStyle(cssom::FontStyleValue* /* font_style */) override {
+    void VisitFontStyle(cssom::FontStyleValue* font_style) override {
       is_keyword_ = true;
     }
-    void VisitFontWeight(
-        cssom::FontWeightValue* /* font_weight_value */) override {
+    void VisitFontWeight(cssom::FontWeightValue* font_weight_value) override {
       is_keyword_ = true;
     }
 
@@ -1413,7 +1412,7 @@ TEST_F(ParserTest, ParsesShorthandPropertyInitialAndInherit) {
    public:
     KeywordProvider() : is_keyword_(false) {}
     bool is_keyword() { return is_keyword_; }
-    void VisitKeyword(cssom::KeywordValue* /* keyword */) override {
+    void VisitKeyword(cssom::KeywordValue* keyword) override {
       is_keyword_ = true;
     }
 
@@ -5050,8 +5049,6 @@ TEST_F(ParserTest, ParsesFlexOneTwo) {
   scoped_refptr<cssom::CSSDeclaredStyleData> style =
       parser_.ParseStyleDeclarationList("flex: 1 2;", source_location_);
 
-  // The keyword none expands to 0 0 auto.
-  //   https://www.w3.org/TR/css-flexbox-1/#valdef-flex-none
   ASSERT_TRUE(style->IsDeclared(cssom::kFlexGrowProperty));
   scoped_refptr<cssom::NumberValue> flex_grow =
       dynamic_cast<cssom::NumberValue*>(
@@ -5066,17 +5063,20 @@ TEST_F(ParserTest, ParsesFlexOneTwo) {
   ASSERT_TRUE(flex_shrink);
   EXPECT_FLOAT_EQ(2, flex_shrink->value());
 
+  // When omitted from the flex shorthand, flex-basis specified value is 0.
+  //   https://www.w3.org/TR/css-flexbox-1/#valdef-flex-flex-basis
   ASSERT_TRUE(style->IsDeclared(cssom::kFlexBasisProperty));
-  EXPECT_EQ(cssom::KeywordValue::GetInitial(),
-            style->GetPropertyValue(cssom::kFlexBasisProperty));
+  scoped_refptr<cssom::LengthValue> flex_basis =
+      dynamic_cast<cssom::LengthValue*>(
+          style->GetPropertyValue(cssom::kFlexBasisProperty).get());
+  ASSERT_TRUE(flex_basis);
+  EXPECT_FLOAT_EQ(0, flex_basis->value());
 }
 
 TEST_F(ParserTest, ParsesFlexOneTwoZero) {
   scoped_refptr<cssom::CSSDeclaredStyleData> style =
       parser_.ParseStyleDeclarationList("flex: 1 2 0;", source_location_);
 
-  // The keyword none expands to 0 0 auto.
-  //   https://www.w3.org/TR/css-flexbox-1/#valdef-flex-none
   ASSERT_TRUE(style->IsDeclared(cssom::kFlexGrowProperty));
   scoped_refptr<cssom::NumberValue> flex_grow =
       dynamic_cast<cssom::NumberValue*>(
@@ -5103,8 +5103,6 @@ TEST_F(ParserTest, ParsesFlexZeroBasis) {
   scoped_refptr<cssom::CSSDeclaredStyleData> style =
       parser_.ParseStyleDeclarationList("flex: 0 100px;", source_location_);
 
-  // The keyword none expands to 0 0 auto.
-  //   https://www.w3.org/TR/css-flexbox-1/#valdef-flex-none
   ASSERT_TRUE(style->IsDeclared(cssom::kFlexGrowProperty));
   scoped_refptr<cssom::NumberValue> flex_grow =
       dynamic_cast<cssom::NumberValue*>(
@@ -5158,8 +5156,6 @@ TEST_F(ParserTest, ParsesFlexAbsoluteBasisZero) {
   scoped_refptr<cssom::CSSDeclaredStyleData> style =
       parser_.ParseStyleDeclarationList("flex: 100px 0;", source_location_);
 
-  // The keyword none expands to 0 0 auto.
-  //   https://www.w3.org/TR/css-flexbox-1/#valdef-flex-none
   ASSERT_TRUE(style->IsDeclared(cssom::kFlexGrowProperty));
   scoped_refptr<cssom::NumberValue> flex_grow =
       dynamic_cast<cssom::NumberValue*>(
@@ -5184,8 +5180,6 @@ TEST_F(ParserTest, ParsesFlexAbsoluteBasisOneTwo) {
   scoped_refptr<cssom::CSSDeclaredStyleData> style =
       parser_.ParseStyleDeclarationList("flex: 100px 1 2;", source_location_);
 
-  // The keyword none expands to 0 0 auto.
-  //   https://www.w3.org/TR/css-flexbox-1/#valdef-flex-none
   ASSERT_TRUE(style->IsDeclared(cssom::kFlexGrowProperty));
   scoped_refptr<cssom::NumberValue> flex_grow =
       dynamic_cast<cssom::NumberValue*>(
@@ -6346,6 +6340,20 @@ TEST_F(ParserTest, ParsesMinHeight) {
   EXPECT_EQ(cssom::kPixelsUnit, min_height->unit());
 }
 
+TEST_F(ParserTest, ParsesMinHeightAuto) {
+  // 'auto' is also the initial value for min-height in CSS3. It is set to a
+  // length value first, to ensure that the property does not have the initial
+  // value for the test.
+  //   https://www.w3.org/TR/css-sizing-3/#min-size-properties
+  scoped_refptr<cssom::CSSDeclaredStyleData> style =
+      parser_.ParseStyleDeclarationList("min-height: 100px; min-height: auto;",
+                                        source_location_);
+
+  ASSERT_TRUE(style->IsDeclared(cssom::kMinHeightProperty));
+  EXPECT_EQ(cssom::KeywordValue::GetAuto(),
+            style->GetPropertyValue(cssom::kMinHeightProperty));
+}
+
 TEST_F(ParserTest, ParsesMinWidth) {
   scoped_refptr<cssom::CSSDeclaredStyleData> style =
       parser_.ParseStyleDeclarationList("min-width: 100px;", source_location_);
@@ -6357,6 +6365,20 @@ TEST_F(ParserTest, ParsesMinWidth) {
   ASSERT_TRUE(min_width);
   EXPECT_FLOAT_EQ(100, min_width->value());
   EXPECT_EQ(cssom::kPixelsUnit, min_width->unit());
+}
+
+TEST_F(ParserTest, ParsesMinWidthAuto) {
+  // 'auto' is also the initial value for min-width in CSS3. It is set to a
+  // length value first, to ensure that the property does not have the initial
+  // value for the test.
+  //   https://www.w3.org/TR/css-sizing-3/#min-size-properties
+  scoped_refptr<cssom::CSSDeclaredStyleData> style =
+      parser_.ParseStyleDeclarationList("min-width: 100px; min-width: auto;",
+                                        source_location_);
+
+  ASSERT_TRUE(style->IsDeclared(cssom::kMinWidthProperty));
+  EXPECT_EQ(cssom::KeywordValue::GetAuto(),
+            style->GetPropertyValue(cssom::kMinWidthProperty));
 }
 
 TEST_F(ParserTest, ParsesOpacity) {

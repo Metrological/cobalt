@@ -26,9 +26,9 @@
 #include "base/synchronization/lock.h"
 #include "cobalt/base/circular_buffer_shell.h"
 #include "cobalt/csp/content_security_policy.h"
-#include "cobalt/loader/cobalt_url_fetcher_string_writer.h"
 #include "cobalt/loader/fetcher.h"
 #include "cobalt/loader/origin.h"
+#include "cobalt/loader/url_fetcher_string_writer.h"
 #include "cobalt/media/player/buffered_data_source.h"
 #include "cobalt/network/network_module.h"
 #include "net/url_request/url_fetcher.h"
@@ -38,8 +38,7 @@
 namespace cobalt {
 namespace media {
 
-// TODO: This class requires a large block of memory.  Consider to
-// use ShellBufferFactory for its memory if possible to avoid possible OOM.
+// TODO: This class requires a large block of memory.
 
 // A BufferedDataSource based on net::URLFetcher that can be used to retrieve
 // progressive videos from both local and network sources.
@@ -76,7 +75,7 @@ class FetcherBufferedDataSource : public BufferedDataSource,
   void Stop() override;
   bool GetSize(int64* size_out) override;
   bool IsStreaming() override { return false; }
-  void SetBitrate(int bitrate) override { SB_UNREFERENCED_PARAMETER(bitrate); }
+  void SetBitrate(int bitrate) override {}
 
   // BufferedDataSource methods.
   void SetDownloadingStatusCB(

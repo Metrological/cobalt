@@ -381,8 +381,8 @@ base::Optional<LayoutUnit> GetUsedBottomIfNotAuto(
     const SizeLayoutUnit& containing_block_size);
 base::Optional<LayoutUnit> GetUsedFlexBasisIfNotContent(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
-    const bool main_direction_is_horizontal,
-    const SizeLayoutUnit& flex_container_size,
+    bool main_direction_is_horizontal,
+    LayoutUnit main_space,
     bool* flex_basis_depends_on_available_space);
 base::Optional<LayoutUnit> GetUsedWidthIfNotAuto(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
@@ -395,10 +395,10 @@ base::Optional<LayoutUnit> GetUsedMaxWidthIfNotNone(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
     const SizeLayoutUnit& containing_block_size,
     bool* width_depends_on_containing_block);
-LayoutUnit GetUsedMinHeight(
+base::Optional<LayoutUnit> GetUsedMinHeightIfNotAuto(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
     const SizeLayoutUnit& containing_block_size);
-LayoutUnit GetUsedMinWidth(
+base::Optional<LayoutUnit> GetUsedMinWidthIfNotAuto(
     const scoped_refptr<const cssom::CSSComputedStyleData>& computed_style,
     const SizeLayoutUnit& containing_block_size,
     bool* width_depends_on_containing_block);

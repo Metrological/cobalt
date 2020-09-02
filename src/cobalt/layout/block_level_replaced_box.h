@@ -39,8 +39,11 @@ class BlockLevelReplacedBox : public ReplacedBox {
       const base::Optional<LayoutUnit>& maybe_intrinsic_height,
       const base::Optional<float>& maybe_intrinsic_ratio,
       UsedStyleProvider* used_style_provider,
-      base::Optional<bool> is_video_punched_out,
-      const math::SizeF& content_size, LayoutStatTracker* layout_stat_tracker);
+      base::Optional<ReplacedBox::ReplacedBoxMode> replaced_box_mode,
+      const math::SizeF& content_size,
+      base::Optional<render_tree::LottieAnimation::LottieProperties>
+          lottie_properties,
+      LayoutStatTracker* layout_stat_tracker);
 
   // From |Box|.
   Level GetLevel() const override;
@@ -53,6 +56,7 @@ class BlockLevelReplacedBox : public ReplacedBox {
 
   // From |ReplacedBox|.
   void UpdateHorizontalMargins(
+      BaseDirection containing_block_direction,
       LayoutUnit containing_block_width, LayoutUnit border_box_width,
       const base::Optional<LayoutUnit>& maybe_margin_left,
       const base::Optional<LayoutUnit>& maybe_margin_right) override;

@@ -17,9 +17,6 @@
 
 #include "starboard/shared/ffmpeg/ffmpeg_video_decoder_impl.h"
 
-#if SB_API_VERSION >= 11
-#include "starboard/format_string.h"
-#endif  // SB_API_VERSION >= 11
 #include "starboard/common/string.h"
 #include "starboard/linux/shared/decode_target_internal.h"
 #include "starboard/memory.h"
@@ -46,7 +43,7 @@ size_t GetYV12SizeInBytes(int32_t width, int32_t height) {
   return width * height * 3 / 2;
 }
 
-#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#if LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
 
 void ReleaseBuffer(void* opaque, uint8_t* data) {
   SbMemoryDeallocate(data);
@@ -60,7 +57,7 @@ int AllocateBufferCallback(AVCodecContext* codec_context,
   return video_decoder->AllocateBuffer(codec_context, frame, flags);
 }
 
-#else   // LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#else   // LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
 
 int AllocateBufferCallback(AVCodecContext* codec_context, AVFrame* frame) {
   VideoDecoderImpl<FFMPEG>* video_decoder =
@@ -75,7 +72,7 @@ void ReleaseBuffer(AVCodecContext*, AVFrame* frame) {
   // The FFmpeg API expects us to zero the data pointers in this callback.
   SbMemorySet(frame->data, 0, sizeof(frame->data));
 }
-#endif  // LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#endif  // LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
 
 const bool g_registered =
     FFMPEGDispatch::RegisterSpecialization(FFMPEG,
@@ -248,24 +245,18 @@ void VideoDecoderImpl<FFMPEG>::DecoderThreadFunc() {
 bool VideoDecoderImpl<FFMPEG>::DecodePacket(AVPacket* packet) {
   SB_DCHECK(packet != NULL);
 
-#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
-  ffmpeg_->av_frame_unref(av_frame_);
-#else   // LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#if LIBAVUTIL_VERSION_INT < LIBAVUTIL_VERSION_52_8
   ffmpeg_->avcodec_get_frame_defaults(av_frame_);
-#endif  // LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#endif  // LIBAVUTIL_VERSION_INT < LIBAVUTIL_VERSION_52_8
   int frame_decoded = 0;
   int decode_result = ffmpeg_->avcodec_decode_video2(codec_context_, av_frame_,
                                                      &frame_decoded, packet);
   if (decode_result < 0) {
     SB_DLOG(ERROR) << "avcodec_decode_video2() failed with result "
                    << decode_result;
-#if SB_HAS(PLAYER_ERROR_MESSAGE)
     error_cb_(kSbPlayerErrorDecode,
               FormatString("avcodec_decode_video2() failed with result %d.",
                            decode_result));
-#else   // SB_HAS(PLAYER_ERROR_MESSAGE)
-    error_cb_();
-#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
     error_occured_ = true;
     return false;
   }
@@ -275,12 +266,8 @@ bool VideoDecoderImpl<FFMPEG>::DecodePacket(AVPacket* packet) {
 
   if (av_frame_->opaque == NULL) {
     SB_DLOG(ERROR) << "Video frame was produced yet has invalid frame data.";
-#if SB_HAS(PLAYER_ERROR_MESSAGE)
     error_cb_(kSbPlayerErrorDecode,
               "Video frame was produced yet has invalid frame data.");
-#else   // SB_HAS(PLAYER_ERROR_MESSAGE)
-    error_cb_();
-#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
     error_occured_ = true;
     return false;
   }
@@ -340,13 +327,15 @@ void VideoDecoderImpl<FFMPEG>::InitializeCodec() {
   codec_context_->error_concealment = FF_EC_GUESS_MVS | FF_EC_DEBLOCK;
   codec_context_->thread_count = 2;
   codec_context_->opaque = this;
+#if defined(CODEC_FLAG_EMU_EDGE)
   codec_context_->flags |= CODEC_FLAG_EMU_EDGE;
-#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#endif
+#if LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
   codec_context_->get_buffer2 = AllocateBufferCallback;
-#else   // LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#else   // LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
   codec_context_->get_buffer = AllocateBufferCallback;
   codec_context_->release_buffer = ReleaseBuffer;
-#endif  // LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#endif  // LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
 
   codec_context_->extradata = NULL;
   codec_context_->extradata_size = 0;
@@ -366,11 +355,11 @@ void VideoDecoderImpl<FFMPEG>::InitializeCodec() {
     return;
   }
 
-#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#if LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
   av_frame_ = ffmpeg_->av_frame_alloc();
-#else   // LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#else   // LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
   av_frame_ = ffmpeg_->avcodec_alloc_frame();
-#endif  // LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#endif  // LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
   if (av_frame_ == NULL) {
     SB_LOG(ERROR) << "Unable to allocate audio frame";
     TeardownCodec();
@@ -380,9 +369,9 @@ void VideoDecoderImpl<FFMPEG>::InitializeCodec() {
 void VideoDecoderImpl<FFMPEG>::TeardownCodec() {
   if (codec_context_) {
     ffmpeg_->CloseCodec(codec_context_);
-    ffmpeg_->av_freep(&codec_context_);
+    ffmpeg_->FreeContext(&codec_context_);
   }
-  ffmpeg_->av_freep(&av_frame_);
+  ffmpeg_->FreeFrame(&av_frame_);
 
   if (output_mode_ == kSbPlayerOutputModeDecodeToTexture) {
     ScopedLock lock(decode_target_mutex_);
@@ -416,7 +405,7 @@ SbDecodeTarget VideoDecoderImpl<FFMPEG>::GetCurrentDecodeTarget() {
   }
 }
 
-#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#if LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
 
 int VideoDecoderImpl<FFMPEG>::AllocateBuffer(AVCodecContext* codec_context,
                                              AVFrame* frame,
@@ -470,7 +459,7 @@ int VideoDecoderImpl<FFMPEG>::AllocateBuffer(AVCodecContext* codec_context,
   return 0;
 }
 
-#else   // LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#else   // LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
 
 int VideoDecoderImpl<FFMPEG>::AllocateBuffer(AVCodecContext* codec_context,
                                              AVFrame* frame) {
@@ -525,7 +514,7 @@ int VideoDecoderImpl<FFMPEG>::AllocateBuffer(AVCodecContext* codec_context,
 
   return 0;
 }
-#endif  // LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#endif  // LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
 
 }  // namespace ffmpeg
 }  // namespace shared

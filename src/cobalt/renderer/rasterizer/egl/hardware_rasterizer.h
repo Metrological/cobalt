@@ -65,6 +65,10 @@ class HardwareRasterizer : public Rasterizer {
 
   render_tree::ResourceProvider* GetResourceProvider() override;
 
+  int64_t GetFallbackRasterizeCount() override;
+
+  void ResetGraphicsStateCache();
+
   void MakeCurrent() override;
   void ReleaseContext() override;
 

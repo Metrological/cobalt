@@ -14,8 +14,8 @@
 
 #include "starboard/shared/starboard/player/filter/audio_renderer_sink_impl.h"
 
-#include "starboard/audio_sink.h"
 #include "starboard/common/log.h"
+#include "starboard/configuration_constants.h"
 #include "starboard/shared/starboard/thread_checker.h"
 
 namespace starboard {
@@ -25,10 +25,37 @@ namespace player {
 namespace filter {
 
 AudioRendererSinkImpl::AudioRendererSinkImpl()
-    : audio_sink_(kSbAudioSinkInvalid),
-      render_callback_(NULL),
-      playback_rate_(1.0),
-      volume_(1.0) {}
+    : create_audio_sink_func_(
+          [](SbTime start_media_time,
+             int channels,
+             int sampling_frequency_hz,
+             SbMediaAudioSampleType audio_sample_type,
+             SbMediaAudioFrameStorageType audio_frame_storage_type,
+             SbAudioSinkFrameBuffers frame_buffers,
+             int frame_buffers_size_in_frames,
+             SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
+             SbAudioSinkPrivate::ConsumeFramesFunc consume_frames_func,
+#if SB_API_VERSION >= 12
+             SbAudioSinkPrivate::ErrorFunc error_func,
+#endif  // SB_API_VERSION >= 12
+             void* context) {
+            return SbAudioSinkPrivate::Create(
+                channels, sampling_frequency_hz, audio_sample_type,
+                audio_frame_storage_type, frame_buffers,
+                frame_buffers_size_in_frames, update_source_status_func,
+                consume_frames_func,
+#if SB_API_VERSION >= 12
+                error_func,
+#endif  // SB_API_VERSION >= 12
+                context);
+          }) {
+}
+
+AudioRendererSinkImpl::AudioRendererSinkImpl(
+    CreateAudioSinkFunc create_audio_sink_func)
+    : create_audio_sink_func_(create_audio_sink_func) {
+  SB_DCHECK(create_audio_sink_func_);
+}
 
 AudioRendererSinkImpl::~AudioRendererSinkImpl() {
   SB_DCHECK(thread_checker_.CalledOnValidThread());
@@ -56,6 +83,7 @@ bool AudioRendererSinkImpl::HasStarted() const {
 }
 
 void AudioRendererSinkImpl::Start(
+    SbTime media_start_time,
     int channels,
     int sampling_frequency_hz,
     SbMediaAudioSampleType audio_sample_type,
@@ -65,14 +93,25 @@ void AudioRendererSinkImpl::Start(
     RenderCallback* render_callback) {
   SB_DCHECK(thread_checker_.CalledOnValidThread());
   SB_DCHECK(!HasStarted());
+  SB_DCHECK(channels > 0 && channels <= SbAudioSinkGetMaxChannels());
+  SB_DCHECK(sampling_frequency_hz > 0);
+  SB_DCHECK(SbAudioSinkIsAudioSampleTypeSupported(audio_sample_type));
+  SB_DCHECK(
+      SbAudioSinkIsAudioFrameStorageTypeSupported(audio_frame_storage_type));
+  SB_DCHECK(frame_buffers);
+  SB_DCHECK(frames_per_channel > 0);
 
   Stop();
   render_callback_ = render_callback;
-  audio_sink_ = SbAudioSinkCreate(
-      channels, sampling_frequency_hz, audio_sample_type,
+  audio_sink_ = create_audio_sink_func_(
+      media_start_time, channels, sampling_frequency_hz, audio_sample_type,
       audio_frame_storage_type, frame_buffers, frames_per_channel,
       &AudioRendererSinkImpl::UpdateSourceStatusFunc,
-      &AudioRendererSinkImpl::ConsumeFramesFunc, this);
+      &AudioRendererSinkImpl::ConsumeFramesFunc,
+#if SB_API_VERSION >= 12
+      &AudioRendererSinkImpl::ErrorFunc,
+#endif  // SB_API_VERSION >= 12
+      this);
   if (!SbAudioSinkIsValid(audio_sink_)) {
     return;
   }
@@ -136,21 +175,25 @@ void AudioRendererSinkImpl::UpdateSourceStatusFunc(int* frames_in_buffer,
 
 // static
 void AudioRendererSinkImpl::ConsumeFramesFunc(int frames_consumed,
-#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                               SbTime frames_consumed_at,
-#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                               void* context) {
   AudioRendererSinkImpl* audio_renderer_sink =
       static_cast<AudioRendererSinkImpl*>(context);
   SB_DCHECK(audio_renderer_sink);
   SB_DCHECK(audio_renderer_sink->render_callback_);
 
-#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
   audio_renderer_sink->render_callback_->ConsumeFrames(frames_consumed,
                                                        frames_consumed_at);
-#else   // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
-  audio_renderer_sink->render_callback_->ConsumeFrames(frames_consumed);
-#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+}
+
+// static
+void AudioRendererSinkImpl::ErrorFunc(bool capability_changed, void* context) {
+  AudioRendererSinkImpl* audio_renderer_sink =
+      static_cast<AudioRendererSinkImpl*>(context);
+  SB_DCHECK(audio_renderer_sink);
+  SB_DCHECK(audio_renderer_sink->render_callback_);
+
+  audio_renderer_sink->render_callback_->OnError(capability_changed);
 }
 
 }  // namespace filter

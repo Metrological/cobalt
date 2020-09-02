@@ -33,6 +33,7 @@
 #include "cobalt/render_tree/composition_node.h"
 #include "cobalt/render_tree/filter_node.h"
 #include "cobalt/render_tree/image_node.h"
+#include "cobalt/render_tree/lottie_node.h"
 #include "cobalt/render_tree/matrix_transform_node.h"
 #include "cobalt/render_tree/rect_node.h"
 #include "cobalt/render_tree/rect_shadow_node.h"
@@ -46,6 +47,7 @@
 #include "cobalt/renderer/rasterizer/skia/image.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/effects/SkNV122RGBShader.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/effects/SkYUV2RGBShader.h"
+#include "cobalt/renderer/rasterizer/skia/skottie_animation.h"
 #include "cobalt/renderer/rasterizer/skia/software_image.h"
 #include "third_party/skia/include/core/SkBlendMode.h"
 #include "third_party/skia/include/core/SkClipOp.h"
@@ -80,6 +82,9 @@ namespace cobalt {
 namespace renderer {
 namespace rasterizer {
 namespace skia {
+
+using common::utils::IsOpaque;
+using common::utils::IsTransparent;
 
 RenderTreeNodeVisitor::RenderTreeNodeVisitor(
     SkCanvas* render_target,
@@ -450,13 +455,13 @@ void RenderTreeNodeVisitor::Visit(render_tree::FilterNode* filter_node) {
 #endif  // ENABLE_RENDER_TREE_VISITOR_TRACING
 
   if (filter_node->data().opacity_filter &&
-      filter_node->data().opacity_filter->opacity() <= 0.0f) {
+      IsTransparent(filter_node->data().opacity_filter->opacity())) {
     // The opacity 0, so we have nothing to render.
     return;
   }
 
   if ((!filter_node->data().opacity_filter ||
-       filter_node->data().opacity_filter->opacity() == 1.0f) &&
+       IsOpaque(filter_node->data().opacity_filter->opacity())) &&
       !filter_node->data().viewport_filter &&
       (!filter_node->data().blur_filter ||
        filter_node->data().blur_filter->blur_sigma() == 0.0f)) {
@@ -557,7 +562,7 @@ SkPaint CreateSkPaintForImageRendering(
   // |kLow_SkFilterQuality| is used for bilinear interpolation of images.
   paint.setFilterQuality(kLow_SkFilterQuality);
 
-  if (draw_state.opacity < 1.0f) {
+  if (!IsOpaque(draw_state.opacity)) {
     paint.setAlpha(draw_state.opacity * 255);
   } else if (is_opaque && draw_state.clip_is_rect) {
     paint.setBlendMode(SkBlendMode::kSrc);
@@ -607,9 +612,8 @@ void RenderSinglePlaneImage(SinglePlaneImage* single_plane_image,
                                                   &skia_local_transform);
 
     if (image) {
-      sk_sp<SkShader> image_shader =
-          image->makeShader(SkShader::kRepeat_TileMode,
-                            SkShader::kRepeat_TileMode, &skia_local_transform);
+      sk_sp<SkShader> image_shader = image->makeShader(
+          SkTileMode::kRepeat, SkTileMode::kRepeat, &skia_local_transform);
 
       paint.setShader(image_shader);
 
@@ -623,11 +627,6 @@ void RenderMultiPlaneImage(MultiPlaneImage* multi_plane_image,
                            RenderTreeNodeVisitorDrawState* draw_state,
                            const math::RectF& destination_rect,
                            const math::Matrix3F* local_transform) {
-  SB_UNREFERENCED_PARAMETER(multi_plane_image);
-  SB_UNREFERENCED_PARAMETER(draw_state);
-  SB_UNREFERENCED_PARAMETER(destination_rect);
-  SB_UNREFERENCED_PARAMETER(local_transform);
-
   // Multi-plane images like YUV images are not supported when using the
   // software rasterizers.
   NOTIMPLEMENTED();
@@ -705,6 +704,24 @@ void RenderTreeNodeVisitor::Visit(render_tree::ImageNode* image_node) {
 #if ENABLE_FLUSH_AFTER_EVERY_NODE
   draw_state_.render_target->flush();
 #endif
+}
+
+void RenderTreeNodeVisitor::Visit(render_tree::LottieNode* lottie_node) {
+#if ENABLE_RENDER_TREE_VISITOR_TRACING && !FILTER_RENDER_TREE_VISITOR_TRACING
+  TRACE_EVENT0("cobalt::renderer", "Visit(LottieNode)");
+#endif
+  skia::SkottieAnimation* animation =
+      base::polymorphic_downcast<skia::SkottieAnimation*>(
+          lottie_node->data().animation.get());
+  animation->SetAnimationTime(lottie_node->data().animation_time);
+
+  sk_sp<skottie::Animation> skottie = animation->GetSkottieAnimation();
+  SkCanvas* render_target = draw_state_.render_target;
+  math::RectF bounding_rect = lottie_node->data().destination_rect;
+  const SkRect sk_bounding_rect =
+      SkRect::MakeXYWH(bounding_rect.x(), bounding_rect.y(),
+                       bounding_rect.width(), bounding_rect.height());
+  skottie->render(render_target, &sk_bounding_rect);
 }
 
 void RenderTreeNodeVisitor::Visit(
@@ -811,7 +828,7 @@ void SkiaBrushVisitor::Visit(
   const cobalt::render_tree::ColorRGBA& color = solid_color_brush->color();
 
   float alpha = color.a() * draw_state_.opacity;
-  if (alpha == 1.0f) {
+  if (IsOpaque(alpha)) {
     paint_->setBlendMode(SkBlendMode::kSrc);
   } else {
     paint_->setBlendMode(SkBlendMode::kSrcOver);
@@ -858,14 +875,14 @@ void SkiaBrushVisitor::Visit(
 
   sk_sp<SkShader> shader(SkGradientShader::MakeLinear(
       points, &skia_color_stops.colors[0], &skia_color_stops.positions[0],
-      linear_gradient_brush->color_stops().size(), SkShader::kClamp_TileMode,
+      linear_gradient_brush->color_stops().size(), SkTileMode::kClamp,
       SkGradientShader::kInterpolateColorsInPremul_Flag, NULL));
   paint_->setShader(shader);
 
-  if (!skia_color_stops.has_alpha && draw_state_.opacity == 1.0f) {
+  if (!skia_color_stops.has_alpha && IsOpaque(draw_state_.opacity)) {
     paint_->setBlendMode(SkBlendMode::kSrc);
   } else {
-    if (draw_state_.opacity < 1.0f) {
+    if (!IsOpaque(draw_state_.opacity)) {
       paint_->setAlpha(255 * draw_state_.opacity);
     }
     paint_->setBlendMode(SkBlendMode::kSrcOver);
@@ -896,14 +913,14 @@ void SkiaBrushVisitor::Visit(
   sk_sp<SkShader> shader(SkGradientShader::MakeRadial(
       center, radial_gradient_brush->radius_x(), &skia_color_stops.colors[0],
       &skia_color_stops.positions[0],
-      radial_gradient_brush->color_stops().size(), SkShader::kClamp_TileMode,
+      radial_gradient_brush->color_stops().size(), SkTileMode::kClamp,
       SkGradientShader::kInterpolateColorsInPremul_Flag, &local_matrix));
   paint_->setShader(shader);
 
-  if (!skia_color_stops.has_alpha && draw_state_.opacity == 1.0f) {
+  if (!skia_color_stops.has_alpha && IsOpaque(draw_state_.opacity)) {
     paint_->setBlendMode(SkBlendMode::kSrc);
   } else {
-    if (draw_state_.opacity < 1.0f) {
+    if (!IsOpaque(draw_state_.opacity)) {
       paint_->setAlpha(255 * draw_state_.opacity);
     }
     paint_->setBlendMode(SkBlendMode::kSrcOver);
@@ -985,7 +1002,7 @@ void DrawUniformSolidNonRoundRectBorder(
   paint.setARGB(alpha * 255, border_color.r() * 255, border_color.g() * 255,
                 border_color.b() * 255);
   paint.setAntiAlias(anti_alias);
-  if (alpha == 1.0f) {
+  if (IsOpaque(alpha)) {
     paint.setBlendMode(SkBlendMode::kSrc);
   } else {
     paint.setBlendMode(SkBlendMode::kSrcOver);
@@ -994,9 +1011,10 @@ void DrawUniformSolidNonRoundRectBorder(
   paint.setStrokeWidth(border_width);
   SkRect skrect;
   const float half_border_width = border_width * 0.5f;
-  skrect.set(rect.x() + half_border_width, rect.y() + half_border_width,
-             rect.right() - half_border_width,
-             rect.bottom() - half_border_width);
+  skrect.set(
+      SkPoint::Make(rect.x() + half_border_width, rect.y() + half_border_width),
+      SkPoint::Make(rect.right() - half_border_width,
+                    rect.bottom() - half_border_width));
   draw_state->render_target->drawRect(skrect, paint);
 }
 
@@ -1012,7 +1030,7 @@ void DrawQuadWithColorIfBorderIsSolid(
     paint.setARGB(alpha * 255, color.r() * 255, color.g() * 255,
                   color.b() * 255);
     paint.setAntiAlias(anti_alias);
-    if (alpha == 1.0f) {
+    if (IsOpaque(alpha)) {
       paint.setBlendMode(SkBlendMode::kSrc);
     } else {
       paint.setBlendMode(SkBlendMode::kSrcOver);
@@ -1128,7 +1146,7 @@ void DrawSolidRoundedRectBorderToRenderTarget(
   float alpha = color.a();
   alpha *= draw_state->opacity;
   paint.setARGB(alpha * 255, color.r() * 255, color.g() * 255, color.b() * 255);
-  if (alpha == 1.0f) {
+  if (IsOpaque(alpha)) {
     paint.setBlendMode(SkBlendMode::kSrc);
   } else {
     paint.setBlendMode(SkBlendMode::kSrcOver);
@@ -1510,7 +1528,7 @@ SkPaint GetPaintForBoxShadow(const render_tree::Shadow& shadow) {
                 shadow.color.g() * 255, shadow.color.b() * 255);
 
   sk_sp<SkMaskFilter> mf(
-      SkBlurMaskFilter::Make(kNormal_SkBlurStyle, shadow.blur_sigma));
+      SkMaskFilter::MakeBlur(kNormal_SkBlurStyle, shadow.blur_sigma));
   paint.setMaskFilter(mf);
 
   return paint;
@@ -1700,8 +1718,8 @@ void RenderText(SkCanvas* render_target,
 
     if (blur_sigma > 0.0f) {
       sk_sp<SkMaskFilter> mf(
-          SkBlurMaskFilter::Make(kNormal_SkBlurStyle, blur_sigma,
-                                 SkBlurMaskFilter::kHighQuality_BlurFlag));
+          SkMaskFilter::MakeBlur(kNormal_SkBlurStyle, blur_sigma));
+      paint.setFilterQuality(SkFilterQuality::kHigh_SkFilterQuality);
       paint.setMaskFilter(mf);
     }
 

@@ -25,7 +25,7 @@ namespace dom {
 class Document;
 
 // The html element represents the root of an HTML document.
-//   https://www.w3.org/TR/html5/semantics.html#the-html-element
+//   https://www.w3.org/TR/html50/semantics.html#the-html-element
 class HTMLHtmlElement : public HTMLElement {
  public:
   static const char kTagName[];
@@ -35,6 +35,8 @@ class HTMLHtmlElement : public HTMLElement {
 
   // Custom, not in any spec.
   scoped_refptr<HTMLHtmlElement> AsHTMLHtmlElement() override { return this; }
+
+  DirState GetUsedDirState() override;
 
   DEFINE_WRAPPABLE_TYPE(HTMLHtmlElement);
 

@@ -24,6 +24,9 @@
 #include "starboard/client_porting/wrap_main/wrap_main.h"
 #include "starboard/event.h"
 #include "starboard/system.h"
+#if SB_IS(EVERGREEN)
+#include "third_party/musl/src/starboard/internal/hwcap_impl.h"
+#endif
 
 namespace cobalt {
 namespace wrap_main {
@@ -42,6 +45,9 @@ void BaseEventHandler(const SbEvent* event) {
       DCHECK(!g_started);
       DCHECK(!g_at_exit);
       g_at_exit = new base::AtExitManager();
+#if SB_IS(EVERGREEN)
+      init_musl_hwcap();
+#endif
       InitCobalt(data->argument_count, data->argument_values, data->link);
 
       DCHECK(!g_loop);
@@ -59,7 +65,9 @@ void BaseEventHandler(const SbEvent* event) {
       if (!g_started) {
         DCHECK(!g_at_exit);
         g_at_exit = new base::AtExitManager();
-
+#if SB_IS(EVERGREEN)
+        init_musl_hwcap();
+#endif
         InitCobalt(data->argument_count, data->argument_values, data->link);
 
         DCHECK(!g_loop);
@@ -107,7 +115,7 @@ void BaseEventHandler(const SbEvent* event) {
 #if SB_API_VERSION >= 8
     case kSbEventTypeWindowSizeChanged:
 #endif  // SB_API_VERSION >= 8
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
     case kSbEventTypeOnScreenKeyboardShown:
     case kSbEventTypeOnScreenKeyboardHidden:
     case kSbEventTypeOnScreenKeyboardFocused:
@@ -115,10 +123,14 @@ void BaseEventHandler(const SbEvent* event) {
 #if SB_API_VERSION >= 11
     case kSbEventTypeOnScreenKeyboardSuggestionsUpdated:
 #endif  // SB_API_VERSION >= 11
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
-#if SB_HAS(CAPTIONS)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
     case kSbEventTypeAccessibilityCaptionSettingsChanged:
-#endif  // SB_HAS(CAPTIONS)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
+#if SB_API_VERSION >= 12
+    case kSbEventTypeAccessiblityTextToSpeechSettingsChanged:
+#endif  // SB_API_VERSION >= 12
       event_function(event);
       break;
   }

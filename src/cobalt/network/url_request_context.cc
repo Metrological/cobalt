@@ -18,15 +18,17 @@
 #include <string>
 
 #include "cobalt/base/polymorphic_downcast.h"
+#include "cobalt/configuration/configuration.h"
 #include "cobalt/network/job_factory_config.h"
 #include "cobalt/network/network_delegate.h"
 #include "cobalt/network/persistent_cookie_store.h"
 #include "cobalt/network/proxy_config_service.h"
+#include "cobalt/network/switches.h"
 #include "net/cert/cert_net_fetcher.h"
+#include "net/cert/cert_verifier.h"
 #include "net/cert/cert_verify_proc.h"
 #include "net/cert/ct_policy_enforcer.h"
 #include "net/cert/do_nothing_ct_verifier.h"
-#include "net/cert/multi_threaded_cert_verifier.h"
 #include "net/cert_net/cert_net_fetcher_impl.h"
 #include "net/dns/host_cache.h"
 #include "net/http/http_auth_handler_factory.h"
@@ -38,6 +40,7 @@
 #include "net/proxy_resolution/proxy_resolution_service.h"
 #include "net/ssl/ssl_config_service.h"
 #include "net/ssl/ssl_config_service_defaults.h"
+#include "net/third_party/quic/platform/api/quic_flags.h"
 #include "net/url_request/data_protocol_handler.h"
 #include "net/url_request/url_request_job_factory_impl.h"
 
@@ -49,13 +52,30 @@ net::ProxyConfig CreateCustomProxyConfig(const std::string& proxy_rules) {
   proxy_config.proxy_rules().ParseFromString(proxy_rules);
   return proxy_config;
 }
+
+#if defined(ENABLE_DEBUGGER)
+const char kQUICToggleCommand[] = "quic_toggle";
+const char kQUICToggleCommandShortHelp[] = "Toggles QUIC support on/off.";
+const char kQUICToggleCommandLongHelp[] =
+    "Each time this is called, it will toggle whether QUIC support is "
+    "enabled or not. The new value will apply for new streams.";
+#endif  // defined(ENABLE_DEBUGGER)
+
 }  // namespace
 
 URLRequestContext::URLRequestContext(
     storage::StorageManager* storage_manager, const std::string& custom_proxy,
     net::NetLog* net_log, bool ignore_certificate_errors,
     scoped_refptr<base::SingleThreadTaskRunner> network_task_runner)
-    : ALLOW_THIS_IN_INITIALIZER_LIST(storage_(this)) {
+    : ALLOW_THIS_IN_INITIALIZER_LIST(storage_(this))
+#if defined(ENABLE_DEBUGGER)
+      ,
+      ALLOW_THIS_IN_INITIALIZER_LIST(quic_toggle_command_handler_(
+          kQUICToggleCommand,
+          base::Bind(&URLRequestContext::OnQuicToggle, base::Unretained(this)),
+          kQUICToggleCommandShortHelp, kQUICToggleCommandLongHelp))
+#endif  // defined(ENABLE_DEBUGGER)
+{
   if (storage_manager) {
     persistent_cookie_store_ =
         new PersistentCookieStore(storage_manager, network_task_runner);
@@ -75,6 +95,10 @@ URLRequestContext::URLRequestContext(
               new ProxyConfigService(proxy_config)),
           net_log));
 
+  // ack decimation significantly increases download bandwidth on low-end
+  // android devices.
+  SetQuicFlag(&FLAGS_quic_reloadable_flag_quic_enable_ack_decimation, true);
+
   net::HostResolver::Options options;
   options.max_concurrent_resolves = net::HostResolver::kDefaultParallelism;
   options.max_retry_attempts = net::HostResolver::kDefaultRetryAttempts;
@@ -85,11 +109,13 @@ URLRequestContext::URLRequestContext(
   storage_.set_ct_policy_enforcer(std::unique_ptr<net::CTPolicyEnforcer>(
       new net::DefaultCTPolicyEnforcer()));
   DCHECK(ct_policy_enforcer());
-  storage_.set_cert_verifier(std::make_unique<net::MultiThreadedCertVerifier>(
-      net::CertVerifyProc::CreateDefault()));
+  // As of Chromium m70 net, CreateDefault will return a caching multi-thread
+  // cert verifier, the verification cache will usually cache 25-40
+  // results in a single session which can take up to 100KB memory.
+  storage_.set_cert_verifier(net::CertVerifier::CreateDefault());
   storage_.set_transport_security_state(
       std::make_unique<net::TransportSecurityState>());
-  // TODO[johnx]: Investigate if we want the cert transparency verifier.
+  // TODO: Investigate if we want the cert transparency verifier.
   storage_.set_cert_transparency_verifier(
       std::make_unique<net::DoNothingCTVerifier>());
   storage_.set_ssl_config_service(
@@ -101,16 +127,16 @@ URLRequestContext::URLRequestContext(
       std::make_unique<net::HttpServerPropertiesImpl>());
 
   net::HttpNetworkSession::Params params;
-#if defined(COBALT_ENABLE_QUIC)
-  params.enable_quic = true;
-#endif
+
+  if (configuration::Configuration::GetInstance()->CobaltEnableQuic()) {
+    base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+    params.enable_quic = !command_line->HasSwitch(switches::kDisableQuic);
+    params.use_quic_for_unknown_origins = params.enable_quic;
+  }
 #if defined(ENABLE_IGNORE_CERTIFICATE_ERRORS)
   params.ignore_certificate_errors = ignore_certificate_errors;
   if (ignore_certificate_errors) {
-    auto* multi_threaded_cert_verifier =
-        base::polymorphic_downcast<net::MultiThreadedCertVerifier*>(
-            cert_verifier());
-    multi_threaded_cert_verifier->set_ignore_errors(true);
+    cert_verifier()->set_ignore_certificate_errors(true);
     LOG(INFO) << "ignore_certificate_errors option specified, Certificate "
                  "validation results will be ignored but error message will "
                  "still be displayed.";
@@ -133,7 +159,6 @@ URLRequestContext::URLRequestContext(
   context.net_log = net_log;
   set_net_log(net_log);
 #else
-  SB_UNREFERENCED_PARAMETER(net_log);
 #endif
   context.socket_performance_watcher_factory = NULL;
   context.network_quality_provider = NULL;
@@ -163,6 +188,18 @@ void URLRequestContext::SetProxy(const std::string& proxy_rules) {
   proxy_resolution_service()->ResetConfigService(
       std::make_unique<ProxyConfigService>(proxy_config));
 }
+
+void URLRequestContext::SetEnableQuic(bool enable_quic) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  storage_.http_network_session()->SetEnableQuic(enable_quic);
+}
+
+#if defined(ENABLE_DEBUGGER)
+void URLRequestContext::OnQuicToggle(const std::string& message) {
+  DCHECK(storage_.http_network_session());
+  storage_.http_network_session()->ToggleQuic();
+}
+#endif  // defined(ENABLE_DEBUGGER)
 
 }  // namespace network
 }  // namespace cobalt

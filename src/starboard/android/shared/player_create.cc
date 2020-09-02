@@ -15,12 +15,15 @@
 #include "starboard/player.h"
 
 #include "starboard/android/shared/cobalt/android_media_session_client.h"
+#include "starboard/android/shared/video_decoder.h"
+#include "starboard/android/shared/video_window.h"
 #include "starboard/common/log.h"
 #include "starboard/configuration.h"
 #include "starboard/decode_target.h"
 #include "starboard/shared/starboard/player/filter/filter_based_player_worker_handler.h"
 #include "starboard/shared/starboard/player/player_internal.h"
 #include "starboard/shared/starboard/player/player_worker.h"
+#include "starboard/string.h"
 
 using starboard::shared::starboard::player::filter::
     FilterBasedPlayerWorkerHandler;
@@ -28,38 +31,60 @@ using starboard::shared::starboard::player::PlayerWorker;
 using starboard::android::shared::cobalt::kPlaying;
 using starboard::android::shared::cobalt::
     UpdateActiveSessionPlatformPlaybackState;
-using starboard::android::shared::cobalt::UpdateActiveSessionPlatformPlayer;
+using starboard::android::shared::VideoDecoder;
 
 SbPlayer SbPlayerCreate(SbWindow window,
-                        SbMediaVideoCodec video_codec,
-                        SbMediaAudioCodec audio_codec,
-#if SB_API_VERSION < 10
-                        SbMediaTime duration_pts,
-#endif  // SB_API_VERSION < 10
-                        SbDrmSystem drm_system,
-                        const SbMediaAudioSampleInfo* audio_sample_info,
-                        const char* max_video_capabilities,
+                        const SbPlayerCreationParam* creation_param,
                         SbPlayerDeallocateSampleFunc sample_deallocate_func,
                         SbPlayerDecoderStatusFunc decoder_status_func,
                         SbPlayerStatusFunc player_status_func,
                         SbPlayerErrorFunc player_error_func,
                         void* context,
-                        SbPlayerOutputMode output_mode,
                         SbDecodeTargetGraphicsContextProvider* provider) {
-  SB_UNREFERENCED_PARAMETER(window);
-  SB_UNREFERENCED_PARAMETER(max_video_capabilities);
-  SB_UNREFERENCED_PARAMETER(provider);
-#if SB_API_VERSION < 10
-  SB_UNREFERENCED_PARAMETER(duration_pts);
-#endif  // SB_API_VERSION < 10
+  if (!creation_param) {
+    SB_LOG(ERROR) << "CreationParam cannot be null.";
+    return kSbPlayerInvalid;
+  }
+
+  bool has_audio =
+      creation_param->audio_sample_info.codec != kSbMediaAudioCodecNone;
+  bool has_video =
+      creation_param->video_sample_info.codec != kSbMediaVideoCodecNone;
+
+  const char* audio_mime =
+      has_audio ? creation_param->audio_sample_info.mime : "";
+  const char* video_mime =
+      has_video ? creation_param->video_sample_info.mime : "";
+  const char* max_video_capabilities =
+      has_video ? creation_param->video_sample_info.max_video_capabilities : "";
+
+  if (!audio_mime) {
+    SB_LOG(ERROR) << "creation_param->audio_sample_info.mime cannot be null.";
+    return kSbPlayerInvalid;
+  }
+  if (!video_mime) {
+    SB_LOG(ERROR) << "creation_param->video_sample_info.mime cannot be null.";
+    return kSbPlayerInvalid;
+  }
+  if (!max_video_capabilities) {
+    SB_LOG(ERROR) << "creation_param->video_sample_info.max_video_capabilities"
+                  << " cannot be null.";
+    return kSbPlayerInvalid;
+  }
+
+  SB_LOG(INFO) << "SbPlayerCreate() called with audio mime \"" << audio_mime
+               << "\", video mime \"" << video_mime
+               << "\", and max video capabilities \"" << max_video_capabilities
+               << "\".";
 
   if (!sample_deallocate_func || !decoder_status_func || !player_status_func
-#if SB_HAS(PLAYER_ERROR_MESSAGE)
       || !player_error_func
-#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
       ) {
     return kSbPlayerInvalid;
   }
+
+  auto audio_codec = creation_param->audio_sample_info.codec;
+  auto video_codec = creation_param->video_sample_info.codec;
 
   if (audio_codec != kSbMediaAudioCodecNone &&
       audio_codec != kSbMediaAudioCodecAac &&
@@ -68,16 +93,11 @@ SbPlayer SbPlayerCreate(SbWindow window,
     return kSbPlayerInvalid;
   }
 
-  if (audio_codec == kSbMediaAudioCodecAac && !audio_sample_info) {
-    SB_LOG(ERROR)
-        << "SbPlayerCreate() requires a non-NULL SbMediaAudioSampleInfo "
-        << "when |audio_codec| is not kSbMediaAudioCodecNone";
-    return kSbPlayerInvalid;
-  }
-
   if (video_codec != kSbMediaVideoCodecNone &&
       video_codec != kSbMediaVideoCodecH264 &&
-      video_codec != kSbMediaVideoCodecVp9) {
+      video_codec != kSbMediaVideoCodecH265 &&
+      video_codec != kSbMediaVideoCodecVp9 &&
+      video_codec != kSbMediaVideoCodecAv1) {
     SB_LOG(ERROR) << "Unsupported video codec " << video_codec;
     return kSbPlayerInvalid;
   }
@@ -89,34 +109,51 @@ SbPlayer SbPlayerCreate(SbWindow window,
     return kSbPlayerInvalid;
   }
 
-  if (!SbPlayerOutputModeSupported(output_mode, video_codec, drm_system)) {
+  auto output_mode = creation_param->output_mode;
+  if (SbPlayerGetPreferredOutputMode(creation_param) != output_mode) {
     SB_LOG(ERROR) << "Unsupported player output mode " << output_mode;
     return kSbPlayerInvalid;
   }
 
-  // TODO: increase this once we support multiple video windows.
-  const int kMaxNumberOfPlayers = 1;
-  if (SbPlayerPrivate::number_of_players() >= kMaxNumberOfPlayers) {
-    return kSbPlayerInvalid;
+  if (SbStringGetLength(max_video_capabilities) == 0) {
+    // Check the availability of hardware video decoder. Main player must use a
+    // hardware codec, but Android doesn't support multiple concurrent hardware
+    // codecs. Since it's not safe to have multiple hardware codecs, we only
+    // support one main player on Android, which can be either in punch out mode
+    // or decode to target mode.
+    const int kMaxNumberOfHardwareDecoders = 1;
+    if (VideoDecoder::number_of_hardware_decoders() >=
+        kMaxNumberOfHardwareDecoders) {
+      return kSbPlayerInvalid;
+    }
+    // Only update session state for main player.
+    UpdateActiveSessionPlatformPlaybackState(kPlaying);
   }
 
-  UpdateActiveSessionPlatformPlaybackState(kPlaying);
+  if (creation_param->output_mode != kSbPlayerOutputModeDecodeToTexture) {
+    // Check the availability of the video window. As we only support one main
+    // player, and sub players are in decode to texture mode on Android, a
+    // single video window should be enough.
+    if (!starboard::android::shared::VideoSurfaceHolder::
+            IsVideoSurfaceAvailable()) {
+      SB_LOG(ERROR) << "Video surface is not available now.";
+      return kSbPlayerInvalid;
+    }
+  }
 
   starboard::scoped_ptr<PlayerWorker::Handler> handler(
-      new FilterBasedPlayerWorkerHandler(video_codec, audio_codec, drm_system,
-                                         audio_sample_info, output_mode,
-                                         provider));
+      new FilterBasedPlayerWorkerHandler(creation_param, provider));
   SbPlayer player = SbPlayerPrivate::CreateInstance(
-      audio_codec, video_codec, audio_sample_info, sample_deallocate_func,
-      decoder_status_func, player_status_func, player_error_func, context,
-      handler.Pass());
+      audio_codec, video_codec, &creation_param->audio_sample_info,
+      sample_deallocate_func, decoder_status_func, player_status_func,
+      player_error_func, context, handler.Pass());
 
-  // TODO: accomplish this through more direct means.
-  // Set the bounds to initialize the VideoSurfaceView. The initial values don't
-  // matter.
-  SbPlayerSetBounds(player, 0, 0, 0, 0, 0);
-
-  UpdateActiveSessionPlatformPlayer(player);
+  if (creation_param->output_mode != kSbPlayerOutputModeDecodeToTexture) {
+    // TODO: accomplish this through more direct means.
+    // Set the bounds to initialize the VideoSurfaceView. The initial values
+    // don't matter.
+    SbPlayerSetBounds(player, 0, 0, 0, 0, 0);
+  }
 
   return player;
 }

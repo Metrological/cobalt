@@ -14,9 +14,10 @@
 
 {
   'variables': {
-    'enable_map_to_mesh': 1,
+    'variables': {
+      'sb_evergreen_compatible': 1,
+    }
   },
-
   'target_defaults': {
     'default_configuration': 'linux-x64x11_debug',
     'configurations': {
@@ -36,9 +37,7 @@
   },
 
   'includes': [
-    'enable_glx_via_angle.gypi',
-    'libraries.gypi',
-    '../shared/compiler_flags.gypi',
-    '../shared/gyp_configuration.gypi',
+    '<(DEPTH)/starboard/linux/x64x11/shared/gyp_configuration.gypi',
+    '<(DEPTH)/starboard/sabi/sabi.gypi',
   ],
 }

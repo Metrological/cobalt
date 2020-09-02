@@ -13,6 +13,9 @@
 # limitations under the License.
 
 {
+  'variables': {
+    'optimize_target_for_speed': 1,
+  },
   'targets': [
     # Code shared by both the hardware and software Blitter rasterizers.
     {
@@ -52,20 +55,13 @@
 
       'dependencies': [
         '<(DEPTH)/base/base.gyp:base',
+        '<(DEPTH)/cobalt/configuration/configuration.gyp:configuration',
         '<(DEPTH)/cobalt/render_tree/render_tree.gyp:render_tree',
         '<(DEPTH)/cobalt/renderer/rasterizer/common/common.gyp:common',
         '<(DEPTH)/cobalt/renderer/rasterizer/skia/skia/skia.gyp:skia',
         '<(DEPTH)/cobalt/renderer/rasterizer/skia/software_rasterizer.gyp:software_rasterizer',
         '<(DEPTH)/starboard/starboard.gyp:starboard',
         'common',
-      ],
-
-      'conditions': [
-        ['render_dirty_region_only==1', {
-          'defines': [
-            'COBALT_RENDER_DIRTY_REGION_ONLY',
-          ],
-        }],
       ],
     },
 
@@ -100,10 +96,10 @@
 
       'dependencies': [
         'hardware_rasterizer',
-        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest'
       ],
+      'includes': [ '<(DEPTH)/cobalt/test/test.gypi' ],
     },
 
     {

@@ -23,6 +23,7 @@
 #include "cobalt/renderer/rasterizer/skia/glyph_buffer.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkFontMgr_cobalt.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkTypeface_cobalt.h"
+#include "cobalt/renderer/rasterizer/skia/skottie_animation.h"
 #include "cobalt/renderer/rasterizer/skia/software_image.h"
 #include "cobalt/renderer/rasterizer/skia/software_mesh.h"
 #include "cobalt/renderer/rasterizer/skia/typeface.h"
@@ -211,7 +212,7 @@ SoftwareResourceProvider::CreateTypefaceFromRawData(
 
   sk_sp<SkTypeface_Cobalt> typeface(
       base::polymorphic_downcast<SkTypeface_Cobalt*>(
-          SkTypeface::MakeFromStream(stream.release()).release()));
+          SkTypeface::MakeFromStream(std::move(stream)).release()));
   if (typeface) {
     return scoped_refptr<render_tree::Typeface>(new SkiaTypeface(typeface));
   } else {
@@ -245,6 +246,14 @@ float SoftwareResourceProvider::GetTextWidth(
                                    font_provider, maybe_used_fonts);
 }
 
+scoped_refptr<render_tree::LottieAnimation>
+SoftwareResourceProvider::CreateLottieAnimation(const char* data,
+                                                size_t length) {
+  TRACE_EVENT0("cobalt::renderer",
+               "SoftwareResourceProvider::CreateLottieAnimation()");
+  return base::WrapRefCounted(new SkottieAnimation(data, length));
+}
+
 scoped_refptr<render_tree::Mesh> SoftwareResourceProvider::CreateMesh(
     std::unique_ptr<std::vector<render_tree::Mesh::Vertex> > vertices,
     render_tree::Mesh::DrawMode draw_mode) {
@@ -253,7 +262,6 @@ scoped_refptr<render_tree::Mesh> SoftwareResourceProvider::CreateMesh(
 
 scoped_refptr<render_tree::Image> SoftwareResourceProvider::DrawOffscreenImage(
     const scoped_refptr<render_tree::Node>& root) {
-  SB_UNREFERENCED_PARAMETER(root);
   return scoped_refptr<render_tree::Image>(NULL);
 }
 

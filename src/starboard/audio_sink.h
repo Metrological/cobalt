@@ -63,16 +63,17 @@ typedef void (*SbAudioSinkUpdateSourceStatusFunc)(int* frames_in_buffer,
 
 // Callback used to report frames consumed.  The consumed frames will be
 // removed from the source frame buffer to free space for new audio frames.
-#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+#if SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+typedef void (*SbAudioSinkConsumeFramesFunc)(int frames_consumed,
+                                             void* context);
+#else   // SB_API_VERSION >=  12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 // When |frames_consumed| is updated asynchnously and the last time that it has
 // been updated is known, it can be passed in |frames_consumed_at| so the audio
 // time calculating can be more accurate.
-#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 typedef void (*SbAudioSinkConsumeFramesFunc)(int frames_consumed,
-#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                              SbTime frames_consumed_at,
-#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                              void* context);
+#endif  // SB_API_VERSION >=  12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 
 // Well-defined value for an invalid audio sink.
 #define kSbAudioSinkInvalid ((SbAudioSink)NULL)
@@ -169,6 +170,25 @@ SB_EXPORT bool SbAudioSinkIsAudioSampleTypeSupported(
 // platform.
 SB_EXPORT bool SbAudioSinkIsAudioFrameStorageTypeSupported(
     SbMediaAudioFrameStorageType audio_frame_storage_type);
+
+#if SB_API_VERSION >= 11
+// Returns the minimum frames required by audio sink to play without underflows.
+// Returns -1, if |channels|, |sample_type| or |sampling_frequency_hz| is not
+// supported. It's user's responsibility to ensure that there're enough
+// frames written into audio sink during playing, or it may have underflows.
+//
+// |channels|: The number of audio channels, such as left and right channels
+// in stereo audio.
+// |audio_sample_type|: The type of each sample of the audio data --
+// |int16|, |float32|, etc.
+// |sampling_frequency_hz|: The sample frequency of the audio data being
+// streamed. For example, 22,000 Hz means 22,000 sample elements represents
+// one second of audio data.
+SB_EXPORT int SbAudioSinkGetMinBufferSizeInFrames(
+    int channels,
+    SbMediaAudioSampleType sample_type,
+    int sampling_frequency_hz);
+#endif  // SB_API_VERSION >= 11
 
 #ifdef __cplusplus
 }  // extern "C"

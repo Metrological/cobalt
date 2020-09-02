@@ -18,6 +18,7 @@
 
 #include "starboard/common/mutex.h"
 #include "starboard/configuration.h"
+#include "starboard/configuration_constants.h"
 #include "starboard/thread.h"
 #include "starboard/time.h"
 
@@ -32,18 +33,16 @@ class StubAudioSink : public SbAudioSinkPrivate {
   StubAudioSink(Type* type,
                 int sampling_frequency_hz,
                 SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-                SbAudioSinkConsumeFramesFunc consume_frame_func,
+                ConsumeFramesFunc consume_frames_func,
                 void* context);
   ~StubAudioSink() override;
 
   bool IsType(Type* type) override { return type_ == type; }
   void SetPlaybackRate(double playback_rate) override {
-    SB_UNREFERENCED_PARAMETER(playback_rate);
     SB_NOTIMPLEMENTED();
   }
 
   void SetVolume(double volume) override {
-    SB_UNREFERENCED_PARAMETER(volume);
   }
 
  private:
@@ -52,7 +51,7 @@ class StubAudioSink : public SbAudioSinkPrivate {
 
   Type* type_;
   SbAudioSinkUpdateSourceStatusFunc update_source_status_func_;
-  SbAudioSinkConsumeFramesFunc consume_frame_func_;
+  ConsumeFramesFunc consume_frames_func_;
   void* context_;
 
   int sampling_frequency_hz_;
@@ -67,12 +66,12 @@ StubAudioSink::StubAudioSink(
     Type* type,
     int sampling_frequency_hz,
     SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-    SbAudioSinkConsumeFramesFunc consume_frame_func,
+    ConsumeFramesFunc consume_frames_func,
     void* context)
     : type_(type),
       sampling_frequency_hz_(sampling_frequency_hz),
       update_source_status_func_(update_source_status_func),
-      consume_frame_func_(consume_frame_func),
+      consume_frames_func_(consume_frames_func),
       context_(context),
       audio_out_thread_(kSbThreadInvalid),
       destroying_(false) {
@@ -118,11 +117,8 @@ void StubAudioSink::AudioThreadFunc() {
           std::min(kMaxFramesToConsumePerRequest, frames_in_buffer);
 
       SbThreadSleep(frames_to_consume * kSbTimeSecond / sampling_frequency_hz_);
-      consume_frame_func_(frames_to_consume,
-#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
-                          SbTimeGetMonotonicNow(),
-#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
-                          context_);
+      consume_frames_func_(frames_to_consume, SbTimeGetMonotonicNow(),
+                           context_);
     } else {
       // Wait for five millisecond if we are paused.
       SbThreadSleep(kSbTimeMillisecond * 5);
@@ -140,13 +136,11 @@ SbAudioSink StubAudioSinkType::Create(
     SbAudioSinkFrameBuffers frame_buffers,
     int frame_buffers_size_in_frames,
     SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-    SbAudioSinkConsumeFramesFunc consume_frames_func,
+    SbAudioSinkPrivate::ConsumeFramesFunc consume_frames_func,
+#if SB_API_VERSION >= 12
+    SbAudioSinkPrivate::ErrorFunc error_func,
+#endif  // SB_API_VERSION >= 12
     void* context) {
-  SB_UNREFERENCED_PARAMETER(audio_frame_storage_type);
-  SB_UNREFERENCED_PARAMETER(audio_sample_type);
-  SB_UNREFERENCED_PARAMETER(channels);
-  SB_UNREFERENCED_PARAMETER(frame_buffers_size_in_frames);
-  SB_UNREFERENCED_PARAMETER(frame_buffers);
 
   return new StubAudioSink(this, sampling_frequency_hz,
                            update_source_status_func, consume_frames_func,

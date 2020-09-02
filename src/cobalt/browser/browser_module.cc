@@ -35,10 +35,10 @@
 #include "cobalt/base/tokens.h"
 #include "cobalt/browser/on_screen_keyboard_starboard_bridge.h"
 #include "cobalt/browser/screen_shot_writer.h"
-#include "cobalt/browser/storage_upgrade_handler.h"
 #include "cobalt/browser/switches.h"
 #include "cobalt/browser/user_agent_string.h"
 #include "cobalt/browser/webapi_extension.h"
+#include "cobalt/configuration/configuration.h"
 #include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/csp_delegate_factory.h"
 #include "cobalt/dom/input_event_init.h"
@@ -58,7 +58,7 @@
 
 #if SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
 #include "base/memory/ptr_util.h"
-#include "starboard/ps4/core_dump_handler.h"
+#include STARBOARD_CORE_DUMP_HANDLER_INCLUDE
 #endif  // SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
 
 using cobalt::cssom::ViewportSize;
@@ -169,7 +169,6 @@ void ScreenshotCompleteCallback(const base::FilePath& output_path) {
 
 void OnScreenshotMessage(BrowserModule* browser_module,
                          const std::string& message) {
-  SB_UNREFERENCED_PARAMETER(message);
   base::FilePath dir;
   if (!base::PathService::Get(cobalt::paths::DIR_COBALT_DEBUG_OUT, &dir)) {
     NOTREACHED() << "Failed to get debug out directory.";
@@ -195,20 +194,17 @@ void OnScreenshotMessage(BrowserModule* browser_module,
 scoped_refptr<script::Wrappable> CreateH5VCC(
     const h5vcc::H5vcc::Settings& settings,
     const scoped_refptr<dom::Window>& window,
-    dom::MutationObserverTaskManager* mutation_observer_task_manager,
     script::GlobalEnvironment* global_environment) {
-  SB_UNREFERENCED_PARAMETER(global_environment);
-  return scoped_refptr<script::Wrappable>(
-      new h5vcc::H5vcc(settings, window, mutation_observer_task_manager));
+  return scoped_refptr<script::Wrappable>(new h5vcc::H5vcc(settings));
 }
 
+#if SB_API_VERSION < 12
 scoped_refptr<script::Wrappable> CreateExtensionInterface(
     const scoped_refptr<dom::Window>& window,
-    dom::MutationObserverTaskManager* mutation_observer_task_manager,
     script::GlobalEnvironment* global_environment) {
-  SB_UNREFERENCED_PARAMETER(mutation_observer_task_manager);
   return CreateWebAPIExtensionObject(window, global_environment);
 }
+#endif
 
 renderer::RendererModule::Options RendererModuleWithCameraOptions(
     renderer::RendererModule::Options options,
@@ -235,6 +231,10 @@ BrowserModule::BrowserModule(const GURL& url,
                              base::ApplicationState initial_application_state,
                              base::EventDispatcher* event_dispatcher,
                              account::AccountManager* account_manager,
+                             network::NetworkModule* network_module,
+#if SB_IS(EVERGREEN)
+                             updater::UpdaterModule* updater_module,
+#endif
                              const Options& options)
     : ALLOW_THIS_IN_INITIALIZER_LIST(weak_ptr_factory_(this)),
       ALLOW_THIS_IN_INITIALIZER_LIST(
@@ -242,26 +242,25 @@ BrowserModule::BrowserModule(const GURL& url,
       options_(options),
       self_message_loop_(base::MessageLoop::current()),
       event_dispatcher_(event_dispatcher),
-      storage_manager_(std::unique_ptr<storage::StorageManager::UpgradeHandler>(
-                           new StorageUpgradeHandler(url)),
-                       options_.storage_manager_options),
       is_rendered_(false),
       can_play_type_handler_(media::MediaModule::CreateCanPlayTypeHandler()),
-      network_module_(
-          CreateUserAgentString(GetUserAgentPlatformInfoFromSystem()),
-          &storage_manager_, event_dispatcher_,
-          options_.network_module_options),
+      network_module_(network_module),
+#if SB_IS(EVERGREEN)
+      updater_module_(updater_module),
+#endif
       splash_screen_cache_(new SplashScreenCache()),
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
       on_screen_keyboard_bridge_(
-          options.enable_on_screen_keyboard
+          OnScreenKeyboardStarboardBridge::IsSupported() &&
+                  options.enable_on_screen_keyboard
               ? new OnScreenKeyboardStarboardBridge(base::Bind(
                     &BrowserModule::GetSbWindow, base::Unretained(this)))
               : NULL),
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+      // SB_HAS(ON_SCREEN_KEYBOARD)
       web_module_loaded_(base::WaitableEvent::ResetPolicy::MANUAL,
                          base::WaitableEvent::InitialState::NOT_SIGNALED),
-      web_module_recreated_callback_(options_.web_module_recreated_callback),
+      web_module_created_callback_(options_.web_module_created_callback),
       navigate_time_("Time.Browser.Navigate", 0,
                      "The last time a navigation occurred."),
       on_load_event_time_("Time.Browser.OnLoadEvent", 0,
@@ -342,7 +341,18 @@ BrowserModule::BrowserModule(const GURL& url,
 #if defined(ENABLE_DEBUGGER)
   debug_console_layer_ = render_tree_combiner_.CreateLayer(kDebugConsoleZIndex);
 #endif
-  if (command_line->HasSwitch(browser::switches::kQrCodeOverlay)) {
+
+  int qr_code_overlay_slots = 4;
+  if (command_line->HasSwitch(switches::kQrCodeOverlay)) {
+    auto slots_in_string =
+        command_line->GetSwitchValueASCII(switches::kQrCodeOverlay);
+    if (!slots_in_string.empty()) {
+      auto result = base::StringToInt(slots_in_string, &qr_code_overlay_slots);
+      DCHECK(result) << "Failed to convert value of --"
+                     << switches::kQrCodeOverlay << ": "
+                     << qr_code_overlay_slots << " to int.";
+      DCHECK_GT(qr_code_overlay_slots, 0);
+    }
     qr_overlay_info_layer_ =
         render_tree_combiner_.CreateLayer(kOverlayInfoZIndex);
   } else {
@@ -354,10 +364,12 @@ BrowserModule::BrowserModule(const GURL& url,
                       "h5vcc"));
   h5vcc::H5vcc::Settings h5vcc_settings;
   h5vcc_settings.media_module = media_module_.get();
-  h5vcc_settings.network_module = &network_module_;
+  h5vcc_settings.network_module = network_module_;
+#if SB_IS(EVERGREEN)
+  h5vcc_settings.updater_module = updater_module_;
+#endif
   h5vcc_settings.account_manager = account_manager;
   h5vcc_settings.event_dispatcher = event_dispatcher_;
-  h5vcc_settings.initial_deep_link = options_.initial_deep_link;
   options_.web_module_options.injected_window_attributes["h5vcc"] =
       base::Bind(&CreateH5VCC, h5vcc_settings);
 
@@ -365,11 +377,15 @@ BrowserModule::BrowserModule(const GURL& url,
     options_.web_module_options.limit_performance_timer_resolution = false;
   }
 
+  options_.web_module_options.enable_inline_script_warnings =
+      !command_line->HasSwitch(switches::kSilenceInlineScriptWarnings);
+
 #if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
   options_.web_module_options.enable_partial_layout =
       !command_line->HasSwitch(switches::kDisablePartialLayout);
 #endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
 
+#if SB_API_VERSION < 12
   base::Optional<std::string> extension_object_name =
       GetWebAPIExtensionObjectPropertyName();
   if (extension_object_name) {
@@ -377,6 +393,7 @@ BrowserModule::BrowserModule(const GURL& url,
         .injected_window_attributes[*extension_object_name] =
         base::Bind(&CreateExtensionInterface);
   }
+#endif
 
 #if defined(ENABLE_DEBUGGER) && defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
   if (command_line->HasSwitch(switches::kInputFuzzer)) {
@@ -414,20 +431,23 @@ BrowserModule::BrowserModule(const GURL& url,
       application_state_,
       base::Bind(&BrowserModule::QueueOnDebugConsoleRenderTreeProduced,
                  base::Unretained(this)),
-      &network_module_, GetViewportSize(), GetResourceProvider(),
+      network_module_, GetViewportSize(), GetResourceProvider(),
       kLayoutMaxRefreshFrequencyInHz,
       base::Bind(&BrowserModule::CreateDebugClient, base::Unretained(this))));
   lifecycle_observers_.AddObserver(debug_console_.get());
 #endif  // defined(ENABLE_DEBUGGER)
 
-  if (command_line->HasSwitch(switches::kEnableMapToMeshRectanglar)) {
-    options_.web_module_options.enable_map_to_mesh_rectangular = true;
+  const renderer::Pipeline* pipeline =
+      renderer_module_ ? renderer_module_->pipeline() : nullptr;
+  if (command_line->HasSwitch(switches::kDisableMapToMesh) ||
+      !renderer::Pipeline::IsMapToMeshEnabled(pipeline)) {
+    options_.web_module_options.enable_map_to_mesh = false;
   }
 
   if (qr_overlay_info_layer_) {
     math::Size width_height = GetViewportSize().width_height();
     qr_code_overlay_.reset(new overlay_info::QrCodeOverlay(
-        width_height, GetResourceProvider(),
+        width_height, qr_code_overlay_slots, GetResourceProvider(),
         base::Bind(&BrowserModule::QueueOnQrCodeOverlayRenderTreeProduced,
                    base::Unretained(this))));
   }
@@ -485,8 +505,8 @@ void BrowserModule::Navigate(const GURL& url_reference) {
     return;
   }
 
-  // First try the registered handlers (e.g. for h5vcc://). If one of these
-  // handles the URL, we don't use the web module.
+  // First try any registered handlers. If one of these handles the URL, we
+  // don't use the web module.
   if (TryURLHandlers(url)) {
     return;
   }
@@ -549,7 +569,7 @@ void BrowserModule::Navigate(const GURL& url_reference) {
           application_state_,
           base::Bind(&BrowserModule::QueueOnSplashScreenRenderTreeProduced,
                      base::Unretained(this)),
-          &network_module_, viewport_size, GetResourceProvider(),
+          network_module_, viewport_size, GetResourceProvider(),
           kLayoutMaxRefreshFrequencyInHz, fallback_splash_screen_url_, url,
           splash_screen_cache_.get(),
           base::Bind(&BrowserModule::DestroySplashScreen, weak_this_)));
@@ -570,9 +590,7 @@ void BrowserModule::Navigate(const GURL& url_reference) {
       base::Bind(&BrowserModule::OnLoad, base::Unretained(this)));
 #if defined(ENABLE_FAKE_MICROPHONE)
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kFakeMicrophone) ||
-      base::CommandLine::ForCurrentProcess()->HasSwitch(
-          switches::kInputFuzzer)) {
+          switches::kFakeMicrophone)) {
     options.dom_settings_options.microphone_options.enable_fake_microphone =
         true;
   }
@@ -581,14 +599,10 @@ void BrowserModule::Navigate(const GURL& url_reference) {
     options.on_screen_keyboard_bridge = on_screen_keyboard_bridge_.get();
   }
   options.image_cache_capacity_multiplier_when_playing_video =
-      COBALT_IMAGE_CACHE_CAPACITY_MULTIPLIER_WHEN_PLAYING_VIDEO;
+      configuration::Configuration::GetInstance()
+          ->CobaltImageCacheCapacityMultiplierWhenPlayingVideo();
   if (input_device_manager_) {
     options.camera_3d = input_device_manager_->camera_3d();
-  }
-
-  float video_pixel_ratio = 1.0f;
-  if (system_window_) {
-    video_pixel_ratio = system_window_->GetVideoPixelRatio();
   }
 
   // Make sure that automem has been run before creating the WebModule, so that
@@ -621,12 +635,12 @@ void BrowserModule::Navigate(const GURL& url_reference) {
       base::Bind(&BrowserModule::OnError, base::Unretained(this)),
       base::Bind(&BrowserModule::OnWindowClose, base::Unretained(this)),
       base::Bind(&BrowserModule::OnWindowMinimize, base::Unretained(this)),
-      can_play_type_handler_.get(), media_module_.get(), &network_module_,
-      viewport_size, video_pixel_ratio, GetResourceProvider(),
-      kLayoutMaxRefreshFrequencyInHz, options));
+      can_play_type_handler_.get(), media_module_.get(), network_module_,
+      viewport_size, GetResourceProvider(), kLayoutMaxRefreshFrequencyInHz,
+      options));
   lifecycle_observers_.AddObserver(web_module_.get());
-  if (!web_module_recreated_callback_.is_null()) {
-    web_module_recreated_callback_.Run();
+  if (!web_module_created_callback_.is_null()) {
+    web_module_created_callback_.Run();
   }
 
   if (system_window_) {
@@ -679,6 +693,7 @@ void BrowserModule::OnLoad() {
   on_error_retry_count_ = 0;
 
   on_load_event_time_ = base::TimeTicks::Now().ToInternalValue();
+
   web_module_loaded_.Signal();
 }
 
@@ -913,25 +928,24 @@ void BrowserModule::OnWindowMinimize() {
 }
 
 #if SB_API_VERSION >= 8
-void BrowserModule::OnWindowSizeChanged(const ViewportSize& viewport_size,
-                                        float video_pixel_ratio) {
+void BrowserModule::OnWindowSizeChanged(const ViewportSize& viewport_size) {
   if (web_module_) {
-    web_module_->SetSize(viewport_size, video_pixel_ratio);
+    web_module_->SetSize(viewport_size);
   }
 #if defined(ENABLE_DEBUGGER)
   if (debug_console_) {
-    debug_console_->web_module().SetSize(viewport_size, video_pixel_ratio);
+    debug_console_->web_module().SetSize(viewport_size);
   }
 #endif  // defined(ENABLE_DEBUGGER)
   if (splash_screen_) {
-    splash_screen_->web_module().SetSize(viewport_size, video_pixel_ratio);
+    splash_screen_->web_module().SetSize(viewport_size);
   }
 
   return;
 }
 #endif  // SB_API_VERSION >= 8
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
 void BrowserModule::OnOnScreenKeyboardShown(
     const base::OnScreenKeyboardShownEvent* event) {
   DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
@@ -982,16 +996,17 @@ void BrowserModule::OnOnScreenKeyboardSuggestionsUpdated(
   }
 }
 #endif  // SB_API_VERSION >= 11
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
-#if SB_HAS(CAPTIONS)
+#if SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
 void BrowserModule::OnCaptionSettingsChanged(
-    const base::AccessibilityCaptionSettingsChangedEvent* /*event*/) {
+    const base::AccessibilityCaptionSettingsChangedEvent* event) {
   if (web_module_) {
     web_module_->InjectCaptionSettingsChangedEvent();
   }
 }
-#endif  // SB_HAS(CAPTIONS)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
 
 #if defined(ENABLE_DEBUGGER)
 void BrowserModule::OnFuzzerToggle(const std::string& message) {
@@ -1063,7 +1078,7 @@ void BrowserModule::OnDebugConsoleRenderTreeProduced(
     return;
   }
 
-  if (debug_console_->GetMode() == debug::console::DebugHub::kDebugConsoleOff) {
+  if (!debug_console_->IsVisible()) {
     // If the layer already has no render tree then simply return. In that case
     // nothing is changing.
     if (!debug_console_layer_->HasRenderTree()) {
@@ -1080,7 +1095,7 @@ void BrowserModule::OnDebugConsoleRenderTreeProduced(
 
 #endif  // defined(ENABLE_DEBUGGER)
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
 void BrowserModule::OnOnScreenKeyboardInputEventProduced(
     base::Token type, const dom::InputEventInit& event) {
   TRACE_EVENT0("cobalt::browser",
@@ -1094,18 +1109,15 @@ void BrowserModule::OnOnScreenKeyboardInputEventProduced(
   }
 
 #if defined(ENABLE_DEBUGGER)
-  // If the debug console is fully visible, it gets the next chance to handle
-  // input events.
-  if (debug_console_->GetMode() >= debug::console::DebugHub::kDebugConsoleOn) {
-    if (!debug_console_->InjectOnScreenKeyboardInputEvent(type, event)) {
-      return;
-    }
+  if (!debug_console_->FilterOnScreenKeyboardInputEvent(type, event)) {
+    return;
   }
 #endif  // defined(ENABLE_DEBUGGER)
 
   InjectOnScreenKeyboardInputEventToMainWebModule(type, event);
 }
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
 void BrowserModule::OnKeyEventProduced(base::Token type,
                                        const dom::KeyboardEventInit& event) {
@@ -1136,14 +1148,9 @@ void BrowserModule::OnPointerEventProduced(base::Token type,
   }
 
 #if defined(ENABLE_DEBUGGER)
-  // If the debug console is fully visible, it gets the next chance to handle
-  // pointer events.
-  if (debug_console_->GetMode() >= debug::console::DebugHub::kDebugConsoleOn) {
-    if (!debug_console_->FilterPointerEvent(type, event)) {
-      return;
-    }
+  if (!debug_console_->FilterPointerEvent(type, event)) {
+    return;
   }
-
 #endif  // defined(ENABLE_DEBUGGER)
 
   DCHECK(web_module_);
@@ -1161,14 +1168,9 @@ void BrowserModule::OnWheelEventProduced(base::Token type,
   }
 
 #if defined(ENABLE_DEBUGGER)
-  // If the debug console is fully visible, it gets the next chance to handle
-  // wheel events.
-  if (debug_console_->GetMode() >= debug::console::DebugHub::kDebugConsoleOn) {
-    if (!debug_console_->FilterWheelEvent(type, event)) {
-      return;
-    }
+  if (!debug_console_->FilterWheelEvent(type, event)) {
+    return;
   }
-
 #endif  // defined(ENABLE_DEBUGGER)
 
   DCHECK(web_module_);
@@ -1190,7 +1192,7 @@ void BrowserModule::InjectKeyEventToMainWebModule(
   web_module_->InjectKeyboardEvent(type, event);
 }
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
 void BrowserModule::InjectOnScreenKeyboardInputEventToMainWebModule(
     base::Token type, const dom::InputEventInit& event) {
   TRACE_EVENT0(
@@ -1208,7 +1210,8 @@ void BrowserModule::InjectOnScreenKeyboardInputEventToMainWebModule(
   DCHECK(web_module_);
   web_module_->InjectOnScreenKeyboardInputEvent(type, event);
 }
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
 void BrowserModule::OnError(const GURL& url, const std::string& error) {
   TRACE_EVENT0("cobalt::browser", "BrowserModule::OnError()");
@@ -1291,12 +1294,8 @@ bool BrowserModule::FilterKeyEvent(base::Token type,
   }
 
 #if defined(ENABLE_DEBUGGER)
-  // If the debug console is fully visible, it gets the next chance to handle
-  // key events.
-  if (debug_console_->GetMode() >= debug::console::DebugHub::kDebugConsoleOn) {
-    if (!debug_console_->FilterKeyEvent(type, event)) {
-      return false;
-    }
+  if (!debug_console_->FilterKeyEvent(type, event)) {
+    return false;
   }
 #endif  // defined(ENABLE_DEBUGGER)
 
@@ -1310,7 +1309,7 @@ bool BrowserModule::FilterKeyEventForHotkeys(
   if (event.key_code() == dom::keycode::kF1 ||
       (event.ctrl_key() && event.key_code() == dom::keycode::kO)) {
     if (type == base::Tokens::keydown()) {
-      // Ctrl+O toggles the debug console display.
+      // F1 or Ctrl+O cycles the debug console display.
       debug_console_->CycleMode();
     }
     return false;
@@ -1319,6 +1318,12 @@ bool BrowserModule::FilterKeyEventForHotkeys(
       // F5 reloads the page.
       Reload();
     }
+  } else if (event.ctrl_key() && event.key_code() == dom::keycode::kS) {
+    if (type == base::Tokens::keydown()) {
+      // Ctrl+S suspends Cobalt.
+      SbSystemRequestSuspend();
+    }
+    return false;
   }
 #endif  // defined(ENABLE_DEBUGGER)
 
@@ -1433,7 +1438,7 @@ void BrowserModule::GetDebugDispatcherInternal(
 
 void BrowserModule::SetProxy(const std::string& proxy_rules) {
   // NetworkModule will ensure this happens on the correct thread.
-  network_module_.SetProxy(proxy_rules);
+  network_module_->SetProxy(proxy_rules);
 }
 
 void BrowserModule::Start() {
@@ -1609,17 +1614,16 @@ void BrowserModule::InitializeSystemWindow() {
       base::Bind(&BrowserModule::OnPointerEventProduced,
                  base::Unretained(this)),
       base::Bind(&BrowserModule::OnWheelEventProduced, base::Unretained(this)),
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
       base::Bind(&BrowserModule::OnOnScreenKeyboardInputEventProduced,
                  base::Unretained(this)),
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+      // SB_HAS(ON_SCREEN_KEYBOARD)
       system_window_.get());
   InstantiateRendererModule();
 
-#if SB_API_VERSION >= 10
   options_.media_module_options.allow_resume_after_suspend =
       SbSystemSupportsResume();
-#endif  // SB_API_VERSION >= 10
   media_module_.reset(new media::MediaModule(system_window_.get(),
                                              GetResourceProvider(),
                                              options_.media_module_options));
@@ -1654,19 +1658,18 @@ void BrowserModule::DestroyRendererModule() {
 
 void BrowserModule::UpdateScreenSize() {
   ViewportSize size = GetViewportSize();
-  float video_pixel_ratio = system_window_->GetVideoPixelRatio();
 #if defined(ENABLE_DEBUGGER)
   if (debug_console_) {
-    debug_console_->SetSize(size, video_pixel_ratio);
+    debug_console_->SetSize(size);
   }
 #endif  // defined(ENABLE_DEBUGGER)
 
   if (splash_screen_) {
-    splash_screen_->SetSize(size, video_pixel_ratio);
+    splash_screen_->SetSize(size);
   }
 
   if (web_module_) {
-    web_module_->SetSize(size, video_pixel_ratio);
+    web_module_->SetSize(size);
   }
 
   if (qr_code_overlay_) {
@@ -1754,16 +1757,30 @@ void BrowserModule::StartOrResumeInternalPostStateUpdate() {
 ViewportSize BrowserModule::GetViewportSize() {
   // We trust the renderer module for width and height the most, if it exists.
   if (renderer_module_) {
-    math::Size size = renderer_module_->render_target_size();
+    math::Size target_size = renderer_module_->render_target_size();
     // ...but get the diagonal from one of the other modules.
     float diagonal_inches = 0;
+    float device_pixel_ratio = 1.0f;
     if (system_window_) {
       diagonal_inches = system_window_->GetDiagonalSizeInches();
+      device_pixel_ratio = system_window_->GetDevicePixelRatio();
+
+      // For those platforms that can have a main window size smaller than the
+      // render target size, the system_window_ size (if exists) should be
+      // trusted over the renderer_module_ render target size.
+      math::Size window_size = system_window_->GetWindowSize();
+      if (window_size.width() <= target_size.width() &&
+          window_size.height() <= target_size.height()) {
+        target_size = window_size;
+      }
     } else if (options_.requested_viewport_size) {
       diagonal_inches = options_.requested_viewport_size->diagonal_inches();
+      device_pixel_ratio =
+          options_.requested_viewport_size->device_pixel_ratio();
     }
 
-    ViewportSize v(size.width(), size.height(), diagonal_inches);
+    ViewportSize v(target_size.width(), target_size.height(), diagonal_inches,
+                   device_pixel_ratio);
     return v;
   }
 
@@ -1771,7 +1788,8 @@ ViewportSize BrowserModule::GetViewportSize() {
   if (system_window_) {
     math::Size size = system_window_->GetWindowSize();
     ViewportSize v(size.width(), size.height(),
-                   system_window_->GetDiagonalSizeInches());
+                   system_window_->GetDiagonalSizeInches(),
+                   system_window_->GetDevicePixelRatio());
     return v;
   }
 
@@ -1785,7 +1803,7 @@ ViewportSize BrowserModule::GetViewportSize() {
 
   // No window and no viewport size was requested, so we return a conservative
   // default.
-  ViewportSize view_size(1280, 720, 0);
+  ViewportSize view_size(1280, 720);
   return view_size;
 }
 
@@ -1795,7 +1813,7 @@ void BrowserModule::ApplyAutoMemSettings() {
       GetViewportSize().width_height(), options_.command_line_auto_mem_settings,
       options_.build_auto_mem_settings));
 
-  LOG(INFO) << "\n\n" << auto_mem_->ToPrettyPrintString(SbLogIsTty()) << "\n\n";
+  LOG(INFO) << auto_mem_->ToPrettyPrintString(SbLogIsTty());
 
   if (javascript_gc_threshold_in_bytes_) {
     DCHECK_EQ(*javascript_gc_threshold_in_bytes_,

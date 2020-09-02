@@ -62,13 +62,10 @@ typedef void* SbPageVirtualMemory;
 // actually have mmap(), we call that directly. Otherwise we use
 // platform-specific system allocators.
 //
-// Platforms that have OS support for the virtual region ("MORECORE") behavior
-// will enable SB_HAS_VIRTUAL_REGIONS in configuration_public.h.
-//
-// Platforms that support SbMap() must enable SB_HAS_MMAP in their
-// configuration_public.h file. dlmalloc is very flexible and if a platform
-// can't implement virtual regions, it will use Map() for all allocations,
-// merging adjacent allocations when it can.
+// Platforms that support SbMap() must be at least starboard version 12 or
+// enable SB_HAS_MMAP in their configuration_public.h file. dlmalloc is very
+// flexible and if a platform can't implement virtual regions, it will use
+// Map() for all allocations, merging adjacent allocations when it can.
 //
 // If a platform can't use Map(), it will just use MORECORE for everything.
 // Currently we believe a mixture of both provides best behavior, but more
@@ -76,7 +73,7 @@ typedef void* SbPageVirtualMemory;
 //
 // See also dlmalloc_config.h which controls some dlmalloc behavior.
 
-#if SB_HAS(VIRTUAL_REGIONS)
+#if SB_API_VERSION < 12 && SB_HAS(VIRTUAL_REGIONS)
 // Reserves a virtual address space |size_bytes| big, without mapping any
 // physical pages to that range, returning a pointer to the beginning of the
 // reserved virtual address range. To get memory that is actually usable and
@@ -103,9 +100,10 @@ int SbPageUnmapAndFreePhysical(SbPageVirtualMemory virtual_address,
 
 // How big of a virtual region dlmalloc should allocate.
 size_t SbPageGetVirtualRegionSize();
-#endif
+#endif  // SB_API_VERSION < 12 &&
+        // SB_HAS(VIRTUAL_REGIONS)
 
-#if SB_HAS(MMAP)
+#if SB_API_VERSION >= 12 || SB_HAS(MMAP)
 // Allocates |size_bytes| worth of physical memory pages and maps them into an
 // available virtual region. On some platforms, |name| appears in the debugger
 // and can be up to 32 bytes. Returns SB_MEMORY_MAP_FAILED on failure, as NULL
@@ -130,15 +128,13 @@ bool SbPageUnmap(void* virtual_address, size_t size_bytes);
 // allocated via MapUntracked().
 bool SbPageUnmapUntracked(void* virtual_address, size_t size_bytes);
 
-#if SB_API_VERSION >= 10
 // Change the protection of |size_bytes| of physical pages, starting from
 // |virtual_address|, to |flags|, returning |true| on success.
 bool SbPageProtect(void* virtual_address, int64_t size_bytes, int flags);
-#endif
-#endif  // SB_HAS(MMAP)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(MMAP)
 
 // Returns the total amount, in bytes, of physical memory available. Should
-// always be a multiple of SB_MEMORY_PAGE_SIZE.
+// always be a multiple of kSbMemoryPageSize.
 size_t SbPageGetTotalPhysicalMemoryBytes();
 
 // Returns the amount, in bytes, of physical memory that hasn't yet been mapped.
@@ -146,7 +142,7 @@ size_t SbPageGetTotalPhysicalMemoryBytes();
 int64_t SbPageGetUnallocatedPhysicalMemoryBytes();
 
 // Returns the total amount, in bytes, currently allocated via Map().  Should
-// always be a multiple of SB_MEMORY_PAGE_SIZE.
+// always be a multiple of kSbMemoryPageSize.
 size_t SbPageGetMappedBytes();
 
 // Declaration of the allocator API.

@@ -23,6 +23,12 @@ Cobalt as the sysroot system libraries will differ in the latest version of
 Raspbian.
 </aside>
 
+Configure the Raspberry Pi memory split.
+
+1.  `sudo raspi-config`
+1.  Go to Advanced
+1.  Memory Split: 256 for RasPi-0, 512 for all others.
+
 Cobalt assumes the Raspberry Pi is configured to use non-default thread
 schedulers and priorities. Ensure that **/etc/security/limits.conf** sets
 **rtprio** and **nice** limits for the user. For example, if the user is **pi**,
@@ -91,8 +97,8 @@ Raspberry Pi.
 1.  Run the following commands to build Cobalt:
 
     ```
-    $ gyp_cobalt raspi-1
-    $ ninja -C out/raspi-1_debug cobalt
+    $ gyp_cobalt raspi-2
+    $ ninja -C out/raspi-2_debug cobalt
     ```
 
 1.  Run the following command to install your Cobalt binary (and content)
@@ -100,7 +106,7 @@ Raspberry Pi.
 
     ```
     rsync -avzh --exclude="obj*" \
-          $COBALT_SRC/out/raspi-1_debug pi@$RASPI_ADDR:~/
+          $COBALT_SRC/out/raspi-2_debug pi@$RASPI_ADDR:~/
     ```
 
     The `rsyncs` get somewhat faster after the first time, as `rsync` is good at
@@ -112,7 +118,7 @@ Raspberry Pi.
 
     ```
     ssh pi@$RASPI_ADDR
-    cd raspi-1_debug
+    cd raspi-2_debug
     ./cobalt
     ```
 

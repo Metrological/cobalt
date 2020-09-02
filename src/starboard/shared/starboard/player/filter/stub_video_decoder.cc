@@ -24,7 +24,6 @@ namespace filter {
 
 void StubVideoDecoder::Initialize(const DecoderStatusCB& decoder_status_cb,
                                   const ErrorCB& error_cb) {
-  SB_UNREFERENCED_PARAMETER(error_cb);
   SB_DCHECK(decoder_status_cb);
   SB_DCHECK(!decoder_status_cb_);
   decoder_status_cb_ = decoder_status_cb;
@@ -48,14 +47,9 @@ void StubVideoDecoder::WriteInputBuffer(
 
   auto& video_sample_info = input_buffer->video_sample_info();
   if (video_sample_info.is_key_frame) {
-    if (!video_sample_info_ ||
-        video_sample_info_.value() != video_sample_info) {
+    if (video_sample_info_ != video_sample_info) {
       SB_LOG(INFO) << "New video sample info: " << video_sample_info;
       video_sample_info_ = video_sample_info;
-#if SB_API_VERSION < 11
-      color_metadata_ = *video_sample_info.color_metadata;
-      video_sample_info_->color_metadata = &color_metadata_;
-#endif  // SB_API_VERSION < 11
     }
   }
 
@@ -84,7 +78,7 @@ void StubVideoDecoder::WriteEndOfStream() {
 
 void StubVideoDecoder::Reset() {
   output_event_frame_times_.clear();
-  video_sample_info_ = nullopt;
+  video_sample_info_ = media::VideoSampleInfo();
 }
 
 SbDecodeTarget StubVideoDecoder::GetCurrentDecodeTarget() {

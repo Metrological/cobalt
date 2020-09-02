@@ -170,7 +170,8 @@ void ContainerBox::MoveDirectChildrenToSplitSibling(
 }
 
 bool ContainerBox::IsContainingBlockForPositionAbsoluteElements() const {
-  return parent() == NULL || IsPositioned() || IsTransformed();
+  return parent() == NULL ||
+         computed_style()->IsContainingBlockForPositionAbsoluteElements();
 }
 
 bool ContainerBox::IsContainingBlockForPositionFixedElements() const {
@@ -278,13 +279,14 @@ bool ContainerBox::HasStackingContextChildren() const {
 
 namespace {
 
-Vector2dLayoutUnit
+InsetsLayoutUnit
 GetOffsetFromContainingBlockToParentOfAbsolutelyPositionedBox(
     const ContainerBox* containing_block, Box* child_box) {
+  // NOTE: Bottom inset is not computed and should not be queried.
   DCHECK(child_box->IsAbsolutelyPositioned());
   DCHECK_EQ(child_box->GetContainingBlock(), containing_block);
 
-  Vector2dLayoutUnit offset;
+  InsetsLayoutUnit offset;
 
   const ContainerBox* current_box = child_box->parent();
   while (current_box != containing_block) {
@@ -292,7 +294,7 @@ GetOffsetFromContainingBlockToParentOfAbsolutelyPositionedBox(
     DCHECK(!current_box->IsTransformed());
     const ContainerBox* next_box = current_box->GetContainingBlock();
     offset +=
-        current_box->GetContentBoxOffsetFromContainingBlockContentBox(next_box);
+        current_box->GetContentBoxInsetFromContainingBlockContentBox(next_box);
     current_box = next_box;
   }
 
@@ -303,7 +305,10 @@ GetOffsetFromContainingBlockToParentOfAbsolutelyPositionedBox(
   // the containing block of a 'fixed' position element must always be the
   // viewport, all major browsers use the padding box of a transformed ancestor
   // as the containing block for 'fixed' position elements.
-  offset += containing_block->GetContentBoxOffsetFromPaddingBox();
+  offset += InsetsLayoutUnit(containing_block->padding_left(),
+                             containing_block->padding_top(),
+                             containing_block->padding_right(),
+                             LayoutUnit());
 
   return offset;
 }
@@ -403,10 +408,12 @@ void ContainerBox::UpdateOffsetOfRelativelyPositionedChildBox(
     // property of the containing block is 'ltr', the value of 'left' wins and
     // 'right' becomes -'left'. If 'direction' of the containing block is 'rtl',
     // 'right' wins and 'left' is ignored.
-
-    // TODO: Take into account the value of the 'direction' property, which
-    //       doesn't exist at the time of this writing.
-    offset.set_x(*maybe_left);
+    if (child_layout_params.containing_block_direction ==
+        kLeftToRightBaseDirection) {
+      offset.set_x(*maybe_left);
+    } else {
+      offset.set_x(-*maybe_right);
+    }
   }
 
   // The 'top' and 'bottom' properties move relatively positioned element(s) up
@@ -432,14 +439,16 @@ void ContainerBox::UpdateOffsetOfRelativelyPositionedChildBox(
 
 void ContainerBox::UpdateRectOfAbsolutelyPositionedChildBox(
     Box* child_box, const LayoutParams& child_layout_params) {
-  Vector2dLayoutUnit offset_from_containing_block_to_parent =
+  InsetsLayoutUnit offset_from_containing_block_to_parent =
       GetOffsetFromContainingBlockToParentOfAbsolutelyPositionedBox(this,
                                                                     child_box);
 
   child_box->SetStaticPositionLeftFromContainingBlockToParent(
-      offset_from_containing_block_to_parent.x());
+      offset_from_containing_block_to_parent.left());
+  child_box->SetStaticPositionRightFromContainingBlockToParent(
+      offset_from_containing_block_to_parent.right());
   child_box->SetStaticPositionTopFromContainingBlockToParent(
-      offset_from_containing_block_to_parent.y());
+      offset_from_containing_block_to_parent.top());
   child_box->UpdateSize(child_layout_params);
 }
 

@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "starboard/configuration.h"
+#if SB_API_VERSION >= 12 || SB_HAS(GLES2)
+
 #include <algorithm>
 #include <memory>
 
@@ -20,6 +23,7 @@
 #include "base/debug/leak_annotations.h"
 #include "base/trace_event/trace_event.h"
 #include "cobalt/base/polymorphic_downcast.h"
+#include "cobalt/configuration/configuration.h"
 #include "cobalt/renderer/backend/egl/framebuffer_render_target.h"
 #include "cobalt/renderer/backend/egl/graphics_system.h"
 #include "cobalt/renderer/backend/egl/pbuffer_render_target.h"
@@ -28,6 +32,10 @@
 #include "cobalt/renderer/backend/egl/texture_data.h"
 #include "cobalt/renderer/backend/egl/utils.h"
 #include "cobalt/renderer/egl_and_gles.h"
+
+#if defined(GLES3_SUPPORTED) && SB_API_VERSION >= 12
+#error "Support for gles3 features has been deprecated."
+#endif
 
 namespace cobalt {
 namespace renderer {
@@ -52,7 +60,7 @@ GraphicsContextEGL::GraphicsContextEGL(GraphicsSystem* parent_system,
       display_(display),
       config_(config),
       is_current_(false) {
-#if defined(GLES3_SUPPORTED)
+#if SB_API_VERSION < 12 && defined(GLES3_SUPPORTED)
   context_ = CreateGLES3Context(display, config, resource_context->context());
 #else
   // Create an OpenGL ES 2.0 context.
@@ -530,7 +538,9 @@ void GraphicsContextEGL::SwapBuffers(RenderTargetEGL* surface) {
   // current implementation of eglSwapBuffers() does nothing for PBuffers,
   // so only check for framebuffer render targets.
   if (surface->GetPlatformHandle() == 0) {
-    EGL_CALL_SIMPLE(eglSwapInterval(display_, COBALT_EGL_SWAP_INTERVAL));
+    EGL_CALL_SIMPLE(eglSwapInterval(
+        display_,
+        configuration::Configuration::GetInstance()->CobaltEglSwapInterval()));
     EGL_CALL_SIMPLE(eglSwapBuffers(display_, surface->GetSurface()));
     EGLint swap_err = EGL_CALL_SIMPLE(eglGetError());
     if (swap_err != EGL_SUCCESS) {
@@ -560,3 +570,5 @@ void GraphicsContextEGL::SecurityClear() {
 }  // namespace backend
 }  // namespace renderer
 }  // namespace cobalt
+
+#endif  // SB_API_VERSION >= 12 || SB_HAS(GLES2)

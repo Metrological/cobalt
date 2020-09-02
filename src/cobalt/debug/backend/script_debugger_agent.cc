@@ -61,7 +61,7 @@ JSONObject ScriptDebuggerAgent::Freeze() {
   return agent_state;
 }
 
-bool ScriptDebuggerAgent::RunCommand(const Command& command) {
+base::Optional<Command> ScriptDebuggerAgent::RunCommand(Command command) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   // Use an internal ID to store the pending command until we get a response.
@@ -77,13 +77,19 @@ bool ScriptDebuggerAgent::RunCommand(const Command& command) {
 
   // Store the pending command before dispatching it so that we can find it if
   // the script debugger sends a synchronous response before returning.
-  pending_commands_.emplace(command_id, command);
-  if (!script_debugger_->DispatchProtocolMessage(command.GetMethod(),
-                                                 JSONStringify(message))) {
-    pending_commands_.erase(command_id);
-    return false;
+  std::string method = command.GetMethod();
+  pending_commands_.emplace(command_id, std::move(command));
+  if (script_debugger_->DispatchProtocolMessage(method,
+                                                JSONStringify(message))) {
+    // The command has been dispached; keep ownership of it in the map.
+    return base::nullopt;
   }
-  return true;
+
+  // Take the command back out of the map and return it for fallback.
+  auto opt_command =
+      base::make_optional(std::move(pending_commands_.at(command_id)));
+  pending_commands_.erase(command_id);
+  return opt_command;
 }
 
 void ScriptDebuggerAgent::SendCommandResponse(

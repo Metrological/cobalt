@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "starboard/configuration.h"
+#if SB_API_VERSION >= 12 || SB_HAS(GLES2)
+
 #include "cobalt/renderer/backend/egl/texture.h"
 
 #include "base/bind.h"
@@ -136,3 +139,5 @@ TextureEGL::~TextureEGL() {
 }  // namespace backend
 }  // namespace renderer
 }  // namespace cobalt
+
+#endif  // SB_API_VERSION >= 12 || SB_HAS(GLES2)

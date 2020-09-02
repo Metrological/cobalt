@@ -116,9 +116,10 @@ Box::Box(const scoped_refptr<cssom::CSSComputedStyleDeclaration>&
 #ifdef _DEBUG
   margin_box_offset_from_containing_block_.SetVector(LayoutUnit(),
                                                      LayoutUnit());
-  static_position_offset_from_parent_.SetVector(LayoutUnit(), LayoutUnit());
-  static_position_offset_from_containing_block_to_parent_.SetVector(
-      LayoutUnit(), LayoutUnit());
+  static_position_offset_from_parent_.SetInsets(
+      LayoutUnit(), LayoutUnit(), LayoutUnit(), LayoutUnit());
+  static_position_offset_from_containing_block_to_parent_.SetInsets(
+      LayoutUnit(), LayoutUnit(), LayoutUnit(), LayoutUnit());
   margin_insets_.SetInsets(LayoutUnit(), LayoutUnit(), LayoutUnit(),
                            LayoutUnit());
   border_insets_.SetInsets(LayoutUnit(), LayoutUnit(), LayoutUnit(),
@@ -132,11 +133,11 @@ Box::Box(const scoped_refptr<cssom::CSSComputedStyleDeclaration>&
 Box::~Box() { layout_stat_tracker_->OnBoxDestroyed(); }
 
 bool Box::IsPositioned() const {
-  return computed_style()->position() != cssom::KeywordValue::GetStatic();
+  return computed_style()->IsPositioned();
 }
 
 bool Box::IsTransformed() const {
-  return computed_style()->transform() != cssom::KeywordValue::GetNone();
+  return computed_style()->IsTransformed();
 }
 
 bool Box::IsAbsolutelyPositioned() const {
@@ -207,9 +208,78 @@ Vector2dLayoutUnit Box::GetContainingBlockOffsetFromItsContentBox(
              : Vector2dLayoutUnit();
 }
 
+InsetsLayoutUnit Box::GetContainingBlockInsetFromItsContentBox(
+    const ContainerBox* containing_block) const {
+  // NOTE: Bottom inset is not computed and should not be queried.
+  DCHECK(containing_block == GetContainingBlock());
+  // If the box is absolutely positioned, then its containing block is formed by
+  // the padding box instead of the content box, as described in
+  // http://www.w3.org/TR/CSS21/visudet.html#containing-block-details.
+  // NOTE: While not explicitly stated in the spec, which specifies that the
+  // containing block of a 'fixed' position element must always be the viewport,
+  // all major browsers use the padding box of a transformed ancestor as the
+  // containing block for 'fixed' position elements.
+  return IsAbsolutelyPositioned()
+             ? InsetsLayoutUnit(-containing_block->padding_left(),
+                                -containing_block->padding_top(),
+                                -containing_block->padding_right(),
+                                LayoutUnit())
+             : InsetsLayoutUnit();
+}
+
+RectLayoutUnit Box::GetTransformedBoxFromRoot(
+    const RectLayoutUnit& box_from_margin_box) const {
+  return GetTransformedBoxFromContainingBlock(nullptr, box_from_margin_box);
+}
+
+RectLayoutUnit Box::GetTransformedBoxFromContainingBlock(
+    const ContainerBox* containing_block,
+    const RectLayoutUnit& box_from_margin_box) const {
+  // Get the transform for the margin box from the containing block and
+  // add the box offset from the margin box to the beginning of the transform.
+  math::Matrix3F transform =
+      GetMarginBoxTransformFromContainingBlock(containing_block) *
+      math::TranslateMatrix(box_from_margin_box.x().toFloat(),
+                            box_from_margin_box.y().toFloat());
+
+  // Transform the box.
+  const int kNumPoints = 4;
+  math::PointF box_corners[kNumPoints] = {
+      {0.0f, 0.0f},
+      {box_from_margin_box.width().toFloat(), 0.0f},
+      {0.0f, box_from_margin_box.height().toFloat()},
+      {box_from_margin_box.width().toFloat(),
+       box_from_margin_box.height().toFloat()},
+  };
+
+  for (int i = 0; i < kNumPoints; ++i) {
+    box_corners[i] = transform * box_corners[i];
+  }
+
+  // Return the bounding box for the transformed points.
+  math::PointF min_corner(box_corners[0]);
+  math::PointF max_corner(box_corners[0]);
+  for (int i = 1; i < kNumPoints; ++i) {
+    min_corner.SetToMin(box_corners[i]);
+    max_corner.SetToMax(box_corners[i]);
+  }
+
+  return RectLayoutUnit(LayoutUnit(min_corner.x()), LayoutUnit(min_corner.y()),
+                        LayoutUnit(max_corner.x() - min_corner.x()),
+                        LayoutUnit(max_corner.y() - min_corner.y()));
+}
+
+RectLayoutUnit Box::GetTransformedBoxFromContainingBlockContentBox(
+    const ContainerBox* containing_block,
+    const RectLayoutUnit& box_from_margin_box) const {
+  return GetContainingBlockOffsetFromItsContentBox(containing_block) +
+         GetTransformedBoxFromContainingBlock(containing_block,
+                                              box_from_margin_box);
+}
+
 void Box::SetStaticPositionLeftFromParent(LayoutUnit left) {
-  if (left != static_position_offset_from_parent_.x()) {
-    static_position_offset_from_parent_.set_x(left);
+  if (left != static_position_offset_from_parent_.left()) {
+    static_position_offset_from_parent_.set_left(left);
     // Invalidate the size if the static position offset changes, as the
     // positioning for absolutely positioned elements is handled within the size
     // update.
@@ -218,8 +288,8 @@ void Box::SetStaticPositionLeftFromParent(LayoutUnit left) {
 }
 
 void Box::SetStaticPositionLeftFromContainingBlockToParent(LayoutUnit left) {
-  if (left != static_position_offset_from_containing_block_to_parent_.x()) {
-    static_position_offset_from_containing_block_to_parent_.set_x(left);
+  if (left != static_position_offset_from_containing_block_to_parent_.left()) {
+    static_position_offset_from_containing_block_to_parent_.set_left(left);
     // Invalidate the size if the static position offset changes, as the
     // positioning for absolutely positioned elements is handled within the size
     // update.
@@ -229,13 +299,40 @@ void Box::SetStaticPositionLeftFromContainingBlockToParent(LayoutUnit left) {
 
 LayoutUnit Box::GetStaticPositionLeft() const {
   DCHECK(IsAbsolutelyPositioned());
-  return static_position_offset_from_parent_.x() +
-         static_position_offset_from_containing_block_to_parent_.x();
+  return static_position_offset_from_parent_.left() +
+         static_position_offset_from_containing_block_to_parent_.left();
+}
+
+void Box::SetStaticPositionRightFromParent(LayoutUnit right) {
+  if (right != static_position_offset_from_parent_.right()) {
+    static_position_offset_from_parent_.set_right(right);
+    // Invalidate the size if the static position offset changes, as the
+    // positioning for absolutely positioned elements is handled within the size
+    // update.
+    InvalidateUpdateSizeInputsOfBox();
+  }
+}
+
+void Box::SetStaticPositionRightFromContainingBlockToParent(LayoutUnit right) {
+  if (right !=
+      static_position_offset_from_containing_block_to_parent_.right()) {
+    static_position_offset_from_containing_block_to_parent_.set_right(right);
+    // Invalidate the size if the static position offset changes, as the
+    // positioning for absolutely positioned elements is handled within the size
+    // update.
+    InvalidateUpdateSizeInputsOfBox();
+  }
+}
+
+LayoutUnit Box::GetStaticPositionRight() const {
+  DCHECK(IsAbsolutelyPositioned());
+  return static_position_offset_from_parent_.right() +
+         static_position_offset_from_containing_block_to_parent_.right();
 }
 
 void Box::SetStaticPositionTopFromParent(LayoutUnit top) {
-  if (top != static_position_offset_from_parent_.y()) {
-    static_position_offset_from_parent_.set_y(top);
+  if (top != static_position_offset_from_parent_.top()) {
+    static_position_offset_from_parent_.set_top(top);
     // Invalidate the size if the static position offset changes, as the
     // positioning for absolutely positioned elements is handled within the size
     // update.
@@ -244,8 +341,8 @@ void Box::SetStaticPositionTopFromParent(LayoutUnit top) {
 }
 
 void Box::SetStaticPositionTopFromContainingBlockToParent(LayoutUnit top) {
-  if (top != static_position_offset_from_containing_block_to_parent_.y()) {
-    static_position_offset_from_containing_block_to_parent_.set_y(top);
+  if (top != static_position_offset_from_containing_block_to_parent_.top()) {
+    static_position_offset_from_containing_block_to_parent_.set_top(top);
     // Invalidate the size if the static position offset changes, as the
     // positioning for absolutely positioned elements is handled within the size
     // update.
@@ -255,8 +352,8 @@ void Box::SetStaticPositionTopFromContainingBlockToParent(LayoutUnit top) {
 
 LayoutUnit Box::GetStaticPositionTop() const {
   DCHECK(IsAbsolutelyPositioned());
-  return static_position_offset_from_parent_.y() +
-         static_position_offset_from_containing_block_to_parent_.y();
+  return static_position_offset_from_parent_.top() +
+         static_position_offset_from_containing_block_to_parent_.top();
 }
 
 void Box::InvalidateCrossReferencesOfBoxAndAncestors() {
@@ -374,46 +471,6 @@ RectLayoutUnit Box::GetBorderBoxFromRoot(bool transform_forms_root) const {
                         GetBorderBoxWidth(), GetBorderBoxHeight());
 }
 
-RectLayoutUnit Box::GetTransformedBorderBoxFromRoot() const {
-  return GetTransformedBorderBoxFromContainingBlock(nullptr);
-}
-
-RectLayoutUnit Box::GetTransformedBorderBoxFromContainingBlock(
-    const ContainerBox* containing_block) const {
-  // Get the transform for the margin box from the containing block and
-  // add the border box offset to the beginning of the transform.
-  Vector2dLayoutUnit border_box_offset = GetBorderBoxOffsetFromMarginBox();
-  math::Matrix3F transform =
-      GetMarginBoxTransformFromContainingBlock(containing_block) *
-      math::TranslateMatrix(border_box_offset.x().toFloat(),
-                            border_box_offset.y().toFloat());
-
-  // Transform the border box.
-  const int kNumPoints = 4;
-  math::PointF border_box_corners[kNumPoints] = {
-    { 0.0f, 0.0f },
-    { GetBorderBoxWidth().toFloat(), 0.0f },
-    { 0.0f, GetBorderBoxHeight().toFloat() },
-    { GetBorderBoxWidth().toFloat(), GetBorderBoxHeight().toFloat() },
-  };
-
-  for (int i = 0; i < kNumPoints; ++i) {
-    border_box_corners[i] = transform * border_box_corners[i];
-  }
-
-  // Return the bounding box for the transformed points.
-  math::PointF min_corner(border_box_corners[0]);
-  math::PointF max_corner(border_box_corners[0]);
-  for (int i = 1; i < kNumPoints; ++i) {
-    min_corner.SetToMin(border_box_corners[i]);
-    max_corner.SetToMax(border_box_corners[i]);
-  }
-
-  return RectLayoutUnit(LayoutUnit(min_corner.x()), LayoutUnit(min_corner.y()),
-                        LayoutUnit(max_corner.x() - min_corner.x()),
-                        LayoutUnit(max_corner.y() - min_corner.y()));
-}
-
 LayoutUnit Box::GetBorderBoxWidth() const {
   return border_left_width() + GetPaddingBoxWidth() + border_right_width();
 }
@@ -431,6 +488,11 @@ SizeLayoutUnit Box::GetClampedBorderBoxSize() const {
                         std::max(LayoutUnit(0), GetBorderBoxHeight()));
 }
 
+RectLayoutUnit Box::GetBorderBoxFromMarginBox() const {
+  return RectLayoutUnit(margin_left(), margin_top(), GetBorderBoxWidth(),
+                        GetBorderBoxHeight());
+}
+
 Vector2dLayoutUnit Box::GetBorderBoxOffsetFromRoot(
     bool transform_forms_root) const {
   return GetMarginBoxOffsetFromRoot(transform_forms_root) +
@@ -439,19 +501,6 @@ Vector2dLayoutUnit Box::GetBorderBoxOffsetFromRoot(
 
 Vector2dLayoutUnit Box::GetBorderBoxOffsetFromMarginBox() const {
   return Vector2dLayoutUnit(margin_left(), margin_top());
-}
-
-Vector2dLayoutUnit Box::GetBorderBoxOffsetFromContainingBlock() const {
-  return Vector2dLayoutUnit(GetBorderBoxLeftEdgeOffsetFromContainingBlock(),
-                            GetBorderBoxTopEdgeOffsetFromContainingBlock());
-}
-
-LayoutUnit Box::GetBorderBoxLeftEdgeOffsetFromContainingBlock() const {
-  return left() + GetBorderBoxOffsetFromMarginBox().x();
-}
-
-LayoutUnit Box::GetBorderBoxTopEdgeOffsetFromContainingBlock() const {
-  return top() + GetBorderBoxOffsetFromMarginBox().y();
 }
 
 LayoutUnit Box::GetPaddingBoxWidth() const {
@@ -471,6 +520,11 @@ SizeLayoutUnit Box::GetClampedPaddingBoxSize() const {
                         std::max(LayoutUnit(0), GetPaddingBoxHeight()));
 }
 
+RectLayoutUnit Box::GetPaddingBoxFromMarginBox() const {
+  return RectLayoutUnit(GetPaddingBoxLeftEdgeOffsetFromMarginBox(),
+                        GetPaddingBoxTopEdgeOffsetFromMarginBox(),
+                        GetPaddingBoxWidth(), GetPaddingBoxHeight());
+}
 Vector2dLayoutUnit Box::GetPaddingBoxOffsetFromRoot(
     bool transform_forms_root) const {
   return GetBorderBoxOffsetFromRoot(transform_forms_root) +
@@ -489,17 +543,10 @@ LayoutUnit Box::GetPaddingBoxTopEdgeOffsetFromMarginBox() const {
   return margin_top() + border_top_width();
 }
 
-Vector2dLayoutUnit Box::GetPaddingBoxOffsetFromContainingBlock() const {
-  return Vector2dLayoutUnit(GetPaddingBoxLeftEdgeOffsetFromContainingBlock(),
-                            GetPaddingBoxTopEdgeOffsetFromContainingBlock());
-}
-
-LayoutUnit Box::GetPaddingBoxLeftEdgeOffsetFromContainingBlock() const {
-  return left() + GetPaddingBoxLeftEdgeOffsetFromMarginBox();
-}
-
-LayoutUnit Box::GetPaddingBoxTopEdgeOffsetFromContainingBlock() const {
-  return top() + GetPaddingBoxTopEdgeOffsetFromMarginBox();
+RectLayoutUnit Box::GetContentBoxFromMarginBox() const {
+  return RectLayoutUnit(GetContentBoxLeftEdgeOffsetFromMarginBox(),
+                        GetContentBoxTopEdgeOffsetFromMarginBox(), width(),
+                        height());
 }
 
 Vector2dLayoutUnit Box::GetContentBoxOffsetFromRoot(
@@ -532,9 +579,28 @@ Vector2dLayoutUnit Box::GetContentBoxOffsetFromContainingBlockContentBox(
          GetContentBoxOffsetFromContainingBlock();
 }
 
+InsetsLayoutUnit Box::GetContentBoxInsetFromContainingBlockContentBox(
+    const ContainerBox* containing_block) const {
+  // NOTE: Bottom inset is not computed and should not be queried.
+  return GetContainingBlockInsetFromItsContentBox(containing_block) +
+         GetContentBoxInsetFromContainingBlock(containing_block);
+}
+
 Vector2dLayoutUnit Box::GetContentBoxOffsetFromContainingBlock() const {
   return Vector2dLayoutUnit(GetContentBoxLeftEdgeOffsetFromContainingBlock(),
                             GetContentBoxTopEdgeOffsetFromContainingBlock());
+}
+
+InsetsLayoutUnit Box::GetContentBoxInsetFromContainingBlock(
+    const ContainerBox* containing_block) const {
+  // NOTE: Bottom inset is not computed and should not be queried.
+  LayoutUnit left_inset =
+      left() + margin_left() + border_left_width() + padding_left();
+  return InsetsLayoutUnit(
+      left_inset,
+      top() + margin_top() + border_top_width() + padding_top(),
+      containing_block->width() - left_inset - width(),
+      LayoutUnit());
 }
 
 LayoutUnit Box::GetContentBoxLeftEdgeOffsetFromContainingBlock() const {
@@ -1056,8 +1122,7 @@ void Box::DumpProperties(std::ostream* stream) const {
   }
 }
 
-void Box::DumpChildrenWithIndent(std::ostream* /*stream*/,
-                                 int /*indent*/) const {}
+void Box::DumpChildrenWithIndent(std::ostream* stream, int indent) const {}
 
 #endif  // COBALT_BOX_DUMP_ENABLED
 
@@ -1468,7 +1533,6 @@ void Box::RenderAndAnimateBoxShadow(
     const base::Optional<RoundedCorners>& inner_rounded_corners,
     CompositionNode::Builder* border_node_builder,
     AnimateNode::Builder* animate_node_builder) {
-  SB_UNREFERENCED_PARAMETER(animate_node_builder);
 
   if (computed_style()->box_shadow() != cssom::KeywordValue::GetNone()) {
     const cssom::PropertyListValue* box_shadow_list =
@@ -1980,6 +2044,7 @@ void Box::UpdateUiNavigationItem() {
 
 // Based on https://www.w3.org/TR/CSS21/visudet.html#blockwidth.
 void Box::UpdateHorizontalMarginsAssumingBlockLevelInFlowBox(
+    BaseDirection containing_block_direction,
     LayoutUnit containing_block_width, LayoutUnit border_box_width,
     const base::Optional<LayoutUnit>& possibly_overconstrained_margin_left,
     const base::Optional<LayoutUnit>& possibly_overconstrained_margin_right) {
@@ -2000,20 +2065,22 @@ void Box::UpdateHorizontalMarginsAssumingBlockLevelInFlowBox(
     maybe_margin_right = maybe_margin_right.value_or(LayoutUnit());
   }
 
-  if (maybe_margin_left) {
-    // If all of the above have a computed value other than "auto", the values
-    // are said to be "over-constrained" and the specified value of
-    // "margin-right" is ignored and the value is calculated so as to make
-    // the equality true.
-    //
-    // If there is exactly one value specified as "auto", its used value
-    // follows from the equality.
+  // If all of the above have a computed value other than "auto", the values
+  // are said to be "over-constrained" and one of the used values will have to
+  // be different from its computed value. If the "direction" property of the
+  // containing block has the value "ltr", the specified value of "margin-right"
+  // is ignored and the value is calculated so as to make the equality true. If
+  // the value of "direction" is "rtl", this happens to "margin-left" instead.
+  //
+  // If there is exactly one value specified as "auto", its used value follows
+  // from the equality.
+  if (maybe_margin_left &&
+        (!maybe_margin_right ||
+         containing_block_direction == kLeftToRightBaseDirection)) {
     set_margin_left(*maybe_margin_left);
     set_margin_right(containing_block_width - *maybe_margin_left -
                      border_box_width);
   } else if (maybe_margin_right) {
-    // If there is exactly one value specified as "auto", its used value
-    // follows from the equality.
     set_margin_left(containing_block_width - border_box_width -
                     *maybe_margin_right);
     set_margin_right(*maybe_margin_right);

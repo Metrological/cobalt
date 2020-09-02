@@ -19,6 +19,7 @@
 #include <set>
 #include <string>
 
+#include "base/optional.h"
 #include "base/threading/thread_checker.h"
 #include "cobalt/debug/backend/debug_dispatcher.h"
 #include "cobalt/debug/backend/script_debugger_agent.h"
@@ -30,6 +31,9 @@ namespace debug {
 namespace backend {
 
 // Routes protocol messages to the V8 inspector through the V8cScriptDebugger.
+//
+// Since V8cScriptDebugger keeps track of its own enabled state for the domains
+// it implements, the ScriptDebuggerAgent doesn't use AgentBase.
 class ScriptDebuggerAgent {
  public:
   ScriptDebuggerAgent(DebugDispatcher* dispatcher,
@@ -41,7 +45,7 @@ class ScriptDebuggerAgent {
   bool IsSupportedDomain(const std::string& domain) {
     return supported_domains_.count(domain) != 0;
   }
-  bool RunCommand(const Command& command);
+  base::Optional<Command> RunCommand(Command command);
   void SendCommandResponse(const std::string& json_response);
   void SendEvent(const std::string& json_event);
 

@@ -27,6 +27,7 @@
 #include "base/threading/thread.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
+#include "cobalt/base/debugger_hooks.h"
 #include "cobalt/loader/image/image.h"
 #include "cobalt/render_tree/color_rgba.h"
 #include "cobalt/render_tree/resource_provider.h"
@@ -39,7 +40,8 @@ namespace image {
 class AnimatedWebPImage : public AnimatedImage {
  public:
   AnimatedWebPImage(const math::Size& size, bool is_opaque,
-                    render_tree::ResourceProvider* resource_provider);
+                    render_tree::ResourceProvider* resource_provider,
+                    const base::DebuggerHooks& debugger_hooks);
 
   const math::Size& GetSize() const override { return size_; }
 
@@ -64,13 +66,22 @@ class AnimatedWebPImage : public AnimatedImage {
  private:
   ~AnimatedWebPImage() override;
 
+  // Starts playback of the animated image, or sets a flag indicating that we
+  // would like to start playing as soon as we can.
+  void PlayInternal();
+
   // To be called the decoding thread, to cancel future decodings.
   void StopInternal();
 
-  void PlayInternal();
+  // Starts the process of decoding frames.  It assumes frames are available to
+  // decode.
+  void StartDecoding();
 
-  // Decodes all frames until current time.
+  // Decodes all frames until current time.  Assumes |lock_| is acquired.
   void DecodeFrames();
+
+  // Acquires |lock_| and calls DecodeFrames().
+  void LockAndDecodeFrames();
 
   // Decodes the frame with the given index, returns if it succeeded.
   bool DecodeOneFrame(int frame_index);
@@ -97,6 +108,7 @@ class AnimatedWebPImage : public AnimatedImage {
   int current_frame_index_;
   bool should_dispose_previous_frame_to_background_;
   render_tree::ResourceProvider* resource_provider_;
+  const base::DebuggerHooks& debugger_hooks_;
   scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
 
   render_tree::ColorRGBA background_color_;
@@ -109,6 +121,11 @@ class AnimatedWebPImage : public AnimatedImage {
   scoped_refptr<render_tree::Image> current_canvas_;
   scoped_refptr<FrameProvider> frame_provider_;
   base::Lock lock_;
+
+  // Makes sure that the thread that sets the task_runner is always consistent.
+  // This is the thread sending Play()/Stop() calls, and is not necessarily
+  // the same thread that the task_runner itself is running on.
+  THREAD_CHECKER(task_runner_thread_checker_);
 };
 
 }  // namespace image

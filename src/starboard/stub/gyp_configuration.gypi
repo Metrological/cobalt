@@ -16,7 +16,6 @@
     # Stub does not use a filter-based player.
     'sb_filter_based_player': 0,
 
-    'target_arch': 'x64',
     'target_os': 'linux',
 
     # No GL drivers available.
@@ -29,10 +28,6 @@
       # Do not warn about unused function params.
       '-Wno-unused-parameter',
      ],
-    'compiler_flags': [
-      # We'll pretend not to be Linux, but Starboard instead.
-      '-U__linux__',
-    ],
     'linker_flags': [
       '-static-libstdc++'
     ],
@@ -163,4 +158,8 @@
       }],
     ],
   }, # end of target_defaults
+
+  'includes': [
+    '<(DEPTH)/starboard/sabi/sabi.gypi',
+  ],
 }

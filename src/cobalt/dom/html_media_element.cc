@@ -25,6 +25,7 @@
 #include "base/logging.h"
 #include "base/message_loop/message_loop.h"
 #include "base/trace_event/trace_event.h"
+#include "cobalt/base/instance_counter.h"
 #include "cobalt/base/tokens.h"
 #include "cobalt/cssom/map_to_mesh_function.h"
 #include "cobalt/dom/csp_delegate.h"
@@ -69,6 +70,8 @@ namespace {
 
 #endif  // LOG_MEDIA_ELEMENT_ACTIVITIES
 
+DECLARE_INSTANCE_COUNTER(HTMLMediaElement);
+
 loader::RequestMode GetRequestMode(
     const base::Optional<std::string>& cross_origin_attribute) {
   // https://html.spec.whatwg.org/#cors-settings-attribute
@@ -91,7 +94,7 @@ bool ResourceNeedsUrlPlayer(const GURL& resource_url) {
   if (resource_url.SchemeIs("data")) {
     return true;
   }
-  // Check if resource_url is an hls url. Hls url must contain "hls_variant"
+  // Check if resource_url is an hls url. Hls url must contain "hls_variant".
   return resource_url.spec().find("hls_variant") != std::string::npos;
 }
 #endif  // SB_HAS(PLAYER_WITH_URL)
@@ -151,12 +154,14 @@ HTMLMediaElement::HTMLMediaElement(Document* document, base::Token tag_name)
       request_mode_(loader::kNoCORSMode) {
   TRACE_EVENT0("cobalt::dom", "HTMLMediaElement::HTMLMediaElement()");
   MLOG();
+  ON_INSTANCE_CREATED(HTMLMediaElement);
 }
 
 HTMLMediaElement::~HTMLMediaElement() {
   TRACE_EVENT0("cobalt::dom", "HTMLMediaElement::~HTMLMediaElement()");
   MLOG();
   ClearMediaSource();
+  ON_INSTANCE_RELEASED(HTMLMediaElement);
 }
 
 scoped_refptr<MediaError> HTMLMediaElement::error() const {
@@ -342,7 +347,6 @@ bool HTMLMediaElement::seeking() const {
 
 float HTMLMediaElement::current_time(
     script::ExceptionState* exception_state) const {
-  SB_UNREFERENCED_PARAMETER(exception_state);
 
   if (!player_) {
     MLOG() << 0 << " (because player is NULL)";
@@ -547,7 +551,6 @@ void HTMLMediaElement::set_controls(bool controls) {
 }
 
 float HTMLMediaElement::volume(script::ExceptionState* exception_state) const {
-  SB_UNREFERENCED_PARAMETER(exception_state);
   MLOG() << volume_;
   return volume_;
 }
@@ -592,6 +595,10 @@ void HTMLMediaElement::OnInsertedIntoDocument() {
   std::string src = GetAttribute("src").value_or("");
   if (!src.empty()) {
     set_src(src);
+  }
+
+  if (HasAttribute("muted")) {
+    set_muted(true);
   }
 }
 
@@ -908,7 +915,8 @@ void HTMLMediaElement::ClearMediaPlayer() {
 void HTMLMediaElement::NoneSupported(const std::string& message) {
   MLOG();
 
-  DLOG(WARNING) << "HTMLMediaElement::NoneSupported() error.";
+  DLOG(WARNING) << "HTMLMediaElement::NoneSupported() error with message: "
+                << message;
 
   StopPeriodicTimers();
   load_state_ = kWaitingForSource;
@@ -1599,7 +1607,7 @@ void HTMLMediaElement::PlaybackStateChanged() {
 
 void HTMLMediaElement::SawUnsupportedTracks() { NOTIMPLEMENTED(); }
 
-float HTMLMediaElement::Volume() const { return volume(NULL); }
+float HTMLMediaElement::Volume() const { return muted_ ? 0 : volume(NULL); }
 
 void HTMLMediaElement::SourceOpened(ChunkDemuxer* chunk_demuxer) {
   TRACE_EVENT0("cobalt::dom", "HTMLMediaElement::SourceOpened()");
@@ -1621,7 +1629,8 @@ std::string HTMLMediaElement::MaxVideoCapabilities() const {
 bool HTMLMediaElement::PreferDecodeToTexture() {
   TRACE_EVENT0("cobalt::dom", "HTMLMediaElement::PreferDecodeToTexture()");
 
-#if defined(ENABLE_MAP_TO_MESH)
+  if (!node_document()->window()->enable_map_to_mesh()) return false;
+
   cssom::PropertyValue* filter = NULL;
   if (node_document()->UpdateComputedStyleOnElementAndAncestor(this) &&
       computed_style()) {
@@ -1645,10 +1654,6 @@ bool HTMLMediaElement::PreferDecodeToTexture() {
       cssom::MapToMeshFunction::ExtractFromFilterList(filter);
 
   return map_to_mesh_filter;
-#else   // defined(ENABLE_MAP_TO_MESH)
-  // If map-to-mesh is disabled, we never prefer decode-to-texture.
-  return false;
-#endif  // defined(ENABLE_MAP_TO_MESH)
 }
 
 namespace {

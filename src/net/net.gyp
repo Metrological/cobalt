@@ -15,20 +15,17 @@
         'ENABLE_BUILT_IN_DNS',
         # To be removed in the future when want to enable HTTP cache.
         'HTTP_CACHE_DISABLED_FOR_STARBOARD',
-        # TODO[johnx]: find out how we can verify local cert issuer and
-        # re-enable this test. Consider adding a binary cert for local issuer
-        # for debug builds.
-        'STARBOARD_NO_LOCAL_ISSUER',
         'QUIC_TRACE_DISABLED',
         'COBALT_QUIC46',
+        'COMMON_CERT_SET_DISABLED_FOR_STARBOARD',
       ],
       'direct_dependent_settings': {
         'defines': [
           'HTTP_CACHE_DISABLED_FOR_STARBOARD',
           'ENABLE_BUILT_IN_DNS',
-          'STARBOARD_NO_LOCAL_ISSUER',
           'QUIC_TRACE_DISABLED',
           'COBALT_QUIC46',
+          'COMMON_CERT_SET_DISABLED_FOR_STARBOARD',
         ],
       },
       'include_dirs': [
@@ -276,6 +273,8 @@
         'http/transport_security_state_source.h',
         'log/net_log.cc',
         'log/net_log.h',
+        'log/file_net_log_observer.cc',
+        'log/file_net_log_observer.h',
         'log/net_log_capture_mode.cc',
         'log/net_log_capture_mode.h',
         'log/net_log_entry.cc',
@@ -431,8 +430,6 @@
         'cert/cert_net_fetcher.h',
         'cert/cert_verify_proc.cc',
         'cert/cert_verify_proc.h',
-        # TODO[johnx]: Investigate why net deprecated openssl verifier and
-        # if justified switch back to builtin verifier.
         'cert/cert_verify_proc_builtin.cc',
         'cert/cert_verify_proc_builtin.h',
         'cert/ct_log_response_parser.cc',
@@ -1962,12 +1959,10 @@
         'der/parser_unittest.cc',
 
         # dial is a legacy component we kept from old Chromium net.
-        # TODO[johnx]: re-enable dial tests. Currently they are crashing due to
-        # improper usage of modified net classes like HttpNetworkTransaction.
-        # 'dial/dial_http_server_unittest.cc',
-        # 'dial/dial_service_unittest.cc',
-        # 'dial/dial_test_helpers.h',
-        # 'dial/dial_udp_server_unittests.cc',
+        'dial/dial_http_server_unittest.cc',
+        'dial/dial_service_unittest.cc',
+        'dial/dial_test_helpers.h',
+        'dial/dial_udp_server_unittests.cc',
 
         # disk_cache component is disabled because only http cache depends on
         # it and Cobalt does not support http cache yet.
@@ -2183,6 +2178,7 @@
         'test/embedded_test_server/embedded_test_server_unittest.cc',
         'test/embedded_test_server/http_request_unittest.cc',
         'test/embedded_test_server/http_response_unittest.cc',
+        'test/run_all_unittests.cc',
         'test/tcp_socket_proxy_unittest.cc',
 
         'third_party/nist-pkits/pkits_testcases-inl.h',
@@ -2209,7 +2205,7 @@
         'third_party/quic/core/crypto/chacha20_poly1305_tls_decrypter_test.cc',
         'third_party/quic/core/crypto/chacha20_poly1305_tls_encrypter_test.cc',
         'third_party/quic/core/crypto/channel_id_test.cc',
-        'third_party/quic/core/crypto/common_cert_set_test.cc',
+        # 'third_party/quic/core/crypto/common_cert_set_test.cc',
         'third_party/quic/core/crypto/crypto_framer_test.cc',
         'third_party/quic/core/crypto/crypto_handshake_message_test.cc',
         'third_party/quic/core/crypto/crypto_secret_boxer_test.cc',
@@ -2557,6 +2553,7 @@
         # To be removed in the future when want to enable HTTP cache.
         'HTTP_CACHE_DISABLED_FOR_STARBOARD',
         'GMOCK_NO_MOVE_MOCK',
+        'BASE_DONT_ENFORCE_THREAD_NAME_LENGTH',
       ],
       'cflags': [
         # Avoid compiler errors due to conversion from "0x00" to char on Android.
@@ -2599,6 +2596,7 @@
       'type': 'static_library',
       'defines': [
         'GMOCK_NO_MOVE_MOCK',
+        'BASE_DONT_ENFORCE_THREAD_NAME_LENGTH',
       ],
       'sources': [
         # 'disk_cache/disk_cache_test_base.cc',
@@ -2725,7 +2723,6 @@
         'test/net_test_suite.h',
         'test/quic_simple_test_server.cc',
         'test/quic_simple_test_server.h',
-        'test/run_all_unittests.cc',
         'test/scoped_disable_exit_on_dfatal.cc',
         'test/scoped_disable_exit_on_dfatal.h',
         'test/tcp_socket_proxy.cc',

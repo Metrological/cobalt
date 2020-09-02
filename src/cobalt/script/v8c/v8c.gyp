@@ -23,6 +23,8 @@
         'callback_function_conversion.h',
         'cobalt_platform.cc',
         'cobalt_platform.h',
+        'common_v8c_bindings_code.cc',
+        'common_v8c_bindings_code.h',
         'conversion_helpers.cc',
         'conversion_helpers.h',
         'entry_scope.h',
@@ -32,6 +34,8 @@
         'native_promise.h',
         'scoped_persistent.h',
         'stack_trace_helpers.cc',
+        'switches.cc',
+        'switches.h',
         'type_traits.h',
         'union_type_conversion_forward.h',
         'union_type_conversion_impl.h',
@@ -70,9 +74,11 @@
         'v8c_wrapper_handle.h',
         'wrapper_factory.cc',
         'wrapper_factory.h',
+        'wrapper_private.cc',
         'wrapper_private.h',
       ],
       'dependencies': [
+        '<(DEPTH)/cobalt/configuration/configuration.gyp:configuration',
         '<(DEPTH)/cobalt/script/script.gyp:script',
         '<(DEPTH)/v8/src/v8.gyp:v8',
         '<(DEPTH)/v8/src/v8.gyp:v8_libplatform',
@@ -81,7 +87,6 @@
       ],
       'defines': [
         'ENGINE_SUPPORTS_INT64',
-        'ENGINE_SUPPORTS_JIT',
         # The file name to store our V8 startup snapshot file at.  This is a
         # serialized representation of a |v8::Isolate| after completing all
         # tasks prior to creation of the global object (e.g., executing self
@@ -98,13 +103,6 @@
           'ENGINE_SUPPORTS_INT64',
         ],
       },
-      # V8 always requires JIT.  |cobalt_enable_jit| must be set to true to
-      # use V8.  Failure to do will result in a build failure.
-      'conditions' :[
-        ['cobalt_enable_jit == 0', {
-          'defines': [ '<(gyp_static_assert_false)', ],
-        }],
-      ],
     },
 
     {
@@ -168,7 +166,7 @@
       'type': 'none',
       'hard_dependency': 1,
       'dependencies': [
-        '<(DEPTH)/v8/src/v8.gyp:v8_base',
+        '<(DEPTH)/v8/src/v8.gyp:v8',
         '<(DEPTH)/v8/src/v8.gyp:v8_initializers',
         '<(DEPTH)/v8/src/v8.gyp:v8_libplatform',
       ],
@@ -182,7 +180,6 @@
           'action_name': 'update_snapshot_time',
           'inputs': [
             '<(touch_script_path)',
-            '<(PRODUCT_DIR)/obj/v8/src/<(STATIC_LIB_PREFIX)v8_base<(STATIC_LIB_SUFFIX)',
             '<(PRODUCT_DIR)/obj/v8/src/<(STATIC_LIB_PREFIX)v8_initializers<(STATIC_LIB_SUFFIX)',
             '<(PRODUCT_DIR)/obj/v8/src/<(STATIC_LIB_PREFIX)v8_libplatform<(STATIC_LIB_SUFFIX)',
           ],

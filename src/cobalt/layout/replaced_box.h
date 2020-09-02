@@ -26,6 +26,7 @@
 #include "cobalt/math/rect.h"
 #include "cobalt/math/size_f.h"
 #include "cobalt/render_tree/image.h"
+#include "cobalt/render_tree/lottie_animation.h"
 #include "cobalt/render_tree/punch_through_video_node.h"
 
 namespace cobalt {
@@ -34,13 +35,15 @@ namespace layout {
 // The class represents a Replaced element in the layout tree. It is used to
 // render elements like embed, iframe or video. Currently it renders the element
 // as an image retrieved from a callback passed into its ctor.
-//   https://www.w3.org/TR/html5/rendering.html#replaced-elements
+//   https://www.w3.org/TR/html50/rendering.html#replaced-elements
 //
 // TODO: Make ReplacedBox support elements other than media element.
 class ReplacedBox : public Box {
  public:
   typedef base::Callback<scoped_refptr<render_tree::Image>()> ReplaceImageCB;
   typedef render_tree::PunchThroughVideoNode::SetBoundsCB SetBoundsCB;
+
+  enum class ReplacedBoxMode { kVideo, kPunchOutVideo, kLottie };
 
   ReplacedBox(const scoped_refptr<cssom::CSSComputedStyleDeclaration>&
                   css_computed_style_declaration,
@@ -51,8 +54,10 @@ class ReplacedBox : public Box {
               const base::Optional<LayoutUnit>& maybe_intrinsic_height,
               const base::Optional<float>& maybe_intrinsic_ratio,
               UsedStyleProvider* used_style_provider,
-              base::Optional<bool> is_video_punched_out,
+              base::Optional<ReplacedBoxMode> replaced_box_mode,
               const math::SizeF& content_size,
+              base::Optional<render_tree::LottieAnimation::LottieProperties>
+                  lottie_properties,
               LayoutStatTracker* layout_stat_tracker);
 
   // From |Box|.
@@ -98,6 +103,7 @@ class ReplacedBox : public Box {
   // https://www.w3.org/TR/CSS21/visudet.html#block-replaced-width and
   // https://www.w3.org/TR/CSS21/visudet.html#inline-replaced-width.
   virtual void UpdateHorizontalMargins(
+      BaseDirection containing_block_direction,
       LayoutUnit containing_block_width, LayoutUnit border_box_width,
       const base::Optional<LayoutUnit>& maybe_margin_left,
       const base::Optional<LayoutUnit>& maybe_margin_right) = 0;
@@ -118,8 +124,10 @@ class ReplacedBox : public Box {
 
   const scoped_refptr<Paragraph> paragraph_;
   int32 text_position_;
-  base::Optional<bool> is_video_punched_out_;
+  base::Optional<ReplacedBoxMode> replaced_box_mode_;
   math::SizeF content_size_;
+  base::Optional<render_tree::LottieAnimation::LottieProperties>
+      lottie_properties_;
 };
 
 }  // namespace layout

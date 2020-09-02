@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,7 @@
 #include "cobalt/render_tree/image.h"
 #include "starboard/event.h"
 #include "starboard/file.h"
+#include "starboard/log.h"
 #include "starboard/system.h"
 
 namespace cobalt {
@@ -52,31 +54,43 @@ void PrintUsage(const char* executable_path_name) {
   const char kExampleProgressiveUrl[] =
       "https://storage.googleapis.com/yt-cobalt-media-element-demo/"
       "progressive.mp4";
-  LOG(ERROR) << "\n\n\n"  // Extra empty lines to separate from other messages
-             << "Usage: " << executable_file_name
-             << " [OPTIONS] <adaptive audio file path>\n"
-             << "   or: " << executable_file_name
-             << " [OPTIONS] <adaptive video file path>\n"
-             << "   or: " << executable_file_name
-             << " [OPTIONS] <adaptive audio file path> "
-             << " <adaptive video file path>\n"
-             << "   or: " << executable_file_name
-             << " [OPTIONS] <progressive video path or url>\n"
-             << "Play adaptive audio/video or progressive video\n\n"
-             << "For example:\n"
-             << executable_file_name << " " << kExampleAdaptiveAudioPathName
-             << "\n"
-             << executable_file_name << " " << kExampleAdaptiveVideoPathName
-             << "\n"
-             << executable_file_name << " " << kExampleAdaptiveAudioPathName
-             << " " << kExampleAdaptiveVideoPathName << "\n"
-             << executable_file_name << " " << kExampleProgressiveUrl << "\n\n";
+  std::stringstream ss;
+  // Head
+  ss << "\n\n"
+     << "======================== " << executable_file_name
+     << " ========================\n";
+
+  // Basic usage
+  ss << "Usage: " << executable_file_name
+     << " [OPTIONS] <adaptive audio file path>\n"
+     << "   or: " << executable_file_name
+     << " [OPTIONS] <adaptive video file path>\n"
+     << "   or: " << executable_file_name
+     << " [OPTIONS] <adaptive audio file path> "
+     << " <adaptive video file path>\n"
+     << "   or: " << executable_file_name
+     << " [OPTIONS] <progressive video path or url>\n"
+     << "Play adaptive audio/video or progressive video\n\n";
+
+  // Options
+  ss << "OPTIONS:\n"
+     << "  --dump_video_data: Dump video data into .dmp files\n"
+     << "  --use_stub_audio_decoder: Use stub audio decoder to play the video\n"
+     << "  --use_stub_audio_sink: Use stub audio sink to play the video\n"
+     << "  --use_stub_video_decoder: Use stub video decoder to play the video\n"
+     << "\n";
+
+  // Usage examples
+  ss << "For example:\n  " << executable_file_name << " --dump_video_data "
+     << kExampleAdaptiveAudioPathName << "\n  " << executable_file_name << " "
+     << kExampleAdaptiveVideoPathName << "\n  " << executable_file_name << " "
+     << kExampleAdaptiveAudioPathName << " " << kExampleAdaptiveVideoPathName
+     << "\n  " << executable_file_name << " " << kExampleProgressiveUrl
+     << "\n\n";
+  SbLogRaw(ss.str().c_str());
 }
 
-std::string MakeCodecParameter(const std::string& string) { return string; }
-
 void OnInitSegmentReceived(std::unique_ptr<MediaTracks> tracks) {
-  SB_UNREFERENCED_PARAMETER(tracks);
 }
 
 class InitCobaltHelper {
@@ -97,8 +111,10 @@ class Application {
                        base::FilePath(FILE_PATH_LITERAL(
                            "media_source_sandbox_trace.json"))) {
     if (argc > 1) {
-      FormatGuesstimator guesstimator1(argv[argc - 1]);
-      FormatGuesstimator guesstimator2(argv[argc - 2]);
+      FormatGuesstimator guesstimator1(argv[argc - 1],
+                                       media_sandbox_.GetMediaModule());
+      FormatGuesstimator guesstimator2(argv[argc - 2],
+                                       media_sandbox_.GetMediaModule());
 
       if (!guesstimator1.is_valid()) {
         SB_LOG(ERROR) << "Invalid path or url: " << argv[argc - 1];
@@ -148,10 +164,10 @@ class Application {
       return;
     }
 
-    player_helper_.reset(
-        new WebMediaPlayerHelper(media_sandbox_.GetMediaModule(),
-                                 base::Bind(&Application::OnChunkDemuxerOpened,
-                                            base::Unretained(this))));
+    player_helper_.reset(new WebMediaPlayerHelper(
+        media_sandbox_.GetMediaModule(),
+        base::Bind(&Application::OnChunkDemuxerOpened, base::Unretained(this)),
+        media_sandbox_.GetViewportSize()));
 
     // |chunk_demuxer_| will be set inside OnChunkDemuxerOpened()
     // asynchronously during initialization of |player_helper_|.  Wait until
@@ -163,8 +179,7 @@ class Application {
     LOG(INFO) << "Playing " << guesstimator.adaptive_path();
 
     std::string id = guesstimator.is_audio() ? kAudioId : kVideoId;
-    auto codecs = MakeCodecParameter(guesstimator.codecs());
-    auto status = chunk_demuxer_->AddId(id, guesstimator.mime(), codecs);
+    auto status = chunk_demuxer_->AddId(id, guesstimator.mime_type());
     CHECK_EQ(status, ChunkDemuxer::kOk);
 
     chunk_demuxer_->SetTracksWatcher(id, base::Bind(OnInitSegmentReceived));
@@ -200,10 +215,10 @@ class Application {
       return;
     }
 
-    player_helper_.reset(
-        new WebMediaPlayerHelper(media_sandbox_.GetMediaModule(),
-                                 base::Bind(&Application::OnChunkDemuxerOpened,
-                                            base::Unretained(this))));
+    player_helper_.reset(new WebMediaPlayerHelper(
+        media_sandbox_.GetMediaModule(),
+        base::Bind(&Application::OnChunkDemuxerOpened, base::Unretained(this)),
+        media_sandbox_.GetViewportSize()));
 
     // |chunk_demuxer_| will be set inside OnChunkDemuxerOpened()
     // asynchronously during initialization of |player_helper_|.  Wait until
@@ -215,13 +230,11 @@ class Application {
     LOG(INFO) << "Playing " << audio_guesstimator.adaptive_path() << " and "
               << video_guesstimator.adaptive_path();
 
-    auto codecs = MakeCodecParameter(audio_guesstimator.codecs());
     auto status =
-        chunk_demuxer_->AddId(kAudioId, audio_guesstimator.mime(), codecs);
+        chunk_demuxer_->AddId(kAudioId, audio_guesstimator.mime_type());
     CHECK_EQ(status, ChunkDemuxer::kOk);
 
-    codecs = MakeCodecParameter(video_guesstimator.codecs());
-    status = chunk_demuxer_->AddId(kVideoId, video_guesstimator.mime(), codecs);
+    status = chunk_demuxer_->AddId(kVideoId, video_guesstimator.mime_type());
     CHECK_EQ(status, ChunkDemuxer::kOk);
 
     chunk_demuxer_->SetTracksWatcher(kAudioId,
@@ -244,7 +257,7 @@ class Application {
 
     player_helper_.reset(new WebMediaPlayerHelper(
         media_sandbox_.GetMediaModule(), media_sandbox_.GetFetcherFactory(),
-        guesstimator.progressive_url()));
+        guesstimator.progressive_url(), media_sandbox_.GetViewportSize()));
     player_ = player_helper_->player();
 
     media_sandbox_.RegisterFrameCB(
@@ -327,9 +340,6 @@ class Application {
   }
 
   scoped_refptr<Image> FrameCB(const base::TimeDelta& time) {
-    SB_UNREFERENCED_PARAMETER(time);
-
-#if SB_HAS(GRAPHICS)
     SbDecodeTarget decode_target = player_helper_->GetCurrentDecodeTarget();
 
     if (SbDecodeTargetIsValid(decode_target)) {
@@ -337,9 +347,6 @@ class Application {
           decode_target);
     }
     return NULL;
-#else   // SB_HAS(GRAPHICS)
-    return NULL;
-#endif  // SB_HAS(GRAPHICS)
   }
 
   const std::string kAudioId = "audio";
@@ -373,6 +380,11 @@ void SbEventHandle(const SbEvent* event) {
     case kSbEventTypeStart: {
       SbEventStartData* data = static_cast<SbEventStartData*>(event->data);
       DCHECK(!s_application);
+      if (data->argument_count == 1) {
+        cobalt::media::sandbox::PrintUsage(data->argument_values[0]);
+        SbSystemRequestStop(0);
+        return;
+      }
       s_application =
           new Application(data->argument_count, data->argument_values);
       break;

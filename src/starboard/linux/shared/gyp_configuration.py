@@ -27,8 +27,10 @@ class LinuxConfiguration(platform_configuration.PlatformConfiguration):
   def __init__(self,
                platform,
                asan_enabled_by_default=True,
-               goma_supports_compiler=True):
+               goma_supports_compiler=True,
+               sabi_json_path='starboard/sabi/default/sabi.json'):
     self.goma_supports_compiler = goma_supports_compiler
+    self.sabi_json_path = sabi_json_path
     super(LinuxConfiguration, self).__init__(platform, asan_enabled_by_default)
     self.AppendApplicationConfigurationPath(os.path.dirname(__file__))
 
@@ -43,8 +45,10 @@ class LinuxConfiguration(platform_configuration.PlatformConfiguration):
     variables = super(LinuxConfiguration, self).GetVariables(
         config_name, use_clang=1)
     variables.update({
-        'javascript_engine': 'v8',
-        'cobalt_enable_jit': 1,
+        'javascript_engine':
+            'v8',
+        'include_path_platform_deploy_gypi':
+            'starboard/linux/shared/platform_deploy.gypi',
     })
     return variables
 
@@ -71,12 +75,27 @@ class LinuxConfiguration(platform_configuration.PlatformConfiguration):
     })
     return env_variables
 
+  def GetTestEnvVariables(self):
+    # Due to fragile nature of dynamic TLS tracking, in particular LSAN reliance
+    # on GLIBC private APIs, tracking TLS leaks is unstable and can trigger
+    # sporadic false positives and/or crashes, depending on the used compiler,
+    # direct library dependencies and runtime-loaded dynamic libraries. Hence,
+    # TLS leak tracing in LSAN is turned off.
+    # For reference, https://sourceware.org/ml/libc-alpha/2018-02/msg00567.html
+    # When failing, 'LeakSanitizer has encountered a fatal error' message would
+    # be printed at test shutdown, and env var LSAN_OPTIONS=verbosity=2 would
+    # further point to 'Scanning DTLS range ..' prior to crash.
+    return {'ASAN_OPTIONS': 'intercept_tls_get_addr=0'}
+
   def GetTestFilters(self):
     filters = super(LinuxConfiguration, self).GetTestFilters()
     for target, tests in self.__FILTERED_TESTS.iteritems():
       filters.extend(test_filter.TestFilter(target, test) for test in tests)
     return filters
 
-  __FILTERED_TESTS = {
+  def GetPathToSabiJsonFile(self):
+    return self.sabi_json_path
+
+  __FILTERED_TESTS = {  # pylint: disable=invalid-name
       'nplb': ['SbDrmTest.AnySupportedKeySystems',],
   }

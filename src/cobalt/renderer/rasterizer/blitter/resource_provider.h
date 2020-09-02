@@ -27,7 +27,7 @@
 #include "starboard/blitter.h"
 #include "starboard/decode_target.h"
 
-#if SB_HAS(BLITTER)
+#if SB_API_VERSION < 12 && SB_HAS(BLITTER)
 
 namespace cobalt {
 namespace renderer {
@@ -104,6 +104,9 @@ class ResourceProvider : public render_tree::ResourceProvider {
       const std::string& utf8_string,
       const scoped_refptr<render_tree::Font>& font) override;
 
+  scoped_refptr<render_tree::LottieAnimation> CreateLottieAnimation(
+      const char* data, size_t length) override;
+
   scoped_refptr<render_tree::Mesh> CreateMesh(
       std::unique_ptr<std::vector<render_tree::Mesh::Vertex> > vertices,
       render_tree::Mesh::DrawMode draw_mode) override;
@@ -130,6 +133,6 @@ class ResourceProvider : public render_tree::ResourceProvider {
 }  // namespace renderer
 }  // namespace cobalt
 
-#endif  // #if SB_HAS(BLITTER)
+#endif  // SB_API_VERSION < 12 && SB_HAS(BLITTER)
 
 #endif  // COBALT_RENDERER_RASTERIZER_BLITTER_RESOURCE_PROVIDER_H_

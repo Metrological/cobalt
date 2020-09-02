@@ -4,6 +4,7 @@
 
 {
   'variables': {
+    'optimize_target_for_speed': 1,
     'conditions': [
       [ 'os_posix == 1 and OS != "mac" and OS != "android"', {
         # Maybe link to system .so once the security concerns are thought
@@ -25,6 +26,7 @@
           'defines': [
             'CHROME_PNG_WRITE_SUPPORT',
             'PNG_USER_CONFIG',
+            'PNG_SKIP_SETJMP_CHECK',
           ],
           'sources': [
             'png.c',
@@ -55,6 +57,7 @@
             'defines': [
               'CHROME_PNG_WRITE_SUPPORT',
               'PNG_USER_CONFIG',
+              'PNG_SKIP_SETJMP_CHECK',
             ],
           },
           'export_dependent_settings': [
@@ -87,7 +90,7 @@
                 'defines': [
                   'PNG_USE_DLL',
                 ],
-              },          
+              },
             }],
             ['OS=="android"', {
               'toolsets': ['target', 'host'],

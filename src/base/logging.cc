@@ -14,6 +14,7 @@
 #include "starboard/common/log.h"
 #include "starboard/common/mutex.h"
 #include "starboard/configuration.h"
+#include "starboard/configuration_constants.h"
 #include "starboard/file.h"
 #include "starboard/system.h"
 #include "starboard/time.h"
@@ -248,11 +249,10 @@ PathString GetDefaultLogFile() {
 #if defined(STARBOARD)
   // On Starboard, we politely ask for the log directory, like a civilized
   // platform.
-  char path[SB_FILE_MAX_PATH + 1];
-  SbSystemGetPath(kSbSystemPathDebugOutputDirectory, path,
-                  SB_ARRAY_SIZE_INT(path));
-  PathString log_file = path;
-  log_file += SB_FILE_SEP_STRING "debug.log";
+  std::vector<char> path(kSbFileMaxPath + 1);
+  SbSystemGetPath(kSbSystemPathDebugOutputDirectory, path.data(), path.size());
+  PathString log_file = path.data();
+  log_file += std::string(kSbFileSepString) + "debug.log";
   return log_file;
 #else
 #if defined(OS_WIN)
@@ -558,6 +558,32 @@ void SetMinLogLevel(int level) {
 #endif
 }
 
+#if defined(OFFICIAL_BUILD)
+int GetMinLogLevel() {
+  return LOG_NUM_SEVERITIES;
+}
+
+bool ShouldCreateLogMessage(int severity) {
+  return false;
+}
+
+int GetVlogVerbosity() {
+  return LOG_INFO - GetMinLogLevel();
+}
+
+int GetVlogLevelHelper(const char* file, size_t N) {
+  return GetVlogVerbosity();
+}
+
+void SetLogItems(bool enable_process_id,
+                 bool enable_thread_id,
+                 bool enable_timestamp,
+                 bool enable_tickcount) {}
+
+void SetLogPrefix(const char* prefix) {}
+
+#else  // defined(OFFICIAL_BUILD)
+
 int GetMinLogLevel() {
   return g_min_log_level;
 }
@@ -600,6 +626,7 @@ void SetLogPrefix(const char* prefix) {
          base::ContainsOnlyChars(prefix, "abcdefghijklmnopqrstuvwxyz"));
   g_log_prefix = prefix;
 }
+#endif  // defined(OFFICIAL_BUILD)
 
 void SetShowErrorDialogs(bool enable_dialogs) {
   show_error_dialogs = enable_dialogs;

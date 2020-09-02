@@ -17,11 +17,22 @@
 #include <pthread.h>
 
 #include "starboard/shared/pthread/is_success.h"
+#include "starboard/shared/pthread/types_internal.h"
+#include "starboard/shared/starboard/lazy_initialization_internal.h"
+
+using starboard::shared::starboard::IsInitialized;
 
 bool SbMutexRelease(SbMutex* mutex) {
   if (!mutex) {
     return false;
   }
 
-  return IsSuccess(pthread_mutex_unlock(mutex));
+#if SB_API_VERSION >= 12
+  if (!IsInitialized(&(SB_INTERNAL_MUTEX(mutex)->initialized_state))) {
+    // If the mutex is not initialized there is nothing to release.
+    return true;
+  }
+#endif
+
+  return IsSuccess(pthread_mutex_unlock(SB_PTHREAD_INTERNAL_MUTEX(mutex)));
 }

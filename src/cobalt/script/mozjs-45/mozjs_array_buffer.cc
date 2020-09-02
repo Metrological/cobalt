@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
 #include <memory>
 
 #include "cobalt/script/mozjs-45/mozjs_array_buffer.h"
 
 #include "cobalt/base/polymorphic_downcast.h"
+#include "starboard/memory.h"
 
 namespace cobalt {
 namespace script {
@@ -34,6 +36,22 @@ PreallocatedArrayBufferData::~PreallocatedArrayBufferData() {
     data_ = nullptr;
     byte_length_ = 0;
   }
+}
+
+void PreallocatedArrayBufferData::Resize(size_t new_byte_length) {
+  if (byte_length_ == new_byte_length) {
+    return;
+  }
+  auto new_data = js_malloc(new_byte_length);
+  DCHECK(new_data);
+  if (data_) {
+    if (new_data) {
+      SbMemoryCopy(new_data, data_, std::min(byte_length_, new_byte_length));
+    }
+    js_free(data_);
+  }
+  data_ = new_data;
+  byte_length_ = new_byte_length;
 }
 
 // static
@@ -69,10 +87,16 @@ Handle<ArrayBuffer> ArrayBuffer::New(
   JSAutoCompartment auto_compartment(context, global_object);
 
   JS::RootedValue array_buffer(context);
-  array_buffer.setObjectOrNull(JS_NewArrayBufferWithContents(
-      context, data->byte_length(), data->data()));
+
+  void* buffer;
+  size_t byte_length;
+
+  data->Detach(&buffer, &byte_length);
+
+  array_buffer.setObjectOrNull(
+      JS_NewArrayBufferWithContents(context, byte_length, buffer));
   DCHECK(array_buffer.isObject());
-  data->Release();
+
   return Handle<ArrayBuffer>(
       new mozjs::MozjsUserObjectHolder<mozjs::MozjsArrayBuffer>(context,
                                                                 array_buffer));

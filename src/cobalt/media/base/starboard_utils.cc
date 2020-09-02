@@ -17,6 +17,7 @@
 #include <algorithm>
 
 #include "base/logging.h"
+#include "cobalt/media/base/decrypt_config.h"
 #include "starboard/configuration.h"
 #include "starboard/memory.h"
 
@@ -30,12 +31,23 @@ SbMediaAudioCodec MediaAudioCodecToSbMediaAudioCodec(AudioCodec codec) {
   switch (codec) {
     case kCodecAAC:
       return kSbMediaAudioCodecAac;
-#if SB_HAS(AC3_AUDIO)
+#if SB_API_VERSION >= 12 || SB_HAS(AC3_AUDIO)
     case kCodecAC3:
+      if (!kSbHasAc3Audio) {
+        DLOG(ERROR) << "Audio codec AC3 not enabled on this platform. To "
+                    << "enable it, set kSbHasAc3Audio to |true|.";
+        return kSbMediaAudioCodecNone;
+      }
       return kSbMediaAudioCodecAc3;
     case kCodecEAC3:
+      if (!kSbHasAc3Audio) {
+        DLOG(ERROR) << "Audio codec AC3 not enabled on this platform. To "
+                    << "enable it, set kSbHasAc3Audio to |true|.";
+        return kSbMediaAudioCodecNone;
+      }
       return kSbMediaAudioCodecEac3;
-#endif  // SB_HAS(AC3_AUDIO)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(AC3_AUDIO)
     case kCodecVorbis:
       return kSbMediaAudioCodecVorbis;
     case kCodecOpus:
@@ -84,12 +96,19 @@ SbMediaVideoCodec MediaVideoCodecToSbMediaVideoCodec(VideoCodec codec) {
 
 SbMediaAudioSampleInfo MediaAudioConfigToSbMediaAudioSampleInfo(
     const AudioDecoderConfig& audio_decoder_config) {
+  DCHECK(audio_decoder_config.IsValidConfig());
+
   SbMediaAudioSampleInfo audio_sample_info;
 
 #if SB_API_VERSION >= 11
   audio_sample_info.codec =
       MediaAudioCodecToSbMediaAudioCodec(audio_decoder_config.codec());
 #endif  // SB_API_VERSION >= 11
+
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+  audio_sample_info.mime = audio_decoder_config.mime().c_str();
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
   // TODO: Make this work with non AAC audio.
   audio_sample_info.format_tag = 0x00ff;
   audio_sample_info.number_of_channels =
@@ -100,7 +119,6 @@ SbMediaAudioSampleInfo MediaAudioConfigToSbMediaAudioSampleInfo(
   audio_sample_info.block_alignment = 4;
   audio_sample_info.bits_per_sample = audio_decoder_config.bits_per_channel();
 
-#if SB_HAS(AUDIO_SPECIFIC_CONFIG_AS_POINTER)
   audio_sample_info.audio_specific_config_size =
       static_cast<uint16_t>(audio_decoder_config.extra_data().size());
   if (audio_sample_info.audio_specific_config_size == 0) {
@@ -109,16 +127,6 @@ SbMediaAudioSampleInfo MediaAudioConfigToSbMediaAudioSampleInfo(
     audio_sample_info.audio_specific_config =
         &audio_decoder_config.extra_data()[0];
   }
-#else   // SB_HAS(AUDIO_SPECIFIC_CONFIG_AS_POINTER)
-  audio_sample_info.audio_specific_config_size = static_cast<uint16_t>(
-      std::min(audio_decoder_config.extra_data().size(),
-               sizeof(audio_sample_info.audio_specific_config)));
-  if (audio_sample_info.audio_specific_config_size > 0) {
-    SbMemoryCopy(audio_sample_info.audio_specific_config,
-                 &audio_decoder_config.extra_data()[0],
-                 audio_sample_info.audio_specific_config_size);
-  }
-#endif  // SB_HAS(AUDIO_SPECIFIC_CONFIG_AS_POINTER)
 
   return audio_sample_info;
 }
@@ -146,11 +154,29 @@ void FillDrmSampleInfo(const scoped_refptr<DecoderBuffer>& buffer,
   DCHECK(subsample_mapping);
 
   const DecryptConfig* config = buffer->decrypt_config();
+
+#if SB_API_VERSION >= 12
+  if (config->encryption_mode() == EncryptionMode::kCenc) {
+    drm_info->encryption_scheme = kSbDrmEncryptionSchemeAesCtr;
+  } else {
+    DCHECK_EQ(config->encryption_mode(), EncryptionMode::kCbcs);
+    drm_info->encryption_scheme = kSbDrmEncryptionSchemeAesCbc;
+  }
+#else   // SB_API_VERSION >= 12
+  DCHECK_EQ(config->encryption_mode(), EncryptionMode::kCenc);
+#endif  // SB_API_VERSION >= 12
+
+// Set content of |drm_info| to default or invalid values.
+#if SB_API_VERSION >= 12
+  drm_info->encryption_pattern.crypt_byte_block = 0;
+  drm_info->encryption_pattern.skip_byte_block = 0;
+#endif  // SB_API_VERSION >= 12
+  drm_info->initialization_vector_size = 0;
+  drm_info->identifier_size = 0;
+  drm_info->subsample_count = 0;
+  drm_info->subsample_mapping = NULL;
+
   if (!config || config->iv().empty() || config->key_id().empty()) {
-    drm_info->initialization_vector_size = 0;
-    drm_info->identifier_size = 0;
-    drm_info->subsample_count = 0;
-    drm_info->subsample_mapping = NULL;
     return;
   }
 
@@ -159,10 +185,6 @@ void FillDrmSampleInfo(const scoped_refptr<DecoderBuffer>& buffer,
 
   if (config->iv().size() > sizeof(drm_info->initialization_vector) ||
       config->key_id().size() > sizeof(drm_info->identifier)) {
-    drm_info->initialization_vector_size = 0;
-    drm_info->identifier_size = 0;
-    drm_info->subsample_count = 0;
-    drm_info->subsample_mapping = NULL;
     return;
   }
 
@@ -186,6 +208,20 @@ void FillDrmSampleInfo(const scoped_refptr<DecoderBuffer>& buffer,
     subsample_mapping->clear_byte_count = 0;
     subsample_mapping->encrypted_byte_count = buffer->data_size();
   }
+
+#if SB_API_VERSION >= 12
+  if (buffer->decrypt_config()->HasPattern()) {
+    drm_info->encryption_pattern.crypt_byte_block =
+        config->encryption_pattern()->crypt_byte_block();
+    drm_info->encryption_pattern.skip_byte_block =
+        config->encryption_pattern()->skip_byte_block();
+  }
+#else   // SB_API_VERSION >= 12
+  if (buffer->decrypt_config()->HasPattern()) {
+    DCHECK_EQ(config->encryption_pattern()->crypt_byte_block(), 0);
+    DCHECK_EQ(config->encryption_pattern()->skip_byte_block(), 0);
+  }
+#endif  // SB_API_VERSION >= 12
 }
 
 // Ensure that the enums in starboard/media.h match enums in gfx::ColorSpace.

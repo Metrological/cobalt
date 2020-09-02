@@ -21,6 +21,7 @@
 #include "base/lazy_instance.h"
 #include "base/message_loop/message_loop_task_runner.h"
 #include "base/strings/string_number_conversions.h"
+#include "cobalt/base/console_log.h"
 #include "cobalt/base/tokens.h"
 #include "cobalt/cssom/absolute_url_value.h"
 #include "cobalt/cssom/cascaded_style.h"
@@ -56,8 +57,12 @@
 #include "cobalt/dom/html_title_element.h"
 #include "cobalt/dom/html_unknown_element.h"
 #include "cobalt/dom/html_video_element.h"
+#include "cobalt/dom/lottie_player.h"
 #include "cobalt/dom/rule_matching.h"
+#include "cobalt/dom/text.h"
 #include "cobalt/loader/image/animated_image_tracker.h"
+#include "third_party/icu/source/common/unicode/uchar.h"
+#include "third_party/icu/source/common/unicode/utf8.h"
 
 using cobalt::cssom::ViewportSize;
 
@@ -166,12 +171,12 @@ std::string HTMLElement::dir() const {
   // return the conforming value associated with the state the attribute is in,
   // or the empty string if the attribute is in a state with no associated
   // keyword value.
-  // https://dev.w3.org/html5/spec-preview/global-attributes.html#the-directionality
-  // https://dev.w3.org/html5/spec-preview/common-dom-interfaces.html#limited-to-only-known-values
-  // NOTE: Value "auto" is not supported.
-  if (directionality_ == kLeftToRightDirectionality) {
+  // https://html.spec.whatwg.org/commit-snapshots/ebcac971c2add28a911283899da84ec509876c44/#the-dir-attribute
+  if (dir_ == kDirAuto) {
+    return "auto";
+  } else if (dir_ == kDirLeftToRight) {
     return "ltr";
-  } else if (directionality_ == kRightToLeftDirectionality) {
+  } else if (dir_ == kDirRightToLeft) {
     return "rtl";
   } else {
     return "";
@@ -179,10 +184,7 @@ std::string HTMLElement::dir() const {
 }
 
 void HTMLElement::set_dir(const std::string& value) {
-  // The dir attribute is limited to only known values. On setting, the dir
-  // attribute must be set to the specified new value.
-  // https://dev.w3.org/html5/spec-preview/global-attributes.html#the-directionality
-  // https://dev.w3.org/html5/spec-preview/common-dom-interfaces.html#limited-to-only-known-values
+  // Funnel through OnSetAttribute.
   SetAttribute("dir", value);
 }
 
@@ -211,7 +213,7 @@ void HTMLElement::set_tab_index(int32 tab_index) {
 }
 
 // Algorithm for Focus:
-//   https://www.w3.org/TR/html5/editing.html#dom-focus
+//   https://www.w3.org/TR/html50/editing.html#dom-focus
 void HTMLElement::Focus() {
   // 1. If the element is marked as locked for focus, then abort these steps.
   if (locked_for_focus_) {
@@ -235,7 +237,7 @@ void HTMLElement::Focus() {
 }
 
 // Algorithm for Blur:
-//   https://www.w3.org/TR/html5/editing.html#dom-blur
+//   https://www.w3.org/TR/html50/editing.html#dom-blur
 void HTMLElement::Blur() {
   // The blur() method, when invoked, should run the unfocusing steps for the
   // element on which the method was called instead. User agents may selectively
@@ -360,7 +362,7 @@ int32 HTMLElement::scroll_width() {
   int32 element_scroll_width = 0;
   if (layout_boxes_) {
     element_scroll_width = static_cast<int32>(
-        layout_boxes_->GetScrollArea(directionality_).width());
+        layout_boxes_->GetScrollArea(directionality()).width());
   }
 
   // 3. Let viewport width be the width of the viewport excluding the width of
@@ -396,7 +398,7 @@ int32 HTMLElement::scroll_height() {
   int32 element_scroll_height = 0;
   if (layout_boxes_) {
     element_scroll_height = static_cast<int32>(
-        layout_boxes_->GetScrollArea(directionality_).height());
+        layout_boxes_->GetScrollArea(directionality()).height());
   }
 
   // 3. Let viewport height be the height of the viewport excluding the height
@@ -419,6 +421,10 @@ int32 HTMLElement::scroll_height() {
 
 // Algorithm for scrollLeft:
 //   https://www.w3.org/TR/cssom-view-1/#dom-element-scrollleft
+// For RTL, the rightmost content is visible when scrollLeft == 0, and
+// scrollLeft values are <= 0. Chrome does not behave this way currently, but
+// it is the spec that has been adopted.
+//   https://readable-email.org/list/www-style/topic/cssom-view-value-of-scrollleft-in-rtl-situations-is-completely-busted-across-browsers
 float HTMLElement::scroll_left() {
   // This is only partially implemented and will only work for elements with
   // UI navigation containers.
@@ -521,6 +527,9 @@ void HTMLElement::set_scroll_left(float x) {
   node_document()->DoSynchronousLayout();
 
   if (!ui_nav_item_ || !ui_nav_item_->IsContainer()) {
+    CLOG(WARNING, debugger_hooks())
+        << "scrollLeft only works on HTML elements with 'overflow' set to "
+        << "'scroll' or 'auto'";
     return;
   }
 
@@ -538,7 +547,7 @@ void HTMLElement::set_scroll_left(float x) {
   //     has no associated scrolling box, or the element has no overflow,
   //     terminate these steps.
   if (!layout_boxes_ ||
-      scroll_width() <= layout_boxes_->GetPaddingEdgeWidth() ) {
+      scroll_width() <= layout_boxes_->GetPaddingEdgeWidth()) {
     // Make sure the UI navigation container is set to the expected 0.
     x = 0.0f;
   }
@@ -570,6 +579,9 @@ void HTMLElement::set_scroll_top(float y) {
   node_document()->DoSynchronousLayout();
 
   if (!ui_nav_item_ || !ui_nav_item_->IsContainer()) {
+    CLOG(WARNING, debugger_hooks())
+        << "scrollTop only works on HTML elements with 'overflow' set to "
+        << "'scroll' or 'auto'";
     return;
   }
 
@@ -600,7 +612,7 @@ void HTMLElement::set_scroll_top(float y) {
 }
 
 // Algorithm for offsetParent:
-//   https://www.w3.org/TR/2013/WD-cssom-view-20131217/#dom-htmlelement-offsetparent
+//   https://drafts.csswg.org/date/2019-10-11/cssom-view/#extensions-to-the-htmlelement-interface
 Element* HTMLElement::offset_parent() {
   DCHECK(node_document());
   node_document()->DoSynchronousLayout();
@@ -620,7 +632,9 @@ Element* HTMLElement::offset_parent() {
   // 2. Return the nearest ancestor element of the element for which at least
   //    one of the following is true and terminate this algorithm if such an
   //    ancestor is found:
-  //    . The computed value of the 'position' property is not 'static'.
+  //    . The element is a containing block of absolutely-positioned descendants
+  //      (regardless of whether there are any absolutely-positioned
+  //       descendants).
   //    . It is the HTML body element.
   for (Node* ancestor_node = parent_node(); ancestor_node;
        ancestor_node = ancestor_node->parent_node()) {
@@ -634,8 +648,8 @@ Element* HTMLElement::offset_parent() {
     }
     DCHECK(ancestor_html_element->computed_style());
     if (ancestor_html_element->AsHTMLBodyElement() ||
-        ancestor_html_element->computed_style()->position() !=
-            cssom::KeywordValue::GetStatic()) {
+        ancestor_html_element->computed_style()
+            ->IsContainingBlockForPositionAbsoluteElements()) {
       return ancestor_element;
     }
   }
@@ -776,7 +790,7 @@ scoped_refptr<Node> HTMLElement::Duplicate() const {
 
   // Copy cached attributes.
   new_html_element->tabindex_ = tabindex_;
-  new_html_element->directionality_ = directionality_;
+  new_html_element->dir_ = dir_;
 
   return new_html_element;
 }
@@ -873,6 +887,8 @@ scoped_refptr<HTMLVideoElement> HTMLElement::AsHTMLVideoElement() {
   return NULL;
 }
 
+scoped_refptr<LottiePlayer> HTMLElement::AsLottiePlayer() { return NULL; }
+
 void HTMLElement::ClearRuleMatchingState() {
   ClearRuleMatchingStateInternal(true /*invalidate_descendants*/);
 }
@@ -902,6 +918,24 @@ void HTMLElement::ClearRuleMatchingStateOnElementAndAncestors(
 void HTMLElement::ClearRuleMatchingStateOnElementAndDescendants() {
   ClearRuleMatchingStateInternal(false /* invalidate_descendants*/);
   for (Element* element = first_element_child(); element;
+       element = element->next_element_sibling()) {
+    HTMLElement* html_element = element->AsHTMLElement();
+    if (html_element) {
+      html_element->ClearRuleMatchingStateOnElementAndDescendants();
+    }
+  }
+}
+
+void HTMLElement::ClearRuleMatchingStateOnElementAndSiblingsAndDescendants() {
+  HTMLElement::ClearRuleMatchingStateOnElementAndDescendants();
+  for (Element* element = previous_element_sibling(); element;
+       element = element->previous_element_sibling()) {
+    HTMLElement* html_element = element->AsHTMLElement();
+    if (html_element) {
+      html_element->ClearRuleMatchingStateOnElementAndDescendants();
+    }
+  }
+  for (Element* element = next_element_sibling(); element;
        element = element->next_element_sibling()) {
     HTMLElement* html_element = element->AsHTMLElement();
     if (html_element) {
@@ -1126,33 +1160,33 @@ void HTMLElement::InvalidateLayoutBoxes() {
       pseudo_element->reset_layout_boxes();
     }
   }
+  directionality_ = base::nullopt;
 }
 
-void HTMLElement::OnUiNavBlur() {
-  Blur();
-}
+void HTMLElement::OnUiNavBlur() { Blur(); }
 
 void HTMLElement::OnUiNavFocus() {
   // Ensure the focusing steps do not trigger the UI navigation item to
   // force focus again.
-  scoped_refptr<ui_navigation::NavItem> temp_item = ui_nav_item_;
-  ui_nav_item_ = nullptr;
-  Focus();
-  ui_nav_item_ = temp_item;
+  if (!ui_nav_focusing_) {
+    ui_nav_focusing_ = true;
+    Focus();
+    ui_nav_focusing_ = false;
+  }
 }
 
 void HTMLElement::OnUiNavScroll() {
   Document* document = node_document();
   scoped_refptr<Window> window(document ? document->window() : nullptr);
-  DispatchEvent(new UIEvent(base::Tokens::scroll(),
-                Event::kBubbles, Event::kNotCancelable, window));
+  DispatchEvent(new UIEvent(base::Tokens::scroll(), Event::kBubbles,
+                            Event::kNotCancelable, window));
 }
 
 HTMLElement::HTMLElement(Document* document, base::Token local_name)
     : Element(document, local_name),
       dom_stat_tracker_(document->html_element_context()->dom_stat_tracker()),
       locked_for_focus_(false),
-      directionality_(kNoExplicitDirectionality),
+      dir_(kDirNotDefined),
       style_(new cssom::CSSDeclaredStyleDeclaration(
           document->html_element_context()->css_parser())),
       computed_style_valid_(false),
@@ -1204,7 +1238,7 @@ void HTMLElement::OnRemovedFromDocument() {
   // For example, this might happen because the element is removed from its
   // Document, or has a hidden attribute added. It would also happen to an input
   // element when the element gets disabled.
-  //   https://www.w3.org/TR/html5/editing.html#unfocusing-steps
+  //   https://www.w3.org/TR/html50/editing.html#unfocusing-steps
   Document* document = node_document();
   DCHECK(document);
   if (document->active_element() == this->AsElement()) {
@@ -1216,6 +1250,12 @@ void HTMLElement::OnRemovedFromDocument() {
   // by OnRemovedFromDocument() being called on them from
   // Node::OnRemovedFromDocument().
   ClearRuleMatchingStateInternal(false /*invalidate_descendants*/);
+
+  // Release the associated navigation item as the object is no longer visible.
+  if (ui_nav_item_) {
+    ui_nav_item_->SetEnabled(false);
+    ui_nav_item_ = nullptr;
+  }
 }
 
 void HTMLElement::OnMutation() { InvalidateMatchingRulesRecursively(); }
@@ -1224,7 +1264,7 @@ void HTMLElement::OnSetAttribute(const std::string& name,
                                  const std::string& value) {
   // Be sure to update HTMLElement::Duplicate() to copy over values as needed.
   if (name == "dir") {
-    SetDirectionality(value);
+    SetDir(value);
   } else if (name == "tabindex") {
     SetTabIndex(value);
   }
@@ -1236,7 +1276,7 @@ void HTMLElement::OnSetAttribute(const std::string& name,
 
 void HTMLElement::OnRemoveAttribute(const std::string& name) {
   if (name == "dir") {
-    SetDirectionality("");
+    SetDir("");
   } else if (name == "tabindex") {
     SetTabIndex("");
   }
@@ -1247,18 +1287,18 @@ void HTMLElement::OnRemoveAttribute(const std::string& name) {
 }
 
 // Algorithm for IsFocusable:
-//   https://www.w3.org/TR/html5/editing.html#focusable
+//   https://www.w3.org/TR/html50/editing.html#focusable
 bool HTMLElement::IsFocusable() {
   return HasTabindexFocusFlag() && IsBeingRendered();
 }
 
 // Algorithm for HasTabindexFocusFlag:
-//  https://www.w3.org/TR/html5/editing.html#specially-focusable
+//  https://www.w3.org/TR/html50/editing.html#specially-focusable
 bool HTMLElement::HasTabindexFocusFlag() const { return tabindex_.has_value(); }
 
 // An element is being rendered if it has any associated CSS layout boxes, SVG
 // layout boxes, or some equivalent in other styling languages.
-//   https://www.w3.org/TR/html5/rendering.html#being-rendered
+//   https://www.w3.org/TR/html50/rendering.html#being-rendered
 bool HTMLElement::IsBeingRendered() {
   Document* document = node_document();
   if (!document) {
@@ -1275,7 +1315,7 @@ bool HTMLElement::IsBeingRendered() {
 }
 
 // Algorithm for RunFocusingSteps:
-//   https://www.w3.org/TR/html5/editing.html#focusing-steps
+//   https://www.w3.org/TR/html50/editing.html#focusing-steps
 void HTMLElement::RunFocusingSteps() {
   // 1. If the element is not in a Document, or if the element's Document has
   // no browsing context, or if the element's Document's browsing context has no
@@ -1326,13 +1366,20 @@ void HTMLElement::RunFocusingSteps() {
   ClearRuleMatchingState();
 
   // Set the focus item for the UI navigation system.
-  if (ui_nav_item_ && !ui_nav_item_->IsContainer()) {
+  if (ui_nav_item_ && !ui_nav_item_->IsContainer() && !ui_nav_focusing_) {
+    // Only navigation items attached to the root container are interactable.
+    // If the item is not registered with a container, then force a layout to
+    // connect items to their containers and eventually to the root container.
+    if (!ui_nav_item_->GetContainerItem()) {
+      // UI navigation items are updated as part of generating the render tree.
+      node_document()->DoSynchronousLayoutAndGetRenderTree();
+    }
     ui_nav_item_->Focus();
   }
 }
 
 // Algorithm for RunUnFocusingSteps:
-//   https://www.w3.org/TR/html5/editing.html#unfocusing-steps
+//   https://www.w3.org/TR/html50/editing.html#unfocusing-steps
 void HTMLElement::RunUnFocusingSteps() {
   // 1. Not needed by Cobalt.
 
@@ -1366,18 +1413,27 @@ void HTMLElement::RunUnFocusingSteps() {
   ClearRuleMatchingState();
 }
 
-void HTMLElement::SetDirectionality(const std::string& value) {
-  // NOTE: Value "auto" is not supported.
-  Directionality previous_directionality = directionality_;
-  if (value == "ltr") {
-    directionality_ = kLeftToRightDirectionality;
+void HTMLElement::SetDir(const std::string& value) {
+  // https://html.spec.whatwg.org/commit-snapshots/ebcac971c2add28a911283899da84ec509876c44/#the-dir-attribute
+  auto previous_dir = dir_;
+  if (value == "auto") {
+    dir_ = kDirAuto;
+  } else if (value == "ltr") {
+    dir_ = kDirLeftToRight;
   } else if (value == "rtl") {
-    directionality_ = kRightToLeftDirectionality;
+    dir_ = kDirRightToLeft;
   } else {
-    directionality_ = kNoExplicitDirectionality;
+    dir_ = kDirNotDefined;
+
+    // Reset the attribute so that element.getAttribute('dir') returns the
+    // same thing as element.dir.
+    if (value.size() > 0) {
+      LOG(WARNING) << "Unsupported value '" << value << "' for attribute 'dir'";
+      SetAttribute("dir", "");
+    }
   }
 
-  if (directionality_ != previous_directionality) {
+  if (dir_ != previous_dir) {
     InvalidateLayoutBoxesOfNodeAndAncestors();
     InvalidateLayoutBoxesOfDescendants();
   }
@@ -1390,6 +1446,231 @@ void HTMLElement::SetTabIndex(const std::string& value) {
   } else {
     tabindex_ = base::nullopt;
   }
+}
+
+namespace {
+// This is similar to base rtl.h's GetStringDirection; however, this takes a
+// utf8 string and only pays attention to L, AL, and R character types.
+HTMLElement::DirState GetStringDirection(const std::string& utf8_string) {
+  int32_t length = static_cast<int32_t>(utf8_string.length());
+  for (int32_t index = 0; index < length;) {
+    int32_t ch;
+    U8_NEXT(utf8_string.data(), index, length, ch);
+    if (ch < 0) {
+      LOG(ERROR) << "Unable to determine directionality of " << utf8_string;
+      break;
+    }
+
+    int32_t property = u_getIntPropertyValue(ch, UCHAR_BIDI_CLASS);
+    if (property == U_LEFT_TO_RIGHT) {
+      return HTMLElement::kDirLeftToRight;
+    }
+    if (property == U_RIGHT_TO_LEFT ||
+        property == U_RIGHT_TO_LEFT_ARABIC) {
+      return HTMLElement::kDirRightToLeft;
+    }
+  }
+  return HTMLElement::kDirNotDefined;
+}
+}  // namespace
+
+// This is similar to dir_state() except it will resolve kDirAuto to
+// kDirLeftToRight or kDirRightToLeft according to the spec:
+//   https://html.spec.whatwg.org/commit-snapshots/ebcac971c2add28a911283899da84ec509876c44/#the-directionality
+// If "dir" was not defined for this element, then this function will return
+// kDirNotDefined.
+HTMLElement::DirState HTMLElement::GetUsedDirState() {
+  // If the element's dir attribute is in the auto state
+  // If the element is a bdi element and the dir attribute is not in a defined
+  //   state (i.e. it is not present or has an invalid value)
+  if (dir_ != kDirAuto) {
+    return dir_;
+  }
+
+  // Find the first character in tree order that matches the following criteria:
+  //   The character is from a Text node that is a descendant of the element
+  //     whose directionality is being determined.
+  //   The character is of bidirectional character type L, AL, or R. [BIDI]
+  //   The character is not in a Text node that has an ancestor element that is
+  //     a descendant of the element whose directionality is being determined
+  //     and that is either:
+  //       A bdi element.
+  //       A script element.
+  //       A style element.
+  //       A textarea element.
+  //       An element with a dir attribute in a defined state.
+  //   If such a character is found and it is of bidirectional character type
+  //     AL or R, the directionality of the element is 'rtl'.
+  //   If such a character is found and it is of bidirectional character type
+  //     L, the directionality of the element is 'ltr'.
+
+  // A tree is a finite hierarchical tree structure. In tree order is preorder,
+  // depth-first traversal of a tree.
+  //   https://dom.spec.whatwg.org/#concept-tree-order
+  std::vector<Node*> stack;
+
+  // Add children in reverse order so that pop_back() will result in preorder
+  // depth-first traversal.
+  for (Node* child_node = last_child(); child_node;
+       child_node = child_node->previous_sibling()) {
+    stack.push_back(child_node);
+  }
+
+  while (!stack.empty()) {
+    Node* node = stack.back();
+    stack.pop_back();
+
+    Text* text = node->AsText();
+    if (text) {
+      // If the text has strong directionality, then return it.
+      DirState dir = GetStringDirection(text->text());
+      if (dir != kDirNotDefined) {
+        return dir;
+      }
+    }
+
+    // Traverse children only if this is not:
+    //   A bdi element.
+    //   A script element.
+    //   A style element.
+    //   A textarea element.
+    //   An element with a dir attribute in a defined state.
+    Element* element = node->AsElement();
+    if (element) {
+      HTMLElement* html_element = element->AsHTMLElement();
+      if (html_element) {
+        if (html_element->AsHTMLScriptElement() ||
+            html_element->AsHTMLStyleElement() ||
+            html_element->dir_state() != kDirNotDefined) {
+          continue;
+        }
+      }
+    }
+
+    for (Node* child_node = node->last_child(); child_node;
+         child_node = child_node->previous_sibling()) {
+      stack.push_back(child_node);
+    }
+  }
+
+  // Otherwise, if the element is a document element, the directionality of
+  //   the element is 'ltr'.
+  if (IsDocumentElement()) {
+    return kDirLeftToRight;
+  }
+
+  // Although the spec says to use the parent's directionality, the W3C test
+  // (the-dir-attribute-069.html) says to default to LTR. Chrome follows the
+  // W3C expectation, so follow Chrome. Additional discussion here:
+  //   https://github.com/w3c/i18n-drafts/issues/235
+  // The following code block which implements the spec is left for reference.
+#if 0
+  // Otherwise, the directionality of the element is the same as the element's
+  //   parent element's directionality.
+  for (Node* ancestor_node = parent_node(); ancestor_node;
+       ancestor_node = ancestor_node->parent_node()) {
+    Element* ancestor_element = ancestor_node->AsElement();
+    if (!ancestor_element) {
+      continue;
+    }
+    HTMLElement* ancestor_html_element = ancestor_element->AsHTMLElement();
+    if (!ancestor_html_element) {
+      continue;
+    }
+    if (ancestor_html_element->dir_state() == kDirNotDefined) {
+      continue;
+    }
+    return ancestor_html_element->GetUsedDirState();
+  }
+#endif
+
+  return kDirLeftToRight;
+}
+
+// Algorithm:
+//   https://html.spec.whatwg.org/commit-snapshots/ebcac971c2add28a911283899da84ec509876c44/#the-directionality
+Directionality HTMLElement::directionality() {
+  // Use the cached value if available.
+  if (directionality_) {
+    return *directionality_;
+  }
+
+  // The directionality of an element (any element, not just an HTML element)
+  // is either 'ltr' or 'rtl', and is determined as per the first appropriate
+  // set of steps from the following list:
+
+  // If the element's dir attribute is in the ltr state
+  // If the element is a document element and the dir attribute is not in a
+  //   defined state (i.e. it is not present or has an invalid value)
+  // If the element is an input element whose type attribute is in the
+  //   Telephone state, and the dir attribute is not in a defined state (i.e.
+  //   it is not present or has an invalid value)
+  // --> The directionality of the element is 'ltr'.
+  if (dir_ == kDirLeftToRight) {
+    directionality_ = kLeftToRightDirectionality;
+    return *directionality_;
+  }
+  // [Case of undefined 'dir' is handled later in this function.]
+
+  // If the element's dir attribute is in the rtl state
+  // --> The directionality of the element is 'rtl'.
+  if (dir_ == kDirRightToLeft) {
+    directionality_ = kRightToLeftDirectionality;
+    return *directionality_;
+  }
+
+  // If the element is an input element whose type attribute is in the Text,
+  //   Search, Telephone, URL, or E-mail state, and the dir attribute is in the
+  //   auto state
+  // If the element is a textarea element and the dir attribute is in the auto
+  //   state
+  // --> Cobalt does not support these element types.
+
+  // If the element's dir attribute is in the auto state
+  // If the element is a bdi element and the dir attribute is not in a defined
+  //   state (i.e. it is not present or has an invalid value)
+  // --> Find the first character in tree order that matches the following
+  //       criteria:
+  //       The character is from a Text node that is a descendant of the
+  //         element whose directionality is being determined.
+  //       The character is of bidirectional character type L, AL, or R. [BIDI]
+  //       The character is not in a Text node that has an ancestor element
+  //         that is a descendant of the element whose directionality is being
+  //         determined and that is either:
+  //           A bdi element.
+  //           A script element.
+  //           A style element.
+  //           A textarea element.
+  //           An element with a dir attribute in a defined state.
+  //     If such a character is found and it is of bidirectional character type
+  //       AL or R, the directionality of the element is 'rtl'.
+  //     If such a character is found and it is of bidirectional character type
+  //       L, the directionality of the element is 'ltr'.
+  //     Otherwise, if the element is a document element, the directionality of
+  //       the element is 'ltr'.
+  //     Otherwise, the directionality of the element is the same as the
+  //       element's parent element's directionality.
+
+  // If the element has a parent element and the dir attribute is not in a
+  //   defined state (i.e. it is not present or has an invalid value)
+  // --> The directionality of the element is the same as the element's parent
+  //       element's directionality.
+  for (Node* ancestor_node = parent_node(); ancestor_node;
+       ancestor_node = ancestor_node->parent_node()) {
+    Element* ancestor_element = ancestor_node->AsElement();
+    if (!ancestor_element) {
+      continue;
+    }
+    HTMLElement* ancestor_html_element = ancestor_element->AsHTMLElement();
+    if (!ancestor_html_element) {
+      continue;
+    }
+    directionality_ = ancestor_html_element->directionality();
+    return *directionality_;
+  }
+
+  directionality_ = kLeftToRightDirectionality;
+  return *directionality_;
 }
 
 namespace {
@@ -1798,15 +2079,22 @@ void HTMLElement::UpdateUiNavigationType() {
   }
 
   if (ui_nav_item_type) {
+    ui_navigation::NativeItemDir ui_nav_item_dir;
+    ui_nav_item_dir.is_left_to_right =
+        directionality() == kLeftToRightDirectionality;
+    ui_nav_item_dir.is_top_to_bottom = true;
+
     if (ui_nav_item_) {
       if (ui_nav_item_->GetType() == *ui_nav_item_type) {
         // Keep using the existing navigation item.
+        ui_nav_item_->SetDir(ui_nav_item_dir);
         return;
       }
       // The current navigation item isn't of the correct type. Disable it so
       // that callbacks won't be invoked for it. The object will be destroyed
       // when all references to it are released.
       ui_nav_item_->SetEnabled(false);
+      ui_nav_item_ = nullptr;
     }
     ui_nav_item_ = new ui_navigation::NavItem(
         *ui_nav_item_type,
@@ -1825,6 +2113,7 @@ void HTMLElement::UpdateUiNavigationType() {
             base::Unretained(base::MessageLoop::current()->task_runner().get()),
             FROM_HERE,
             base::Bind(&HTMLElement::OnUiNavScroll, base::AsWeakPtr(this))));
+    ui_nav_item_->SetDir(ui_nav_item_dir);
   } else if (ui_nav_item_) {
     // This navigation item is no longer relevant.
     ui_nav_item_->SetEnabled(false);

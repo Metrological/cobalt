@@ -106,6 +106,9 @@ void HTMLLinkElement::set_cross_origin(
 void HTMLLinkElement::OnRemovedFromDocument() {
   HTMLElement::OnRemovedFromDocument();
 
+  DCHECK(base::MessageLoop::current());
+  ReleaseLoader();
+
   if (style_sheet_) {
     Document* document = node_document();
     if (document) {
@@ -124,7 +127,7 @@ void HTMLLinkElement::ResolveAndSetAbsoluteURL() {
 }
 
 // Algorithm for Obtain:
-//   https://www.w3.org/TR/html5/document-metadata.html#concept-link-obtain
+//   https://www.w3.org/TR/html50/document-metadata.html#concept-link-obtain
 void HTMLLinkElement::Obtain() {
   TRACK_MEMORY_SCOPE("DOM");
   TRACE_EVENT0("cobalt::dom", "HTMLLinkElement::Obtain()");

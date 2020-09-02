@@ -23,6 +23,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/loader/cors_preflight.h"
+#include "cobalt/loader/url_fetcher_string_writer.h"
 #include "net/http/http_response_headers.h"
 #include "net/http/http_status_code.h"
 
@@ -204,18 +205,19 @@ void FetcherBufferedDataSource::OnURLFetchResponseStarted(
 }
 
 void FetcherBufferedDataSource::OnURLFetchDownloadProgress(
-    const net::URLFetcher* source, int64_t /*current*/, int64_t /*total*/,
-    int64_t /*current_network_bytes*/) {
+    const net::URLFetcher* source, int64_t current, int64_t total,
+    int64_t current_network_bytes) {
   DCHECK(task_runner_->BelongsToCurrentThread());
   auto* download_data_writer =
-      base::polymorphic_downcast<CobaltURLFetcherStringWriter*>(
+      base::polymorphic_downcast<loader::URLFetcherStringWriter*>(
           source->GetResponseWriter());
-  std::unique_ptr<std::string> download_data = download_data_writer->data();
-  size_t size = download_data->size();
+  std::string downloaded_data;
+  download_data_writer->GetAndResetData(&downloaded_data);
+  size_t size = downloaded_data.size();
   if (size == 0) {
     return;
   }
-  const uint8* data = reinterpret_cast<const uint8*>(download_data->data());
+  const uint8* data = reinterpret_cast<const uint8*>(downloaded_data.data());
   base::AutoLock auto_lock(lock_);
 
   if (fetcher_.get() != source || error_occured_) {
@@ -330,9 +332,9 @@ void FetcherBufferedDataSource::CreateNewFetcher() {
       std::move(net::URLFetcher::Create(url_, net::URLFetcher::GET, this));
   fetcher_->SetRequestContext(
       network_module_->url_request_context_getter().get());
-  auto* download_data_writer = new CobaltURLFetcherStringWriter();
-  fetcher_->SaveResponseWithWriter(
-      std::unique_ptr<CobaltURLFetcherStringWriter>(download_data_writer));
+  std::unique_ptr<loader::URLFetcherStringWriter> download_data_writer(
+      new loader::URLFetcherStringWriter());
+  fetcher_->SaveResponseWithWriter(std::move(download_data_writer));
 
   std::string range_request =
       "Range: bytes=" + base::NumberToString(last_request_offset_) + "-" +

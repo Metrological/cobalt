@@ -10,6 +10,7 @@
   'dependencies': [
     '<(DEPTH)/base/base.gyp:base',
     '<(DEPTH)/cobalt/base/base.gyp:base',
+    '<(DEPTH)/cobalt/configuration/configuration.gyp:configuration',
     '<(DEPTH)/starboard/starboard_headers_only.gyp:starboard_headers_only',
     '<(DEPTH)/third_party/freetype2/freetype2_cobalt.gyp:freetype2',
     '<(DEPTH)/third_party/libxml/libxml.gyp:libxml',
@@ -23,6 +24,7 @@
     'src/effects/SkYUV2RGBShader.cc',
     'src/effects/SkYUV2RGBShader.h',
     'src/google_logging.cc',
+    'src/gpu/gl/GrGLMakeNativeInterface_cobalt.cc',
     'src/ports/SkFontConfigParser_cobalt.cc',
     'src/ports/SkFontConfigParser_cobalt.h',
     'src/ports/SkFontMgr_cobalt.cc',
@@ -44,10 +46,6 @@
     'src/ports/SkTime_cobalt.cc',
   ],
 
-  'defines': [
-    'COBALT_LOCAL_TYPEFACE_CACHE_SIZE_IN_BYTES=<(local_font_cache_size_in_bytes)',
-  ],
-
   'include_dirs': [
     '<(SHARED_INTERMEDIATE_DIR)',
   ],
@@ -56,11 +54,6 @@
     ['OS=="starboard"', {
       'sources': [
         'src/ports/SkMemory_starboard.cc',
-      ],
-    }],
-    ['gl_type != "none"', {
-      'sources': [
-        'src/gpu/gl/GrGLCreateNativeInterface_cobalt.cc',
       ],
     }],
   ],

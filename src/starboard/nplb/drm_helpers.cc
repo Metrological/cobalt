@@ -19,8 +19,6 @@
 namespace starboard {
 namespace nplb {
 
-#if SB_API_VERSION >= 10
-
 void DummySessionUpdateRequestFunc(SbDrmSystem drm_system,
                                    void* context,
                                    int ticket,
@@ -47,27 +45,6 @@ void DummyServerCertificateUpdatedFunc(SbDrmSystem drm_system,
                                        SbDrmStatus status,
                                        const char* error_message) {}
 
-#else  // SB_API_VERSION >= 10
-
-void DummySessionUpdateRequestFunc(SbDrmSystem drm_system,
-                                   void* context,
-                                   int ticket,
-                                   const void* session_id,
-                                   int session_id_size,
-                                   const void* content,
-                                   int content_size,
-                                   const char* url) {}
-
-void DummySessionUpdatedFunc(SbDrmSystem drm_system,
-                             void* context,
-                             int ticket,
-                             const void* session_id,
-                             int session_id_size,
-                             bool succeeded) {}
-
-#endif  // SB_API_VERSION >= 10
-
-#if SB_HAS(DRM_KEY_STATUSES)
 void DummySessionKeyStatusesChangedFunc(SbDrmSystem drm_system,
                                         void* context,
                                         const void* session_id,
@@ -75,7 +52,6 @@ void DummySessionKeyStatusesChangedFunc(SbDrmSystem drm_system,
                                         int number_of_keys,
                                         const SbDrmKeyId* key_ids,
                                         const SbDrmKeyStatus* key_statuses) {}
-#endif  // SB_HAS(DRM_KEY_STATUSES)
 
 void DummySessionClosedFunc(SbDrmSystem drm_system,
                             void* context,
@@ -83,25 +59,10 @@ void DummySessionClosedFunc(SbDrmSystem drm_system,
                             int session_id_size) {}
 
 SbDrmSystem CreateDummyDrmSystem(const char* key_system) {
-#if SB_API_VERSION >= 10
   return SbDrmCreateSystem(
       key_system, NULL /* context */, DummySessionUpdateRequestFunc,
       DummySessionUpdatedFunc, DummySessionKeyStatusesChangedFunc,
       DummyServerCertificateUpdatedFunc, DummySessionClosedFunc);
-#elif SB_HAS(DRM_SESSION_CLOSED)
-  return SbDrmCreateSystem(
-      key_system, NULL /* context */, DummySessionUpdateRequestFunc,
-      DummySessionUpdatedFunc, DummySessionKeyStatusesChangedFunc,
-      DummySessionClosedFunc);
-#elif SB_HAS(DRM_KEY_STATUSES)
-  return SbDrmCreateSystem(
-      key_system, NULL /* context */, DummySessionUpdateRequestFunc,
-      DummySessionUpdatedFunc, DummySessionKeyStatusesChangedFunc);
-#else   // SB_HAS(DRM_KEY_STATUSES)
-  return SbDrmCreateSystem(key_system, NULL /* context */,
-                           DummySessionUpdateRequestFunc,
-                           DummySessionUpdatedFunc);
-#endif  // SB_HAS(DRM_KEY_STATUSES)
 }
 
 }  // namespace nplb

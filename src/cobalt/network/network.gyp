@@ -52,6 +52,7 @@
       ],
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
+        '<(DEPTH)/cobalt/configuration/configuration.gyp:configuration',
         '<(DEPTH)/cobalt/network_bridge/network_bridge.gyp:network_bridge',
         '<(DEPTH)/cobalt/storage/storage.gyp:storage',
         '<(DEPTH)/net/net.gyp:net',
@@ -70,16 +71,18 @@
             'cobalt_net_log.h',
             'net_log_constants.cc',
             'net_log_constants.h',
-            'net_log_logger.cc',
-            'net_log_logger.h',
           ],
           'defines': [
             'ENABLE_NETWORK_LOGGING',
           ],
         }],
         ['enable_configure_request_job_factory == 1', {
-          'dependencies': [
-            '<@(cobalt_platform_dependencies)',
+          'conditions': [
+            ['sb_evergreen == 0', {
+              'dependencies': [
+                '<@(cobalt_platform_dependencies)',
+              ],
+            }],
           ],
           'defines': [
             'ENABLE_CONFIGURE_REQUEST_JOB_FACTORY',
@@ -118,11 +121,11 @@
       ],
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
-        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
         'network',
       ],
+      'includes': [ '<(DEPTH)/cobalt/test/test.gypi' ],
     },
     {
       'target_name': 'network_test_deploy',

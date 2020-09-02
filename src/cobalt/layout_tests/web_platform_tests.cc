@@ -65,7 +65,6 @@ class CspDelegatePermissive : public dom::CspDelegateSecure {
       const GURL& url, csp::CSPHeaderPolicy require_csp,
       const base::Closure& policy_changed_callback,
       int insecure_allowed_token) {
-    SB_UNREFERENCED_PARAMETER(insecure_allowed_token);
     return new CspDelegatePermissive(std::move(violation_reporter), url,
                                      require_csp, policy_changed_callback);
   }
@@ -146,15 +145,20 @@ void Quit(base::RunLoop* run_loop) {
       FROM_HERE, run_loop->QuitClosure());
 }
 
-// Called when layout completes and results have been produced.  We use this
-// signal to stop the WebModule's message loop since our work is done after a
-// layout has been performed.
+// Called upon window.close(), which indicates that the test has finished.
+// We use this signal to stop the WebModule's message loop since our work is
+// done once the window is closed. A timeout will also trigger window.close().
+void WindowCloseCallback(base::RunLoop* run_loop,
+                         base::MessageLoop* message_loop,
+                         base::TimeDelta delta) {
+  message_loop->task_runner()->PostTask(FROM_HERE, base::Bind(Quit, run_loop));
+}
+
+// Called when layout completes.
 void WebModuleOnRenderTreeProducedCallback(
     base::Optional<browser::WebModule::LayoutResults>* out_results,
-    base::RunLoop* run_loop, base::MessageLoop* message_loop,
     const browser::WebModule::LayoutResults& results) {
   out_results->emplace(results.render_tree, results.layout_time);
-  message_loop->task_runner()->PostTask(FROM_HERE, base::Bind(Quit, run_loop));
 }
 
 // This callback, when called, quits a message loop, outputs the error message
@@ -202,6 +206,9 @@ std::string RunWebPlatformTest(const GURL& url, bool* got_results) {
   // ready for layout should be performed.  See cobalt/dom/test_runner.h.
   browser::WebModule::Options web_module_options;
   web_module_options.layout_trigger = layout::LayoutManager::kTestRunnerMode;
+  // We assume that we won't suspend/resume while running the tests, and so
+  // we take advantage of the convenience of inline script tags.
+  web_module_options.enable_inline_script_warnings = false;
 
   // Prepare a slot for our results to be placed when ready.
   base::Optional<browser::WebModule::LayoutResults> results;
@@ -210,14 +217,13 @@ std::string RunWebPlatformTest(const GURL& url, bool* got_results) {
   // Create the WebModule and wait for a layout to occur.
   browser::WebModule web_module(
       url, base::kApplicationStateStarted,
-      base::Bind(&WebModuleOnRenderTreeProducedCallback, &results, &run_loop,
-                 base::MessageLoop::current()),
+      base::Bind(&WebModuleOnRenderTreeProducedCallback, &results),
       base::Bind(&WebModuleErrorCallback, &run_loop,
                  base::MessageLoop::current()),
-      browser::WebModule::CloseCallback() /* window_close_callback */,
+      base::Bind(&WindowCloseCallback, &run_loop, base::MessageLoop::current()),
       base::Closure() /* window_minimize_callback */,
       can_play_type_handler.get(), media_module.get(), &network_module,
-      kDefaultViewportSize, 1.f, &resource_provider, 60.0f, web_module_options);
+      kDefaultViewportSize, &resource_provider, 60.0f, web_module_options);
   run_loop.Run();
   const std::string extract_results =
       "document.getElementById(\"__testharness__results__\").textContent;";
@@ -268,8 +274,8 @@ HarnessResult ParseResults(const std::string& json_results) {
   return harness_result;
 }
 
-::testing::AssertionResult CheckResult(const char* /* expectation_str */,
-                                       const char* /* results_str */,
+::testing::AssertionResult CheckResult(const char* expectation_str,
+                                       const char* results_str,
                                        bool should_pass,
                                        const TestResult& result) {
   bool test_passed = result.status == WebPlatformTestInfo::kPass;
@@ -296,10 +302,9 @@ HarnessResult ParseResults(const std::string& json_results) {
   }
 }
 
-::testing::AssertionResult CheckHarnessResult(const char* /* expectation_str */,
-                                              const char* /* results_str */,
-                                              WebPlatformTestInfo::State expect_status,
-                                              const HarnessResult& result) {
+::testing::AssertionResult CheckHarnessResult(
+    const char* expectation_str, const char* results_str,
+    WebPlatformTestInfo::State expect_status, const HarnessResult& result) {
   if ((expect_status == WebPlatformTestInfo::State::kPass) &&
       (result.status != kTestsOk)) {
     return ::testing::AssertionFailure()
@@ -346,7 +351,7 @@ TEST_P(WebPlatformTest, Run) {
 
   GURL test_url = GURL(test_server).Resolve(GetParam().url);
 
-  std::cout << "(" << test_url << ")" << std::endl;
+  LOG(INFO) << "(" << test_url << ")" << std::endl;
 
   bool got_results = false;
   std::string json_results = RunWebPlatformTest(test_url, &got_results);
@@ -414,6 +419,11 @@ INSTANTIATE_TEST_CASE_P(html, WebPlatformTest,
                         GetTestName());
 
 INSTANTIATE_TEST_CASE_P(
+    intersection_observer, WebPlatformTest,
+    ::testing::ValuesIn(EnumerateWebPlatformTests("intersection-observer")),
+    GetTestName());
+
+INSTANTIATE_TEST_CASE_P(
     mediasession, WebPlatformTest,
     ::testing::ValuesIn(EnumerateWebPlatformTests("mediasession")),
     GetTestName());
@@ -422,6 +432,19 @@ INSTANTIATE_TEST_CASE_P(streams, WebPlatformTest,
                         ::testing::ValuesIn(EnumerateWebPlatformTests(
                             "streams", "'ReadableStream' in this")),
                         GetTestName());
+
+INSTANTIATE_TEST_CASE_P(webidl, WebPlatformTest,
+    ::testing::ValuesIn(EnumerateWebPlatformTests("WebIDL")),
+    GetTestName());
+
+INSTANTIATE_TEST_CASE_P(websockets, WebPlatformTest,
+    ::testing::ValuesIn(EnumerateWebPlatformTests("websockets")),
+    GetTestName());
+
+INSTANTIATE_TEST_CASE_P(
+    web_crypto_api, WebPlatformTest,
+    ::testing::ValuesIn(EnumerateWebPlatformTests("WebCryptoAPI")),
+    GetTestName());
 
 #endif  // !defined(COBALT_WIN)
 

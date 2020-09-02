@@ -23,6 +23,7 @@
 #include "cobalt/audio/audio_helpers.h"
 #include "cobalt/audio/audio_node.h"
 #include "cobalt/media/base/shell_audio_bus.h"
+#include "cobalt/script/environment_settings.h"
 
 namespace cobalt {
 namespace audio {
@@ -39,7 +40,8 @@ class AudioDestinationNode : public AudioNode,
   typedef media::ShellAudioBus ShellAudioBus;
 
  public:
-  explicit AudioDestinationNode(AudioContext* context);
+  AudioDestinationNode(script::EnvironmentSettings* settings,
+                       AudioContext* context);
 
   // Web API: AudioDestinationNode
   //
@@ -50,8 +52,7 @@ class AudioDestinationNode : public AudioNode,
   // From AudioNode.
   void OnInputNodeConnected() override;
   std::unique_ptr<ShellAudioBus> PassAudioBusFromSource(
-      int32 /*number_of_frames*/, SampleType /*sample_type*/,
-      bool* /*finished*/) override {
+      int32 number_of_frames, SampleType sample_type, bool* finished) override {
     NOTREACHED();
     return std::unique_ptr<ShellAudioBus>();
   }

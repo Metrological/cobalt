@@ -34,11 +34,12 @@ NavItem::NavItem(NativeItemType type,
       nav_item_(GetInterface().create_item(type, &s_callbacks_, this)) {}
 
 NavItem::~NavItem() {
+  GetInterface().set_item_enabled(nav_item_, false);
   GetInterface().destroy_item(nav_item_);
 }
 
 // static
-void NavItem::OnBlur(NativeItem /* item */, void* callback_context) {
+void NavItem::OnBlur(NativeItem item, void* callback_context) {
   NavItem* this_ptr = static_cast<NavItem*>(callback_context);
   if (!this_ptr->onblur_callback_.is_null()) {
     this_ptr->onblur_callback_.Run();
@@ -46,7 +47,7 @@ void NavItem::OnBlur(NativeItem /* item */, void* callback_context) {
 }
 
 // static
-void NavItem::OnFocus(NativeItem /* item */, void* callback_context) {
+void NavItem::OnFocus(NativeItem item, void* callback_context) {
   NavItem* this_ptr = static_cast<NavItem*>(callback_context);
   if (!this_ptr->onfocus_callback_.is_null()) {
     this_ptr->onfocus_callback_.Run();
@@ -54,7 +55,7 @@ void NavItem::OnFocus(NativeItem /* item */, void* callback_context) {
 }
 
 // static
-void NavItem::OnScroll(NativeItem /* item */, void* callback_context) {
+void NavItem::OnScroll(NativeItem item, void* callback_context) {
   NavItem* this_ptr = static_cast<NavItem*>(callback_context);
   if (!this_ptr->onscroll_callback_.is_null()) {
     this_ptr->onscroll_callback_.Run();

@@ -20,12 +20,14 @@
 #include "starboard/media.h"
 #include "starboard/player.h"
 #include "starboard/shared/internal_only.h"
+#include "starboard/shared/starboard/media/media_util.h"
 #include "starboard/shared/starboard/player/player_worker.h"
 #include "starboard/time.h"
 #include "starboard/window.h"
 
 struct SbPlayerPrivate {
  public:
+  typedef starboard::shared::starboard::media::AudioSampleInfo AudioSampleInfo;
   typedef starboard::shared::starboard::player::PlayerWorker PlayerWorker;
 
   static SbPlayerPrivate* CreateInstance(
@@ -35,9 +37,7 @@ struct SbPlayerPrivate {
       SbPlayerDeallocateSampleFunc sample_deallocate_func,
       SbPlayerDecoderStatusFunc decoder_status_func,
       SbPlayerStatusFunc player_status_func,
-#if SB_HAS(PLAYER_ERROR_MESSAGE)
       SbPlayerErrorFunc player_error_func,
-#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
       void* context,
       starboard::scoped_ptr<PlayerWorker::Handler> player_worker_handler);
 
@@ -51,20 +51,18 @@ struct SbPlayerPrivate {
   void WriteEndOfStream(SbMediaType stream_type);
   void SetBounds(int z_index, int x, int y, int width, int height);
 
-#if SB_API_VERSION < 10
-  void GetInfo(SbPlayerInfo* out_player_info);
-#else   // SB_API_VERSION < 10
   void GetInfo(SbPlayerInfo2* out_player_info);
-#endif  // SB_API_VERSION < 10
   void SetPause(bool pause);
   void SetPlaybackRate(double playback_rate);
   void SetVolume(double volume);
 
   SbDecodeTarget GetCurrentDecodeTarget();
 
-  ~SbPlayerPrivate() { --number_of_players_; }
-
-  static int number_of_players() { return number_of_players_; }
+  ~SbPlayerPrivate() {
+    --number_of_players_;
+    SB_DLOG(INFO) << "Destroying SbPlayerPrivate. There are "
+                  << number_of_players_ << " players.";
+  }
 
  private:
   SbPlayerPrivate(
@@ -74,11 +72,12 @@ struct SbPlayerPrivate {
       SbPlayerDeallocateSampleFunc sample_deallocate_func,
       SbPlayerDecoderStatusFunc decoder_status_func,
       SbPlayerStatusFunc player_status_func,
-#if SB_HAS(PLAYER_ERROR_MESSAGE)
       SbPlayerErrorFunc player_error_func,
-#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
       void* context,
       starboard::scoped_ptr<PlayerWorker::Handler> player_worker_handler);
+
+  SbPlayerPrivate(const SbPlayerPrivate&) = delete;
+  SbPlayerPrivate& operator=(const SbPlayerPrivate&) = delete;
 
   void UpdateMediaInfo(SbTime media_time,
                        int dropped_video_frames,
@@ -88,7 +87,7 @@ struct SbPlayerPrivate {
   SbPlayerDeallocateSampleFunc sample_deallocate_func_;
   void* context_;
 #if SB_API_VERSION < 11
-  SbMediaAudioSampleInfo audio_sample_info_;
+  AudioSampleInfo audio_sample_info_;
 #endif  // SB_API_VERSION < 11
 
   starboard::Mutex mutex_;

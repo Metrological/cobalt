@@ -44,6 +44,7 @@
         'font_cache_test.cc',
         'html_element_factory_test.cc',
         'html_element_test.cc',
+        'intersection_observer_test.cc',
         'keyboard_event_test.cc',
         'local_storage_database_test.cc',
         'location_test.cc',
@@ -77,10 +78,10 @@
         '<(DEPTH)/cobalt/loader/loader.gyp:loader',
         '<(DEPTH)/cobalt/renderer/rasterizer/skia/skia/skia.gyp:skia',
         '<(DEPTH)/cobalt/speech/speech.gyp:speech',
-        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
       ],
+      'includes': [ '<(DEPTH)/cobalt/test/test.gypi' ],
     },
 
     {

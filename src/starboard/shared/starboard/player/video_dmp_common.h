@@ -24,7 +24,6 @@
 #include "starboard/memory.h"
 #include "starboard/shared/internal_only.h"
 
-#if SB_HAS(PLAYER_FILTER_TESTS)
 namespace starboard {
 namespace shared {
 namespace starboard {
@@ -70,21 +69,20 @@ enum RecordType {
 };
 
 // Helper structures to allow returning structs containing pointers without
-// explicit memory management.
+// explicit memory management.  Use our own structure instead of the one defined
+// in media_util.* to ensure that video_dmp has minimum dependency.
 struct SbMediaAudioSampleInfoWithConfig : public SbMediaAudioSampleInfo {
   SbMediaAudioSampleInfoWithConfig() {}
   SbMediaAudioSampleInfoWithConfig(const SbMediaAudioSampleInfoWithConfig& that)
       : SbMediaAudioSampleInfo(that),
         stored_audio_specific_config(that.stored_audio_specific_config) {
-#if SB_HAS(AUDIO_SPECIFIC_CONFIG_AS_POINTER)
     audio_specific_config = stored_audio_specific_config.data();
-#else   // SB_HAS(AUDIO_SPECIFIC_CONFIG_AS_POINTER)
-    SB_DCHECK(8 >= stored_audio_specific_config.size());
-    SbMemoryCopy(audio_specific_config, stored_audio_specific_config.data(),
-                 stored_audio_specific_config.size());
-#endif  // SB_HAS(AUDIO_SPECIFIC_CONFIG_AS_POINTER)
   }
-  void operator=(const SbMediaAudioSampleInfoWithConfig& that) = delete;
+  void operator=(const SbMediaAudioSampleInfoWithConfig& that) {
+    SbMemoryCopy(this, &that, sizeof(SbMediaAudioSampleInfo));
+    stored_audio_specific_config = that.stored_audio_specific_config;
+    audio_specific_config = stored_audio_specific_config.data();
+  }
 
   std::vector<uint8_t> stored_audio_specific_config;
 };
@@ -115,14 +113,21 @@ struct SbMediaVideoSampleInfoWithOptionalColorMetadata
     }
 #endif  // SB_API_VERSION < 11
   }
-  void operator=(const SbMediaVideoSampleInfoWithOptionalColorMetadata& that) =
-      delete;
+  void operator=(const SbMediaVideoSampleInfoWithOptionalColorMetadata& that) {
+    SbMemoryCopy(this, &that, sizeof(SbMediaVideoSampleInfo));
+#if SB_API_VERSION < 11
+    stored_color_metadata = that.stored_color_metadata;
+    if (color_metadata) {
+      color_metadata = &stored_color_metadata;
+    }
+#endif  // SB_API_VERSION < 11
+  }
 
   SbMediaColorMetadata stored_color_metadata;
 };
 
 const uint32_t kByteOrderMark = 0x76543210;
-const uint32_t kSupportWriterVersion = 0x00001000;
+const uint32_t kSupportedWriterVersion = 0x00001000;
 
 void Read(const ReadCB& read_cb, void* buffer, size_t size);
 
@@ -179,5 +184,4 @@ void Write(const WriteCB& write_cb,
 }  // namespace shared
 }  // namespace starboard
 
-#endif  // SB_HAS(PLAYER_FILTER_TESTS)
 #endif  // STARBOARD_SHARED_STARBOARD_PLAYER_VIDEO_DMP_COMMON_H_

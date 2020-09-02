@@ -115,6 +115,8 @@ class Pipeline {
   // subsequently submitted to this pipeline.
   render_tree::ResourceProvider* GetResourceProvider();
 
+  static bool IsMapToMeshEnabled(const Pipeline* pipeline);
+
  private:
   // All private data members should be accessed only on the rasterizer thread,
   // with the exception of rasterizer_thread_ itself through which messages
@@ -162,6 +164,11 @@ class Pipeline {
   // This method is executed on the rasterizer thread to shutdown anything that
   // needs to be shutdown from there.
   void ShutdownRasterizerThread();
+
+  // This method releases the rasterizer. This is exposed separately from
+  // ShutdownRasterizerThread() so it can be executed after tasks that may
+  // be posted by ShutdownRasterizerThread().
+  void ShutdownRasterizer() { rasterizer_.reset(); }
 
 #if defined(ENABLE_DEBUGGER)
   void OnDumpCurrentRenderTree(const std::string&);
@@ -266,6 +273,10 @@ class Pipeline {
   // tracking is flushed when the animations expire.
   base::CValCollectionTimerStats<base::CValPublic>
       rasterize_animations_interval_timer_;
+
+  // The total number of times Skia was used to render
+  // a non-text render tree node.
+  base::CVal<int64, base::CValPublic> fallback_rasterize_count_;
 
   // The total number of new render trees that have been rasterized.
   base::CVal<int, base::CValPublic> new_render_tree_rasterize_count_;

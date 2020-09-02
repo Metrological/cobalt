@@ -14,9 +14,6 @@
 
 #include "starboard/shared/libaom/aom_video_decoder.h"
 
-#if SB_API_VERSION >= 11
-#include "starboard/format_string.h"
-#endif  // SB_API_VERSION >= 11
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
 #include "starboard/linux/shared/decode_target_internal.h"
@@ -141,11 +138,7 @@ void VideoDecoder::ReportError(const std::string& error_message) {
   SB_DCHECK(decoder_thread_->job_queue()->BelongsToCurrentThread());
 
   error_occured_ = true;
-#if SB_HAS(PLAYER_ERROR_MESSAGE)
   Schedule(std::bind(error_cb_, kSbPlayerErrorDecode, error_message));
-#else   // SB_HAS(PLAYER_ERROR_MESSAGE)
-  Schedule(error_cb_);
-#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
 }
 
 void VideoDecoder::InitializeCodec() {
@@ -240,7 +233,8 @@ void VideoDecoder::DecodeOneBuffer(
     }
   }
 
-  if (aom_image->bit_depth != 8 && aom_image->bit_depth != 10) {
+  if (aom_image->bit_depth != 8 && aom_image->bit_depth != 10 &&
+      aom_image->bit_depth != 12) {
     SB_DLOG(ERROR) << "Unsupported bit depth " << aom_image->bit_depth;
     ReportError(
         FormatString("Unsupported bit depth %d.", aom_image->bit_depth));

@@ -68,14 +68,15 @@ class MockImageDecoder : public Decoder {
   void ExpectCallWithError(const base::Optional<std::string>& error);
 
  protected:
-  ::testing::StrictMock<MockImageDecoderCallback> image_decoder_callback_;
   render_tree::ResourceProviderStub resource_provider_;
+  base::NullDebuggerHooks debugger_hooks_;
+  ::testing::StrictMock<MockImageDecoderCallback> image_decoder_callback_;
   std::unique_ptr<Decoder> image_decoder_;
 };
 
 MockImageDecoder::MockImageDecoder() {
   image_decoder_.reset(new ImageDecoder(
-      &resource_provider_,
+      &resource_provider_, debugger_hooks_,
       base::Bind(&MockImageDecoderCallback::SuccessCallback,
                  base::Unretained(&image_decoder_callback_)),
       base::Bind(&MockImageDecoderCallback::LoadCompleteCallback,
@@ -651,8 +652,9 @@ TEST(ImageDecoderTest, DecodeProgressiveJPEGImageWithMultipleChunks) {
 // output to be single plane.
 TEST(ImageDecoderTest, DecodeProgressiveJPEGImageToSinglePlane) {
   render_tree::ResourceProviderStub resource_provider;
+  base::NullDebuggerHooks debugger_hooks;
   const bool kAllowImageDecodingToMultiPlane = false;
-  JPEGImageDecoder jpeg_image_decoder(&resource_provider,
+  JPEGImageDecoder jpeg_image_decoder(&resource_provider, debugger_hooks,
                                       kAllowImageDecodingToMultiPlane);
 
   std::vector<uint8> image_data =
@@ -683,8 +685,9 @@ TEST(ImageDecoderTest, DecodeProgressiveJPEGImageToSinglePlane) {
 TEST(ImageDecoderTest,
      DecodeProgressiveJPEGImageWithMultipleChunksToSinglePlane) {
   render_tree::ResourceProviderStub resource_provider;
+  base::NullDebuggerHooks debugger_hooks;
   const bool kAllowImageDecodingToMultiPlane = false;
-  JPEGImageDecoder jpeg_image_decoder(&resource_provider,
+  JPEGImageDecoder jpeg_image_decoder(&resource_provider, debugger_hooks,
                                       kAllowImageDecodingToMultiPlane);
 
   std::vector<uint8> image_data =
@@ -785,6 +788,9 @@ TEST(ImageDecoderTest, DecodeWEBPImageWithMultipleChunks) {
 
 // Test that we can properly decode animated WEBP image.
 TEST(ImageDecoderTest, DecodeAnimatedWEBPImage) {
+  base::Thread thread("AnimatedWebP");
+  thread.Start();
+
   MockImageDecoder image_decoder;
   image_decoder.ExpectCallWithError(base::nullopt);
 
@@ -799,11 +805,8 @@ TEST(ImageDecoderTest, DecodeAnimatedWEBPImage) {
           image_decoder.image().get());
   ASSERT_TRUE(animated_webp_image);
 
-  base::Thread thread("AnimatedWebP test");
-  thread.Start();
   animated_webp_image->Play(thread.task_runner());
   animated_webp_image->Stop();
-  thread.Stop();
 
   // The image should contain the whole undecoded data from the file.
   EXPECT_EQ(4261474u, animated_webp_image->GetEstimatedSizeInBytes());
@@ -814,6 +817,9 @@ TEST(ImageDecoderTest, DecodeAnimatedWEBPImage) {
 
 // Test that we can properly decode animated WEBP image in multiple chunks.
 TEST(ImageDecoderTest, DecodeAnimatedWEBPImageWithMultipleChunks) {
+  base::Thread thread("AnimatedWebP");
+  thread.Start();
+
   MockImageDecoder image_decoder;
   image_decoder.ExpectCallWithError(base::nullopt);
 
@@ -831,11 +837,8 @@ TEST(ImageDecoderTest, DecodeAnimatedWEBPImageWithMultipleChunks) {
           image_decoder.image().get());
   ASSERT_TRUE(animated_webp_image);
 
-  base::Thread thread("AnimatedWebP test");
-  thread.Start();
   animated_webp_image->Play(thread.task_runner());
   animated_webp_image->Stop();
-  thread.Stop();
 
   // The image should contain the whole undecoded data from the file.
   EXPECT_EQ(4261474u, animated_webp_image->GetEstimatedSizeInBytes());

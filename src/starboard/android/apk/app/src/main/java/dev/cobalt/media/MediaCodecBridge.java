@@ -101,6 +101,7 @@ class MediaCodecBridge {
     public static final String VIDEO_H265 = "video/hevc";
     public static final String VIDEO_VP8 = "video/x-vnd.on2.vp8";
     public static final String VIDEO_VP9 = "video/x-vnd.on2.vp9";
+    public static final String VIDEO_AV1 = "video/av01";
   }
 
   private BitrateAdjustmentTypes mBitrateAdjustmentType = BitrateAdjustmentTypes.NO_ADJUSTMENT;
@@ -326,7 +327,35 @@ class MediaCodecBridge {
       hdrStaticInfo.putShort((short) (minMasteringLuminance + 0.5f));
       hdrStaticInfo.putShort((short) DEFAULT_MAX_CLL);
       hdrStaticInfo.putShort((short) DEFAULT_MAX_FALL);
+      hdrStaticInfo.rewind();
       this.hdrStaticInfo = hdrStaticInfo;
+    }
+  }
+
+  @SuppressWarnings("unused")
+  @UsedByNative
+  private static class CreateMediaCodecBridgeResult {
+    private MediaCodecBridge mMediaCodecBridge;
+    // Contains the error message when mMediaCodecBridge is null.
+    private String mErrorMessage;
+
+    @SuppressWarnings("unused")
+    @UsedByNative
+    private CreateMediaCodecBridgeResult() {
+      mMediaCodecBridge = null;
+      mErrorMessage = "";
+    }
+
+    @SuppressWarnings("unused")
+    @UsedByNative
+    private MediaCodecBridge mediaCodecBridge() {
+      return mMediaCodecBridge;
+    }
+
+    @SuppressWarnings("unused")
+    @UsedByNative
+    private String errorMessage() {
+      return mErrorMessage;
     }
   }
 
@@ -450,7 +479,7 @@ class MediaCodecBridge {
 
   @SuppressWarnings("unused")
   @UsedByNative
-  public static MediaCodecBridge createVideoMediaCodecBridge(
+  public static void createVideoMediaCodecBridge(
       long nativeMediaCodecBridge,
       String mime,
       boolean isSecure,
@@ -459,31 +488,40 @@ class MediaCodecBridge {
       int height,
       Surface surface,
       MediaCrypto crypto,
-      ColorInfo colorInfo) {
+      ColorInfo colorInfo,
+      CreateMediaCodecBridgeResult outCreateMediaCodecBridgeResult) {
     MediaCodec mediaCodec = null;
+    outCreateMediaCodecBridgeResult.mMediaCodecBridge = null;
 
     boolean findHDRDecoder = android.os.Build.VERSION.SDK_INT >= 24 && colorInfo != null;
     // On first pass, try to find a decoder with HDR if the color info is non-null.
     MediaCodecUtil.FindVideoDecoderResult findVideoDecoderResult =
-        MediaCodecUtil.findVideoDecoder(mime, isSecure, 0, 0, 0, 0, findHDRDecoder);
+        MediaCodecUtil.findVideoDecoder(
+            mime, isSecure, 0, 0, 0, 0, findHDRDecoder, requireSoftwareCodec);
     if (findVideoDecoderResult.name.equals("") && findHDRDecoder) {
       // On second pass, forget HDR.
-      findVideoDecoderResult = MediaCodecUtil.findVideoDecoder(mime, isSecure, 0, 0, 0, 0, false);
+      findVideoDecoderResult =
+          MediaCodecUtil.findVideoDecoder(mime, isSecure, 0, 0, 0, 0, false, requireSoftwareCodec);
     }
     try {
       String decoderName = findVideoDecoderResult.name;
       if (decoderName.equals("") || findVideoDecoderResult.videoCapabilities == null) {
         Log.e(TAG, String.format("Failed to find decoder: %s, isSecure: %s", mime, isSecure));
-        return null;
+        outCreateMediaCodecBridgeResult.mErrorMessage =
+            String.format("Failed to find decoder: %s, isSecure: %s", mime, isSecure);
+        return;
       }
       Log.i(TAG, String.format("Creating \"%s\" decoder.", decoderName));
       mediaCodec = MediaCodec.createByCodecName(decoderName);
     } catch (Exception e) {
       Log.e(TAG, String.format("Failed to create MediaCodec: %s, isSecure: %s", mime, isSecure), e);
-      return null;
+      outCreateMediaCodecBridgeResult.mErrorMessage =
+          String.format("Failed to create MediaCodec: %s, isSecure: %s", mime, isSecure);
+      return;
     }
     if (mediaCodec == null) {
-      return null;
+      outCreateMediaCodecBridgeResult.mErrorMessage = "mediaCodec is null";
+      return;
     }
     MediaCodecBridge bridge =
         new MediaCodecBridge(
@@ -494,29 +532,42 @@ class MediaCodecBridge {
     boolean shouldConfigureHdr =
         android.os.Build.VERSION.SDK_INT >= 24
             && colorInfo != null
-            && MediaCodecUtil.isHdrCapableVp9Decoder(findVideoDecoderResult);
+            && MediaCodecUtil.isHdrCapableVideoDecoder(mime, findVideoDecoderResult);
     if (shouldConfigureHdr) {
       Log.d(TAG, "Setting HDR info.");
       mediaFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER, colorInfo.colorTransfer);
       mediaFormat.setInteger(MediaFormat.KEY_COLOR_STANDARD, colorInfo.colorStandard);
-      mediaFormat.setInteger(MediaFormat.KEY_COLOR_RANGE, colorInfo.colorRange);
+      // If color range is unspecified, don't set it.
+      if (colorInfo.colorRange != 0) {
+        mediaFormat.setInteger(MediaFormat.KEY_COLOR_RANGE, colorInfo.colorRange);
+      }
       mediaFormat.setByteBuffer(MediaFormat.KEY_HDR_STATIC_INFO, colorInfo.hdrStaticInfo);
     }
 
     int maxWidth = findVideoDecoderResult.videoCapabilities.getSupportedWidths().getUpper();
     int maxHeight = findVideoDecoderResult.videoCapabilities.getSupportedHeights().getUpper();
-    if (!bridge.configureVideo(mediaFormat, surface, crypto, 0, true, maxWidth, maxHeight)) {
+    if (!bridge.configureVideo(
+        mediaFormat,
+        surface,
+        crypto,
+        0,
+        true,
+        maxWidth,
+        maxHeight,
+        outCreateMediaCodecBridgeResult)) {
       Log.e(TAG, "Failed to configure video codec.");
       bridge.release();
-      return null;
+      // outCreateMediaCodecBridgeResult.mErrorMessage is set inside configureVideo() on error.
+      return;
     }
     if (!bridge.start()) {
       Log.e(TAG, "Failed to start video codec.");
       bridge.release();
-      return null;
+      outCreateMediaCodecBridgeResult.mErrorMessage = "Failed to start video codec";
+      return;
     }
 
-    return bridge;
+    outCreateMediaCodecBridgeResult.mMediaCodecBridge = bridge;
   }
 
   @SuppressWarnings("unused")
@@ -548,28 +599,6 @@ class MediaCodecBridge {
 
   @SuppressWarnings("unused")
   @UsedByNative
-  private void dequeueInputBuffer(long timeoutUs, DequeueInputResult outDequeueInputResult) {
-    int status = MEDIA_CODEC_ERROR;
-    int index = -1;
-    try {
-      int indexOrStatus = mMediaCodec.dequeueInputBuffer(timeoutUs);
-      if (indexOrStatus >= 0) { // index!
-        status = MEDIA_CODEC_OK;
-        index = indexOrStatus;
-      } else if (indexOrStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
-        status = MEDIA_CODEC_DEQUEUE_INPUT_AGAIN_LATER;
-      } else {
-        throw new AssertionError("Unexpected index_or_status: " + indexOrStatus);
-      }
-    } catch (Exception e) {
-      Log.e(TAG, "Failed to dequeue input buffer", e);
-    }
-    outDequeueInputResult.mStatus = status;
-    outDequeueInputResult.mIndex = index;
-  }
-
-  @SuppressWarnings("unused")
-  @UsedByNative
   private int flush() {
     try {
       mFlushed = true;
@@ -584,7 +613,7 @@ class MediaCodecBridge {
   @SuppressWarnings("unused")
   @UsedByNative
   private void stop() {
-    synchronized (mCallback) {
+    synchronized (this) {
       mNativeMediaCodecBridge = 0;
     }
     try {
@@ -778,47 +807,6 @@ class MediaCodecBridge {
     }
   }
 
-  @SuppressWarnings({"unused", "deprecation"})
-  @UsedByNative
-  private void dequeueOutputBuffer(long timeoutUs, DequeueOutputResult outDequeueOutputResult) {
-    int status = MEDIA_CODEC_ERROR;
-    int index = -1;
-    try {
-      int indexOrStatus = mMediaCodec.dequeueOutputBuffer(info, timeoutUs);
-      if (info.presentationTimeUs < mLastPresentationTimeUs) {
-        // TODO: return a special code through DequeueOutputResult
-        // to notify the native code that the frame has a wrong presentation
-        // timestamp and should be skipped.
-        info.presentationTimeUs = mLastPresentationTimeUs;
-      }
-      mLastPresentationTimeUs = info.presentationTimeUs;
-
-      if (indexOrStatus >= 0) { // index!
-        status = MEDIA_CODEC_OK;
-        index = indexOrStatus;
-      } else if (indexOrStatus == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
-        status = MEDIA_CODEC_OUTPUT_BUFFERS_CHANGED;
-      } else if (indexOrStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-        status = MEDIA_CODEC_OUTPUT_FORMAT_CHANGED;
-        MediaFormat newFormat = mMediaCodec.getOutputFormat();
-      } else if (indexOrStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
-        status = MEDIA_CODEC_DEQUEUE_OUTPUT_AGAIN_LATER;
-      } else {
-        throw new AssertionError("Unexpected index_or_status: " + indexOrStatus);
-      }
-    } catch (IllegalStateException e) {
-      status = MEDIA_CODEC_ERROR;
-      Log.e(TAG, "Failed to dequeue output buffer", e);
-    }
-
-    outDequeueOutputResult.mStatus = status;
-    outDequeueOutputResult.mIndex = index;
-    outDequeueOutputResult.mFlags = info.flags;
-    outDequeueOutputResult.mOffset = info.offset;
-    outDequeueOutputResult.mPresentationTimeMicroseconds = info.presentationTimeUs;
-    outDequeueOutputResult.mNumBytes = info.size;
-  }
-
   @SuppressWarnings("unused")
   @UsedByNative
   private boolean configureVideo(
@@ -828,7 +816,8 @@ class MediaCodecBridge {
       int flags,
       boolean allowAdaptivePlayback,
       int maxSupportedWidth,
-      int maxSupportedHeight) {
+      int maxSupportedHeight,
+      CreateMediaCodecBridgeResult outCreateMediaCodecBridgeResult) {
     try {
       // If adaptive playback is turned off by request, then treat it as
       // not supported.  Note that configureVideo is only called once
@@ -841,12 +830,12 @@ class MediaCodecBridge {
       if (mAdaptivePlaybackSupported) {
         // Since we haven't passed the properties of the stream we're playing
         // down to this level, from our perspective, we could potentially
-        // adapt up to 4k at any point.  We thus request 4k buffers up front,
-        // unless the decoder claims to not be able to do 4k, in which case
-        // we're ok, since we would've rejected a 4k stream when canPlayType
+        // adapt up to 8k at any point.  We thus request 8k buffers up front,
+        // unless the decoder claims to not be able to do 8k, in which case
+        // we're ok, since we would've rejected a 8k stream when canPlayType
         // was called, and then use those decoder values instead.
-        int maxWidth = Math.min(3840, maxSupportedWidth);
-        int maxHeight = Math.min(2160, maxSupportedHeight);
+        int maxWidth = Math.min(7680, maxSupportedWidth);
+        int maxHeight = Math.min(4320, maxSupportedHeight);
         format.setInteger(MediaFormat.KEY_MAX_WIDTH, maxWidth);
         format.setInteger(MediaFormat.KEY_MAX_HEIGHT, maxHeight);
       }
@@ -854,13 +843,21 @@ class MediaCodecBridge {
       mMediaCodec.configure(format, surface, crypto, flags);
       return true;
     } catch (IllegalArgumentException e) {
-      Log.e(TAG, "Cannot configure the video codec, wrong format or surface", e);
+      Log.e(TAG, "Cannot configure the video codec with IllegalArgumentException: ", e);
+      outCreateMediaCodecBridgeResult.mErrorMessage =
+          "Cannot configure the video codec with IllegalArgumentException: " + e.toString();
     } catch (IllegalStateException e) {
-      Log.e(TAG, "Cannot configure the video codec", e);
+      Log.e(TAG, "Cannot configure the video codec with IllegalStateException: ", e);
+      outCreateMediaCodecBridgeResult.mErrorMessage =
+          "Cannot configure the video codec with IllegalStateException: " + e.toString();
     } catch (MediaCodec.CryptoException e) {
-      Log.e(TAG, "Cannot configure the video codec: DRM error", e);
+      Log.e(TAG, "Cannot configure the video codec with CryptoException: ", e);
+      outCreateMediaCodecBridgeResult.mErrorMessage =
+          "Cannot configure the video codec with CryptoException: " + e.toString();
     } catch (Exception e) {
-      Log.e(TAG, "Cannot configure the video codec", e);
+      Log.e(TAG, "Cannot configure the video codec with Exception: ", e);
+      outCreateMediaCodecBridgeResult.mErrorMessage =
+          "Cannot configure the video codec with Exception: " + e.toString();
     }
     return false;
   }
@@ -918,6 +915,7 @@ class MediaCodecBridge {
         break;
       case MimeTypes.VIDEO_H265:
       case MimeTypes.VIDEO_VP9:
+      case MimeTypes.VIDEO_AV1:
         maxPixels = maxWidth * maxHeight;
         minCompressionRatio = 4;
         break;

@@ -21,10 +21,11 @@
 #include "starboard/common/ref_counted.h"
 #include "starboard/media.h"
 #include "starboard/shared/internal_only.h"
+#include "starboard/shared/starboard/media/media_util.h"
 #include "starboard/shared/starboard/player/decoded_audio_internal.h"
 #include "starboard/shared/starboard/player/filter/audio_decoder_internal.h"
 #include "starboard/shared/starboard/player/job_queue.h"
-#include "third_party/opus/include/opus.h"
+#include "third_party/opus/include/opus_multistream.h"
 
 namespace starboard {
 namespace shared {
@@ -34,6 +35,8 @@ class OpusAudioDecoder
     : public ::starboard::shared::starboard::player::filter::AudioDecoder,
       private starboard::player::JobQueue::JobOwner {
  public:
+  typedef shared::starboard::media::AudioSampleInfo AudioSampleInfo;
+
   explicit OpusAudioDecoder(const SbMediaAudioSampleInfo& audio_sample_info);
   ~OpusAudioDecoder() override;
 
@@ -44,21 +47,22 @@ class OpusAudioDecoder
   void Decode(const scoped_refptr<InputBuffer>& input_buffer,
               const ConsumedCB& consumed_cb) override;
   void WriteEndOfStream() override;
-  scoped_refptr<DecodedAudio> Read() override;
+  scoped_refptr<DecodedAudio> Read(int* samples_per_second) override;
   void Reset() override;
-  SbMediaAudioSampleType GetSampleType() const override;
-  SbMediaAudioFrameStorageType GetStorageType() const override;
-  int GetSamplesPerSecond() const override;
 
  private:
+  static const int kMaxOpusFramesPerAU = 9600;
+
+  SbMediaAudioSampleType GetSampleType() const;
+
   OutputCB output_cb_;
   ErrorCB error_cb_;
 
-  OpusDecoder* decoder_ = NULL;
+  OpusMSDecoder* decoder_ = NULL;
   bool stream_ended_ = false;
   std::queue<scoped_refptr<DecodedAudio> > decoded_audios_;
-  SbMediaAudioSampleInfo audio_sample_info_;
-  std::vector<uint8_t> working_buffer_;
+  AudioSampleInfo audio_sample_info_;
+  int frames_per_au_ = kMaxOpusFramesPerAU;
 };
 
 }  // namespace opus

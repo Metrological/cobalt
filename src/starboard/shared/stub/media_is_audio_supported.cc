@@ -16,7 +16,10 @@
 
 #include "starboard/media.h"
 
-SB_EXPORT bool SbMediaIsAudioSupported(SbMediaAudioCodec /*audio_codec*/,
-                                       int64_t /*bitrate*/) {
+bool SbMediaIsAudioSupported(SbMediaAudioCodec audio_codec,
+#if SB_API_VERSION >= 12
+                             const char* content_type,
+#endif  // SB_API_VERSION >= 12
+                             int64_t bitrate) {
   return false;
 }

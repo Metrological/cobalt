@@ -25,16 +25,24 @@
 #include "starboard/shared/starboard/application.h"
 #include "starboard/system.h"
 
+#if SB_IS(EVERGREEN_COMPATIBLE)
+#include "starboard/loader_app/pending_restart.h"
+#endif
+
 namespace starboard {
 namespace shared {
 namespace signal {
 
 namespace {
 
-int SignalMask(int signal_id, int action) {
+const std::initializer_list<int> kAllSignals = {SIGUSR1, SIGUSR2, SIGCONT};
+
+int SignalMask(std::initializer_list<int> signal_ids, int action) {
   sigset_t mask;
   ::sigemptyset(&mask);
-  ::sigaddset(&mask, signal_id);
+  for (auto signal_id : signal_ids) {
+    ::sigaddset(&mask, signal_id);
+  }
 
   sigset_t previous_mask;
   return ::sigprocmask(action, &mask, &previous_mask);
@@ -50,25 +58,42 @@ void SetSignalHandler(int signal_id, SignalHandlerFunction handler) {
   ::sigaction(signal_id, &action, NULL);
 }
 
-void SuspendDone(void* /*context*/) {
-  // Stop all thread execution after fully transitioning into Suspended.
-  raise(SIGSTOP);
+#if SB_IS(EVERGREEN_COMPATIBLE)
+void RequestSuspendOrStop() {
+  if (loader_app::IsPendingRestart()) {
+    SbLogRawFormatF("\nPending update restart . Stopping.\n");
+    SbLogFlush();
+    SbSystemRequestStop(0);
+  } else {
+    SbSystemRequestSuspend();
+  }
 }
+#endif
 
 void Suspend(int signal_id) {
+  SignalMask(kAllSignals, SIG_BLOCK);
   LogSignalCaught(signal_id);
-  starboard::Application::Get()->Suspend(NULL, &SuspendDone);
+#if SB_IS(EVERGREEN_COMPATIBLE)
+  RequestSuspendOrStop();
+#else
+  SbSystemRequestSuspend();
+#endif
+  SignalMask(kAllSignals, SIG_UNBLOCK);
 }
 
 void Resume(int signal_id) {
+  SignalMask(kAllSignals, SIG_BLOCK);
   LogSignalCaught(signal_id);
   // TODO: Resume or Unpause based on state before suspend?
   starboard::Application::Get()->Unpause(NULL, NULL);
+  SignalMask(kAllSignals, SIG_UNBLOCK);
 }
 
 void LowMemory(int signal_id) {
+  SignalMask(kAllSignals, SIG_BLOCK);
   LogSignalCaught(signal_id);
   starboard::Application::Get()->InjectLowMemoryEvent();
+  SignalMask(kAllSignals, SIG_UNBLOCK);
 }
 
 void Ignore(int signal_id) {
@@ -89,12 +114,10 @@ void Ignore(int signal_id) {
 
 class SignalHandlerThread : public ::starboard::Thread {
  public:
-  SignalHandlerThread() : Thread("SignalHandlerThread") {}
+  SignalHandlerThread() : Thread("SignalHandlTh") {}
 
   void Run() override {
-    SignalMask(SIGUSR1, SIG_UNBLOCK);
-    SignalMask(SIGUSR2, SIG_UNBLOCK);
-    SignalMask(SIGCONT, SIG_UNBLOCK);
+    SignalMask(kAllSignals, SIG_UNBLOCK);
     while (!WaitForJoin(kSbTimeMax)) {
     }
   }
@@ -121,11 +144,9 @@ void InstallSuspendSignalHandlers() {
   // blocking them first on the main thread calling this function early.
   // Future created threads inherit the same block mask as per POSIX rules
   // http://pubs.opengroup.org/onlinepubs/009695399/functions/xsh_chap02_04.html
-  SignalMask(SIGUSR1, SIG_BLOCK);
+  SignalMask(kAllSignals, SIG_BLOCK);
   SetSignalHandler(SIGUSR1, &Suspend);
-  SignalMask(SIGUSR2, SIG_BLOCK);
   SetSignalHandler(SIGUSR2, &LowMemory);
-  SignalMask(SIGCONT, SIG_BLOCK);
   SetSignalHandler(SIGCONT, &Resume);
   ConfigureSignalHandlerThread(true);
 }

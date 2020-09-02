@@ -24,6 +24,7 @@
 #include "base/trace_event/trace_event.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkFreeType_cobalt.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkTypeface_cobalt.h"
+#include "starboard/common/string.h"
 #include "third_party/skia/src/utils/SkOSPath.h"
 
 namespace {
@@ -46,7 +47,7 @@ int MatchScore(const SkFontStyle& pattern, const SkFontStyle& candidate) {
   // The 'closer' to the target weight, the higher the score.
   // 1000 is the 'heaviest' recognized weight
   if (pattern.weight() == candidate.weight()) {
-    score += 1000;
+    score += 1001;
   } else if (pattern.weight() <= 500) {
     if (400 <= pattern.weight() && pattern.weight() < 450) {
       if (450 <= candidate.weight() && candidate.weight() <= 500) {
@@ -74,7 +75,7 @@ int MatchScore(const SkFontStyle& pattern, const SkFontStyle& candidate) {
 SkFontStyleSet_Cobalt::SkFontStyleSet_Cobalt(
     const FontFamilyInfo& family_info, const char* base_path,
     SkFileMemoryChunkStreamManager* const local_typeface_stream_manager,
-    SkMutex* const manager_owned_mutex)
+    SkMutex* const manager_owned_mutex, FontFormatSetting font_format_setting)
     : local_typeface_stream_manager_(local_typeface_stream_manager),
       manager_owned_mutex_(manager_owned_mutex),
       is_fallback_family_(family_info.is_fallback_family),
@@ -90,6 +91,7 @@ SkFontStyleSet_Cobalt::SkFontStyleSet_Cobalt(
   }
 
   family_name_ = family_info.names[0];
+  SkTHashMap<SkString, int> styles_index_map;
 
   for (int i = 0; i < family_info.fonts.count(); ++i) {
     const FontFileInfo& font_file = family_info.fonts[i];
@@ -100,6 +102,24 @@ SkFontStyleSet_Cobalt::SkFontStyleSet_Cobalt(
     // over it; it isn't being added to the set.
     if (!sk_exists(file_path.c_str(), kRead_SkFILE_Flag)) {
       DLOG(INFO) << "Failed to find font file: " << file_path.c_str();
+      continue;
+    }
+
+    auto file_name = font_file.file_name.c_str();
+    auto extension = strrchr(file_name, '.');
+    if (!extension) {
+      continue;
+    }
+    ++extension;
+
+    // Only add font formats that match the format setting.
+    if (font_format_setting == kTtf) {
+      if (SbStringCompareNoCase("ttf", extension) != 0 &&
+          SbStringCompareNoCase(extension, "ttc") != 0) {
+        continue;
+      }
+    } else if (font_format_setting == kWoff2 &&
+               SbStringCompareNoCase("woff2", extension) != 0) {
       continue;
     }
 
@@ -119,14 +139,37 @@ SkFontStyleSet_Cobalt::SkFontStyleSet_Cobalt(
                                     font_file.postscript_name.size());
     }
 
-    styles_.push_back().reset(new SkFontStyleSetEntry_Cobalt(
+    SkString font_name;
+    if (full_font_name.empty()) {
+      // If full font name is missing, use file name.
+      size_t name_len = font_file.file_name.size() - strlen(extension) - 1;
+      font_name = SkString(file_name, name_len);
+    } else {
+      font_name = SkString(full_font_name.c_str());
+    }
+    auto font = new SkFontStyleSetEntry_Cobalt(
         file_path, font_file.index, style, full_font_name, postscript_name,
-        font_file.disable_synthetic_bolding));
+        font_file.disable_synthetic_bolding);
+    int* index = styles_index_map.find(font_name);
+    if (index != NULL) {
+      // If style with name already exists in family, replace it.
+      if (font_format_setting == kTtfPreferred &&
+          SbStringCompareNoCase("ttf", extension) == 0) {
+        styles_[*index].reset(font);
+      } else if (font_format_setting == kWoff2Preferred &&
+                 SbStringCompareNoCase("woff2", extension) == 0) {
+        styles_[*index].reset(font);
+      }
+    } else {
+      int count = styles_.count();
+      styles_index_map.set(font_name, count);
+      styles_.push_back().reset(font);
+    }
   }
 }
 
 int SkFontStyleSet_Cobalt::count() {
-  SkAutoMutexAcquire scoped_mutex(*manager_owned_mutex_);
+  SkAutoMutexExclusive scoped_mutex(*manager_owned_mutex_);
   return styles_.count();
 }
 
@@ -147,7 +190,7 @@ SkTypeface* SkFontStyleSet_Cobalt::createTypeface(int index) {
 }
 
 SkTypeface* SkFontStyleSet_Cobalt::matchStyle(const SkFontStyle& pattern) {
-  SkAutoMutexAcquire scoped_mutex(*manager_owned_mutex_);
+  SkAutoMutexExclusive scoped_mutex(*manager_owned_mutex_);
   return MatchStyleWithoutLocking(pattern);
 }
 
@@ -309,7 +352,7 @@ bool SkFontStyleSet_Cobalt::GenerateStyleFaceInfo(
       !is_character_map_generated_ ? &character_map_ : NULL;
 
   if (!sk_freetype_cobalt::ScanFont(
-          stream, style->face_index, &style->face_name, &style->face_style,
+          stream, style->face_index, &style->face_name, &style->font_style,
           &style->face_is_fixed_pitch, character_map)) {
     return false;
   }
@@ -347,9 +390,11 @@ void SkFontStyleSet_Cobalt::CreateStreamProviderTypeface(
       stream_provider->OpenStream());
   if (GenerateStyleFaceInfo(style_entry, stream.get())) {
     LOG(INFO) << "Scanned font from file: " << style_entry->face_name.c_str()
-              << "(" << style_entry->face_style << ")";
+              << "(" << style_entry->font_style.weight() << ", "
+              << style_entry->font_style.width() << ", "
+              << style_entry->font_style.slant() << ")";
     style_entry->typeface.reset(new SkTypeface_CobaltStreamProvider(
-        stream_provider, style_entry->face_index, style_entry->face_style,
+        stream_provider, style_entry->face_index, style_entry->font_style,
         style_entry->face_is_fixed_pitch, family_name_,
         style_entry->disable_synthetic_bolding));
   } else {

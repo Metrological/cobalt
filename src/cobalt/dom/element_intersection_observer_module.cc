@@ -14,6 +14,8 @@
 
 #include "cobalt/dom/element_intersection_observer_module.h"
 
+#include <algorithm>
+
 #include "cobalt/dom/document.h"
 #include "cobalt/dom/dom_rect_read_only.h"
 #include "cobalt/dom/element.h"
@@ -27,13 +29,35 @@ ElementIntersectionObserverModule::ElementIntersectionObserverModule(
     Element* element)
     : element_(element) {}
 
+ElementIntersectionObserverModule::~ElementIntersectionObserverModule() {
+  // The intersection observer vectors may hold the last reference to the
+  // corresponding intersection observer object. Since the intersection observer
+  // dtor calls UnregisterIntersectionObserverForRoot, make sure the call
+  // doesn't try to release the scoped_refptr<IntersectionObserver> again during
+  // destruction.
+  IntersectionObserverVector temp_root_registered_observers;
+  IntersectionObserverVector temp_target_registered_observers;
+
+  // Swap out the intersection observer vectors so that the call to
+  // UnregisterIntersectionObserverForRoot won't do anything, as the objects are
+  // already being destroyed here.
+  temp_root_registered_observers.swap(root_registered_intersection_observers_);
+  temp_target_registered_observers.swap(
+      target_registered_intersection_observers_);
+
+  // Force destruction of the intersection observer objects here so that the
+  // call to UnregisterIntersectionObserverForRoot occurs before this object is
+  // fully destroyed.
+  temp_root_registered_observers.clear();
+  temp_target_registered_observers.clear();
+}
+
 void ElementIntersectionObserverModule::RegisterIntersectionObserverForRoot(
     IntersectionObserver* observer) {
-  for (auto it = root_registered_intersection_observers_.begin();
-       it != root_registered_intersection_observers_.end(); ++it) {
-    if (*it == observer) {
-      return;
-    }
+  auto it = std::find(root_registered_intersection_observers_.begin(),
+                      root_registered_intersection_observers_.end(), observer);
+  if (it != root_registered_intersection_observers_.end()) {
+    return;
   }
   root_registered_intersection_observers_.push_back(
       base::WrapRefCounted(observer));
@@ -50,45 +74,51 @@ void ElementIntersectionObserverModule::RegisterIntersectionObserverForRoot(
 
 void ElementIntersectionObserverModule::UnregisterIntersectionObserverForRoot(
     IntersectionObserver* observer) {
-  for (auto it = root_registered_intersection_observers_.begin();
-       it != root_registered_intersection_observers_.end(); ++it) {
-    if (*it == observer) {
-      root_registered_intersection_observers_.erase(it);
-      InvalidateLayoutBoxesForElement();
-      return;
-    }
+  auto it = std::find(root_registered_intersection_observers_.begin(),
+                      root_registered_intersection_observers_.end(), observer);
+  if (it != root_registered_intersection_observers_.end()) {
+    root_registered_intersection_observers_.erase(it);
+    InvalidateLayoutBoxesForElement();
+    return;
   }
-  NOTREACHED()
+  DLOG(WARNING)
       << "Did not find an intersection observer to unregister for the root.";
 }
 
 void ElementIntersectionObserverModule::RegisterIntersectionObserverForTarget(
     IntersectionObserver* observer) {
-  for (auto it = target_registered_intersection_observers_.begin();
-       it != target_registered_intersection_observers_.end(); ++it) {
-    if (*it == observer) {
-      return;
-    }
+  auto it =
+      std::find(target_registered_intersection_observers_.begin(),
+                target_registered_intersection_observers_.end(), observer);
+  if (it != target_registered_intersection_observers_.end()) {
+    return;
   }
   target_registered_intersection_observers_.push_back(
       base::WrapRefCounted(observer));
   AddLayoutTargetForObserver(observer);
 
   InvalidateLayoutBoxesForElement();
+  // We record a mutation when an intersection observer target is added, in
+  // order to mark the layout as dirty and make sure that the intersection
+  // observer creates an entry for any new intersection.
+  Document* node_document = element_->node_document();
+  if (node_document != nullptr) {
+    node_document->RecordMutation();
+  }
 }
 
 void ElementIntersectionObserverModule::UnregisterIntersectionObserverForTarget(
     IntersectionObserver* observer) {
-  for (auto it = target_registered_intersection_observers_.begin();
-       it != target_registered_intersection_observers_.end(); ++it) {
-    if (*it == observer) {
-      target_registered_intersection_observers_.erase(it);
-      RemoveLayoutTargetForObserver(observer);
-      InvalidateLayoutBoxesForElement();
-      return;
-    }
+  auto it =
+      std::find(target_registered_intersection_observers_.begin(),
+                target_registered_intersection_observers_.end(), observer);
+  if (it != target_registered_intersection_observers_.end()) {
+    target_registered_intersection_observers_.erase(it);
+    RemoveLayoutTargetForObserver(observer);
+    InvalidateLayoutBoxesForElement();
+    return;
   }
-  NOTREACHED()
+  DLOG(WARNING)
       << "Did not find an intersection observer to unregister for the target.";
 }
 
@@ -176,7 +206,7 @@ void ElementIntersectionObserverModule::InvalidateLayoutBoxesForElement() {
     NOTREACHED();
     return;
   }
-  html_element->InvalidateLayoutBoxesOfNodeAndDescendants();
+  html_element->InvalidateLayoutBoxesOfNodeAndAncestors();
 }
 
 }  // namespace dom

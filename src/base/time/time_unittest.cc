@@ -15,10 +15,10 @@
 
 #include "base/build_time.h"
 #include "base/compiler_specific.h"
-#include "base/cpp14oncpp11.h"
 #include "base/logging.h"
 #include "base/macros.h"
 #include "base/strings/stringprintf.h"
+#include "nb/cpp14oncpp11.h"
 #if defined(STARBOARD)
 #include "base/test/time_helpers.h"
 #endif  // defined(STARBOARD)
@@ -1000,14 +1000,21 @@ class ThreadTicksOverride {
 // static
 ThreadTicks ThreadTicksOverride::now_ticks_;
 
-#if SB_HAS(TIME_THREAD_NOW)
+#if SB_API_VERSION >= 12 || SB_HAS(TIME_THREAD_NOW)
 // IOS doesn't support ThreadTicks::Now().
-#if defined(OS_IOS) || SB_HAS(TIME_THREAD_NOW)
+#if defined(OS_IOS)
 #define MAYBE_NowOverride DISABLED_NowOverride
 #else
 #define MAYBE_NowOverride NowOverride
 #endif
 TEST(ThreadTicks, MAYBE_NowOverride) {
+#if SB_API_VERSION >= 12
+  if (!SbTimeIsTimeThreadNowSupported()) {
+    SB_LOG(INFO) << "Time thread now not supported. Test skipped.";
+    return;
+  }
+#endif  // SB_API_VERSION >= 12
+
   ThreadTicksOverride::now_ticks_ = ThreadTicks::Min();
 
   // Override is not active. All Now() methods should return a sensible value.
@@ -1043,7 +1050,8 @@ TEST(ThreadTicks, MAYBE_NowOverride) {
   EXPECT_LE(initial_thread_ticks, subtle::ThreadTicksNowIgnoringOverride());
   EXPECT_GT(ThreadTicks::Max(), subtle::ThreadTicksNowIgnoringOverride());
 }
-#endif  // SB_HAS(TIME_THREAD_NOW)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(TIME_THREAD_NOW)
 
 TEST(ThreadTicks, ThreadNow) {
   if (ThreadTicks::IsSupported()) {

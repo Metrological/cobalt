@@ -32,6 +32,7 @@
 #include "starboard/drm.h"
 #include "starboard/memory.h"
 #include "starboard/shared/starboard/player/filter/video_frame_internal.h"
+#include "starboard/string.h"
 #include "starboard/thread.h"
 
 namespace starboard {
@@ -61,9 +62,6 @@ class VideoFrameImpl : public VideoFrame {
     if (!released_) {
       media_codec_bridge_->ReleaseOutputBuffer(dequeue_output_result_.index,
                                                false);
-      if (is_end_of_stream()) {
-        media_codec_bridge_->Flush();
-      }
     }
   }
 
@@ -116,6 +114,8 @@ bool IsIdentity(const SbMediaColorMetadata& color_metadata) {
 
 }  // namespace
 
+int VideoDecoder::number_of_hardware_decoders_ = 0;
+
 class VideoDecoder::Sink : public VideoDecoder::VideoRendererSink {
  public:
   bool Render() {
@@ -136,11 +136,6 @@ class VideoDecoder::Sink : public VideoDecoder::VideoRendererSink {
   }
 
   void SetBounds(int z_index, int x, int y, int width, int height) override {
-    SB_UNREFERENCED_PARAMETER(z_index);
-    SB_UNREFERENCED_PARAMETER(x);
-    SB_UNREFERENCED_PARAMETER(y);
-    SB_UNREFERENCED_PARAMETER(width);
-    SB_UNREFERENCED_PARAMETER(height);
   }
 
   DrawFrameStatus DrawFrame(const scoped_refptr<VideoFrame>& frame,
@@ -160,19 +155,31 @@ VideoDecoder::VideoDecoder(SbMediaVideoCodec video_codec,
                            SbDrmSystem drm_system,
                            SbPlayerOutputMode output_mode,
                            SbDecodeTargetGraphicsContextProvider*
-                               decode_target_graphics_context_provider)
+                               decode_target_graphics_context_provider,
+                           const char* max_video_capabilities,
+                           std::string* error_message)
     : video_codec_(video_codec),
       drm_system_(static_cast<DrmSystem*>(drm_system)),
       output_mode_(output_mode),
       decode_target_graphics_context_provider_(
           decode_target_graphics_context_provider),
-      decode_target_(kSbDecodeTargetInvalid),
-      frame_width_(0),
-      frame_height_(0),
-      first_buffer_received_(false),
-      surface_condition_variable_(surface_destroy_mutex_) {
-  if (!InitializeCodec()) {
-    SB_LOG(ERROR) << "Failed to initialize video decoder.";
+      has_new_texture_available_(false),
+      surface_condition_variable_(surface_destroy_mutex_),
+      require_software_codec_(max_video_capabilities &&
+                              SbStringGetLength(max_video_capabilities) > 0) {
+  SB_DCHECK(error_message);
+
+  if (require_software_codec_) {
+    SB_DCHECK(output_mode_ == kSbPlayerOutputModeDecodeToTexture);
+  }
+  if (!require_software_codec_) {
+    number_of_hardware_decoders_++;
+  }
+
+  if (!InitializeCodec(error_message)) {
+    *error_message =
+        "Failed to initialize video decoder with error: " + *error_message;
+    SB_LOG(ERROR) << *error_message;
     TeardownCodec();
   }
 }
@@ -180,6 +187,10 @@ VideoDecoder::VideoDecoder(SbMediaVideoCodec video_codec,
 VideoDecoder::~VideoDecoder() {
   TeardownCodec();
   ClearVideoWindow();
+
+  if (!require_software_codec_) {
+    number_of_hardware_decoders_--;
+  }
 }
 
 scoped_refptr<VideoDecoder::VideoRendererSink> VideoDecoder::GetSink() {
@@ -241,15 +252,25 @@ void VideoDecoder::WriteInputBuffer(
     // Re-initialize the codec now if it was torn down either in |Reset| or
     // because we need to change the color metadata.
     if (media_decoder_ == NULL) {
-      if (!InitializeCodec()) {
-        SB_LOG(ERROR) << "Failed to reinitialize codec.";
+      std::string error_message;
+      if (!InitializeCodec(&error_message)) {
+        error_message =
+            "Failed to reinitialize codec with error: " + error_message;
+        SB_LOG(ERROR) << error_message;
         TeardownCodec();
-        error_cb_(kSbPlayerErrorDecode, "Cannot initialize codec.");
+        ReportError(kSbPlayerErrorDecode, error_message);
+        return;
       }
     }
   }
 
+  // There's a race condition when suspending the app. If surface view is
+  // destroyed before video decoder stopped, |media_decoder_| could be null
+  // here. And error_cb_() could be handled asynchronously. It's possible
+  // that WriteInputBuffer() is called again when the first WriteInputBuffer()
+  // fails, in such case is_valid() will also return false.
   if (!is_valid()) {
+    SB_LOG(INFO) << "Trying to write input buffer when codec is not available.";
     return;
   }
   media_decoder_->WriteInputBuffer(input_buffer);
@@ -262,11 +283,22 @@ void VideoDecoder::WriteEndOfStream() {
   SB_DCHECK(decoder_status_cb_);
 
   if (!first_buffer_received_) {
+    // In this case, |media_decoder_|'s decoder thread is not initialized.
+    // Return EOS frame directly.
     first_buffer_received_ = true;
     first_buffer_timestamp_ = 0;
+    decoder_status_cb_(kBufferFull, VideoFrame::CreateEOSFrame());
+    return;
   }
 
+  // There's a race condition when suspending the app. If surface view is
+  // destroyed before video decoder stopped, |media_decoder_| could be null
+  // here. And error_cb_() could be handled asynchronously. It's possible
+  // that WriteEndOfStream() is called immediately after the first
+  // WriteInputBuffer() fails, in such case is_valid() will also return false.
   if (!is_valid()) {
+    SB_LOG(INFO)
+        << "Trying to write end of stream when codec is not available.";
     return;
   }
   media_decoder_->WriteEndOfStream();
@@ -278,8 +310,10 @@ void VideoDecoder::Reset() {
   first_buffer_received_ = false;
 }
 
-bool VideoDecoder::InitializeCodec() {
+bool VideoDecoder::InitializeCodec(std::string* error_message) {
   SB_DCHECK(BelongsToCurrentThread());
+  SB_DCHECK(error_message);
+
   // Setup the output surface object.  If we are in punch-out mode, target
   // the passed in Android video surface.  If we are in decode-to-texture
   // mode, create a surface from a new texture target and use that as the
@@ -301,10 +335,15 @@ bool VideoDecoder::InitializeCodec() {
           DecodeTargetCreate(decode_target_graphics_context_provider_,
                              kSbDecodeTargetFormat1PlaneRGBA, 0, 0);
       if (!SbDecodeTargetIsValid(decode_target)) {
-        SB_LOG(ERROR) << "Could not acquire a decode target from provider.";
+        *error_message = "Could not acquire a decode target from provider.";
+        SB_LOG(ERROR) << *error_message;
         return false;
       }
       j_output_surface = decode_target->data->surface;
+
+      JniEnvExt* env = JniEnvExt::Get();
+      env->CallVoidMethodOrAbort(decode_target->data->surface_texture,
+                                 "setOnFrameAvailableListener", "(J)V", this);
 
       starboard::ScopedLock lock(decode_target_mutex_);
       decode_target_ = decode_target;
@@ -314,14 +353,16 @@ bool VideoDecoder::InitializeCodec() {
     } break;
   }
   if (!j_output_surface) {
-    SB_LOG(ERROR) << "Video surface does not exist.";
+    *error_message = "Video surface does not exist.";
+    SB_LOG(ERROR) << *error_message;
     return false;
   }
 
   int width, height;
   if (!GetVideoWindowSize(&width, &height)) {
-    SB_LOG(ERROR)
-        << "Can't initialize the codec since we don't have a video window.";
+    *error_message =
+        "Can't initialize the codec since we don't have a video window.";
+    SB_LOG(ERROR) << *error_message;
     return false;
   }
 
@@ -329,10 +370,12 @@ bool VideoDecoder::InitializeCodec() {
   SB_DCHECK(!drm_system_ || j_media_crypto);
   media_decoder_.reset(new MediaDecoder(
       this, video_codec_, width, height, j_output_surface, drm_system_,
-      color_metadata_ ? &*color_metadata_ : nullptr));
+      color_metadata_ ? &*color_metadata_ : nullptr, require_software_codec_,
+      error_message));
   if (media_decoder_->is_valid()) {
     if (error_cb_) {
-      media_decoder_->Initialize(error_cb_);
+      media_decoder_->Initialize(
+          std::bind(&VideoDecoder::ReportError, this, _1, _2));
     }
     return true;
   }
@@ -349,11 +392,34 @@ void VideoDecoder::TeardownCodec() {
   media_decoder_.reset();
   color_metadata_ = starboard::nullopt;
 
-  starboard::ScopedLock lock(decode_target_mutex_);
-  if (SbDecodeTargetIsValid(decode_target_)) {
+  SbDecodeTarget decode_target_to_release = kSbDecodeTargetInvalid;
+  {
+    starboard::ScopedLock lock(decode_target_mutex_);
+    if (SbDecodeTargetIsValid(decode_target_)) {
+      // Remove OnFrameAvailableListener to make sure the callback
+      // would not be called.
+      JniEnvExt* env = JniEnvExt::Get();
+      env->CallVoidMethodOrAbort(decode_target_->data->surface_texture,
+                                 "removeOnFrameAvailableListener", "()V");
+
+      decode_target_to_release = decode_target_;
+      decode_target_ = kSbDecodeTargetInvalid;
+      first_texture_received_ = false;
+      has_new_texture_available_.store(false);
+    } else {
+      // If |decode_target_| is not created, |first_texture_received_| and
+      // |has_new_texture_available_| should always be false.
+      SB_DCHECK(!first_texture_received_);
+      SB_DCHECK(!has_new_texture_available_.load());
+    }
+  }
+  // Release SbDecodeTarget on renderer thread. As |decode_target_mutex_| may
+  // be required in renderer thread, SbDecodeTargetReleaseInGlesContext() must
+  // be called when |decode_target_mutex_| is not locked, or we may get
+  // deadlock.
+  if (SbDecodeTargetIsValid(decode_target_to_release)) {
     SbDecodeTargetReleaseInGlesContext(decode_target_graphics_context_provider_,
-                                       decode_target_);
-    decode_target_ = kSbDecodeTargetInvalid;
+                                       decode_target_to_release);
   }
 }
 
@@ -481,32 +547,38 @@ SbDecodeTarget VideoDecoder::GetCurrentDecodeTarget() {
   // We must take a lock here since this function can be called from a separate
   // thread.
   starboard::ScopedLock lock(decode_target_mutex_);
-
   if (SbDecodeTargetIsValid(decode_target_)) {
-    updateTexImage(decode_target_->data->surface_texture);
+    bool has_new_texture = has_new_texture_available_.exchange(false);
+    if (has_new_texture) {
+      updateTexImage(decode_target_->data->surface_texture);
 
-    float matrix4x4[16];
-    getTransformMatrix(decode_target_->data->surface_texture, matrix4x4);
-    SetDecodeTargetContentRegionFromMatrix(
-        &decode_target_->data->info.planes[0].content_region, 1, 1, matrix4x4);
+      decode_target_->data->info.planes[0].width = frame_width_;
+      decode_target_->data->info.planes[0].height = frame_height_;
+      decode_target_->data->info.width = frame_width_;
+      decode_target_->data->info.height = frame_height_;
 
-    // Mark the decode target's width and height as 1, so that the
-    // |content_region|'s coordinates will be interpreted as normalized
-    // coordinates.  This is nice because on Android we're never explicitly
-    // told the texture width/height, and we are only provided the content
-    // region via normalized coordinates.
-    decode_target_->data->info.planes[0].width = 1;
-    decode_target_->data->info.planes[0].height = 1;
-    decode_target_->data->info.width = 1;
-    decode_target_->data->info.height = 1;
+      float matrix4x4[16];
+      getTransformMatrix(decode_target_->data->surface_texture, matrix4x4);
+      SetDecodeTargetContentRegionFromMatrix(
+          &decode_target_->data->info.planes[0].content_region, frame_width_,
+          frame_height_, matrix4x4);
 
-    SbDecodeTarget out_decode_target = new SbDecodeTargetPrivate;
-    out_decode_target->data = decode_target_->data;
+      if (!first_texture_received_) {
+        first_texture_received_ = true;
+      }
+    }
 
-    return out_decode_target;
-  } else {
-    return kSbDecodeTargetInvalid;
+    if (first_texture_received_) {
+      SbDecodeTarget out_decode_target = new SbDecodeTargetPrivate;
+      out_decode_target->data = decode_target_->data;
+      return out_decode_target;
+    }
   }
+  return kSbDecodeTargetInvalid;
+}
+
+void VideoDecoder::OnNewTextureAvailable() {
+  has_new_texture_available_.store(true);
 }
 
 void VideoDecoder::OnSurfaceDestroyed() {
@@ -524,6 +596,30 @@ void VideoDecoder::OnSurfaceDestroyed() {
   surface_condition_variable_.Signal();
 }
 
+void VideoDecoder::ReportError(SbPlayerError error,
+                               const std::string& error_message) {
+  SB_DCHECK(error_cb_);
+
+  if (!error_cb_) {
+    return;
+  }
+
+  error_cb_(kSbPlayerErrorDecode, error_message);
+}
+
 }  // namespace shared
 }  // namespace android
 }  // namespace starboard
+
+extern "C" SB_EXPORT_PLATFORM void
+Java_dev_cobalt_media_VideoSurfaceTexture_nativeOnFrameAvailable(
+    JNIEnv* env,
+    jobject unused_this,
+    jlong native_video_decoder) {
+  using starboard::android::shared::VideoDecoder;
+
+  VideoDecoder* video_decoder =
+      reinterpret_cast<VideoDecoder*>(native_video_decoder);
+  SB_DCHECK(video_decoder);
+  video_decoder->OnNewTextureAvailable();
+}

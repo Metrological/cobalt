@@ -16,10 +16,8 @@
 
 #include "base/command_line.h"
 #include "base/message_loop/message_loop.h"
-#include "cobalt/accessibility/starboard_tts_engine.h"
-#include "cobalt/accessibility/tts_engine.h"
-#include "cobalt/accessibility/tts_logger.h"
 #include "cobalt/base/accessibility_settings_changed_event.h"
+#include "cobalt/base/accessibility_text_to_speech_settings_changed_event.h"
 #include "cobalt/browser/switches.h"
 #include "starboard/accessibility.h"
 #include "starboard/memory.h"
@@ -40,26 +38,9 @@ bool ShouldForceTextToSpeech() {
   return false;
 }
 
-#if SB_HAS(SPEECH_SYNTHESIS)
-bool IsTextToSpeechEnabled() {
-  // Check if the tts feature is enabled in Starboard.
-  SbAccessibilityTextToSpeechSettings tts_settings = {0};
-  // Check platform settings.
-  if (SbAccessibilityGetTextToSpeechSettings(&tts_settings)) {
-    return tts_settings.has_text_to_speech_setting &&
-           tts_settings.is_text_to_speech_enabled;
-  }
-
-  return false;
-}
-#endif  // SB_HAS(SPEECH_SYNTHESIS)
-
 }  // namespace
 
-H5vccAccessibility::H5vccAccessibility(
-    base::EventDispatcher* event_dispatcher,
-    const scoped_refptr<dom::Window>& window,
-    dom::MutationObserverTaskManager* mutation_observer_task_manager)
+H5vccAccessibility::H5vccAccessibility(base::EventDispatcher* event_dispatcher)
     : event_dispatcher_(event_dispatcher) {
   task_runner_ = base::MessageLoop::current()->task_runner();
   on_application_event_callback_ = base::Bind(
@@ -67,44 +48,26 @@ H5vccAccessibility::H5vccAccessibility(
   event_dispatcher_->AddEventCallback(
       base::AccessibilitySettingsChangedEvent::TypeId(),
       on_application_event_callback_);
-  if (ShouldForceTextToSpeech()) {
-#if SB_HAS(SPEECH_SYNTHESIS)
-    // Create a StarboardTTSEngine if the platform has speech synthesis.
-    tts_engine_.reset(new accessibility::StarboardTTSEngine());
-#else
-    tts_engine_.reset(new accessibility::TTSLogger());
-#endif
-  }
-
-#if SB_HAS(SPEECH_SYNTHESIS)
-  if (!tts_engine_ && IsTextToSpeechEnabled()) {
-    // Create a StarboardTTSEngine if TTS is enabled.
-    tts_engine_.reset(new accessibility::StarboardTTSEngine());
-  }
-#endif
-
-  if (tts_engine_) {
-    screen_reader_.reset(new accessibility::ScreenReader(
-        window->document(), tts_engine_.get(), mutation_observer_task_manager));
-  }
+  event_dispatcher_->AddEventCallback(
+      base::AccessibilityTextToSpeechSettingsChangedEvent::TypeId(),
+      on_application_event_callback_);
 }
 
 H5vccAccessibility::~H5vccAccessibility() {
   event_dispatcher_->RemoveEventCallback(
       base::AccessibilitySettingsChangedEvent::TypeId(),
       on_application_event_callback_);
+  event_dispatcher_->RemoveEventCallback(
+      base::AccessibilityTextToSpeechSettingsChangedEvent::TypeId(),
+      on_application_event_callback_);
 }
 
-bool H5vccAccessibility::built_in_screen_reader() const {
-  return screen_reader_ && screen_reader_->enabled();
-}
+bool H5vccAccessibility::built_in_screen_reader() const { return false; }
 
 void H5vccAccessibility::set_built_in_screen_reader(bool value) {
-  if (!screen_reader_) {
+  if (value) {
     LOG(WARNING) << "h5vcc.accessibility.builtInScreenReader: not available";
-    return;
   }
-  screen_reader_->set_enabled(value);
 }
 
 bool H5vccAccessibility::high_contrast_text() const {
@@ -134,6 +97,13 @@ bool H5vccAccessibility::text_to_speech() const {
          settings.is_text_to_speech_enabled;
 }
 
+void H5vccAccessibility::AddTextToSpeechListener(
+    const H5vccAccessibilityCallbackHolder& holder) {
+  DCHECK_EQ(base::MessageLoop::current()->task_runner(), task_runner_);
+  text_to_speech_listener_.reset(
+      new H5vccAccessibilityCallbackReference(this, holder));
+}
+
 void H5vccAccessibility::AddHighContrastTextListener(
     const H5vccAccessibilityCallbackHolder& holder) {
   DCHECK_EQ(base::MessageLoop::current()->task_runner(), task_runner_);
@@ -142,18 +112,23 @@ void H5vccAccessibility::AddHighContrastTextListener(
 }
 
 void H5vccAccessibility::OnApplicationEvent(const base::Event* event) {
-  SB_UNREFERENCED_PARAMETER(event);
   // This method should be called from the application event thread.
   DCHECK_NE(base::MessageLoop::current()->task_runner(), task_runner_);
   task_runner_->PostTask(
       FROM_HERE, base::Bind(&H5vccAccessibility::InternalOnApplicationEvent,
-                            base::Unretained(this)));
+                            base::Unretained(this),
+                            event->GetTypeId()));
 }
 
-void H5vccAccessibility::InternalOnApplicationEvent() {
+void H5vccAccessibility::InternalOnApplicationEvent(base::TypeId type) {
   DCHECK_EQ(base::MessageLoop::current()->task_runner(), task_runner_);
-  if (high_contrast_text_listener_) {
+  if (type == base::AccessibilitySettingsChangedEvent::TypeId() &&
+      high_contrast_text_listener_) {
     high_contrast_text_listener_->value().Run();
+  }
+  if (type == base::AccessibilityTextToSpeechSettingsChangedEvent::TypeId() &&
+      text_to_speech_listener_) {
+    text_to_speech_listener_->value().Run();
   }
 }
 

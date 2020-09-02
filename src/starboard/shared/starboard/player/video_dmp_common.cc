@@ -16,7 +16,6 @@
 
 #include <limits>
 
-#if SB_HAS(PLAYER_FILTER_TESTS)
 namespace starboard {
 namespace shared {
 namespace starboard {
@@ -97,6 +96,11 @@ void Read(const ReadCB& read_cb,
   SbMediaAudioCodec codec;
   Read(read_cb, reverse_byte_order, &codec);
 #endif  // SB_API_VERSION >= 11
+
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+  audio_sample_info->mime = "";
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
   Read(read_cb, reverse_byte_order, &audio_sample_info->format_tag);
   Read(read_cb, reverse_byte_order, &audio_sample_info->number_of_channels);
   Read(read_cb, reverse_byte_order, &audio_sample_info->samples_per_second);
@@ -108,16 +112,8 @@ void Read(const ReadCB& read_cb,
        &audio_sample_info->audio_specific_config_size);
   audio_sample_info->stored_audio_specific_config.resize(
       audio_sample_info->audio_specific_config_size);
-#if SB_HAS(AUDIO_SPECIFIC_CONFIG_AS_POINTER)
   audio_sample_info->audio_specific_config =
       audio_sample_info->stored_audio_specific_config.data();
-#else   // SB_HAS(AUDIO_SPECIFIC_CONFIG_AS_POINTER)
-  SB_DCHECK(sizeof(audio_sample_info->audio_specific_config) >=
-            audio_sample_info->stored_audio_specific_config.size());
-  SbMemoryCopy(audio_sample_info->audio_specific_config,
-               audio_sample_info->stored_audio_specific_config.data(),
-               audio_sample_info->stored_audio_specific_config.size());
-#endif  // SB_HAS(AUDIO_SPECIFIC_CONFIG_AS_POINTER)
   Read(read_cb, audio_sample_info->stored_audio_specific_config.data(),
        audio_sample_info->audio_specific_config_size);
 }
@@ -183,6 +179,12 @@ void Read(const ReadCB& read_cb,
   SbMediaVideoCodec codec;
   Read(read_cb, reverse_byte_order, &codec);
 #endif  // SB_API_VERSION >= 11
+
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+  video_sample_info->mime = "";
+  video_sample_info->max_video_capabilities = "";
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
   Read(read_cb, reverse_byte_order, &video_sample_info->is_key_frame);
   Read(read_cb, reverse_byte_order, &video_sample_info->frame_width);
   Read(read_cb, reverse_byte_order, &video_sample_info->frame_height);
@@ -286,4 +288,3 @@ void Write(const WriteCB& write_cb,
 }  // namespace starboard
 }  // namespace shared
 }  // namespace starboard
-#endif  // SB_HAS(PLAYER_FILTER_TESTS)

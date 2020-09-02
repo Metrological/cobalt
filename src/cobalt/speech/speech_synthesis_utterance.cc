@@ -17,10 +17,19 @@
 namespace cobalt {
 namespace speech {
 
-SpeechSynthesisUtterance::SpeechSynthesisUtterance()
-    : volume_(1.0f), rate_(1.0f), pitch_(1.0f), pending_speak_(false) {}
-SpeechSynthesisUtterance::SpeechSynthesisUtterance(const std::string& text)
-    : text_(text),
+SpeechSynthesisUtterance::SpeechSynthesisUtterance(
+    script::EnvironmentSettings* settings)
+    : dom::EventTarget(settings),
+      settings_(settings),
+      volume_(1.0f),
+      rate_(1.0f),
+      pitch_(1.0f),
+      pending_speak_(false) {}
+SpeechSynthesisUtterance::SpeechSynthesisUtterance(
+    script::EnvironmentSettings* settings, const std::string& text)
+    : dom::EventTarget(settings),
+      settings_(settings),
+      text_(text),
       volume_(1.0f),
       rate_(1.0f),
       pitch_(1.0f),
@@ -28,28 +37,38 @@ SpeechSynthesisUtterance::SpeechSynthesisUtterance(const std::string& text)
 
 SpeechSynthesisUtterance::SpeechSynthesisUtterance(
     const scoped_refptr<SpeechSynthesisUtterance>& utterance)
-    : text_(utterance->text_),
+    : dom::EventTarget(utterance->settings_),
+      text_(utterance->text_),
       lang_(utterance->lang_),
       voice_(utterance->voice_),
       volume_(utterance->volume_),
       rate_(utterance->rate_),
       pitch_(utterance->pitch_),
       pending_speak_(false) {
-  set_onstart(EventListenerScriptValue::Reference(this, *utterance->onstart())
-                  .referenced_value());
-  set_onend(EventListenerScriptValue::Reference(this, *utterance->onend())
-                .referenced_value());
-  set_onerror(EventListenerScriptValue::Reference(this, *utterance->onerror())
-                  .referenced_value());
-  set_onpause(EventListenerScriptValue::Reference(this, *utterance->onpause())
-                  .referenced_value());
-  set_onresume(EventListenerScriptValue::Reference(this, *utterance->onresume())
-                   .referenced_value());
-  set_onmark(EventListenerScriptValue::Reference(this, *utterance->onmark())
-                 .referenced_value());
-  set_onboundary(
-      EventListenerScriptValue::Reference(this, *utterance->onboundary())
-          .referenced_value());
+  using ListenerSetterFunctionType = base::Callback<void(
+      SpeechSynthesisUtterance*,
+      const cobalt::dom::EventTarget::EventListenerScriptValue&)>;
+  auto ListenerCopyHelper = [this](
+                                const EventListenerScriptValue* script_value,
+                                const ListenerSetterFunctionType& setter_func) {
+    if (script_value) {
+      setter_func.Run(this, *script_value);
+    }
+  };
+  ListenerCopyHelper(utterance->onstart(),
+                     base::Bind(&SpeechSynthesisUtterance::set_onstart));
+  ListenerCopyHelper(utterance->onend(),
+                     base::Bind(&SpeechSynthesisUtterance::set_onend));
+  ListenerCopyHelper(utterance->onerror(),
+                     base::Bind(&SpeechSynthesisUtterance::set_onerror));
+  ListenerCopyHelper(utterance->onpause(),
+                     base::Bind(&SpeechSynthesisUtterance::set_onpause));
+  ListenerCopyHelper(utterance->onresume(),
+                     base::Bind(&SpeechSynthesisUtterance::set_onresume));
+  ListenerCopyHelper(utterance->onmark(),
+                     base::Bind(&SpeechSynthesisUtterance::set_onmark));
+  ListenerCopyHelper(utterance->onboundary(),
+                     base::Bind(&SpeechSynthesisUtterance::set_onboundary));
 }
 
 void SpeechSynthesisUtterance::DispatchErrorCancelledEvent() {

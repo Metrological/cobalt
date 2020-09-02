@@ -23,9 +23,7 @@
 #include "base/compiler_specific.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
-#include "base/message_loop/message_loop.h"
 #include "base/optional.h"
-#include "base/threading/thread.h"
 #include "cobalt/math/size.h"
 #include "cobalt/media/can_play_type_handler.h"
 #include "cobalt/media/decoder_buffer_allocator.h"
@@ -35,6 +33,7 @@
 #include "cobalt/render_tree/image.h"
 #include "cobalt/render_tree/resource_provider.h"
 #include "cobalt/system_window/system_window.h"
+#include "starboard/common/mutex.h"
 
 namespace cobalt {
 namespace media {
@@ -57,26 +56,22 @@ class MediaModule : public WebMediaPlayerFactory,
   MediaModule(system_window::SystemWindow* system_window,
               render_tree::ResourceProvider* resource_provider,
               const Options& options = Options())
-      : thread_("media_module"),
-        options_(options),
+      : options_(options),
         system_window_(system_window),
-        resource_provider_(resource_provider) {
-    thread_.Start();
-    task_runner_ = thread_.task_runner();
-  }
+        resource_provider_(resource_provider) {}
 
   // Returns true when the setting is set successfully or if the setting has
   // already been set to the expected value.  Returns false when the setting is
   // invalid or not set to the expected value.
   bool SetConfiguration(const std::string& name, int32 value) {
-    SB_UNREFERENCED_PARAMETER(name);
-    SB_UNREFERENCED_PARAMETER(value);
     return false;
   }
 
   // WebMediaPlayerFactory methods
   std::unique_ptr<WebMediaPlayer> CreateWebMediaPlayer(
       WebMediaPlayerClient* client) override;
+  void EnumerateWebMediaPlayers(
+      const EnumeratePlayersCB& enumerate_callback) const override;
 
   void Suspend();
   void Resume(render_tree::ResourceProvider* resource_provider);
@@ -90,31 +85,22 @@ class MediaModule : public WebMediaPlayerFactory,
  private:
   void RegisterDebugState(WebMediaPlayer* player);
   void DeregisterDebugState();
-  void SuspendTask();
-  void ResumeTask();
-  void RegisterPlayerTask(WebMediaPlayer* player);
-  void UnregisterPlayerTask(WebMediaPlayer* player);
 
   SbDecodeTargetGraphicsContextProvider*
   GetSbDecodeTargetGraphicsContextProvider() {
-#if SB_HAS(GRAPHICS)
     return resource_provider_->GetSbDecodeTargetGraphicsContextProvider();
-#else   // SB_HAS(GRAPHICS)
-    return NULL;
-#endif  // SB_HAS(GRAPHICS)
   }
 
   // When the value of a particular player is true, it means the player is
   // paused by us.
   typedef std::map<WebMediaPlayer*, bool> Players;
 
-  // The thread that |players_| is accessed from,
-  base::Thread thread_;
-  scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
-
   const Options options_;
   system_window::SystemWindow* system_window_;
   cobalt::render_tree::ResourceProvider* resource_provider_;
+
+  // Protect access to the list of players.
+  starboard::Mutex players_lock_;
 
   Players players_;
   bool suspended_ = false;

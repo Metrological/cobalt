@@ -81,9 +81,7 @@ void DialUdpServer::CreateAndBind() {
     return;
   }
 
-  thread_.message_loop()->task_runner()->PostTask(
-      FROM_HERE, base::Bind(&DialUdpServer::AcceptAndProcessConnection,
-                            base::Unretained(this)));
+  AcceptAndProcessConnection();
 }
 
 void DialUdpServer::Shutdown() {
@@ -115,11 +113,17 @@ void DialUdpServer::AcceptAndProcessConnection() {
   if (!is_running_ || !socket_.get()) {
     return;
   }
-  if (socket_->RecvFrom(
-          read_buf_.get(), kReadBufferSize, &client_address_,
-          base::Bind(&DialUdpServer::DidRead, base::Unretained(this))) == OK) {
-    DidRead(net::OK);
+  auto err_code = socket_->RecvFrom(
+      read_buf_.get(), kReadBufferSize, &client_address_,
+      base::Bind(&DialUdpServer::DidRead, base::Unretained(this)));
+  if (err_code > 0) {
+    // RecvFrom can also return the number of received bytes right away as well.
+    DidRead(err_code);
+  } else if (err_code != ERR_IO_PENDING) {
+    DCHECK(err_code == OK) << "RecvFrom returned bad error code: " << err_code;
   }
+  // otherwise, RecvFrom returned -1 and will execute DidRead when any data is
+  // received.
 }
 
 void DialUdpServer::DidClose(UDPSocket* server) {}
@@ -136,20 +140,42 @@ void DialUdpServer::DidRead(int bytes_read) {
   // If M-Search request was valid, send response. Else, keep quiet.
   if (ParseSearchRequest(std::string(read_buf_->data()))) {
     auto response = std::make_unique<std::string>();
-    *response = ConstructSearchResponse();
+    *response = std::move(ConstructSearchResponse());
     // Using the fake IOBuffer to avoid another copy.
     scoped_refptr<WrappedIOBuffer> fake_buffer =
         new WrappedIOBuffer(response->data());
     // After optimization, some compiler will dereference and get response size
     // later than passing response.
     auto response_size = response->size();
-    socket_->SendTo(fake_buffer.get(), response_size, client_address_,
-                    base::Bind([](scoped_refptr<WrappedIOBuffer>,
-                                  std::unique_ptr<std::string>, int /*rv*/) {},
-                               fake_buffer, base::Passed(&response)));
+    int result = socket_->SendTo(
+        fake_buffer.get(), response_size, client_address_,
+        base::Bind(&DialUdpServer::WriteComplete, base::Unretained(this),
+                   fake_buffer, base::Passed(&response)));
+    if (result == ERR_IO_PENDING) {
+      // WriteComplete is responsible for posting the next callback to accept
+      // connection.
+      return;
+    } else if (result < 0) {
+      LOG(ERROR) << "UDPSocket SendTo error: " << result;
+    }
   }
-  // Now post another RecvFrom to the MessageLoop to take the next request.
-  thread_.message_loop()->task_runner()->PostTask(
+
+  // Register a watcher on the message loop and wait for the next dial message.
+  // If we call AcceptAndProcessConnection directly, the function could call
+  // DidRead and quickly increase stack size or even loop infinitely if the
+  // socket can always provide messages through RecvFrom.
+  thread_.task_runner()->PostTask(
+      FROM_HERE, base::Bind(&DialUdpServer::AcceptAndProcessConnection,
+                            base::Unretained(this)));
+}
+
+void DialUdpServer::WriteComplete(scoped_refptr<WrappedIOBuffer>,
+                                  std::unique_ptr<std::string>,
+                                  int rv) {
+  if (rv < 0) {
+    LOG(ERROR) << "UDPSocket completion callback error: " << rv;
+  }
+  thread_.task_runner()->PostTask(
       FROM_HERE, base::Bind(&DialUdpServer::AcceptAndProcessConnection,
                             base::Unretained(this)));
 }
@@ -183,7 +209,8 @@ bool DialUdpServer::ParseSearchRequest(const std::string& request) {
 
 bool DialUdpServer::IsValidMSearchRequest(const HttpServerRequestInfo& info) {
   if (info.method != "M-SEARCH") {
-    DVLOG(1) << "Invalid M-Search: SSDP method incorrect.";
+    DVLOG(1) << "Invalid M-Search: SSDP method incorrect. Received method: "
+             << info.method;
     return false;
   }
 
@@ -202,7 +229,7 @@ bool DialUdpServer::IsValidMSearchRequest(const HttpServerRequestInfo& info) {
 
 // Since we are constructing a response from user-generated string,
 // ensure all user-generated strings pass through StringPrintf.
-const std::string DialUdpServer::ConstructSearchResponse() const {
+std::string DialUdpServer::ConstructSearchResponse() const {
   DCHECK(!location_url_.empty());
 
   std::string ret("HTTP/1.1 200 OK\r\n");
@@ -224,7 +251,7 @@ const std::string DialUdpServer::ConstructSearchResponse() const {
                                 DialSystemConfig::GetInstance()->model_uuid(),
                                 kDialStRequest));
   ret.append("\r\n");
-  return ret;
+  return std::move(ret);
 }
 
 }  // namespace net

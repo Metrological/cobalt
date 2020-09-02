@@ -23,8 +23,6 @@
 #include "cobalt/loader/image/image_data_decoder.h"
 #include "starboard/decode_target.h"
 
-#if SB_HAS(GRAPHICS)
-
 namespace cobalt {
 namespace loader {
 namespace image {
@@ -32,7 +30,8 @@ namespace image {
 class ImageDecoderStarboard : public ImageDataDecoder {
  public:
   explicit ImageDecoderStarboard(
-      render_tree::ResourceProvider* resource_provider, const char* mime_type,
+      render_tree::ResourceProvider* resource_provider,
+      const base::DebuggerHooks& debugger_hooks, const char* mime_type,
       SbDecodeTargetFormat format);
   ~ImageDecoderStarboard() override;
 
@@ -54,7 +53,5 @@ class ImageDecoderStarboard : public ImageDataDecoder {
 }  // namespace image
 }  // namespace loader
 }  // namespace cobalt
-
-#endif  // SB_HAS(GRAPHICS)
 
 #endif  // COBALT_LOADER_IMAGE_IMAGE_DECODER_STARBOARD_H_

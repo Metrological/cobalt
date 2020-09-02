@@ -14,27 +14,40 @@
 
 #include "starboard/shared/starboard/media/media_support_internal.h"
 
+#include "starboard/common/log.h"
 #include "starboard/configuration.h"
+#include "starboard/configuration_constants.h"
 #include "starboard/media.h"
 
-SB_EXPORT bool SbMediaIsAudioSupported(SbMediaAudioCodec audio_codec,
-                                       int64_t bitrate) {
+bool SbMediaIsAudioSupported(SbMediaAudioCodec audio_codec,
+#if SB_API_VERSION >= 12
+                             const char* content_type,
+#endif  // SB_API_VERSION >= 12
+                             int64_t bitrate) {
+#if SB_API_VERSION >= 12
+  if (!content_type) {
+    SB_LOG(WARNING) << "|content_type| cannot be nullptr.";
+    return false;
+  }
+#endif  // SB_API_VERSION >= 12
+
   if (audio_codec == kSbMediaAudioCodecAac) {
-    return bitrate <= SB_MEDIA_MAX_AUDIO_BITRATE_IN_BITS_PER_SECOND;
+    return bitrate <= kSbMediaMaxAudioBitrateInBitsPerSecond;
   }
 
-#if SB_HAS(AUDIO_SPECIFIC_CONFIG_AS_POINTER)
   if (audio_codec == kSbMediaAudioCodecOpus) {
-    return bitrate <= SB_MEDIA_MAX_AUDIO_BITRATE_IN_BITS_PER_SECOND;
+    return bitrate <= kSbMediaMaxAudioBitrateInBitsPerSecond;
   }
 
-#if SB_HAS(AC3_AUDIO)
-  if (audio_codec == kSbMediaAudioCodecAc3 ||
-      audio_codec == kSbMediaAudioCodecEac3) {
-    return bitrate <= SB_MEDIA_MAX_AUDIO_BITRATE_IN_BITS_PER_SECOND;
+#if SB_API_VERSION >= 12 || defined(SB_HAS_AC3_AUDIO)
+  if (kSbHasAc3Audio) {
+    if (audio_codec == kSbMediaAudioCodecAc3 ||
+        audio_codec == kSbMediaAudioCodecEac3) {
+      return bitrate <= kSbMediaMaxAudioBitrateInBitsPerSecond;
+    }
   }
-#endif  // SB_HAS(AC3_AUDIO)
-#endif  // SB_HAS(AUDIO_SPECIFIC_CONFIG_AS_POINTER)
+#endif  // SB_API_VERSION >= 12 ||
+        // defined(SB_HAS_AC3_AUDIO)
 
   return false;
 }

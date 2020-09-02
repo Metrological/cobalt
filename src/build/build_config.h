@@ -10,8 +10,6 @@
 //    COMPILER_MSVC / COMPILER_GCC
 //  Processor:
 //    ARCH_CPU_X86 / ARCH_CPU_X86_64 / ARCH_CPU_X86_FAMILY (X86 or X86_64)
-//    ARCH_CPU_PPC_FAMILY
-//    ARCH_CPU_MIPS / ARCH_CPU_MIPSEL / ARCH_CPU_MIPS_FAMILY
 //    ARCH_CPU_ARM / ARCH_CPU_ARMEL / ARCH_CPU_ARM_FAMILY
 //    ARCH_CPU_32_BITS / ARCH_CPU_64_BITS
 //    ARCH_CPU_BIG_ENDIAN / ARCH_CPU_LITTLE_ENDIAN
@@ -109,50 +107,36 @@
 //   http://www.agner.org/optimize/calling_conventions.pdf
 //   or with gcc, run: "echo | gcc -E -dM -"
 #if defined(OS_STARBOARD)
-#  include "starboard/configuration.h"
-#  if SB_IS(32_BIT)
-#    define ARCH_CPU_32_BITS 1
-#  elif SB_IS(64_BIT)
-#    define ARCH_CPU_64_BITS 1
-#  endif  // SB_IS(32_BIT)
-#  if SB_IS(BIG_ENDIAN)
-#    define ARCH_CPU_BIG_ENDIAN 1
-#  else  // SB_IS(BIG_ENDIAN)
-#    define ARCH_CPU_LITTLE_ENDIAN 1
-#  endif  // SB_IS(BIG_ENDIAN)
-#  if SB_IS(ARCH_X86)
-#    define ARCH_CPU_X86_FAMILY 1
-#    if SB_IS(32_BIT)
-#      define ARCH_CPU_X86 1
-#    elif SB_IS(64_BIT)
-#      define ARCH_CPU_X86_64 1
-#    endif  // SB_IS(32_BIT)
-#  elif SB_IS(ARCH_PPC)
-#    define ARCH_CPU_PPC_FAMILY 1
-#  elif SB_IS(ARCH_MIPS)
-#    define ARCH_CPU_MIPS_FAMILY 1
-#    if SB_IS(BIG_ENDIAN)
-#      define ARCH_CPU_MIPS 1
-#    else  // SB_IS(BIG_ENDIAN)
-#      define ARCH_CPU_MIPSEL 1
-#    endif  // SB_IS(BIG_ENDIAN)
-#  elif SB_IS(ARCH_ARM)
-#    define ARCH_CPU_ARM_FAMILY 1
-#    if SB_IS(BIG_ENDIAN)
-#      define ARCH_CPU_ARM 1
-#    else  // SB_IS(BIG_ENDIAN)
-#      define ARCH_CPU_ARMEL 1
-#    endif  // SB_IS(BIG_ENDIAN)
-#  endif  // SB_IS(ARCH_X86)
+#include "starboard/configuration.h"
+#if SB_IS(32_BIT)
+# define ARCH_CPU_32_BITS 1
+#elif SB_IS(64_BIT)
+# define ARCH_CPU_64_BITS 1
+#endif  // SB_IS(32_BIT)
+#if SB_IS(BIG_ENDIAN)
+# define ARCH_CPU_BIG_ENDIAN 1
+#else   // SB_IS(BIG_ENDIAN)
+# define ARCH_CPU_LITTLE_ENDIAN 1
+#endif  // SB_IS(BIG_ENDIAN)
+#if SB_IS(ARCH_X86)
+# define ARCH_CPU_X86_FAMILY 1
+# define ARCH_CPU_X86 1
+#elif SB_IS(ARCH_X64)
+# define ARCH_CPU_X86_FAMILY 1
+# define ARCH_CPU_X86_64 1
+#elif SB_IS(ARCH_ARM) || SB_IS(ARCH_ARM64)
+# define ARCH_CPU_ARM_FAMILY 1
+# if SB_IS(BIG_ENDIAN)
+#  define ARCH_CPU_ARM 1
+# else   // SB_IS(BIG_ENDIAN)
+#  define ARCH_CPU_ARMEL 1
+# endif  // SB_IS(BIG_ENDIAN)
+#endif
 #elif defined(_M_X64) || defined(__x86_64__)
 #define ARCH_CPU_X86_FAMILY 1
 #define ARCH_CPU_X86_64 1
 #define ARCH_CPU_64_BITS 1
 #define ARCH_CPU_LITTLE_ENDIAN 1
-#elif defined(__LB_PS3__) || defined(__LB_WIIU__) || defined(__LB_XB360__)
-#define ARCH_CPU_32_BITS 1
-#define ARCH_CPU_BIG_ENDIAN 1
-#define ARCH_CPU_PPC_FAMILY 1
 #elif defined(_M_IX86) || defined(__i386__)
 #define ARCH_CPU_X86_FAMILY 1
 #define ARCH_CPU_X86 1
@@ -165,11 +149,6 @@
 #define ARCH_CPU_LITTLE_ENDIAN 1
 #elif defined(__pnacl__)
 #define ARCH_CPU_32_BITS 1
-#elif defined(__MIPSEL__)
-#define ARCH_CPU_MIPS_FAMILY 1
-#define ARCH_CPU_MIPSEL 1
-#define ARCH_CPU_32_BITS 1
-#define ARCH_CPU_LITTLE_ENDIAN 1
 #else
 #error Please add support for your architecture in build/build_config.h
 #endif
@@ -209,8 +188,6 @@
 #  endif
 #elif defined(__ARMEL__) && !defined(OS_IOS)
 #define WCHAR_T_IS_UNSIGNED 1
-#elif defined(__MIPSEL__)
-#define WCHAR_T_IS_UNSIGNED 0
 #endif
 
 // TODO: Worry about these defines if/when we need to support Android.

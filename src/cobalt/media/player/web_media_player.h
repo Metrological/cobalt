@@ -18,12 +18,12 @@
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
+#include "cobalt/math/rect.h"
+#include "cobalt/math/size.h"
 #include "cobalt/media/base/ranges.h"
 #include "cobalt/media/base/video_frame_provider.h"
 #include "cobalt/media/filters/chunk_demuxer.h"
 #include "cobalt/media/player/buffered_data_source.h"
-#include "ui/gfx/rect.h"
-#include "ui/gfx/size.h"
 #include "url/gurl.h"
 
 namespace cobalt {
@@ -35,7 +35,7 @@ class WebMediaPlayer {
  public:
   // Return true if the punch through box should be rendered.  Return false if
   // no punch through box should be rendered.
-  typedef base::Callback<bool(const gfx::Rect&)> SetBoundsCB;
+  typedef base::Callback<bool(const math::Rect&)> SetBoundsCB;
 
   enum NetworkState {
     kNetworkStateEmpty,
@@ -122,7 +122,7 @@ class WebMediaPlayer {
   virtual bool HasAudio() const = 0;
 
   // Dimension of the video.
-  virtual gfx::Size GetNaturalSize() const = 0;
+  virtual math::Size GetNaturalSize() const = 0;
 
   // Getters of playback state.
   virtual bool IsPaused() const = 0;
@@ -132,6 +132,7 @@ class WebMediaPlayer {
   virtual base::Time GetStartDate() const = 0;
 #endif  // SB_HAS(PLAYER_WITH_URL)
   virtual float GetCurrentTime() const = 0;
+  virtual float GetPlaybackRate() const = 0;
 
   // Get rate of loading the resource.
   virtual int GetDataRate() const = 0;
@@ -153,26 +154,24 @@ class WebMediaPlayer {
     return NULL;
   }
 
-  virtual AddIdStatus SourceAddId(
-      const std::string& /* id */, const std::string& /* type */,
-      const std::vector<std::string>& /* codecs */) {
+  virtual AddIdStatus SourceAddId(const std::string& id,
+                                  const std::string& type,
+                                  const std::vector<std::string>& codecs) {
     return kAddIdStatusNotSupported;
   }
-  virtual bool SourceRemoveId(const std::string& /* id */) { return false; }
-  virtual Ranges<base::TimeDelta> SourceBuffered(const std::string& /* id */) {
+  virtual bool SourceRemoveId(const std::string& id) { return false; }
+  virtual Ranges<base::TimeDelta> SourceBuffered(const std::string& id) {
     return Ranges<base::TimeDelta>();
   }
-  virtual bool SourceAppend(const std::string& /* id */,
-                            const unsigned char* /* data */,
-                            unsigned /* length */) {
+  virtual bool SourceAppend(const std::string& id, const unsigned char* data,
+                            unsigned length) {
     return false;
   }
-  virtual bool SourceAbort(const std::string& /* id */) { return false; }
+  virtual bool SourceAbort(const std::string& id) { return false; }
   virtual double SourceGetDuration() const { return 0.0; }
-  virtual void SourceSetDuration(double /* duration */) {}
-  virtual void SourceEndOfStream(EndOfStreamStatus /* status */) {}
-  virtual bool SourceSetTimestampOffset(const std::string& /* id */,
-                                        double /* offset */) {
+  virtual void SourceSetDuration(double duration) {}
+  virtual void SourceEndOfStream(EndOfStreamStatus status) {}
+  virtual bool SourceSetTimestampOffset(const std::string& id, double offset) {
     return false;
   }
 
@@ -187,8 +186,7 @@ class WebMediaPlayer {
   // Returns the address and size of a chunk of memory to be included in a
   // debug report. May not be supported on all platforms. The returned address
   // should remain valid as long as the WebMediaPlayer instance is alive.
-  virtual bool GetDebugReportDataAddress(void** /*out_address*/,
-                                         size_t* /*out_size*/) {
+  virtual bool GetDebugReportDataAddress(void** out_address, size_t* out_size) {
     return false;
   }
 
@@ -213,7 +211,7 @@ class WebMediaPlayerClient {
   virtual void ContentSizeChanged() = 0;
   virtual void PlaybackStateChanged() = 0;
   // TODO: Revisit the necessity of the following function.
-  virtual void SetOpaque(bool /* opaque */) {}
+  virtual void SetOpaque(bool opaque) {}
   virtual void SawUnsupportedTracks() = 0;
   virtual float Volume() const = 0;
   virtual void SourceOpened(ChunkDemuxer* chunk_demuxer) = 0;

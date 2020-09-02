@@ -47,7 +47,7 @@ typedef base::Callback<void(::media::DecoderBuffer*)> AppendBufferCB;
 const char kSourceId[] = "id";
 
 // Stub log function.
-void Log(const std::string& message) { SB_UNREFERENCED_PARAMETER(message); }
+void Log(const std::string& message) {}
 
 // Stub need key callback.
 void NeedKeyCB(const std::string& type, std::unique_ptr<uint8[]> init_data,
@@ -110,20 +110,14 @@ class Loader : public ::media::DemuxerHost {
 
  private:
   void SetTotalBytes(int64 total_bytes) override {
-    SB_UNREFERENCED_PARAMETER(total_bytes);
   }
   void AddBufferedByteRange(int64 start, int64 end) override {
-    SB_UNREFERENCED_PARAMETER(start);
-    SB_UNREFERENCED_PARAMETER(end);
   }
   void AddBufferedTimeRange(base::TimeDelta start,
                             base::TimeDelta end) override {
-    SB_UNREFERENCED_PARAMETER(start);
-    SB_UNREFERENCED_PARAMETER(end);
   }
 
   void SetDuration(base::TimeDelta duration) override {
-    SB_UNREFERENCED_PARAMETER(duration);
   }
   void OnDemuxerError(::media::PipelineStatus error) override {
     valid_ = false;
@@ -250,10 +244,10 @@ MediaSourceDemuxer::MediaSourceDemuxer(const std::vector<uint8>& content)
   // Try to load it as an ivf first.
   if (LoadIVF(content, Bind(&MediaSourceDemuxer::AppendBuffer,
                             base::Unretained(this)))) {
-    config_.Initialize(::media::kCodecVP9, ::media::VP9PROFILE_MAIN,
-                       ::media::VideoFrame::YV12,
-                       ::media::COLOR_SPACE_HD_REC709, gfx::Size(1, 1),
-                       gfx::Rect(1, 1), gfx::Size(1, 1), NULL, 0, false, false);
+    config_.Initialize(
+        ::media::kCodecVP9, ::media::VP9PROFILE_MAIN, ::media::VideoFrame::YV12,
+        ::media::COLOR_SPACE_HD_REC709, math::Size(1, 1), math::Rect(1, 1),
+        math::Size(1, 1), NULL, 0, false, false);
     valid_ = descs_.size() > 0;
     return;
   }

@@ -49,6 +49,9 @@ class VideoRenderAlgorithm {
   virtual void Render(MediaTimeProvider* media_time_provider,
                       std::list<scoped_refptr<VideoFrame>>* frames,
                       VideoRendererSink::DrawFrameCB draw_frame_cb) = 0;
+  // Called during seek to reset the internal states of VideoRenderAlgorithm.
+  // |seek_to_time| will be set to the seek target.
+  virtual void Seek(SbTime seek_to_time) = 0;
   virtual int GetDroppedFrames() = 0;
 };
 

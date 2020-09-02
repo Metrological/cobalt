@@ -19,6 +19,7 @@
 
 #include "base/lazy_instance.h"
 #include "base/trace_event/trace_event.h"
+#include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/cssom/css_rule_visitor.h"
 #include "cobalt/cssom/css_style_rule.h"
 #include "cobalt/dom/cdata_section.h"
@@ -26,6 +27,7 @@
 #include "cobalt/dom/document.h"
 #include "cobalt/dom/document_type.h"
 #include "cobalt/dom/dom_exception.h"
+#include "cobalt/dom/dom_settings.h"
 #include "cobalt/dom/element.h"
 #include "cobalt/dom/global_stats.h"
 #include "cobalt/dom/html_collection.h"
@@ -41,7 +43,7 @@
 #include "starboard/configuration.h"
 #if SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
 #define HANDLE_CORE_DUMP
-#include "starboard/ps4/core_dump_handler.h"
+#include STARBOARD_CORE_DUMP_HANDLER_INCLUDE
 #endif  // SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
 #endif  // defined(OS_STARBOARD)
 
@@ -177,12 +179,12 @@ scoped_refptr<Node> Node::CloneNode(bool deep) const {
 }
 
 bool Node::Contains(const scoped_refptr<Node>& other_node) const {
-  const Node* child = first_child_.get();
-  while (child) {
-    if (child == other_node || child->Contains(other_node)) {
+  const Node* candidate = other_node.get();
+  while (candidate) {
+    if (this == candidate) {
       return true;
     }
-    child = child->next_sibling_.get();
+    candidate = candidate->parent_node();
   }
   return false;
 }
@@ -436,6 +438,12 @@ Element* Node::AsElement() { return NULL; }
 
 Text* Node::AsText() { return NULL; }
 
+const base::DebuggerHooks& Node::debugger_hooks() const {
+  return base::polymorphic_downcast<DOMSettings*>(
+             node_document()->html_element_context()->environment_settings())
+      ->debugger_hooks();
+}
+
 void Node::TraceMembers(script::Tracer* tracer) {
   EventTarget::TraceMembers(tracer);
 
@@ -450,7 +458,11 @@ void Node::TraceMembers(script::Tracer* tracer) {
 }
 
 Node::Node(Document* document)
-    : node_document_(base::AsWeakPtr(document)),
+    : Node(document->html_element_context(), document) {}
+
+Node::Node(HTMLElementContext* html_element_context, Document* document)
+    : EventTarget(html_element_context->environment_settings()),
+      node_document_(base::AsWeakPtr(document)),
       parent_(NULL),
       previous_sibling_(NULL),
       last_child_(NULL),

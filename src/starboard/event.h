@@ -204,7 +204,12 @@ typedef enum SbEventType {
   // The platform's accessibility settings have changed. The application should
   // query the accessibility settings using the appropriate APIs to get the
   // new settings. Note this excludes captions settings changes, which
-  // causes kSbEventTypeAccessibilityCaptionSettingsChanged to fire.
+  // causes kSbEventTypeAccessibilityCaptionSettingsChanged to fire. If the
+  // starboard version has kSbEventTypeAccessiblityTextToSpeechSettingsChanged,
+  // then that event should be used to signal text-to-speech settings changes
+  // instead; platforms using older starboard versions should use
+  // kSbEventTypeAccessiblitySettingsChanged for text-to-speech settings
+  // changes.
   kSbEventTypeAccessiblitySettingsChanged,
 
   // An optional event that platforms may send to indicate that the application
@@ -219,7 +224,7 @@ typedef enum SbEventType {
   // SbEventWindowSizeChangedData.
   kSbEventTypeWindowSizeChanged,
 #endif  // SB_API_VERSION >= 8
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   // The platform has shown the on screen keyboard. This event is triggered by
   // the system or by the application's OnScreenKeyboard show method. The event
   // has int data representing a ticket. The ticket is used by the application
@@ -268,12 +273,18 @@ typedef enum SbEventType {
   kSbEventTypeOnScreenKeyboardSuggestionsUpdated,
 #endif  // SB_API_VERSION >= 11
 
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
-#if SB_HAS(CAPTIONS)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
   // One or more of the fields returned by SbAccessibilityGetCaptionSettings
   // has changed.
   kSbEventTypeAccessibilityCaptionSettingsChanged,
-#endif  // SB_HAS(CAPTIONS)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
+
+#if SB_API_VERSION >= 12
+  // The platform's text-to-speech settings have changed.
+  kSbEventTypeAccessiblityTextToSpeechSettingsChanged,
+#endif  // SB_API_VERSION >= 12
 } SbEventType;
 
 // Structure representing a Starboard event and its data.

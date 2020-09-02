@@ -19,14 +19,26 @@ import subprocess
 
 from starboard.linux.shared import gyp_configuration as shared_configuration
 from starboard.tools import build
+from starboard.tools.toolchain import ar
+from starboard.tools.toolchain import bash
+from starboard.tools.toolchain import clang
+from starboard.tools.toolchain import clangxx
+from starboard.tools.toolchain import cp
+from starboard.tools.toolchain import touch
 
 
 class LinuxX64X11Clang36Configuration(shared_configuration.LinuxConfiguration):
   """Starboard Linux X64 X11 Clang 3.6 platform configuration."""
 
-  def __init__(self, platform, asan_enabled_by_default=False):
+  def __init__(self,
+               platform,
+               asan_enabled_by_default=False,
+               sabi_json_path='starboard/sabi/default/sabi.json'):
     super(LinuxX64X11Clang36Configuration, self).__init__(
-        platform, asan_enabled_by_default, goma_supports_compiler=False)
+        platform,
+        asan_enabled_by_default,
+        goma_supports_compiler=False,
+        sabi_json_path=sabi_json_path)
 
     self.toolchain_top_dir = os.path.join(build.GetToolchainsDir(),
                                           'x86_64-linux-gnu-clang-3.6')
@@ -55,19 +67,53 @@ class LinuxX64X11Clang36Configuration(shared_configuration.LinuxConfiguration):
     variables = super(LinuxX64X11Clang36Configuration,
                       self).GetVariables(config_name)
     variables.update({
-        'javascript_engine':
-            'mozjs-45',
-        'cobalt_enable_jit':
-            0,
         'GCC_TOOLCHAIN_FOLDER':
             '\"%s\"' % os.path.join(self.toolchain_top_dir, 'libstdc++-7'),
     })
     return variables
 
+  def GetTargetToolchain(self, **kwargs):
+    environment_variables = self.GetEnvironmentVariables()
+    cc_path = environment_variables['CC']
+    cxx_path = environment_variables['CXX']
+
+    return [
+        clang.CCompiler(path=cc_path),
+        clang.CxxCompiler(path=cxx_path),
+        clang.AssemblerWithCPreprocessor(path=cc_path),
+        ar.StaticThinLinker(),
+        ar.StaticLinker(),
+        clangxx.ExecutableLinker(path=cxx_path, write_group=True),
+        clangxx.SharedLibraryLinker(path=cxx_path),
+        cp.Copy(),
+        touch.Stamp(),
+        bash.Shell(),
+    ]
+
+  def GetHostToolchain(self, **kwargs):
+    environment_variables = self.GetEnvironmentVariables()
+    cc_path = environment_variables['CC_host']
+    cxx_path = environment_variables['CXX_host']
+
+    return [
+        clang.CCompiler(path=cc_path),
+        clang.CxxCompiler(path=cxx_path),
+        clang.AssemblerWithCPreprocessor(path=cc_path),
+        ar.StaticThinLinker(),
+        ar.StaticLinker(),
+        clangxx.ExecutableLinker(path=cxx_path, write_group=True),
+        clangxx.SharedLibraryLinker(path=cxx_path),
+        cp.Copy(),
+        touch.Stamp(),
+        bash.Shell(),
+    ]
+
 
 def CreatePlatformConfig():
   try:
-    return LinuxX64X11Clang36Configuration('linux-x64x11-clang-3-6')
+    return LinuxX64X11Clang36Configuration(
+        'linux-x64x11-clang-3-6',
+        sabi_json_path='starboard/sabi/x64/sysv/sabi-v{sb_api_version}.json')
   except RuntimeError as e:
     logging.critical(e)
     return None

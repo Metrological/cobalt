@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "starboard/configuration.h"
+#if SB_API_VERSION >= 12 || SB_HAS(GLES2)
+
 #include "cobalt/renderer/rasterizer/egl/hardware_rasterizer.h"
 
 #include <memory>
@@ -31,6 +34,7 @@
 #include "cobalt/renderer/rasterizer/egl/render_tree_node_visitor.h"
 #include "cobalt/renderer/rasterizer/egl/shader_program_manager.h"
 #include "cobalt/renderer/rasterizer/skia/cobalt_skia_type_conversions.h"
+#include "cobalt/renderer/rasterizer/skia/gl_format_conversions.h"
 #include "cobalt/renderer/rasterizer/skia/hardware_rasterizer.h"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
@@ -65,6 +69,13 @@ class HardwareRasterizer::Impl {
     return fallback_rasterizer_->GetResourceProvider();
   }
 
+  int64_t GetFallbackRasterizeCount() { return fallback_rasterize_count_; }
+
+  void ResetGraphicsStateCache() {
+    graphics_state_->SetDirty();
+    GetFallbackContext()->resetContext();
+  }
+
   void MakeCurrent() { graphics_context_->MakeCurrent(); }
   void ReleaseContext() { graphics_context_->ReleaseCurrentContext(); }
 
@@ -89,6 +100,8 @@ class HardwareRasterizer::Impl {
   std::unique_ptr<ShaderProgramManager> shader_program_manager_;
   std::unique_ptr<OffscreenTargetManager> offscreen_target_manager_;
 
+  int64_t fallback_rasterize_count_;
+
   backend::GraphicsContextEGL* graphics_context_;
   THREAD_CHECKER(thread_checker_);
 };
@@ -105,12 +118,10 @@ HardwareRasterizer::Impl::Impl(backend::GraphicsContext* graphics_context,
           skia_cache_size_in_bytes, scratch_surface_cache_size_in_bytes,
           purge_skia_font_caches_on_destruction,
           force_deterministic_rendering)),
+      fallback_rasterize_count_(0),
       graphics_context_(
           base::polymorphic_downcast<backend::GraphicsContextEGL*>(
               graphics_context)) {
-  DLOG(INFO) << "offscreen_target_cache_size_in_bytes: "
-             << offscreen_target_cache_size_in_bytes;
-
   backend::GraphicsContextEGL::ScopedMakeCurrent scoped_make_current(
       graphics_context_);
   graphics_state_.reset(new GraphicsState());
@@ -251,6 +262,8 @@ void HardwareRasterizer::Impl::RasterizeTree(
     render_tree->Accept(&visitor);
   }
 
+  fallback_rasterize_count_ += visitor.GetFallbackRasterizeCount();
+
   graphics_state_->BeginFrame();
 
   // Rasterize to offscreen targets using skia.
@@ -287,14 +300,12 @@ sk_sp<SkSurface> HardwareRasterizer::Impl::CreateFallbackSurface(
     bool force_deterministic_rendering,
     const backend::RenderTarget* render_target) {
   // Wrap the given render target in a new skia surface.
-  GrBackendRenderTargetDesc skia_desc;
-  skia_desc.fWidth = render_target->GetSize().width();
-  skia_desc.fHeight = render_target->GetSize().height();
-  skia_desc.fConfig = kRGBA_8888_GrPixelConfig;
-  skia_desc.fOrigin = kBottomLeft_GrSurfaceOrigin;
-  skia_desc.fSampleCnt = 0;
-  skia_desc.fStencilBits = 0;
-  skia_desc.fRenderTargetHandle = render_target->GetPlatformHandle();
+  GrGLFramebufferInfo info;
+  info.fFBOID = render_target->GetPlatformHandle();
+  info.fFormat = skia::ConvertBaseGLFormatToSizedInternalFormat(GL_RGBA);
+  GrBackendRenderTarget skia_render_target(render_target->GetSize().width(),
+                                           render_target->GetSize().height(), 0,
+                                           0, info);
 
   uint32_t flags = 0;
   if (!force_deterministic_rendering) {
@@ -306,8 +317,9 @@ sk_sp<SkSurface> HardwareRasterizer::Impl::CreateFallbackSurface(
   }
   SkSurfaceProps skia_surface_props(flags,
                                     SkSurfaceProps::kLegacyFontHost_InitType);
-  return SkSurface::MakeFromBackendRenderTarget(GetFallbackContext(), skia_desc,
-                                                &skia_surface_props);
+  return SkSurface::MakeFromBackendRenderTarget(
+      GetFallbackContext(), skia_render_target, kBottomLeft_GrSurfaceOrigin,
+      kRGBA_8888_SkColorType, nullptr, &skia_surface_props);
 }
 
 HardwareRasterizer::HardwareRasterizer(
@@ -338,6 +350,14 @@ render_tree::ResourceProvider* HardwareRasterizer::GetResourceProvider() {
   return impl_->GetResourceProvider();
 }
 
+int64_t HardwareRasterizer::GetFallbackRasterizeCount() {
+  return impl_->GetFallbackRasterizeCount();
+}
+
+void HardwareRasterizer::ResetGraphicsStateCache() {
+  impl_->ResetGraphicsStateCache();
+}
+
 void HardwareRasterizer::MakeCurrent() { return impl_->MakeCurrent(); }
 
 void HardwareRasterizer::ReleaseContext() { return impl_->ReleaseContext(); }
@@ -346,3 +366,5 @@ void HardwareRasterizer::ReleaseContext() { return impl_->ReleaseContext(); }
 }  // namespace rasterizer
 }  // namespace renderer
 }  // namespace cobalt
+
+#endif  // SB_API_VERSION >= 12 || SB_HAS(GLES2)

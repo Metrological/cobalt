@@ -13,6 +13,9 @@
 # limitations under the License.
 
 {
+  'variables': {
+    'optimize_target_for_speed': 1,
+  },
   'targets': [
     {
       # This target provides (not production suitable) utility code for decoding
@@ -41,12 +44,12 @@
       ],
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
-        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
         'png_utils',
         'png_utils_copy_test_data',
       ],
+      'includes': [ '<(DEPTH)/cobalt/test/test.gypi' ],
     },
     {
       'target_name': 'png_utils_benchmark',

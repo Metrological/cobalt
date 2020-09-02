@@ -42,31 +42,32 @@ void MicrophoneAudioSource::EnsureSourceIsStopped() {
 std::unique_ptr<cobalt::speech::Microphone>
 MicrophoneAudioSource::CreateMicrophone(
     const cobalt::speech::Microphone::Options& options, int buffer_size_bytes) {
-#if defined(ENABLE_FAKE_MICROPHONE)
-  SB_UNREFERENCED_PARAMETER(buffer_size_bytes);
-  if (options.enable_fake_microphone) {
-    return std::unique_ptr<speech::Microphone>(
-        new speech::MicrophoneFake(options));
-  }
+#if !defined(ENABLE_MICROPHONE_IDL)
+  return std::unique_ptr<speech::Microphone>();
 #else
-  SB_UNREFERENCED_PARAMETER(options);
-#endif  // defined(ENABLE_FAKE_MICROPHONE)
-
   std::unique_ptr<speech::Microphone> mic;
 
-#if defined(ENABLE_MICROPHONE_IDL)
-  mic.reset(new speech::MicrophoneStarboard(
-      speech::MicrophoneStarboard::kDefaultSampleRate, buffer_size_bytes));
-
-  AudioParameters params(
-      1, speech::MicrophoneStarboard::kDefaultSampleRate,
-      speech::MicrophoneStarboard::kSbMicrophoneSampleSizeInBytes * 8);
-  SetFormat(params);
+#if defined(ENABLE_FAKE_MICROPHONE)
+  if (options.enable_fake_microphone) {
+    mic.reset(new speech::MicrophoneFake(options));
+  }
 #else
-  SB_UNREFERENCED_PARAMETER(buffer_size_bytes);
-#endif  // defined(ENABLE_MICROPHONE_IDL)
+#endif  // defined(ENABLE_FAKE_MICROPHONE)
+
+  if (!mic) {
+    mic.reset(new speech::MicrophoneStarboard(
+        speech::MicrophoneStarboard::kDefaultSampleRate, buffer_size_bytes));
+  }
+
+  if (mic) {
+    AudioParameters params(
+        1, speech::MicrophoneStarboard::kDefaultSampleRate,
+        speech::MicrophoneStarboard::kSbMicrophoneSampleSizeInBytes * 8);
+    SetFormat(params);
+  }
 
   return mic;
+#endif  // defined(ENABLE_MICROPHONE_IDL)
 }
 
 MicrophoneAudioSource::MicrophoneAudioSource(
@@ -80,7 +81,9 @@ MicrophoneAudioSource::MicrophoneAudioSource(
     // Furthermore, it is an error to destruct the microphone manager
     // without stopping it, so these callbacks are not to be called
     // during the destruction of the object.
-    : javascript_message_loop_(base::MessageLoop::current()->task_runner()),
+    : javascript_thread_task_runner_(
+          base::MessageLoop::current()->task_runner()),
+      ALLOW_THIS_IN_INITIALIZER_LIST(weak_ptr_factory_(this)),
       successful_open_callback_(successful_open),
       completion_callback_(completion),
       error_callback_(error),
@@ -103,9 +106,11 @@ void MicrophoneAudioSource::OnDataReceived(
 }
 
 void MicrophoneAudioSource::OnDataCompletion() {
-  if (javascript_message_loop_ != base::MessageLoop::current()->task_runner()) {
-    javascript_message_loop_->PostTask(
-        FROM_HERE, base::Bind(&MicrophoneAudioSource::OnDataCompletion, this));
+  if (javascript_thread_task_runner_ !=
+      base::MessageLoop::current()->task_runner()) {
+    javascript_thread_task_runner_->PostTask(
+        FROM_HERE, base::Bind(&MicrophoneAudioSource::OnDataCompletion,
+                              weak_ptr_factory_.GetWeakPtr()));
     return;
   }
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
@@ -118,9 +123,11 @@ void MicrophoneAudioSource::OnDataCompletion() {
 }
 
 void MicrophoneAudioSource::OnMicrophoneOpen() {
-  if (javascript_message_loop_ != base::MessageLoop::current()->task_runner()) {
-    javascript_message_loop_->PostTask(
-        FROM_HERE, base::Bind(&MicrophoneAudioSource::OnMicrophoneOpen, this));
+  if (javascript_thread_task_runner_ !=
+      base::MessageLoop::current()->task_runner()) {
+    javascript_thread_task_runner_->PostTask(
+        FROM_HERE, base::Bind(&MicrophoneAudioSource::OnMicrophoneOpen,
+                              weak_ptr_factory_.GetWeakPtr()));
     return;
   }
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
@@ -132,10 +139,12 @@ void MicrophoneAudioSource::OnMicrophoneOpen() {
 void MicrophoneAudioSource::OnMicrophoneError(
     speech::MicrophoneManager::MicrophoneError error,
     std::string error_message) {
-  if (javascript_message_loop_ != base::MessageLoop::current()->task_runner()) {
-    javascript_message_loop_->PostTask(
-        FROM_HERE, base::Bind(&MicrophoneAudioSource::OnMicrophoneError, this,
-                              error, error_message));
+  if (javascript_thread_task_runner_ !=
+      base::MessageLoop::current()->task_runner()) {
+    javascript_thread_task_runner_->PostTask(
+        FROM_HERE,
+        base::Bind(&MicrophoneAudioSource::OnMicrophoneError,
+                   weak_ptr_factory_.GetWeakPtr(), error, error_message));
     return;
   }
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
@@ -153,12 +162,16 @@ void MicrophoneAudioSource::OnMicrophoneError(
   LOG(ERROR) << "Got a microphone error. Category[" << microphone_error_category
              << "] " << error_message;
 
+  // StopSource() may result in the destruction of |this|, so we must ensure
+  // that we do not reference members after this call.
+  auto error_callback = error_callback_;
+
   // This will notify downstream objects audio track, and source that there will
   // be no more data.
   StopSource();
 
-  if (!error_callback_.is_null()) {
-    error_callback_.Run(error, error_message);
+  if (!error_callback.is_null()) {
+    error_callback.Run(error, error_message);
   }
 }
 

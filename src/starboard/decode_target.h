@@ -96,9 +96,9 @@
 #include "starboard/export.h"
 #include "starboard/types.h"
 
-#if SB_HAS(BLITTER)
+#if SB_API_VERSION < 12 && SB_HAS(BLITTER)
 #include "starboard/blitter.h"
-#endif  // SB_HAS(BLITTER)
+#endif  // SB_API_VERSION < 12 && SB_HAS(BLITTER)
 
 #ifdef __cplusplus
 extern "C" {
@@ -135,11 +135,9 @@ typedef enum SbDecodeTargetFormat {
   // A decoder target format consisting of Y, U, and V planes, in that order.
   kSbDecodeTargetFormat3PlaneYUVI420,
 
-#if SB_API_VERSION >= 10
   // A decoder target format consisting of 10bit Y, U, and V planes, in that
   // order.
   kSbDecodeTargetFormat3Plane10BitYUVI420,
-#endif
 
   // A decoder target format consisting of a single plane with pixels layed out
   // in the format UYVY.  Since there are two Y values per sample, but only one
@@ -177,7 +175,7 @@ typedef enum SbDecodeTargetPlane {
   kSbDecodeTargetPlaneV = 2,
 } SbDecodeTargetPlane;
 
-#if SB_HAS(GLES2)
+#if SB_API_VERSION >= 12 || SB_HAS(GLES2)
 struct SbDecodeTargetGraphicsContextProvider;
 
 // Signature for a Starboard implementaion function that is to be run by a
@@ -193,7 +191,7 @@ typedef void (*SbDecodeTargetGlesContextRunner)(
     struct SbDecodeTargetGraphicsContextProvider* graphics_context_provider,
     SbDecodeTargetGlesContextRunnerTarget target_function,
     void* target_function_context);
-#endif  // SB_HAS(GLES2)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(GLES2)
 
 // In general, the SbDecodeTargetGraphicsContextProvider structure provides
 // information about the graphics context that will be used to render
@@ -203,11 +201,12 @@ typedef void (*SbDecodeTargetGlesContextRunner)(
 // should be provided to all Starboard functions that might create
 // SbDecodeTargets (e.g. SbImageDecode()).
 typedef struct SbDecodeTargetGraphicsContextProvider {
-#if SB_HAS(BLITTER)
+#if SB_API_VERSION < 12 && SB_HAS(BLITTER)
   // The SbBlitterDevice object that will be used to render any produced
   // SbDecodeTargets.
   SbBlitterDevice device;
-#elif SB_HAS(GLES2)
+#endif
+#if SB_API_VERSION >= 12 || SB_HAS(GLES2)
   // A reference to the EGLDisplay object that hosts the EGLContext that will
   // be used to render any produced SbDecodeTargets.  Note that it has the
   // type |void*| in order to avoid #including the EGL header files here.
@@ -226,10 +225,10 @@ typedef struct SbDecodeTargetGraphicsContextProvider {
   // Context data that is to be passed in to |gles_context_runner| when it is
   // invoked.
   void* gles_context_runner_context;
-#else  // SB_HAS(BLITTER)
+#elif !(SB_API_VERSION >= 12 || SB_HAS(BLITTER))
   // Some compilers complain about empty structures, this is to appease them.
   char dummy;
-#endif  // SB_HAS(BLITTER)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(GLES2)
 } SbDecodeTargetGraphicsContextProvider;
 
 // Defines a rectangular content region within a SbDecodeTargetInfoPlane
@@ -257,10 +256,11 @@ typedef struct SbDecodeTargetInfoContentRegion {
 
 // Defines an image plane within a SbDecodeTargetInfo object.
 typedef struct SbDecodeTargetInfoPlane {
-#if SB_HAS(BLITTER)
+#if SB_API_VERSION < 12 && SB_HAS(BLITTER)
   // A handle to the Blitter surface that can be used for rendering.
   SbBlitterSurface surface;
-#elif SB_HAS(GLES2)  // SB_HAS(BLITTER)
+#endif  // SB_API_VERSION < 12 && SB_HAS(BLITTER)
+#if SB_API_VERSION >= 12 || SB_HAS(GLES2)
   // A handle to the GL texture that can be used for rendering.
   uint32_t texture;
 
@@ -278,7 +278,7 @@ typedef struct SbDecodeTargetInfoPlane {
   uint32_t gl_texture_format;
 #endif  // SB_API_VERSION >= 7
 
-#endif  // SB_HAS(BLITTER)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(GLES2)
 
   // The width of the texture/surface for this particular plane.
   int width;
@@ -351,9 +351,7 @@ static SB_C_INLINE int SbDecodeTargetNumberOfPlanesForFormat(
       return 1;
     case kSbDecodeTargetFormat2PlaneYUVNV12:
       return 2;
-#if SB_API_VERSION >= 10
     case kSbDecodeTargetFormat3Plane10BitYUVI420:
-#endif
     case kSbDecodeTargetFormat3PlaneYUVI420:
       return 3;
     default:

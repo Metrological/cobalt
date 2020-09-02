@@ -30,9 +30,7 @@
 extern "C" {
 #endif
 
-#if SB_API_VERSION >= 10
 typedef int8_t SbAtomic8;
-#endif
 typedef int32_t SbAtomic32;
 
 // Atomically execute:
@@ -88,14 +86,12 @@ static SbAtomic32 SbAtomicNoBarrier_Load(volatile const SbAtomic32* ptr);
 static SbAtomic32 SbAtomicAcquire_Load(volatile const SbAtomic32* ptr);
 static SbAtomic32 SbAtomicRelease_Load(volatile const SbAtomic32* ptr);
 
-#if SB_API_VERSION >= 10
 // Overloaded functions for Atomic8.
 static SbAtomic8 SbAtomicRelease_CompareAndSwap8(volatile SbAtomic8* ptr,
                                                  SbAtomic8 old_value,
                                                  SbAtomic8 new_value);
 static void SbAtomicNoBarrier_Store8(volatile SbAtomic8* ptr, SbAtomic8 value);
 static SbAtomic8 SbAtomicNoBarrier_Load8(volatile const SbAtomic8* ptr);
-#endif
 
 // 64-bit atomic operations (only available on 64-bit processors).
 #if SB_HAS(64_BIT_ATOMICS)
@@ -127,7 +123,7 @@ static SbAtomic64 SbAtomicRelease_Load64(volatile const SbAtomic64* ptr);
 
 // Pointer-sized atomic operations. Forwards to either 32-bit or 64-bit
 // functions as appropriate.
-#if SB_HAS(64_BIT_POINTERS)
+#if SB_SIZE_OF(POINTER) == 8
 typedef SbAtomic64 SbAtomicPtr;
 #else
 typedef SbAtomic32 SbAtomicPtr;
@@ -137,7 +133,7 @@ static SB_C_FORCE_INLINE SbAtomicPtr
 SbAtomicNoBarrier_CompareAndSwapPtr(volatile SbAtomicPtr* ptr,
                                     SbAtomicPtr old_value,
                                     SbAtomicPtr new_value) {
-#if SB_HAS(64_BIT_POINTERS)
+#if SB_SIZE_OF(POINTER) == 8
   return SbAtomicNoBarrier_CompareAndSwap64(ptr, old_value, new_value);
 #else
   return SbAtomicNoBarrier_CompareAndSwap(ptr, old_value, new_value);
@@ -147,7 +143,7 @@ SbAtomicNoBarrier_CompareAndSwapPtr(volatile SbAtomicPtr* ptr,
 static SB_C_FORCE_INLINE SbAtomicPtr
 SbAtomicNoBarrier_ExchangePtr(volatile SbAtomicPtr* ptr,
                               SbAtomicPtr new_value) {
-#if SB_HAS(64_BIT_POINTERS)
+#if SB_SIZE_OF(POINTER) == 8
   return SbAtomicNoBarrier_Exchange64(ptr, new_value);
 #else
   return SbAtomicNoBarrier_Exchange(ptr, new_value);
@@ -157,7 +153,7 @@ SbAtomicNoBarrier_ExchangePtr(volatile SbAtomicPtr* ptr,
 static SB_C_FORCE_INLINE SbAtomicPtr
 SbAtomicNoBarrier_IncrementPtr(volatile SbAtomicPtr* ptr,
                                SbAtomicPtr increment) {
-#if SB_HAS(64_BIT_POINTERS)
+#if SB_SIZE_OF(POINTER) == 8
   return SbAtomicNoBarrier_Increment64(ptr, increment);
 #else
   return SbAtomicNoBarrier_Increment(ptr, increment);
@@ -166,7 +162,7 @@ SbAtomicNoBarrier_IncrementPtr(volatile SbAtomicPtr* ptr,
 
 static SB_C_FORCE_INLINE SbAtomicPtr
 SbAtomicBarrier_IncrementPtr(volatile SbAtomicPtr* ptr, SbAtomicPtr increment) {
-#if SB_HAS(64_BIT_POINTERS)
+#if SB_SIZE_OF(POINTER) == 8
   return SbAtomicBarrier_Increment64(ptr, increment);
 #else
   return SbAtomicBarrier_Increment(ptr, increment);
@@ -177,7 +173,7 @@ static SB_C_FORCE_INLINE SbAtomicPtr
 SbAtomicAcquire_CompareAndSwapPtr(volatile SbAtomicPtr* ptr,
                                   SbAtomicPtr old_value,
                                   SbAtomicPtr new_value) {
-#if SB_HAS(64_BIT_POINTERS)
+#if SB_SIZE_OF(POINTER) == 8
   return SbAtomicAcquire_CompareAndSwap64(ptr, old_value, new_value);
 #else
   return SbAtomicAcquire_CompareAndSwap(ptr, old_value, new_value);
@@ -188,7 +184,7 @@ static SB_C_FORCE_INLINE SbAtomicPtr
 SbAtomicRelease_CompareAndSwapPtr(volatile SbAtomicPtr* ptr,
                                   SbAtomicPtr old_value,
                                   SbAtomicPtr new_value) {
-#if SB_HAS(64_BIT_POINTERS)
+#if SB_SIZE_OF(POINTER) == 8
   return SbAtomicRelease_CompareAndSwap64(ptr, old_value, new_value);
 #else
   return SbAtomicRelease_CompareAndSwap(ptr, old_value, new_value);
@@ -197,7 +193,7 @@ SbAtomicRelease_CompareAndSwapPtr(volatile SbAtomicPtr* ptr,
 
 static SB_C_FORCE_INLINE void
 SbAtomicNoBarrier_StorePtr(volatile SbAtomicPtr* ptr, SbAtomicPtr value) {
-#if SB_HAS(64_BIT_POINTERS)
+#if SB_SIZE_OF(POINTER) == 8
   SbAtomicNoBarrier_Store64(ptr, value);
 #else
   SbAtomicNoBarrier_Store(ptr, value);
@@ -206,7 +202,7 @@ SbAtomicNoBarrier_StorePtr(volatile SbAtomicPtr* ptr, SbAtomicPtr value) {
 
 static SB_C_FORCE_INLINE void
 SbAtomicAcquire_StorePtr(volatile SbAtomicPtr* ptr, SbAtomicPtr value) {
-#if SB_HAS(64_BIT_POINTERS)
+#if SB_SIZE_OF(POINTER) == 8
   SbAtomicAcquire_Store64(ptr, value);
 #else
   SbAtomicAcquire_Store(ptr, value);
@@ -215,7 +211,7 @@ SbAtomicAcquire_StorePtr(volatile SbAtomicPtr* ptr, SbAtomicPtr value) {
 
 static SB_C_FORCE_INLINE void
 SbAtomicRelease_StorePtr(volatile SbAtomicPtr* ptr, SbAtomicPtr value) {
-#if SB_HAS(64_BIT_POINTERS)
+#if SB_SIZE_OF(POINTER) == 8
   SbAtomicRelease_Store64(ptr, value);
 #else
   SbAtomicRelease_Store(ptr, value);
@@ -224,7 +220,7 @@ SbAtomicRelease_StorePtr(volatile SbAtomicPtr* ptr, SbAtomicPtr value) {
 
 static SB_C_FORCE_INLINE SbAtomicPtr
 SbAtomicNoBarrier_LoadPtr(volatile const SbAtomicPtr* ptr) {
-#if SB_HAS(64_BIT_POINTERS)
+#if SB_SIZE_OF(POINTER) == 8
   return SbAtomicNoBarrier_Load64(ptr);
 #else
   return SbAtomicNoBarrier_Load(ptr);
@@ -233,7 +229,7 @@ SbAtomicNoBarrier_LoadPtr(volatile const SbAtomicPtr* ptr) {
 
 static SB_C_FORCE_INLINE SbAtomicPtr
 SbAtomicAcquire_LoadPtr(volatile const SbAtomicPtr* ptr) {
-#if SB_HAS(64_BIT_POINTERS)
+#if SB_SIZE_OF(POINTER) == 8
   return SbAtomicAcquire_Load64(ptr);
 #else
   return SbAtomicAcquire_Load(ptr);
@@ -242,7 +238,7 @@ SbAtomicAcquire_LoadPtr(volatile const SbAtomicPtr* ptr) {
 
 static SB_C_FORCE_INLINE SbAtomicPtr
 SbAtomicRelease_LoadPtr(volatile const SbAtomicPtr* ptr) {
-#if SB_HAS(64_BIT_POINTERS)
+#if SB_SIZE_OF(POINTER) == 8
   return SbAtomicRelease_Load64(ptr);
 #else
   return SbAtomicRelease_Load(ptr);
@@ -262,7 +258,6 @@ extern "C++" {
 namespace starboard {
 namespace atomic {
 
-#if SB_API_VERSION >= 10
 inline SbAtomic8 Release_CompareAndSwap(volatile SbAtomic8* ptr,
                                         SbAtomic8 old_value,
                                         SbAtomic8 new_value) {
@@ -276,7 +271,6 @@ inline void NoBarrier_Store(volatile SbAtomic8* ptr, SbAtomic8 value) {
 inline SbAtomic8 NoBarrier_Load(volatile const SbAtomic8* ptr) {
   return SbAtomicNoBarrier_Load8(ptr);
 }
-#endif
 
 inline SbAtomic32 NoBarrier_CompareAndSwap(volatile SbAtomic32* ptr,
                                            SbAtomic32 old_value,

@@ -12,19 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
-
 #include "cobalt/xhr/xml_http_request.h"
+
+#include <memory>
 
 #include "base/logging.h"
 #include "cobalt/dom/dom_exception.h"
-#include "cobalt/dom/dom_settings.h"
 #include "cobalt/dom/testing/mock_event_listener.h"
+#include "cobalt/dom/testing/stub_environment_settings.h"
 #include "cobalt/dom/window.h"
 #include "cobalt/script/testing/fake_script_value.h"
 #include "cobalt/script/testing/mock_exception_state.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
+using cobalt::dom::EventListener;
+using cobalt::dom::testing::MockEventListener;
+using cobalt::script::testing::FakeScriptValue;
+using cobalt::script::testing::MockExceptionState;
 using ::testing::_;
 using ::testing::Eq;
 using ::testing::HasSubstr;
@@ -33,10 +37,6 @@ using ::testing::Property;
 using ::testing::Return;
 using ::testing::SaveArg;
 using ::testing::StrictMock;
-using cobalt::dom::EventListener;
-using cobalt::dom::testing::MockEventListener;
-using cobalt::script::testing::FakeScriptValue;
-using cobalt::script::testing::MockExceptionState;
 
 namespace cobalt {
 namespace xhr {
@@ -76,10 +76,6 @@ class ScopedLogInterceptor {
 
   static bool LogHandler(int severity, const char* file, int line,
                          size_t message_start, const std::string& str) {
-    SB_UNREFERENCED_PARAMETER(severity);
-    SB_UNREFERENCED_PARAMETER(file);
-    SB_UNREFERENCED_PARAMETER(line);
-    SB_UNREFERENCED_PARAMETER(message_start);
     *log_interceptor_->output_ += str;
     return true;
   }
@@ -92,12 +88,9 @@ class ScopedLogInterceptor {
 
 ScopedLogInterceptor* ScopedLogInterceptor::log_interceptor_;
 
-class FakeSettings : public dom::DOMSettings {
+class FakeSettings : public dom::testing::StubEnvironmentSettings {
  public:
-  FakeSettings()
-      : dom::DOMSettings(0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                         NULL),
-        example_("http://example.com") {}
+  FakeSettings() : example_("http://example.com") {}
   const GURL& base_url() const override { return example_; }
 
  private:
@@ -157,11 +150,11 @@ TEST_F(XhrTest, Open) {
   std::unique_ptr<MockEventListener> listener = MockEventListener::Create();
   FakeScriptValue<EventListener> script_object(listener.get());
   xhr_->set_onreadystatechange(script_object);
-  EXPECT_CALL(
-      *listener,
-      HandleEvent(Eq(xhr_), Pointee(Property(&dom::Event::type,
-                                             base::Token("readystatechange"))),
-                  _))
+  EXPECT_CALL(*listener,
+              HandleEvent(Eq(xhr_),
+                          Pointee(Property(&dom::Event::type,
+                                           base::Token("readystatechange"))),
+                          _))
       .Times(1);
   xhr_->Open("GET", "https://www.google.com", &exception_state_);
 

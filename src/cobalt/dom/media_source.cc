@@ -51,8 +51,6 @@
 #include "base/compiler_specific.h"
 #include "base/guid.h"
 #include "base/logging.h"
-#include "base/strings/string_split.h"
-#include "base/strings/string_util.h"
 #include "cobalt/base/tokens.h"
 #include "cobalt/dom/dom_exception.h"
 #include "cobalt/dom/dom_settings.h"
@@ -64,50 +62,18 @@
 namespace cobalt {
 namespace dom {
 
-using media::PipelineStatus;
-using media::CHUNK_DEMUXER_ERROR_EOS_STATUS_NETWORK_ERROR;
 using media::CHUNK_DEMUXER_ERROR_EOS_STATUS_DECODE_ERROR;
+using media::CHUNK_DEMUXER_ERROR_EOS_STATUS_NETWORK_ERROR;
 using media::PIPELINE_OK;
+using media::PipelineStatus;
 
-namespace {
-
-// Parse mime and codecs from content type. It will return "video/mp4" and
-// "avc1.42E01E, mp4a.40.2" for "video/mp4; codecs="avc1.42E01E, mp4a.40.2".
-// Note that this function does minimum validation as the media stack will check
-// the mime type and codecs strictly.
-bool ParseContentType(const std::string& content_type, std::string* mime,
-                      std::string* codecs) {
-  DCHECK(mime);
-  DCHECK(codecs);
-  static const char kCodecs[] = "codecs=";
-
-  // SplitString will also trim the results.
-  std::vector<std::string> tokens = ::base::SplitString(
-      content_type, ";", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
-  // The first one has to be mime type with delimiter '/' like 'video/mp4'.
-  if (tokens.size() < 2 || tokens[0].find('/') == tokens[0].npos) {
-    return false;
-  }
-  *mime = tokens[0];
-  for (size_t i = 1; i < tokens.size(); ++i) {
-    if (base::strncasecmp(tokens[i].c_str(), kCodecs, strlen(kCodecs))) {
-      continue;
-    }
-    *codecs = tokens[i].substr(strlen("codecs="));
-    base::TrimString(*codecs, " \"", codecs);
-    break;
-  }
-  return !codecs->empty();
-}
-
-}  // namespace
-
-MediaSource::MediaSource()
-    : chunk_demuxer_(NULL),
+MediaSource::MediaSource(script::EnvironmentSettings* settings)
+    : EventTarget(settings),
+      chunk_demuxer_(NULL),
       ready_state_(kMediaSourceReadyStateClosed),
       ALLOW_THIS_IN_INITIALIZER_LIST(event_queue_(this)),
-      source_buffers_(new SourceBufferList(&event_queue_)),
-      active_source_buffers_(new SourceBufferList(&event_queue_)),
+      source_buffers_(new SourceBufferList(settings, &event_queue_)),
+      active_source_buffers_(new SourceBufferList(settings, &event_queue_)),
       live_seekable_range_(new TimeRanges) {}
 
 MediaSource::~MediaSource() { SetReadyState(kMediaSourceReadyStateClosed); }
@@ -123,8 +89,6 @@ scoped_refptr<SourceBufferList> MediaSource::active_source_buffers() const {
 MediaSourceReadyState MediaSource::ready_state() const { return ready_state_; }
 
 double MediaSource::duration(script::ExceptionState* exception_state) const {
-  SB_UNREFERENCED_PARAMETER(exception_state);
-
   if (ready_state_ == kMediaSourceReadyStateClosed) {
     return std::numeric_limits<float>::quiet_NaN();
   }
@@ -203,22 +167,13 @@ scoped_refptr<SourceBuffer> MediaSource::AddSourceBuffer(
     return NULL;
   }
 
-  std::string mime;
-  std::string codecs;
-
-  if (!ParseContentType(type, &mime, &codecs)) {
-    DOMException::Raise(DOMException::kNotSupportedErr, exception_state);
-    // Return value should be ignored.
-    return NULL;
-  }
-
   std::string guid = base::GenerateGUID();
   scoped_refptr<SourceBuffer> source_buffer;
-  ChunkDemuxer::Status status = chunk_demuxer_->AddId(guid, mime, codecs);
+  ChunkDemuxer::Status status = chunk_demuxer_->AddId(guid, type);
   switch (status) {
     case ChunkDemuxer::kOk:
       source_buffer =
-          new SourceBuffer(guid, this, chunk_demuxer_, &event_queue_);
+          new SourceBuffer(settings, guid, this, chunk_demuxer_, &event_queue_);
       break;
     case ChunkDemuxer::kNotSupported:
       DOMException::Raise(DOMException::kNotSupportedErr, exception_state);

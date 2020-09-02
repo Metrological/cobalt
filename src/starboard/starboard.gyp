@@ -19,12 +19,18 @@
 {
   'targets': [
     {
-      'target_name': 'starboard',
+      'target_name': 'starboard_base',
       'type': 'none',
       'conditions': [
         ['sb_evergreen == 1', {
           'dependencies': [
+            '<(DEPTH)/starboard/client_porting/eztime/eztime.gyp:eztime',
             '<(DEPTH)/starboard/starboard_headers_only.gyp:starboard_headers_only',
+            '<(DEPTH)/third_party/llvm-project/compiler-rt/compiler-rt.gyp:compiler_rt',
+            '<(DEPTH)/third_party/llvm-project/libcxx/libcxx.gyp:cxx',
+            '<(DEPTH)/third_party/llvm-project/libcxxabi/libcxxabi.gyp:cxxabi',
+            '<(DEPTH)/third_party/llvm-project/libunwind/libunwind.gyp:unwind_evergreen',
+            '<(DEPTH)/third_party/musl/musl.gyp:c',
           ],
         }, {
           'dependencies': [
@@ -32,6 +38,14 @@
           ],
         }],
        ],
+    },
+    {
+      'target_name': 'starboard',
+      'type': 'none',
+      'dependencies': [
+        '<(DEPTH)/third_party/crashpad/wrapper/wrapper.gyp:crashpad_wrapper_stub',
+        'starboard_base',
+      ],
     },
     {
       'target_name': 'starboard_full',

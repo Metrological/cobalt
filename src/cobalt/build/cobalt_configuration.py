@@ -120,7 +120,6 @@ class CobaltConfiguration(application_configuration.ApplicationConfiguration):
 
   def GetTestTargets(self):
     return [
-        'accessibility_test',
         'audio_test',
         'base_test',
         'base_unittests',
@@ -133,10 +132,12 @@ class CobaltConfiguration(application_configuration.ApplicationConfiguration):
         'dom_parser_test',
         'dom_test',
         'extension_test',
+        'graphics_system_test',
         'layout_test',
         'layout_tests',
         'loader_test',
         'math_test',
+        'media_capture_test',
         'media_session_test',
         'media_stream_test',
         'memory_store_test',
@@ -152,7 +153,9 @@ class CobaltConfiguration(application_configuration.ApplicationConfiguration):
         'storage_upgrade_test',
         'web_animations_test',
         'webdriver_test',
+        'websocket_test',
         'xhr_test',
+        'zip_unittests',
     ]
 
   def GetDefaultTargetBuildFile(self):

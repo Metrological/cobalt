@@ -14,6 +14,7 @@
 # limitations under the License.
 """Linux implementation of Starboard launcher abstraction."""
 
+import errno
 import os
 import signal
 import socket
@@ -24,6 +25,7 @@ import traceback
 
 import _env  # pylint: disable=unused-import
 from starboard.tools import abstract_launcher
+from starboard.tools import send_link
 
 STATUS_CHANGE_TIMEOUT = 15
 
@@ -34,8 +36,8 @@ def GetProcessStatus(pid):
   Args:
     pid: process id of specified cobalt instance.
   """
-  output = subprocess.check_output(
-      ["ps -o state= -p {}".format(pid)], shell=True)
+  output = subprocess.check_output(["ps -o state= -p {}".format(pid)],
+                                   shell=True)
   return output
 
 
@@ -45,17 +47,35 @@ class Launcher(abstract_launcher.AbstractLauncher):
   def __init__(self, platform, target_name, config, device_id, **kwargs):
     super(Launcher, self).__init__(platform, target_name, config, device_id,
                                    **kwargs)
-    if not self.device_id:
+    if self.device_id:
+      self.device_ip = self.device_id
+    else:
       if socket.has_ipv6:  #  If the device supports IPv6:
         self.device_id = "[::1]"  #  Use IPv6 loopback address (rfc2732 format).
       else:
         self.device_id = socket.gethostbyname("localhost")  # pylint: disable=W6503
+      self.device_ip = socket.gethostbyname(socket.gethostname())
 
     self.executable = self.GetTargetPath()
 
     env = os.environ.copy()
     env.update(self.env_variables)
     self.full_env = env
+
+    # Ensure that if the binary has code coverage or profiling instrumentation,
+    # the output will be written to a file in the coverage_directory named as
+    # the target_name with '.profraw' postfixed.
+    if self.coverage_directory:
+      target_profraw = os.path.join(self.coverage_directory,
+                                    target_name + ".profraw")
+      env.update({"LLVM_PROFILE_FILE": target_profraw})
+
+      # Remove any stale profraw file that may already exist.
+      try:
+        os.remove(target_profraw)
+      except OSError as e:
+        if e.errno != errno.ENOENT:
+          raise
 
     self.proc = None
     self.pid = None
@@ -68,7 +88,8 @@ class Launcher(abstract_launcher.AbstractLauncher):
         stdout=self.output_file,
         stderr=self.output_file,
         env=self.full_env,
-        close_fds=True)
+        close_fds=True,
+        cwd=self.out_directory)
     self.pid = self.proc.pid
     self.proc.wait()
     return self.proc.returncode
@@ -107,14 +128,22 @@ class Launcher(abstract_launcher.AbstractLauncher):
     else:
       sys.stderr.write("Cannot send suspend to executable; it is closed.\n")
 
+  def SupportsDeepLink(self):
+    return True
+
+  def SendDeepLink(self, link):
+    # The connect call in SendLink occassionally fails. Retry a few times if
+    # this happens.
+    connection_attempts = 3
+    return send_link.SendLink(
+        os.path.basename(self.executable), link, connection_attempts) == 0
+
   def WaitForProcessStatus(self, target_status, timeout):
     """Wait for Cobalt to turn to target status within specified timeout limit.
 
     Args:
-      target_status: A character representing application status:
-                        R-running;
-                        T-stopped/suspended;
-                        S-sleep/paused;
+      target_status: A character representing application status: R-running;
+        T-stopped/suspended; S-sleep/paused;
       timeout:       Time limit in unit of seconds.
     """
     elapsed_time = 0
@@ -124,3 +153,7 @@ class Launcher(abstract_launcher.AbstractLauncher):
       else:
         elapsed_time += .005
       time.sleep(.005)
+
+  def GetDeviceIp(self):
+    """Gets the device IP."""
+    return self.device_ip

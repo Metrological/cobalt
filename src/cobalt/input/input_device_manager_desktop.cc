@@ -52,17 +52,19 @@ InputDeviceManagerDesktop::InputDeviceManagerDesktop(
     const KeyboardEventCallback& keyboard_event_callback,
     const PointerEventCallback& pointer_event_callback,
     const WheelEventCallback& wheel_event_callback,
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
     const InputEventCallback& input_event_callback,
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
     system_window::SystemWindow* system_window)
     : system_window_(system_window),
       system_window_input_event_callback_(
           base::Bind(&InputDeviceManagerDesktop::HandleSystemWindowInputEvent,
                      base::Unretained(this))),
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
       input_event_callback_(input_event_callback),
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+      // SB_HAS(ON_SCREEN_KEYBOARD)
       keypress_generator_filter_(keyboard_event_callback),
       pointer_event_callback_(pointer_event_callback),
       wheel_event_callback_(wheel_event_callback) {
@@ -237,8 +239,7 @@ void InputDeviceManagerDesktop::HandleKeyboardEvent(
   keypress_generator_filter_.HandleKeyboardEvent(type, keyboard_event);
 
   int32_t key_code_in_int32 = static_cast<int32_t>(key_code);
-  overlay_info::OverlayInfoRegistry::Register(
-      "input_manager:keydown", &key_code_in_int32, sizeof(key_code_in_int32));
+  overlay_info::OverlayInfoRegistry::Register("keydown", key_code_in_int32);
 }
 
 void InputDeviceManagerDesktop::HandlePointerEvent(
@@ -297,7 +298,7 @@ void InputDeviceManagerDesktop::HandleWheelEvent(
   wheel_event_callback_.Run(type, wheel_event);
 }
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
 void InputDeviceManagerDesktop::HandleInputEvent(
     const system_window::InputEvent* event) {
   // Note: we currently treat all dom::InputEvents as input (never beforeinput).
@@ -309,7 +310,8 @@ void InputDeviceManagerDesktop::HandleInputEvent(
   input_event.set_is_composing(event->is_composing());
   input_event_callback_.Run(type, input_event);
 }
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
 void InputDeviceManagerDesktop::HandleSystemWindowInputEvent(
     const base::Event* event) {
@@ -369,10 +371,11 @@ void InputDeviceManagerDesktop::HandleSystemWindowInputEvent(
       HandleWheelEvent(input_event);
       break;
     case system_window::InputEvent::kInput:
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
       HandleInputEvent(input_event);
       break;
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
     case system_window::InputEvent::kKeyMove:
       break;
   }

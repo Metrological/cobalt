@@ -37,8 +37,13 @@
     ],
     'compiler_flags_gold': [
       '-fno-rtti',
-      '-O2',
       '-gline-tables-only',
+    ],
+    'compiler_flags_gold_size': [
+      '-Os',
+    ],
+    'compiler_flags_gold_speed': [
+      '-O2',
     ],
     'conditions': [
       ['clang==1', {
@@ -100,6 +105,8 @@
           # Suppress "[type1] has C-linkage specified, but returns user-defined type [type2] which is incompatible with C"
           '-Wno-return-type-c-linkage',
           '-Wno-unused-parameter',
+          # Suppress warnings about unknown pragmas.
+          '-Wno-unknown-pragmas',
         ],
       }],
       ['cobalt_fastbuild==0', {

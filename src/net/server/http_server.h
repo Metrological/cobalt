@@ -90,9 +90,13 @@ class HttpServer {
   int GetLocalAddress(IPEndPoint* address);
 
 #if defined(STARBOARD)
+  // Like GetLocalAddress(), but if listening to IPADDR_ANY returns the local
+  // address of an arbitrary interface (choosing IPv4 address over IPv6).
+  int GetLocalInterfaceAddress(IPEndPoint* address);
+
   bool static ParseHeaders(const std::string& request,
                            HttpServerRequestInfo* info) {
-    size_t pos;
+    size_t pos = 0;
     return ParseHeaders(request.c_str(), request.length(), info, &pos);
   }
 #endif

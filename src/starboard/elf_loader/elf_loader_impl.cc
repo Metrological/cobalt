@@ -16,15 +16,24 @@
 #include "starboard/common/log.h"
 #include "starboard/elf_loader/elf.h"
 #include "starboard/elf_loader/file_impl.h"
+#include "starboard/elf_loader/log.h"
 #include "starboard/memory.h"
 #include "starboard/string.h"
 
 namespace starboard {
 namespace elf_loader {
 
-ElfLoaderImpl::ElfLoaderImpl() {}
+ElfLoaderImpl::ElfLoaderImpl() {
+#if SB_API_VERSION < 12 || !(SB_API_VERSION >= 12 || SB_HAS(MMAP)) || \
+    !SB_CAN(MAP_EXECUTABLE_MEMORY)
+  SB_CHECK(false) << "The elf_loader requires SB_API_VERSION >= 12 with "
+                     "executable memory map support!";
+#endif
+}
 
-bool ElfLoaderImpl::Load(const char* name) {
+bool ElfLoaderImpl::Load(
+    const char* name,
+    const void* (*custom_get_extension)(const char* name)) {
   SB_LOG(INFO) << "Loading: " << name;
   elf_file_.reset(new FileImpl());
   elf_file_->Open(name);
@@ -35,26 +44,26 @@ bool ElfLoaderImpl::Load(const char* name) {
     return false;
   }
 
-  SB_LOG(INFO) << "Loaded ELF header";
+  SB_DLOG(INFO) << "Loaded ELF header";
 
   program_table_.reset(new ProgramTable());
   program_table_->LoadProgramHeader(elf_header_loader_->GetHeader(),
                                     elf_file_.get());
 
-  SB_LOG(INFO) << "Loaded Program header";
+  SB_DLOG(INFO) << "Loaded Program header";
 
   if (!program_table_->ReserveLoadMemory()) {
     SB_LOG(ERROR) << "Failed to reserve memory space";
     return false;
   }
 
-  SB_LOG(INFO) << "Reserved address space";
+  SB_DLOG(INFO) << "Reserved address space";
 
   if (!program_table_->LoadSegments(elf_file_.get())) {
     SB_LOG(ERROR) << "Failed to load segments";
     return false;
   }
-  SB_LOG(INFO) << "Loaded segments";
+  SB_DLOG(INFO) << "Loaded segments";
 
   Dyn* dynamic = NULL;
   size_t dynamic_count = 0;
@@ -71,14 +80,9 @@ bool ElfLoaderImpl::Load(const char* name) {
     SB_LOG(ERROR) << "Failed to initialize dynamic section";
     return false;
   }
-  SB_LOG(INFO) << "Initialized dynamic section";
-  if (!dynamic_section_->InitDynamicSymbols()) {
-    SB_LOG(ERROR) << "Failed to load dynamic symbols";
-    return false;
-  }
-  SB_LOG(INFO) << "Initialized dynamic symbols";
+  SB_DLOG(INFO) << "Initialized dynamic section";
 
-  exported_symbols_.reset(new ExportedSymbols());
+  exported_symbols_.reset(new ExportedSymbols(custom_get_extension));
   relocations_.reset(new Relocations(program_table_->GetBaseMemoryAddress(),
                                      dynamic_section_.get(),
                                      exported_symbols_.get()));
@@ -87,7 +91,7 @@ bool ElfLoaderImpl::Load(const char* name) {
     return false;
   }
   if (relocations_->HasTextRelocations()) {
-    SB_LOG(INFO) << "HasTextRelocations";
+    SB_DLOG(INFO) << "HasTextRelocations";
     // Adjust the memory protection to its to allow modifications.
     if (program_table_->AdjustMemoryProtectionOfReadOnlySegments(
             kSbMemoryMapProtectWrite) < 0) {
@@ -95,7 +99,7 @@ bool ElfLoaderImpl::Load(const char* name) {
       return false;
     }
   }
-  SB_LOG(INFO) << "Loaded relocations";
+  SB_DLOG(INFO) << "Loaded relocations";
   if (!relocations_->ApplyAllRelocations()) {
     SB_LOG(ERROR) << "Failed to apply relocations";
     return false;
@@ -103,19 +107,24 @@ bool ElfLoaderImpl::Load(const char* name) {
 
   if (relocations_->HasTextRelocations()) {
     // Restores the memory protection to its original state.
+#if SB_API_VERSION >= 12 || SB_HAS(MMAP)
     if (program_table_->AdjustMemoryProtectionOfReadOnlySegments(
             kSbMemoryMapProtectReserved) < 0) {
       SB_LOG(ERROR) << "Unable to restore segment protection";
       return false;
     }
+#endif
   }
 
-  SB_LOG(INFO) << "Applied relocations";
+  SB_DLOG(INFO) << "Applied relocations";
 
-  SB_LOG(INFO) << "Call constructors";
+  program_table_->PublishEvergreenInfo(name);
+  SB_DLOG(INFO) << "Published Evergreen Info";
+
+  SB_DLOG(INFO) << "Call constructors";
   dynamic_section_->CallConstructors();
 
-  SB_LOG(INFO) << "Finished loading";
+  SB_DLOG(INFO) << "Finished loading";
 
   return true;
 }

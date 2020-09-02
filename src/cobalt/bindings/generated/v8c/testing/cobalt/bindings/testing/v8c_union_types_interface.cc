@@ -1,6 +1,6 @@
 
 
-// Copyright 2019 The Cobalt Authors. All Rights Reserved.
+// Copyright 2020 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,6 +30,8 @@
 #include "cobalt/script/value_handle.h"
 #include "cobalt/bindings/testing/arbitrary_interface.h"
 #include "cobalt/bindings/testing/base_interface.h"
+#include "cobalt/bindings/testing/derived_dictionary.h"
+#include "cobalt/bindings/testing/test_dictionary.h"
 #include "cobalt/bindings/testing/v8c_arbitrary_interface.h"
 #include "cobalt/bindings/testing/v8c_base_interface.h"
 
@@ -54,6 +56,7 @@
 #include "cobalt/script/v8c/v8c_property_enumerator.h"
 #include "cobalt/script/v8c/v8c_value_handle.h"
 #include "cobalt/script/v8c/wrapper_private.h"
+#include "cobalt/script/v8c/common_v8c_bindings_code.h"
 #include "v8/include/v8.h"
 
 
@@ -62,6 +65,8 @@ using cobalt::bindings::testing::UnionTypesInterface;
 using cobalt::bindings::testing::V8cUnionTypesInterface;
 using cobalt::bindings::testing::ArbitraryInterface;
 using cobalt::bindings::testing::BaseInterface;
+using cobalt::bindings::testing::DerivedDictionary;
+using cobalt::bindings::testing::TestDictionary;
 using cobalt::bindings::testing::V8cArbitraryInterface;
 using cobalt::bindings::testing::V8cBaseInterface;
 using cobalt::script::CallbackInterfaceTraits;
@@ -118,67 +123,31 @@ void DummyConstructor(const v8::FunctionCallbackInfo<v8::Value>& info) {
 
 void unionPropertyAttributeGetter(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
-  v8::Isolate* isolate = info.GetIsolate();
-  v8::Local<v8::Object> object = info.Holder();
-
-
-  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
-  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
-  if (!WrapperPrivate::HasWrapperPrivate(object) ||
-      !V8cUnionTypesInterface::GetTemplate(isolate)->HasInstance(object)) {
-    V8cExceptionState exception(isolate);
-    exception.SetSimpleException(script::kDoesNotImplementInterface);
-    return;
-  }
-  V8cExceptionState exception_state{isolate};
-  v8::Local<v8::Value> result_value;
-
-  WrapperPrivate* wrapper_private =
-      WrapperPrivate::GetFromWrapperObject(object);
-  if (!wrapper_private) {
-    NOTIMPLEMENTED();
-    return;
-  }
-  UnionTypesInterface* impl =
-      wrapper_private->wrappable<UnionTypesInterface>().get();
-
-
-  if (!exception_state.is_exception_set()) {
-    ToJSValue(isolate,
+  script::v8c::shared_bindings::AttributeGetterImpl<UnionTypesInterface,
+                                                    V8cUnionTypesInterface>(
+                    info,
+                    false,
+                    false,
+                    [](v8::Isolate* isolate, UnionTypesInterface* impl,
+                       cobalt::script::ExceptionState& exception_state,
+                       v8::Local<v8::Value>& result_value) {
+  
+      ToJSValue(isolate,
               impl->union_property(),
               &result_value);
-  }
-  if (exception_state.is_exception_set()) {
-    return;
-  }
-  info.GetReturnValue().Set(result_value);
+
+  });
 }
 
 void unionPropertyAttributeSetter(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
-  v8::Isolate* isolate = info.GetIsolate();
-  v8::Local<v8::Object> object = info.Holder();
-  v8::Local<v8::Value> v8_value = info[0];
-
-  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
-  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
-  if (!WrapperPrivate::HasWrapperPrivate(object) ||
-      !V8cUnionTypesInterface::GetTemplate(isolate)->HasInstance(object)) {
-    V8cExceptionState exception(isolate);
-    exception.SetSimpleException(script::kDoesNotImplementInterface);
-    return;
-  }
-  V8cExceptionState exception_state{isolate};
-  v8::Local<v8::Value> result_value;
-
-  WrapperPrivate* wrapper_private =
-      WrapperPrivate::GetFromWrapperObject(object);
-  if (!wrapper_private) {
-    NOTIMPLEMENTED();
-    return;
-  }
-  UnionTypesInterface* impl =
-      wrapper_private->wrappable<UnionTypesInterface>().get();
+  script::v8c::shared_bindings::AttributeSetterImpl<UnionTypesInterface, V8cUnionTypesInterface>(info,
+                    false,
+                    false,
+                    [](v8::Isolate* isolate, UnionTypesInterface* impl,
+                       V8cExceptionState& exception_state,
+                       v8::Local<v8::Value>& result_value,
+                       v8::Local<v8::Value> v8_value) {
   TypeTraits<::cobalt::script::UnionType4<std::string, bool, scoped_refptr<ArbitraryInterface>, int32_t > >::ConversionType value;
   FromJSValue(isolate, v8_value, kNoConversionFlags, &exception_state,
               &value);
@@ -187,74 +156,39 @@ void unionPropertyAttributeSetter(
   }
 
   impl->set_union_property(value);
-  result_value = v8::Undefined(isolate);
+result_value = v8::Undefined(isolate);
   return;
+});
 }
 
 
 void unionWithNullableMemberPropertyAttributeGetter(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
-  v8::Isolate* isolate = info.GetIsolate();
-  v8::Local<v8::Object> object = info.Holder();
-
-
-  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
-  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
-  if (!WrapperPrivate::HasWrapperPrivate(object) ||
-      !V8cUnionTypesInterface::GetTemplate(isolate)->HasInstance(object)) {
-    V8cExceptionState exception(isolate);
-    exception.SetSimpleException(script::kDoesNotImplementInterface);
-    return;
-  }
-  V8cExceptionState exception_state{isolate};
-  v8::Local<v8::Value> result_value;
-
-  WrapperPrivate* wrapper_private =
-      WrapperPrivate::GetFromWrapperObject(object);
-  if (!wrapper_private) {
-    NOTIMPLEMENTED();
-    return;
-  }
-  UnionTypesInterface* impl =
-      wrapper_private->wrappable<UnionTypesInterface>().get();
-
-
-  if (!exception_state.is_exception_set()) {
-    ToJSValue(isolate,
+  script::v8c::shared_bindings::AttributeGetterImpl<UnionTypesInterface,
+                                                    V8cUnionTypesInterface>(
+                    info,
+                    false,
+                    false,
+                    [](v8::Isolate* isolate, UnionTypesInterface* impl,
+                       cobalt::script::ExceptionState& exception_state,
+                       v8::Local<v8::Value>& result_value) {
+  
+      ToJSValue(isolate,
               impl->union_with_nullable_member_property(),
               &result_value);
-  }
-  if (exception_state.is_exception_set()) {
-    return;
-  }
-  info.GetReturnValue().Set(result_value);
+
+  });
 }
 
 void unionWithNullableMemberPropertyAttributeSetter(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
-  v8::Isolate* isolate = info.GetIsolate();
-  v8::Local<v8::Object> object = info.Holder();
-  v8::Local<v8::Value> v8_value = info[0];
-
-  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
-  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
-  if (!WrapperPrivate::HasWrapperPrivate(object) ||
-      !V8cUnionTypesInterface::GetTemplate(isolate)->HasInstance(object)) {
-    V8cExceptionState exception(isolate);
-    exception.SetSimpleException(script::kDoesNotImplementInterface);
-    return;
-  }
-  V8cExceptionState exception_state{isolate};
-  v8::Local<v8::Value> result_value;
-
-  WrapperPrivate* wrapper_private =
-      WrapperPrivate::GetFromWrapperObject(object);
-  if (!wrapper_private) {
-    NOTIMPLEMENTED();
-    return;
-  }
-  UnionTypesInterface* impl =
-      wrapper_private->wrappable<UnionTypesInterface>().get();
+  script::v8c::shared_bindings::AttributeSetterImpl<UnionTypesInterface, V8cUnionTypesInterface>(info,
+                    false,
+                    false,
+                    [](v8::Isolate* isolate, UnionTypesInterface* impl,
+                       V8cExceptionState& exception_state,
+                       v8::Local<v8::Value>& result_value,
+                       v8::Local<v8::Value> v8_value) {
   TypeTraits<base::Optional<::cobalt::script::UnionType2<double, std::string > > >::ConversionType value;
   FromJSValue(isolate, v8_value, kNoConversionFlags, &exception_state,
               &value);
@@ -263,74 +197,39 @@ void unionWithNullableMemberPropertyAttributeSetter(
   }
 
   impl->set_union_with_nullable_member_property(value);
-  result_value = v8::Undefined(isolate);
+result_value = v8::Undefined(isolate);
   return;
+});
 }
 
 
 void nullableUnionPropertyAttributeGetter(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
-  v8::Isolate* isolate = info.GetIsolate();
-  v8::Local<v8::Object> object = info.Holder();
-
-
-  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
-  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
-  if (!WrapperPrivate::HasWrapperPrivate(object) ||
-      !V8cUnionTypesInterface::GetTemplate(isolate)->HasInstance(object)) {
-    V8cExceptionState exception(isolate);
-    exception.SetSimpleException(script::kDoesNotImplementInterface);
-    return;
-  }
-  V8cExceptionState exception_state{isolate};
-  v8::Local<v8::Value> result_value;
-
-  WrapperPrivate* wrapper_private =
-      WrapperPrivate::GetFromWrapperObject(object);
-  if (!wrapper_private) {
-    NOTIMPLEMENTED();
-    return;
-  }
-  UnionTypesInterface* impl =
-      wrapper_private->wrappable<UnionTypesInterface>().get();
-
-
-  if (!exception_state.is_exception_set()) {
-    ToJSValue(isolate,
+  script::v8c::shared_bindings::AttributeGetterImpl<UnionTypesInterface,
+                                                    V8cUnionTypesInterface>(
+                    info,
+                    false,
+                    false,
+                    [](v8::Isolate* isolate, UnionTypesInterface* impl,
+                       cobalt::script::ExceptionState& exception_state,
+                       v8::Local<v8::Value>& result_value) {
+  
+      ToJSValue(isolate,
               impl->nullable_union_property(),
               &result_value);
-  }
-  if (exception_state.is_exception_set()) {
-    return;
-  }
-  info.GetReturnValue().Set(result_value);
+
+  });
 }
 
 void nullableUnionPropertyAttributeSetter(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
-  v8::Isolate* isolate = info.GetIsolate();
-  v8::Local<v8::Object> object = info.Holder();
-  v8::Local<v8::Value> v8_value = info[0];
-
-  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
-  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
-  if (!WrapperPrivate::HasWrapperPrivate(object) ||
-      !V8cUnionTypesInterface::GetTemplate(isolate)->HasInstance(object)) {
-    V8cExceptionState exception(isolate);
-    exception.SetSimpleException(script::kDoesNotImplementInterface);
-    return;
-  }
-  V8cExceptionState exception_state{isolate};
-  v8::Local<v8::Value> result_value;
-
-  WrapperPrivate* wrapper_private =
-      WrapperPrivate::GetFromWrapperObject(object);
-  if (!wrapper_private) {
-    NOTIMPLEMENTED();
-    return;
-  }
-  UnionTypesInterface* impl =
-      wrapper_private->wrappable<UnionTypesInterface>().get();
+  script::v8c::shared_bindings::AttributeSetterImpl<UnionTypesInterface, V8cUnionTypesInterface>(info,
+                    false,
+                    false,
+                    [](v8::Isolate* isolate, UnionTypesInterface* impl,
+                       V8cExceptionState& exception_state,
+                       v8::Local<v8::Value>& result_value,
+                       v8::Local<v8::Value> v8_value) {
   TypeTraits<base::Optional<::cobalt::script::UnionType2<double, std::string > > >::ConversionType value;
   FromJSValue(isolate, v8_value, (kConversionFlagNullable), &exception_state,
               &value);
@@ -339,74 +238,39 @@ void nullableUnionPropertyAttributeSetter(
   }
 
   impl->set_nullable_union_property(value);
-  result_value = v8::Undefined(isolate);
+result_value = v8::Undefined(isolate);
   return;
+});
 }
 
 
 void unionBasePropertyAttributeGetter(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
-  v8::Isolate* isolate = info.GetIsolate();
-  v8::Local<v8::Object> object = info.Holder();
-
-
-  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
-  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
-  if (!WrapperPrivate::HasWrapperPrivate(object) ||
-      !V8cUnionTypesInterface::GetTemplate(isolate)->HasInstance(object)) {
-    V8cExceptionState exception(isolate);
-    exception.SetSimpleException(script::kDoesNotImplementInterface);
-    return;
-  }
-  V8cExceptionState exception_state{isolate};
-  v8::Local<v8::Value> result_value;
-
-  WrapperPrivate* wrapper_private =
-      WrapperPrivate::GetFromWrapperObject(object);
-  if (!wrapper_private) {
-    NOTIMPLEMENTED();
-    return;
-  }
-  UnionTypesInterface* impl =
-      wrapper_private->wrappable<UnionTypesInterface>().get();
-
-
-  if (!exception_state.is_exception_set()) {
-    ToJSValue(isolate,
+  script::v8c::shared_bindings::AttributeGetterImpl<UnionTypesInterface,
+                                                    V8cUnionTypesInterface>(
+                    info,
+                    false,
+                    false,
+                    [](v8::Isolate* isolate, UnionTypesInterface* impl,
+                       cobalt::script::ExceptionState& exception_state,
+                       v8::Local<v8::Value>& result_value) {
+  
+      ToJSValue(isolate,
               impl->union_base_property(),
               &result_value);
-  }
-  if (exception_state.is_exception_set()) {
-    return;
-  }
-  info.GetReturnValue().Set(result_value);
+
+  });
 }
 
 void unionBasePropertyAttributeSetter(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
-  v8::Isolate* isolate = info.GetIsolate();
-  v8::Local<v8::Object> object = info.Holder();
-  v8::Local<v8::Value> v8_value = info[0];
-
-  V8cGlobalEnvironment* global_environment = V8cGlobalEnvironment::GetFromIsolate(isolate);
-  WrapperFactory* wrapper_factory = global_environment->wrapper_factory();
-  if (!WrapperPrivate::HasWrapperPrivate(object) ||
-      !V8cUnionTypesInterface::GetTemplate(isolate)->HasInstance(object)) {
-    V8cExceptionState exception(isolate);
-    exception.SetSimpleException(script::kDoesNotImplementInterface);
-    return;
-  }
-  V8cExceptionState exception_state{isolate};
-  v8::Local<v8::Value> result_value;
-
-  WrapperPrivate* wrapper_private =
-      WrapperPrivate::GetFromWrapperObject(object);
-  if (!wrapper_private) {
-    NOTIMPLEMENTED();
-    return;
-  }
-  UnionTypesInterface* impl =
-      wrapper_private->wrappable<UnionTypesInterface>().get();
+  script::v8c::shared_bindings::AttributeSetterImpl<UnionTypesInterface, V8cUnionTypesInterface>(info,
+                    false,
+                    false,
+                    [](v8::Isolate* isolate, UnionTypesInterface* impl,
+                       V8cExceptionState& exception_state,
+                       v8::Local<v8::Value>& result_value,
+                       v8::Local<v8::Value> v8_value) {
   TypeTraits<::cobalt::script::UnionType2<scoped_refptr<BaseInterface>, std::string > >::ConversionType value;
   FromJSValue(isolate, v8_value, kNoConversionFlags, &exception_state,
               &value);
@@ -415,8 +279,91 @@ void unionBasePropertyAttributeSetter(
   }
 
   impl->set_union_base_property(value);
-  result_value = v8::Undefined(isolate);
+result_value = v8::Undefined(isolate);
   return;
+});
+}
+
+
+void unionWithDictionaryPropertyAttributeGetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  script::v8c::shared_bindings::AttributeGetterImpl<UnionTypesInterface,
+                                                    V8cUnionTypesInterface>(
+                    info,
+                    false,
+                    false,
+                    [](v8::Isolate* isolate, UnionTypesInterface* impl,
+                       cobalt::script::ExceptionState& exception_state,
+                       v8::Local<v8::Value>& result_value) {
+  
+      ToJSValue(isolate,
+              impl->union_with_dictionary_property(),
+              &result_value);
+
+  });
+}
+
+void unionWithDictionaryPropertyAttributeSetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  script::v8c::shared_bindings::AttributeSetterImpl<UnionTypesInterface, V8cUnionTypesInterface>(info,
+                    false,
+                    false,
+                    [](v8::Isolate* isolate, UnionTypesInterface* impl,
+                       V8cExceptionState& exception_state,
+                       v8::Local<v8::Value>& result_value,
+                       v8::Local<v8::Value> v8_value) {
+  TypeTraits<::cobalt::script::UnionType3<std::string, double, TestDictionary > >::ConversionType value;
+  FromJSValue(isolate, v8_value, kNoConversionFlags, &exception_state,
+              &value);
+  if (exception_state.is_exception_set()) {
+    return;
+  }
+
+  impl->set_union_with_dictionary_property(value);
+result_value = v8::Undefined(isolate);
+  return;
+});
+}
+
+
+void unionDictsObjectsPropertyAttributeGetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  script::v8c::shared_bindings::AttributeGetterImpl<UnionTypesInterface,
+                                                    V8cUnionTypesInterface>(
+                    info,
+                    false,
+                    false,
+                    [](v8::Isolate* isolate, UnionTypesInterface* impl,
+                       cobalt::script::ExceptionState& exception_state,
+                       v8::Local<v8::Value>& result_value) {
+  
+      ToJSValue(isolate,
+              impl->union_dicts_objects_property(),
+              &result_value);
+
+  });
+}
+
+void unionDictsObjectsPropertyAttributeSetter(
+    const v8::FunctionCallbackInfo<v8::Value>& info) {
+  script::v8c::shared_bindings::AttributeSetterImpl<UnionTypesInterface, V8cUnionTypesInterface>(info,
+                    false,
+                    false,
+                    [](v8::Isolate* isolate, UnionTypesInterface* impl,
+                       V8cExceptionState& exception_state,
+                       v8::Local<v8::Value>& result_value,
+                       v8::Local<v8::Value> v8_value) {
+  TypeTraits<::cobalt::script::UnionType2<DerivedDictionary, scoped_refptr<ArbitraryInterface> > >::ConversionType value;
+  FromJSValue(isolate, v8_value, kNoConversionFlags, &exception_state,
+              &value);
+  if (exception_state.is_exception_set()) {
+    return;
+  }
+
+  impl->set_union_dicts_objects_property(value);
+result_value = v8::Undefined(isolate);
+  return;
+});
 }
 
 
@@ -475,147 +422,129 @@ void InitializeTemplate(v8::Isolate* isolate) {
   // corresponding property. The characteristics of this property are as
   // follows:
   {
-    // The name of the property is the identifier of the attribute.
-    v8::Local<v8::String> name = NewInternalString(
-        isolate,
-        "unionProperty");
 
+    script::v8c::shared_bindings::set_property_for_nonconstructor_attribute(
+                  isolate,
     // The property has attributes { [[Get]]: G, [[Set]]: S, [[Enumerable]]:
     // true, [[Configurable]]: configurable }, where: configurable is false if
     // the attribute was declared with the [Unforgeable] extended attribute and
     // true otherwise;
-    bool configurable = true;
-    v8::PropertyAttribute attributes = static_cast<v8::PropertyAttribute>(
-        configurable ? v8::None : v8::DontDelete);
-
-    // G is the attribute getter created given the attribute, the interface, and
-    // the relevant Realm of the object that is the location of the property;
-    // and
-    //
-    // S is the attribute setter created given the attribute, the interface, and
-    // the relevant Realm of the object that is the location of the property.
-    v8::Local<v8::FunctionTemplate> getter =
-        v8::FunctionTemplate::New(isolate, unionPropertyAttributeGetter);
-    v8::Local<v8::FunctionTemplate> setter =
-        v8::FunctionTemplate::New(isolate, unionPropertyAttributeSetter);
-
-    // The location of the property is determined as follows:
-    // Otherwise, the property exists solely on the interface's interface
-    // prototype object.
-    prototype_template->
-        SetAccessorProperty(
-            name,
-            getter,
-            setter,
-            attributes);
+                  true,
+                  true,
+                  false,
+                  false,
+                  function_template,
+                  instance_template,
+                  prototype_template,
+                  "unionProperty"
+                  ,unionPropertyAttributeGetter
+                  ,unionPropertyAttributeSetter
+                  );
 
   }
   {
-    // The name of the property is the identifier of the attribute.
-    v8::Local<v8::String> name = NewInternalString(
-        isolate,
-        "unionWithNullableMemberProperty");
 
+    script::v8c::shared_bindings::set_property_for_nonconstructor_attribute(
+                  isolate,
     // The property has attributes { [[Get]]: G, [[Set]]: S, [[Enumerable]]:
     // true, [[Configurable]]: configurable }, where: configurable is false if
     // the attribute was declared with the [Unforgeable] extended attribute and
     // true otherwise;
-    bool configurable = true;
-    v8::PropertyAttribute attributes = static_cast<v8::PropertyAttribute>(
-        configurable ? v8::None : v8::DontDelete);
-
-    // G is the attribute getter created given the attribute, the interface, and
-    // the relevant Realm of the object that is the location of the property;
-    // and
-    //
-    // S is the attribute setter created given the attribute, the interface, and
-    // the relevant Realm of the object that is the location of the property.
-    v8::Local<v8::FunctionTemplate> getter =
-        v8::FunctionTemplate::New(isolate, unionWithNullableMemberPropertyAttributeGetter);
-    v8::Local<v8::FunctionTemplate> setter =
-        v8::FunctionTemplate::New(isolate, unionWithNullableMemberPropertyAttributeSetter);
-
-    // The location of the property is determined as follows:
-    // Otherwise, the property exists solely on the interface's interface
-    // prototype object.
-    prototype_template->
-        SetAccessorProperty(
-            name,
-            getter,
-            setter,
-            attributes);
+                  true,
+                  true,
+                  false,
+                  false,
+                  function_template,
+                  instance_template,
+                  prototype_template,
+                  "unionWithNullableMemberProperty"
+                  ,unionWithNullableMemberPropertyAttributeGetter
+                  ,unionWithNullableMemberPropertyAttributeSetter
+                  );
 
   }
   {
-    // The name of the property is the identifier of the attribute.
-    v8::Local<v8::String> name = NewInternalString(
-        isolate,
-        "nullableUnionProperty");
 
+    script::v8c::shared_bindings::set_property_for_nonconstructor_attribute(
+                  isolate,
     // The property has attributes { [[Get]]: G, [[Set]]: S, [[Enumerable]]:
     // true, [[Configurable]]: configurable }, where: configurable is false if
     // the attribute was declared with the [Unforgeable] extended attribute and
     // true otherwise;
-    bool configurable = true;
-    v8::PropertyAttribute attributes = static_cast<v8::PropertyAttribute>(
-        configurable ? v8::None : v8::DontDelete);
-
-    // G is the attribute getter created given the attribute, the interface, and
-    // the relevant Realm of the object that is the location of the property;
-    // and
-    //
-    // S is the attribute setter created given the attribute, the interface, and
-    // the relevant Realm of the object that is the location of the property.
-    v8::Local<v8::FunctionTemplate> getter =
-        v8::FunctionTemplate::New(isolate, nullableUnionPropertyAttributeGetter);
-    v8::Local<v8::FunctionTemplate> setter =
-        v8::FunctionTemplate::New(isolate, nullableUnionPropertyAttributeSetter);
-
-    // The location of the property is determined as follows:
-    // Otherwise, the property exists solely on the interface's interface
-    // prototype object.
-    prototype_template->
-        SetAccessorProperty(
-            name,
-            getter,
-            setter,
-            attributes);
+                  true,
+                  true,
+                  false,
+                  false,
+                  function_template,
+                  instance_template,
+                  prototype_template,
+                  "nullableUnionProperty"
+                  ,nullableUnionPropertyAttributeGetter
+                  ,nullableUnionPropertyAttributeSetter
+                  );
 
   }
   {
-    // The name of the property is the identifier of the attribute.
-    v8::Local<v8::String> name = NewInternalString(
-        isolate,
-        "unionBaseProperty");
 
+    script::v8c::shared_bindings::set_property_for_nonconstructor_attribute(
+                  isolate,
     // The property has attributes { [[Get]]: G, [[Set]]: S, [[Enumerable]]:
     // true, [[Configurable]]: configurable }, where: configurable is false if
     // the attribute was declared with the [Unforgeable] extended attribute and
     // true otherwise;
-    bool configurable = true;
-    v8::PropertyAttribute attributes = static_cast<v8::PropertyAttribute>(
-        configurable ? v8::None : v8::DontDelete);
+                  true,
+                  true,
+                  false,
+                  false,
+                  function_template,
+                  instance_template,
+                  prototype_template,
+                  "unionBaseProperty"
+                  ,unionBasePropertyAttributeGetter
+                  ,unionBasePropertyAttributeSetter
+                  );
 
-    // G is the attribute getter created given the attribute, the interface, and
-    // the relevant Realm of the object that is the location of the property;
-    // and
-    //
-    // S is the attribute setter created given the attribute, the interface, and
-    // the relevant Realm of the object that is the location of the property.
-    v8::Local<v8::FunctionTemplate> getter =
-        v8::FunctionTemplate::New(isolate, unionBasePropertyAttributeGetter);
-    v8::Local<v8::FunctionTemplate> setter =
-        v8::FunctionTemplate::New(isolate, unionBasePropertyAttributeSetter);
+  }
+  {
 
-    // The location of the property is determined as follows:
-    // Otherwise, the property exists solely on the interface's interface
-    // prototype object.
-    prototype_template->
-        SetAccessorProperty(
-            name,
-            getter,
-            setter,
-            attributes);
+    script::v8c::shared_bindings::set_property_for_nonconstructor_attribute(
+                  isolate,
+    // The property has attributes { [[Get]]: G, [[Set]]: S, [[Enumerable]]:
+    // true, [[Configurable]]: configurable }, where: configurable is false if
+    // the attribute was declared with the [Unforgeable] extended attribute and
+    // true otherwise;
+                  true,
+                  true,
+                  false,
+                  false,
+                  function_template,
+                  instance_template,
+                  prototype_template,
+                  "unionWithDictionaryProperty"
+                  ,unionWithDictionaryPropertyAttributeGetter
+                  ,unionWithDictionaryPropertyAttributeSetter
+                  );
+
+  }
+  {
+
+    script::v8c::shared_bindings::set_property_for_nonconstructor_attribute(
+                  isolate,
+    // The property has attributes { [[Get]]: G, [[Set]]: S, [[Enumerable]]:
+    // true, [[Configurable]]: configurable }, where: configurable is false if
+    // the attribute was declared with the [Unforgeable] extended attribute and
+    // true otherwise;
+                  true,
+                  true,
+                  false,
+                  false,
+                  function_template,
+                  instance_template,
+                  prototype_template,
+                  "unionDictsObjectsProperty"
+                  ,unionDictsObjectsPropertyAttributeGetter
+                  ,unionDictsObjectsPropertyAttributeSetter
+                  );
 
   }
 

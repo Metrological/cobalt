@@ -1,6 +1,6 @@
 
 
-// Copyright 2019 The Cobalt Authors. All Rights Reserved.
+// Copyright 2020 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -50,6 +50,7 @@
 #include "cobalt/script/v8c/v8c_property_enumerator.h"
 #include "cobalt/script/v8c/v8c_value_handle.h"
 #include "cobalt/script/v8c/wrapper_private.h"
+#include "cobalt/script/v8c/common_v8c_bindings_code.h"
 #include "v8/include/v8.h"
 
 
@@ -102,14 +103,12 @@ void NamedPropertyGetterCallback(
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  WrapperPrivate* wrapper_private =
-      WrapperPrivate::GetFromWrapperObject(object);
-  if (!wrapper_private) {
-    NOTIMPLEMENTED();
+  AnonymousNamedGetterInterface* impl =
+          script::v8c::shared_bindings::get_impl_from_object<
+             AnonymousNamedGetterInterface>(object);
+  if (!impl) {
     return;
   }
-  AnonymousNamedGetterInterface* impl =
-      wrapper_private->wrappable<AnonymousNamedGetterInterface>().get();
   std::string property_name = *v8::String::Utf8Value(isolate, property);
   if (!impl->CanQueryNamedProperty(property_name)) {
     return;
@@ -119,7 +118,7 @@ void NamedPropertyGetterCallback(
     ToJSValue(isolate,
               impl->AnonymousNamedGetter(property_name),
               &result_value);
-  }
+}
   if (exception_state.is_exception_set()) {
     return;
   }
@@ -129,7 +128,8 @@ void NamedPropertyGetterCallback(
 void IndexedPropertyGetterCallback(
     uint32_t index,
     const v8::PropertyCallbackInfo<v8::Value>& info) {
-  v8::Local<v8::String> as_string = v8::Integer::New(info.GetIsolate(), index)->ToString();
+  v8::Local<v8::String> as_string = (v8::Integer::New(info.GetIsolate(), index)->ToString(
+                                     info.GetIsolate()->GetCurrentContext())).ToLocalChecked();
   NamedPropertyGetterCallback(as_string, info);
 }
 
@@ -138,14 +138,12 @@ void NamedPropertyQueryCallback(
     const v8::PropertyCallbackInfo<v8::Integer>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  WrapperPrivate* wrapper_private =
-      WrapperPrivate::GetFromWrapperObject(object);
-  if (!wrapper_private) {
-    NOTIMPLEMENTED();
+  AnonymousNamedGetterInterface* impl =
+          script::v8c::shared_bindings::get_impl_from_object<
+             AnonymousNamedGetterInterface>(object);
+  if (!impl) {
     return;
   }
-  AnonymousNamedGetterInterface* impl =
-      wrapper_private->wrappable<AnonymousNamedGetterInterface>().get();
   std::string property_name = *v8::String::Utf8Value(isolate, property);
   bool result = impl->CanQueryNamedProperty(property_name);
   if (!result) {
@@ -174,14 +172,12 @@ void NamedPropertyEnumeratorCallback(
     const v8::PropertyCallbackInfo<v8::Array>& info) {
   v8::Isolate* isolate = info.GetIsolate();
   v8::Local<v8::Object> object = info.Holder();
-  WrapperPrivate* wrapper_private =
-      WrapperPrivate::GetFromWrapperObject(object);
-  if (!wrapper_private) {
-    NOTIMPLEMENTED();
+  AnonymousNamedGetterInterface* impl =
+          script::v8c::shared_bindings::get_impl_from_object<
+             AnonymousNamedGetterInterface>(object);
+  if (!impl) {
     return;
   }
-  AnonymousNamedGetterInterface* impl =
-      wrapper_private->wrappable<AnonymousNamedGetterInterface>().get();
   v8::Local<v8::Array> array = v8::Array::New(isolate);
   V8cPropertyEnumerator property_enumerator(isolate, &array);
   impl->EnumerateNamedProperties(&property_enumerator);
@@ -198,14 +194,12 @@ void NamedPropertySetterCallback(
   V8cExceptionState exception_state{isolate};
   v8::Local<v8::Value> result_value;
 
-  WrapperPrivate* wrapper_private =
-      WrapperPrivate::GetFromWrapperObject(object);
-  if (!wrapper_private) {
-    NOTIMPLEMENTED();
+  AnonymousNamedGetterInterface* impl =
+          script::v8c::shared_bindings::get_impl_from_object<
+             AnonymousNamedGetterInterface>(object);
+  if (!impl) {
     return;
   }
-  AnonymousNamedGetterInterface* impl =
-      wrapper_private->wrappable<AnonymousNamedGetterInterface>().get();
   std::string property_name = *v8::String::Utf8Value(isolate, property);
   TypeTraits<std::string>::ConversionType native_value;
   FromJSValue(isolate, value, kNoConversionFlags,
@@ -215,7 +209,7 @@ void NamedPropertySetterCallback(
   }
 
   impl->AnonymousNamedSetter(property_name, native_value);
-  result_value = v8::Undefined(isolate);
+result_value = v8::Undefined(isolate);
   if (exception_state.is_exception_set()) {
     return;
   }
@@ -226,7 +220,8 @@ void IndexedPropertySetterCallback(
     uint32_t index,
     v8::Local<v8::Value> value,
     const v8::PropertyCallbackInfo<v8::Value>& info) {
-  v8::Local<v8::String> as_string = v8::Integer::New(info.GetIsolate(), index)->ToString();
+  v8::Local<v8::String> as_string = (v8::Integer::New(info.GetIsolate(), index)->ToString(
+                                     info.GetIsolate()->GetCurrentContext())).ToLocalChecked();
   NamedPropertySetterCallback(as_string, value, info);
 }
 

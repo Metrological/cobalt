@@ -30,6 +30,19 @@
 #include "starboard/thread.h"
 #include "starboard/time.h"
 
+#if defined(ADDRESS_SANITIZER)
+// By default, Leak Sanitizer and Address Sanitizer is expected to exist
+// together. However, this is not true for all platforms.
+// HAS_LEAK_SANTIZIER=0 explicitly removes the Leak Sanitizer from code.
+#ifndef HAS_LEAK_SANITIZER
+#define HAS_LEAK_SANITIZER 1
+#endif  // HAS_LEAK_SANITIZER
+#endif  // defined(ADDRESS_SANITIZER)
+
+#if HAS_LEAK_SANITIZER
+#include <sanitizer/lsan_interface.h>
+#endif  // HAS_LEAK_SANITIZER
+
 namespace starboard {
 namespace shared {
 namespace pulse {
@@ -57,7 +70,7 @@ class PulseAudioSink : public SbAudioSinkPrivate {
                  SbAudioSinkFrameBuffers frame_buffers,
                  int frames_per_channel,
                  SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-                 SbAudioSinkConsumeFramesFunc consume_frame_func,
+                 ConsumeFramesFunc consume_frames_func,
                  void* context);
   ~PulseAudioSink() override;
 
@@ -67,7 +80,7 @@ class PulseAudioSink : public SbAudioSinkPrivate {
   void SetVolume(double volume) override;
 
   bool Initialize(pa_context* context);
-  bool WriteFrameIfNecessary();
+  bool WriteFrameIfNecessary(pa_context* context);
 
  private:
   PulseAudioSink(const PulseAudioSink&) = delete;
@@ -90,7 +103,7 @@ class PulseAudioSink : public SbAudioSinkPrivate {
   const uint8_t* const frame_buffer_;
   const int frames_per_channel_;
   const SbAudioSinkUpdateSourceStatusFunc update_source_status_func_;
-  const SbAudioSinkConsumeFramesFunc consume_frame_func_;
+  const ConsumeFramesFunc consume_frames_func_;
   void* const context_;
   const size_t bytes_per_frame_;
 
@@ -100,7 +113,9 @@ class PulseAudioSink : public SbAudioSinkPrivate {
   size_t last_request_size_ = 0;
   int64_t total_frames_played_ = 0;
   int64_t total_frames_written_ = 0;
-  atomic_bool is_paused_;
+  atomic_double volume_{1.0};
+  atomic_bool volume_updated_{true};
+  atomic_bool is_paused_{false};
 };
 
 class PulseAudioSinkType : public SbAudioSinkPrivate::Type {
@@ -116,8 +131,11 @@ class PulseAudioSinkType : public SbAudioSinkPrivate::Type {
       SbAudioSinkFrameBuffers frame_buffers,
       int frames_per_channel,
       SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-      SbAudioSinkConsumeFramesFunc consume_frames_func,
-      void* context);
+      SbAudioSinkPrivate::ConsumeFramesFunc consume_frames_func,
+#if SB_API_VERSION >= 12
+      SbAudioSinkPrivate::ErrorFunc error_func,
+#endif  // SB_API_VERSION >= 12
+      void* context) override;
   bool IsValid(SbAudioSink audio_sink) override {
     return audio_sink != kSbAudioSinkInvalid && audio_sink->IsType(this);
   }
@@ -157,7 +175,7 @@ PulseAudioSink::PulseAudioSink(
     SbAudioSinkFrameBuffers frame_buffers,
     int frames_per_channel,
     SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-    SbAudioSinkConsumeFramesFunc consume_frame_func,
+    ConsumeFramesFunc consume_frames_func,
     void* context)
     : type_(type),
       channels_(channels),
@@ -166,13 +184,12 @@ PulseAudioSink::PulseAudioSink(
       frame_buffer_(static_cast<uint8_t*>(frame_buffers[0])),
       frames_per_channel_(frames_per_channel),
       update_source_status_func_(update_source_status_func),
-      consume_frame_func_(consume_frame_func),
+      consume_frames_func_(consume_frames_func),
       context_(context),
       bytes_per_frame_(static_cast<size_t>(channels) *
-                       GetBytesPerSample(sample_type)),
-      is_paused_(false) {
+                       GetBytesPerSample(sample_type)) {
   SB_DCHECK(update_source_status_func_);
-  SB_DCHECK(consume_frame_func_);
+  SB_DCHECK(consume_frames_func_);
   SB_DCHECK(frame_buffer_);
   SB_DCHECK(SbAudioSinkIsAudioSampleTypeSupported(sample_type_));
 }
@@ -194,7 +211,11 @@ void PulseAudioSink::SetPlaybackRate(double playback_rate) {
 }
 
 void PulseAudioSink::SetVolume(double volume) {
-  SB_NOTIMPLEMENTED();
+  SB_DCHECK(volume >= 0.0);
+  SB_DCHECK(volume <= 1.0);
+  if (volume_.exchange(volume) != volume) {
+    volume_updated_.store(true);
+  }
 }
 
 bool PulseAudioSink::Initialize(pa_context* context) {
@@ -222,12 +243,25 @@ bool PulseAudioSink::Initialize(pa_context* context) {
   return stream_ != NULL;
 }
 
-bool PulseAudioSink::WriteFrameIfNecessary() {
+bool PulseAudioSink::WriteFrameIfNecessary(pa_context* context) {
   SB_DCHECK(type_->BelongToAudioThread());
-
   // Wait until |stream_| is ready;
   if (pa_stream_get_state(stream_) != PA_STREAM_READY) {
     return false;
+  }
+  // Update volume if necessary.
+  if (volume_updated_.exchange(false)) {
+    pa_cvolume cvol;
+    cvol.channels = channels_;
+    pa_cvolume_set(
+        &cvol, channels_,
+        (PA_VOLUME_NORM - PA_VOLUME_MUTED) * volume_.load() + PA_VOLUME_MUTED);
+    uint32_t sink_input_index = pa_stream_get_index(stream_);
+    SB_DCHECK(sink_input_index != PA_INVALID_INDEX);
+    pa_operation* op = pa_context_set_sink_input_volume(
+        context, sink_input_index, &cvol, NULL, NULL);
+    SB_DCHECK(op);
+    pa_operation_unref(op);
   }
   bool pulse_paused = pa_stream_is_corked(stream_) == 1;
   // Calculate consumed frames.
@@ -244,7 +278,7 @@ bool PulseAudioSink::WriteFrameIfNecessary() {
       SB_DCHECK(total_frames_played_ <= new_total_frames_played);
       int64_t consume = new_total_frames_played - total_frames_played_;
       if (consume > 0) {
-        consume_frame_func_(consume, context_);
+        consume_frames_func_(consume, SbTimeGetMonotonicNow(), context_);
         total_frames_played_ = new_total_frames_played;
       }
     }
@@ -364,7 +398,10 @@ SbAudioSink PulseAudioSinkType::Create(
     SbAudioSinkFrameBuffers frame_buffers,
     int frames_per_channel,
     SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-    SbAudioSinkConsumeFramesFunc consume_frames_func,
+    SbAudioSinkPrivate::ConsumeFramesFunc consume_frames_func,
+#if SB_API_VERSION >= 12
+    SbAudioSinkPrivate::ErrorFunc error_func,
+#endif  // SB_API_VERSION >= 12
     void* context) {
   PulseAudioSink* audio_sink = new PulseAudioSink(
       this, channels, sampling_frequency_hz, audio_sample_type, frame_buffers,
@@ -406,7 +443,13 @@ bool PulseAudioSinkType::Initialize() {
     return false;
   }
   // Create pulse context.
-  context_ = pa_context_new(pa_mainloop_get_api(mainloop_), "pulse_audio");
+#if HAS_LEAK_SANITIZER
+  __lsan_disable();
+#endif
+  context_ = pa_context_new(pa_mainloop_get_api(mainloop_), "cobalt_audio");
+#if HAS_LEAK_SANITIZER
+  __lsan_enable();
+#endif
   if (!context_) {
     SB_LOG(WARNING) << "Pulse audio error: cannot create context.";
     return false;
@@ -452,8 +495,27 @@ pa_stream* PulseAudioSinkType::CreateNewStream(
     pa_stream_flags_t flags,
     pa_stream_request_cb_t stream_request_cb,
     void* userdata) {
+  pa_channel_map channel_map = {sample_spec->channels};
+
+  if (sample_spec->channels == 6) {
+    // Assume the incoming layout is always "FL FR FC LFE BL BR".
+    channel_map.map[0] = PA_CHANNEL_POSITION_FRONT_LEFT;
+    channel_map.map[1] = PA_CHANNEL_POSITION_FRONT_RIGHT;
+    channel_map.map[2] = PA_CHANNEL_POSITION_FRONT_CENTER;
+    // Note that this should really be |PA_CHANNEL_POSITION_LFE|, but there is
+    // usually no lfe device on desktop so set it to rear center to make it
+    // audible.
+    channel_map.map[3] = PA_CHANNEL_POSITION_REAR_CENTER;
+    // Rear left and rear left are the same as back left and back right.
+    channel_map.map[4] = PA_CHANNEL_POSITION_REAR_LEFT;
+    channel_map.map[5] = PA_CHANNEL_POSITION_REAR_RIGHT;
+  }
+
   ScopedLock lock(mutex_);
-  pa_stream* stream = pa_stream_new(context_, "pulseaudio", sample_spec, NULL);
+
+  pa_stream* stream =
+      pa_stream_new(context_, "cobalt_stream", sample_spec,
+                    sample_spec->channels == 6 ? &channel_map : NULL);
   if (!stream) {
     SB_LOG(ERROR) << "Pulse audio error: cannot create stream.";
     return NULL;
@@ -508,7 +570,7 @@ void PulseAudioSinkType::AudioThreadFunc() {
           break;
         }
         for (PulseAudioSink* sink : sinks_) {
-          has_running_sink |= sink->WriteFrameIfNecessary();
+          has_running_sink |= sink->WriteFrameIfNecessary(context_);
         }
         pa_mainloop_iterate(mainloop_, 0, NULL);
       }

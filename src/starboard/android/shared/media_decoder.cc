@@ -18,9 +18,6 @@
 #include "starboard/android/shared/jni_utils.h"
 #include "starboard/android/shared/media_common.h"
 #include "starboard/audio_sink.h"
-#if SB_API_VERSION >= 11
-#include "starboard/format_string.h"
-#endif  // SB_API_VERSION >= 11
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
 #include "starboard/shared/pthread/thread_create_priority.h"
@@ -108,7 +105,9 @@ MediaDecoder::MediaDecoder(Host* host,
                            int height,
                            jobject j_output_surface,
                            SbDrmSystem drm_system,
-                           const SbMediaColorMetadata* color_metadata)
+                           const SbMediaColorMetadata* color_metadata,
+                           bool require_software_codec,
+                           std::string* error_message)
     : media_type_(kSbMediaTypeVideo),
       host_(host),
       drm_system_(static_cast<DrmSystem*>(drm_system)),
@@ -117,9 +116,10 @@ MediaDecoder::MediaDecoder(Host* host,
   SB_DCHECK(!drm_system_ || j_media_crypto);
   media_codec_bridge_ = MediaCodecBridge::CreateVideoMediaCodecBridge(
       video_codec, width, height, this, j_output_surface, j_media_crypto,
-      color_metadata);
+      color_metadata, require_software_codec, error_message);
   if (!media_codec_bridge_) {
-    SB_LOG(ERROR) << "Failed to create video media codec bridge.";
+    SB_LOG(ERROR) << "Failed to create video media codec bridge with error: "
+                  << *error_message;
   }
 }
 
@@ -303,7 +303,11 @@ void MediaDecoder::JoinOnThreads() {
 
   if (is_valid()) {
     host_->OnFlushing();
-
+    // After |decoder_thread_| is ended and before |media_codec_bridge_| is
+    // flushed, OnMediaCodecOutputBufferAvailable() would still be called.
+    // So that, |dequeue_output_results_| may not be empty. As we call
+    // JoinOnThreads() in destructor and DequeueOutputResult is consisted of
+    // plain data, it's fine to let destructor delete |dequeue_output_results_|.
     jint status = media_codec_bridge_->Flush();
     if (status != MEDIA_CODEC_OK) {
       SB_LOG(ERROR) << "Failed to flush media codec.";
@@ -341,7 +345,7 @@ bool MediaDecoder::ProcessOneInputBuffer(
     std::vector<int>* input_buffer_indices) {
   SB_DCHECK(media_codec_bridge_);
 
-  // During secure playback, and only secure playback, is is possible that our
+  // During secure playback, and only secure playback, it is possible that our
   // attempt to enqueue an input buffer will be rejected by MediaCodec because
   // we do not have a key yet.  In this case, we hold on to the input buffer
   // that we have already set up, and repeatedly attempt to enqueue it until
@@ -462,8 +466,15 @@ void MediaDecoder::HandleError(const char* action_name, jint status) {
     is_output_restricted_ = true;
     drm_system_->OnInsufficientOutputProtection();
   } else {
-    error_cb_(kSbPlayerErrorDecode,
-              FormatString("%s failed with status %d.", action_name, status));
+    if (media_type_ == kSbMediaTypeAudio) {
+      error_cb_(kSbPlayerErrorDecode,
+                FormatString("%s failed with status %d (audio).", action_name,
+                             status));
+    } else {
+      error_cb_(kSbPlayerErrorDecode,
+                FormatString("%s failed with status %d (video).", action_name,
+                             status));
+    }
   }
 
   if (retry) {
@@ -485,7 +496,15 @@ void MediaDecoder::OnMediaCodecError(bool is_recoverable,
                   << " error with message: " << diagnostic_info;
 
   if (!is_transient) {
-    error_cb_(kSbPlayerErrorDecode, "OnMediaCodecError");
+    if (media_type_ == kSbMediaTypeAudio) {
+      error_cb_(kSbPlayerErrorDecode,
+                "OnMediaCodecError (audio): " + diagnostic_info +
+                    (is_recoverable ? ", recoverable " : ", unrecoverable "));
+    } else {
+      error_cb_(kSbPlayerErrorDecode,
+                "OnMediaCodecError (video): " + diagnostic_info +
+                    (is_recoverable ? ", recoverable " : ", unrecoverable "));
+    }
   }
 }
 

@@ -18,24 +18,23 @@ import static android.content.Context.AUDIO_SERVICE;
 import static android.media.AudioManager.GET_DEVICES_INPUTS;
 import static dev.cobalt.util.Log.TAG;
 
-import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.net.ConnectivityManager;
-import android.net.NetworkInfo;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.os.Build;
 import android.util.Size;
-import android.view.WindowManager;
+import android.util.SizeF;
+import android.view.Display;
 import android.view.accessibility.AccessibilityManager;
 import android.view.accessibility.CaptioningManager;
+import androidx.annotation.RequiresApi;
 import dev.cobalt.account.UserAuthorizer;
-import dev.cobalt.feedback.FeedbackService;
 import dev.cobalt.media.AudioOutputManager;
 import dev.cobalt.media.CaptionSettings;
 import dev.cobalt.media.CobaltMediaSession;
@@ -61,7 +60,6 @@ public class StarboardBridge {
   private CobaltSystemConfigChangeReceiver sysConfigChangeReceiver;
   private CobaltTextToSpeechHelper ttsHelper;
   private UserAuthorizer userAuthorizer;
-  private FeedbackService feedbackService;
   private AudioOutputManager audioOutputManager;
   private CobaltMediaSession cobaltMediaSession;
   private VoiceRecognizer voiceRecognizer;
@@ -95,7 +93,6 @@ public class StarboardBridge {
       Context appContext,
       Holder<Activity> activityHolder,
       UserAuthorizer userAuthorizer,
-      FeedbackService feedbackService,
       String[] args,
       String startDeepLink) {
 
@@ -108,9 +105,8 @@ public class StarboardBridge {
     this.args = args;
     this.startDeepLink = startDeepLink;
     this.sysConfigChangeReceiver = new CobaltSystemConfigChangeReceiver(appContext, stopRequester);
-    this.ttsHelper = new CobaltTextToSpeechHelper(appContext, stopRequester);
+    this.ttsHelper = new CobaltTextToSpeechHelper(appContext);
     this.userAuthorizer = userAuthorizer;
-    this.feedbackService = feedbackService;
     this.audioOutputManager = new AudioOutputManager(appContext);
     this.cobaltMediaSession =
         new CobaltMediaSession(appContext, activityHolder, audioOutputManager);
@@ -146,12 +142,11 @@ public class StarboardBridge {
 
   @SuppressWarnings("unused")
   @UsedByNative
-  void beforeStartOrResume() {
+  protected void beforeStartOrResume() {
     Log.i(TAG, "Prepare to resume");
     // Bring our platform services to life before resuming so that they're ready to deal with
     // whatever the web app wants to do with them as part of its start/resume logic.
     cobaltMediaSession.resume();
-    feedbackService.connect();
     for (CobaltService service : cobaltServices.values()) {
       service.beforeStartOrResume();
     }
@@ -159,13 +154,12 @@ public class StarboardBridge {
 
   @SuppressWarnings("unused")
   @UsedByNative
-  void beforeSuspend() {
+  protected void beforeSuspend() {
     Log.i(TAG, "Prepare to suspend");
     // We want the MediaSession to be deactivated immediately before suspending so that by the time
     // the launcher is visible our "Now Playing" card is already gone. Then Cobalt and the web app
     // can take their time suspending after that.
     cobaltMediaSession.suspend();
-    feedbackService.disconnect();
     for (CobaltService service : cobaltServices.values()) {
       service.beforeSuspend();
     }
@@ -173,7 +167,7 @@ public class StarboardBridge {
 
   @SuppressWarnings("unused")
   @UsedByNative
-  void afterStopped() {
+  protected void afterStopped() {
     starboardStopped = true;
     ttsHelper.shutdown();
     userAuthorizer.shutdown();
@@ -305,6 +299,12 @@ public class StarboardBridge {
 
   @SuppressWarnings("unused")
   @UsedByNative
+  SizeF getDisplayDpi() {
+    return DisplayUtil.getDisplayDpi(appContext);
+  }
+
+  @SuppressWarnings("unused")
+  @UsedByNative
   Size getDisplaySize() {
     return DisplayUtil.getSystemDisplaySize(appContext);
   }
@@ -326,7 +326,7 @@ public class StarboardBridge {
     }
   }
 
-  @TargetApi(23)
+  @RequiresApi(23)
   private boolean isMicrophoneConnectedV23() {
     // A check specifically for microphones is not available before API 28, so it is assumed that a
     // connected input audio device is a microphone.
@@ -347,19 +347,25 @@ public class StarboardBridge {
     return audioManager.isMicrophoneMute();
   }
 
-  /** @return true if we have an active network connection and it's on a wireless network. */
+  /** @return true if we have an active network connection and it's on an wireless network. */
   @SuppressWarnings("unused")
   @UsedByNative
   boolean isCurrentNetworkWireless() {
+    if (Build.VERSION.SDK_INT >= 23) {
+      return isCurrentNetworkWirelessV23();
+    } else {
+      return isCurrentNetworkWirelessDeprecated();
+    }
+  }
+
+  @SuppressWarnings("deprecation")
+  private boolean isCurrentNetworkWirelessDeprecated() {
     ConnectivityManager connMgr =
         (ConnectivityManager) appContext.getSystemService(Context.CONNECTIVITY_SERVICE);
-
-    NetworkInfo activeInfo = connMgr.getActiveNetworkInfo();
-
+    android.net.NetworkInfo activeInfo = connMgr.getActiveNetworkInfo();
     if (activeInfo == null) {
       return false;
     }
-
     switch (activeInfo.getType()) {
       case ConnectivityManager.TYPE_ETHERNET:
         return false;
@@ -369,6 +375,22 @@ public class StarboardBridge {
         // over wifi.
         return true;
     }
+  }
+
+  @RequiresApi(23)
+  private boolean isCurrentNetworkWirelessV23() {
+    ConnectivityManager connMgr =
+        (ConnectivityManager) appContext.getSystemService(Context.CONNECTIVITY_SERVICE);
+    Network activeNetwork = connMgr.getActiveNetwork();
+    if (activeNetwork == null) {
+      return false;
+    }
+    NetworkCapabilities activeCapabilities = connMgr.getNetworkCapabilities(activeNetwork);
+    if (activeCapabilities == null) {
+      return false;
+    }
+    // Consider anything that's not definitely wired to be wireless.
+    return !activeCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET);
   }
 
   /**
@@ -398,21 +420,6 @@ public class StarboardBridge {
 
   @SuppressWarnings("unused")
   @UsedByNative
-  void sendFeedback(
-      HashMap<String, String> productSpecificData, String categoryTag, byte[] screenshotData) {
-    // Convert the screenshot byte array into a Bitmap.
-    Bitmap screenshotBitmap = null;
-    if ((screenshotData != null) && (screenshotData.length > 0)) {
-      screenshotBitmap = BitmapFactory.decodeByteArray(screenshotData, 0, screenshotData.length);
-      if (screenshotBitmap == null) {
-        Log.e(TAG, "Unable to decode a screenshot from the data.");
-      }
-    }
-    feedbackService.sendFeedback(productSpecificData, categoryTag, screenshotBitmap);
-  }
-
-  @SuppressWarnings("unused")
-  @UsedByNative
   void updateMediaSession(
       int playbackState,
       long actions,
@@ -421,15 +428,16 @@ public class StarboardBridge {
       String title,
       String artist,
       String album,
-      MediaImage[] artwork) {
+      MediaImage[] artwork,
+      long duration) {
     cobaltMediaSession.updateMediaSession(
-        playbackState, actions, positionMs, speed, title, artist, album, artwork);
+        playbackState, actions, positionMs, speed, title, artist, album, artwork, duration);
   }
 
   /** Returns string for kSbSystemPropertyUserAgentAuxField */
   @SuppressWarnings("unused")
   @UsedByNative
-  String getUserAgentAuxField() {
+  protected String getUserAgentAuxField() {
     StringBuilder sb = new StringBuilder();
 
     String packageName = appContext.getApplicationInfo().packageName;
@@ -484,6 +492,15 @@ public class StarboardBridge {
 
   @SuppressWarnings("unused")
   @UsedByNative
+  public void resetVideoSurface() {
+    Activity activity = activityHolder.get();
+    if (activity instanceof CobaltActivity) {
+      ((CobaltActivity) activity).resetVideoSurface();
+    }
+  }
+
+  @SuppressWarnings("unused")
+  @UsedByNative
   public void setVideoSurfaceBounds(final int x, final int y, final int width, final int height) {
     Activity activity = activityHolder.get();
     if (activity instanceof CobaltActivity) {
@@ -496,7 +513,7 @@ public class StarboardBridge {
    * https://developer.android.com/reference/android/view/Display.HdrCapabilities.html for valid
    * values.
    */
-  @TargetApi(24)
+  @RequiresApi(24)
   @SuppressWarnings("unused")
   @UsedByNative
   public boolean isHdrTypeSupported(int hdrType) {
@@ -504,24 +521,23 @@ public class StarboardBridge {
       return false;
     }
 
-    Activity activity = activityHolder.get();
-    if (activity == null) {
+    Display defaultDisplay = DisplayUtil.getDefaultDisplay(activityHolder.get());
+    if (defaultDisplay == null) {
       return false;
     }
 
-    WindowManager windowManager = activity.getWindowManager();
-    if (windowManager == null) {
-      return false;
-    }
-
-    int[] supportedHdrTypes =
-        windowManager.getDefaultDisplay().getHdrCapabilities().getSupportedHdrTypes();
+    int[] supportedHdrTypes = defaultDisplay.getHdrCapabilities().getSupportedHdrTypes();
     for (int supportedType : supportedHdrTypes) {
       if (supportedType == hdrType) {
         return true;
       }
     }
     return false;
+  }
+
+  /** Return the CobaltMediaSession. */
+  public CobaltMediaSession cobaltMediaSession() {
+    return cobaltMediaSession;
   }
 
   public void registerCobaltService(CobaltService.Factory factory) {
@@ -549,6 +565,7 @@ public class StarboardBridge {
     }
     CobaltService service = factory.createCobaltService(nativeService);
     if (service != null) {
+      service.receiveStarboardBridge(this);
       cobaltServices.put(serviceName, service);
     }
     return service;

@@ -77,7 +77,9 @@ class MediaDecoder : private MediaCodecBridge::Handler {
                int height,
                jobject j_output_surface,
                SbDrmSystem drm_system,
-               const SbMediaColorMetadata* color_metadata);
+               const SbMediaColorMetadata* color_metadata,
+               bool require_software_codec,
+               std::string* error_message);
   ~MediaDecoder();
 
   void Initialize(const ErrorCB& error_cb);

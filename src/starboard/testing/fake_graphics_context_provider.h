@@ -17,19 +17,22 @@
 
 #include <functional>
 
-#include "starboard/common/condition_variable.h"
-#include "starboard/common/mutex.h"
 #include "starboard/common/queue.h"
 #include "starboard/configuration.h"
 #include "starboard/decode_target.h"
 #include "starboard/thread.h"
 #include "starboard/window.h"
 
+#if SB_API_VERSION >= 11
+#include "starboard/egl.h"
+#include "starboard/gles.h"
+#else  // SB_API_VERSION < 11
 // SB_HAS() is available after starboard/configuration.h is included.
 #if SB_HAS(GLES2)
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 #endif  // SB_HAS(GLES2)
+#endif  // SB_API_VERSION >= 11
 
 namespace starboard {
 namespace testing {
@@ -52,6 +55,7 @@ class FakeGraphicsContextProvider {
   }
 
 #if SB_HAS(GLES2)
+  void RunOnGlesContextThread(const std::function<void()>& functor);
   void ReleaseDecodeTarget(SbDecodeTarget decode_target);
 #endif  // SB_HAS(GLES2)
 
@@ -66,16 +70,6 @@ class FakeGraphicsContextProvider {
 #if SB_HAS(GLES2)
   void InitializeEGL();
 
-  void ReleaseDecodeTargetOnGlesContextThread(
-      Mutex* mutex,
-      ConditionVariable* condition_variable,
-      SbDecodeTarget decode_target);
-  void RunDecodeTargetFunctionOnGlesContextThread(
-      Mutex* mutex,
-      ConditionVariable* condition_variable,
-      SbDecodeTargetGlesContextRunnerTarget target_function,
-      void* target_function_context);
-
   void OnDecodeTargetGlesContextRunner(
       SbDecodeTargetGlesContextRunnerTarget target_function,
       void* target_function_context);
@@ -89,9 +83,15 @@ class FakeGraphicsContextProvider {
       SbDecodeTargetGlesContextRunnerTarget target_function,
       void* target_function_context);
 
+#if SB_API_VERSION >= 11
+  SbEglDisplay display_;
+  SbEglSurface surface_;
+  SbEglContext context_;
+#else   // SB_API_VERSION < 11
   EGLDisplay display_;
   EGLSurface surface_;
   EGLContext context_;
+#endif  // SB_API_VERSION >= 11
   Queue<std::function<void()>> functor_queue_;
   SbThread decode_target_context_thread_;
 #endif  // SB_HAS(GLES2)

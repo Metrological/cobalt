@@ -79,10 +79,6 @@ InputBuffer::InputBuffer(SbMediaType sample_type,
   if (sample_type_ == kSbMediaTypeVideo) {
     SB_DCHECK(sample_info.video_sample_info);
     video_sample_info_ = *sample_info.video_sample_info;
-    if (video_sample_info_.color_metadata) {
-      color_metadata_ = *video_sample_info_.color_metadata;
-      video_sample_info_.color_metadata = &color_metadata_;
-    }
   } else {
     SB_DCHECK(sample_type_ == kSbMediaTypeAudio && audio_sample_info);
     audio_sample_info_ = *audio_sample_info;
@@ -100,8 +96,9 @@ void InputBuffer::SetDecryptedContent(const void* buffer, int size) {
   DeallocateSampleBuffer(data_);
 
   if (size > 0) {
-    flattened_data_.resize(size);
-    SbMemoryCopy(flattened_data_.data(), buffer, size);
+    flattened_data_.clear();
+    flattened_data_.assign(static_cast<const uint8_t*>(buffer),
+                           static_cast<const uint8_t*>(buffer) + size);
     data_ = flattened_data_.data();
   } else {
     data_ = NULL;
@@ -116,9 +113,21 @@ std::string InputBuffer::ToString() const {
      << " sample @ timestamp: " << timestamp() << " in " << size()
      << " bytes ==========\n";
   if (sample_type() == kSbMediaTypeAudio) {
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+    ss << "codec: " << audio_sample_info().codec << ", mime: '"
+       << audio_sample_info().mime << "'\n";
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
     ss << audio_sample_info().samples_per_second << '\n';
   } else {
     SB_DCHECK(sample_type() == kSbMediaTypeVideo);
+
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+    ss << "codec: " << video_sample_info().codec << ", mime: '"
+       << video_sample_info().mime << "'"
+       << ", max_video_capabilities: '"
+       << video_sample_info().max_video_capabilities << "'\n";
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
     ss << video_sample_info().frame_width << " x "
        << video_sample_info().frame_height << '\n';
   }

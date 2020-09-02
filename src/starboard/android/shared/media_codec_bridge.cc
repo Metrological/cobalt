@@ -14,6 +14,8 @@
 
 #include "starboard/android/shared/media_codec_bridge.h"
 
+#include "starboard/common/string.h"
+
 namespace starboard {
 namespace android {
 namespace shared {
@@ -24,6 +26,8 @@ namespace {
 // https://developer.android.com/reference/android/media/MediaFormat.html#COLOR_RANGE_FULL.
 const jint COLOR_RANGE_FULL = 1;
 const jint COLOR_RANGE_LIMITED = 2;
+// Not defined in MediaFormat. Represents unspecified color ID range.
+const jint COLOR_RANGE_UNSPECIFIED = 0;
 
 const jint COLOR_STANDARD_BT2020 = 6;
 const jint COLOR_STANDARD_BT601_NTSC = 4;
@@ -70,6 +74,8 @@ jint SbMediaRangeIdToColorRange(SbMediaRangeId range_id) {
       return COLOR_RANGE_LIMITED;
     case kSbMediaRangeIdFull:
       return COLOR_RANGE_FULL;
+    case kSbMediaRangeIdUnspecified:
+      return COLOR_RANGE_UNSPECIFIED;
     default:
       return COLOR_VALUE_UNKNOWN;
   }
@@ -173,9 +179,14 @@ scoped_ptr<MediaCodecBridge> MediaCodecBridge::CreateVideoMediaCodecBridge(
     Handler* handler,
     jobject j_surface,
     jobject j_media_crypto,
-    const SbMediaColorMetadata* color_metadata) {
+    const SbMediaColorMetadata* color_metadata,
+    bool require_software_codec,
+    std::string* error_message) {
+  SB_DCHECK(error_message);
+
   const char* mime = SupportedVideoCodecToMimeType(video_codec);
   if (!mime) {
+    *error_message = FormatString("Unsupported mime for codec %d", video_codec);
     return scoped_ptr<MediaCodecBridge>(NULL);
   }
   JniEnvExt* env = JniEnvExt::Get();
@@ -208,19 +219,34 @@ scoped_ptr<MediaCodecBridge> MediaCodecBridge::CreateVideoMediaCodecBridge(
     }
   }
 
+  ScopedLocalJavaRef<jobject> j_create_media_codec_bridge_result(
+      env->NewObjectOrAbort(
+          "dev/cobalt/media/MediaCodecBridge$CreateMediaCodecBridgeResult",
+          "()V"));
+
   scoped_ptr<MediaCodecBridge> native_media_codec_bridge(
       new MediaCodecBridge(handler));
-  jobject j_media_codec_bridge = env->CallStaticObjectMethodOrAbort(
+  env->CallStaticVoidMethodOrAbort(
       "dev/cobalt/media/MediaCodecBridge", "createVideoMediaCodecBridge",
       "(JLjava/lang/String;ZZIILandroid/view/Surface;"
       "Landroid/media/MediaCrypto;"
-      "Ldev/cobalt/media/MediaCodecBridge$ColorInfo;)"
-      "Ldev/cobalt/media/MediaCodecBridge;",
+      "Ldev/cobalt/media/MediaCodecBridge$ColorInfo;"
+      "Ldev/cobalt/media/MediaCodecBridge$CreateMediaCodecBridgeResult;)"
+      "V",
       reinterpret_cast<jlong>(native_media_codec_bridge.get()), j_mime.Get(),
-      !!j_media_crypto, false, width, height, j_surface, j_media_crypto,
-      j_color_info.Get());
+      !!j_media_crypto, require_software_codec, width, height, j_surface,
+      j_media_crypto, j_color_info.Get(),
+      j_create_media_codec_bridge_result.Get());
+
+  jobject j_media_codec_bridge = env->CallObjectMethodOrAbort(
+      j_create_media_codec_bridge_result.Get(), "mediaCodecBridge",
+      "()Ldev/cobalt/media/MediaCodecBridge;");
 
   if (!j_media_codec_bridge) {
+    ScopedLocalJavaRef<jstring> j_error_message(
+        env->CallObjectMethodOrAbort(j_create_media_codec_bridge_result.Get(),
+                                     "errorMessage", "()Ljava/lang/String;"));
+    *error_message = env->GetStringStandardUTFOrAbort(j_error_message.Get());
     return scoped_ptr<MediaCodecBridge>(NULL);
   }
 
@@ -241,29 +267,9 @@ MediaCodecBridge::~MediaCodecBridge() {
   env->DeleteGlobalRef(j_media_codec_bridge_);
   j_media_codec_bridge_ = NULL;
 
-  SB_DCHECK(j_reused_dequeue_input_result_);
-  env->DeleteGlobalRef(j_reused_dequeue_input_result_);
-  j_reused_dequeue_input_result_ = NULL;
-
-  SB_DCHECK(j_reused_dequeue_output_result_);
-  env->DeleteGlobalRef(j_reused_dequeue_output_result_);
-  j_reused_dequeue_output_result_ = NULL;
-
   SB_DCHECK(j_reused_get_output_format_result_);
   env->DeleteGlobalRef(j_reused_get_output_format_result_);
   j_reused_get_output_format_result_ = NULL;
-}
-
-DequeueInputResult MediaCodecBridge::DequeueInputBuffer(jlong timeout_us) {
-  JniEnvExt* env = JniEnvExt::Get();
-  env->CallVoidMethodOrAbort(
-      j_media_codec_bridge_, "dequeueInputBuffer",
-      "(JLdev/cobalt/media/MediaCodecBridge$DequeueInputResult;)V", timeout_us,
-      j_reused_dequeue_input_result_);
-  return {env->CallIntMethodOrAbort(j_reused_dequeue_input_result_, "status",
-                                    "()I"),
-          env->CallIntMethodOrAbort(j_reused_dequeue_input_result_, "index",
-                                    "()I")};
 }
 
 jobject MediaCodecBridge::GetInputBuffer(jint index) {
@@ -316,26 +322,6 @@ jint MediaCodecBridge::QueueSecureInputBuffer(
       index, offset, j_iv.Get(), j_key_id.Get(), j_clear_bytes.Get(),
       j_encrypted_bytes.Get(), subsample_count, CRYPTO_MODE_AES_CTR, 0, 0,
       presentation_time_microseconds);
-}
-
-DequeueOutputResult MediaCodecBridge::DequeueOutputBuffer(jlong timeout_us) {
-  JniEnvExt* env = JniEnvExt::Get();
-  env->CallVoidMethodOrAbort(
-      j_media_codec_bridge_, "dequeueOutputBuffer",
-      "(JLdev/cobalt/media/MediaCodecBridge$DequeueOutputResult;)V", timeout_us,
-      j_reused_dequeue_output_result_);
-  return {env->CallIntMethodOrAbort(j_reused_dequeue_output_result_, "status",
-                                    "()I"),
-          env->CallIntMethodOrAbort(j_reused_dequeue_output_result_, "index",
-                                    "()I"),
-          env->CallIntMethodOrAbort(j_reused_dequeue_output_result_, "flags",
-                                    "()I"),
-          env->CallIntMethodOrAbort(j_reused_dequeue_output_result_, "offset",
-                                    "()I"),
-          env->CallLongMethodOrAbort(j_reused_dequeue_output_result_,
-                                     "presentationTimeMicroseconds", "()J"),
-          env->CallIntMethodOrAbort(j_reused_dequeue_output_result_, "numBytes",
-                                    "()I")};
 }
 
 jobject MediaCodecBridge::GetOutputBuffer(jint index) {
@@ -429,18 +415,6 @@ void MediaCodecBridge::Initialize(jobject j_media_codec_bridge) {
 
   JniEnvExt* env = JniEnvExt::Get();
   SB_DCHECK(env->GetObjectRefType(j_media_codec_bridge_) == JNIGlobalRefType);
-
-  j_reused_dequeue_input_result_ = env->NewObjectOrAbort(
-      "dev/cobalt/media/MediaCodecBridge$DequeueInputResult", "()V");
-  SB_DCHECK(j_reused_dequeue_input_result_);
-  j_reused_dequeue_input_result_ =
-      env->ConvertLocalRefToGlobalRef(j_reused_dequeue_input_result_);
-
-  j_reused_dequeue_output_result_ = env->NewObjectOrAbort(
-      "dev/cobalt/media/MediaCodecBridge$DequeueOutputResult", "()V");
-  SB_DCHECK(j_reused_dequeue_output_result_);
-  j_reused_dequeue_output_result_ =
-      env->ConvertLocalRefToGlobalRef(j_reused_dequeue_output_result_);
 
   j_reused_get_output_format_result_ = env->NewObjectOrAbort(
       "dev/cobalt/media/MediaCodecBridge$GetOutputFormatResult", "()V");

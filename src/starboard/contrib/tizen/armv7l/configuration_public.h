@@ -16,10 +16,14 @@
 #define STARBOARD_CONTRIB_TIZEN_ARMV7L_CONFIGURATION_PUBLIC_H_
 
 // The API version implemented by this platform.
-#define SB_API_VERSION 6
+#define SB_API_VERSION 10
 
 // The tizen policy version
 #define SB_TIZEN_POLICY_VERSION 4
+
+#define SB_HAS_ON_SCREEN_KEYBOARD 0
+#define SB_HAS_PLAYER_WITH_URL 0
+#define SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING 0
 
 // --- Architecture Configuration --------------------------------------------
 
@@ -29,12 +33,6 @@
 
 // Whether the current platform is an ARM architecture.
 #define SB_IS_ARCH_ARM 1
-
-// Whether the current platform is a MIPS architecture.
-#define SB_IS_ARCH_MIPS 0
-
-// Whether the current platform is a PPC architecture.
-#define SB_IS_ARCH_PPC 0
 
 // Whether the current platform is an x86 architecture.
 #define SB_IS_ARCH_X86 0
@@ -68,22 +66,6 @@
 // available on this platform. For a definitive measure, the application should
 // still call SbSystemGetNumberOfProcessors at runtime.
 
-// Whether the current platform is expected to have many cores (> 6), or a
-// wildly varying number of cores.
-#define SB_HAS_MANY_CORES 1
-
-// Whether the current platform is expected to have exactly 1 core.
-#define SB_HAS_1_CORE 0
-
-// Whether the current platform is expected to have exactly 2 cores.
-#define SB_HAS_2_CORES 0
-
-// Whether the current platform is expected to have exactly 4 cores.
-#define SB_HAS_4_CORES 0
-
-// Whether the current platform is expected to have exactly 6 cores.
-#define SB_HAS_6_CORES 0
-
 // Whether the current platform's thread scheduler will automatically balance
 // threads between cores, as opposed to systems where threads will only ever run
 // on the specifically pinned core.
@@ -92,7 +74,7 @@
 // --- I/O Configuration -----------------------------------------------------
 
 // Whether the current platform has microphone supported.
-#define SB_HAS_MICROPHONE 0
+#define SB_HAS_MICROPHONE 1
 
 // Whether the current platform has speech recognizer.
 #define SB_HAS_SPEECH_RECOGNIZER 0

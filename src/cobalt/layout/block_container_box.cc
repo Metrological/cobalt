@@ -36,6 +36,7 @@ BlockContainerBox::~BlockContainerBox() {}
 // Updates used values of "width" and "margin" properties based on
 // https://www.w3.org/TR/CSS21/visudet.html#Computing_widths_and_margins.
 void BlockContainerBox::UpdateContentWidthAndMargins(
+    BaseDirection containing_block_direction,
     LayoutUnit containing_block_width, bool shrink_to_fit_width_forced,
     bool width_depends_on_containing_block,
     const base::Optional<LayoutUnit>& maybe_left,
@@ -46,7 +47,8 @@ void BlockContainerBox::UpdateContentWidthAndMargins(
     const base::Optional<LayoutUnit>& maybe_height) {
   if (IsAbsolutelyPositioned()) {
     UpdateWidthAssumingAbsolutelyPositionedBox(
-        containing_block_width, maybe_left, maybe_right, maybe_width,
+        containing_block_direction, containing_block_width,
+        maybe_left, maybe_right, maybe_width,
         maybe_margin_left, maybe_margin_right, maybe_height);
   } else {
     base::Optional<LayoutUnit> maybe_nulled_width = maybe_width;
@@ -62,8 +64,8 @@ void BlockContainerBox::UpdateContentWidthAndMargins(
     switch (forced_level) {
       case kBlockLevel:
         UpdateWidthAssumingBlockLevelInFlowBox(
-            containing_block_width, maybe_nulled_width, maybe_margin_left,
-            maybe_margin_right);
+            containing_block_direction, containing_block_width,
+            maybe_nulled_width, maybe_margin_left, maybe_margin_right);
         break;
       case kInlineLevel:
         UpdateWidthAssumingInlineLevelInFlowBox(
@@ -85,6 +87,8 @@ void BlockContainerBox::UpdateContentHeightAndMargins(
     const base::Optional<LayoutUnit>& maybe_height) {
   LayoutParams child_layout_params;
   LayoutParams absolute_child_layout_params;
+  child_layout_params.containing_block_direction = base_direction_;
+  absolute_child_layout_params.containing_block_direction = base_direction_;
   if (AsAnonymousBlockBox()) {
     // Anonymous block boxes are ignored when resolving percentage values
     // that would refer to it: the closest non-anonymous ancestor box is used
@@ -118,6 +122,10 @@ void BlockContainerBox::UpdateContentHeightAndMargins(
       child_layout_params.containing_block_size.set_height(LayoutUnit());
     }
   }
+  child_layout_params.maybe_margin_top = maybe_margin_top;
+  child_layout_params.maybe_margin_bottom = maybe_margin_bottom;
+  child_layout_params.maybe_height = maybe_height;
+
   std::unique_ptr<FormattingContext> formatting_context =
       UpdateRectOfInFlowChildBoxes(child_layout_params);
 
@@ -180,7 +188,8 @@ void BlockContainerBox::UpdateContentSizeAndMargins(
     base::Optional<LayoutUnit> maybe_right = GetUsedRightIfNotAuto(
         computed_style(), layout_params.containing_block_size);
 
-    UpdateContentWidthAndMargins(layout_params.containing_block_size.width(),
+    UpdateContentWidthAndMargins(layout_params.containing_block_direction,
+                                 layout_params.containing_block_size.width(),
                                  layout_params.shrink_to_fit_width_forced,
                                  width_depends_on_containing_block, maybe_left,
                                  maybe_right, maybe_margin_left,
@@ -196,6 +205,7 @@ void BlockContainerBox::UpdateContentSizeAndMargins(
         &max_width_depends_on_containing_block);
     if (maybe_max_width && width() > maybe_max_width.value()) {
       UpdateContentWidthAndMargins(
+          layout_params.containing_block_direction,
           layout_params.containing_block_size.width(),
           layout_params.shrink_to_fit_width_forced,
           max_width_depends_on_containing_block, maybe_left, maybe_right,
@@ -207,15 +217,16 @@ void BlockContainerBox::UpdateContentSizeAndMargins(
     // computed value for 'width'.
     //   https://www.w3.org/TR/CSS21/visudet.html#min-max-widths
     bool min_width_depends_on_containing_block;
-    base::Optional<LayoutUnit> min_width =
-        GetUsedMinWidth(computed_style(), layout_params.containing_block_size,
-                        &min_width_depends_on_containing_block);
-    if (width() < min_width.value()) {
-      UpdateContentWidthAndMargins(layout_params.containing_block_size.width(),
-                                   layout_params.shrink_to_fit_width_forced,
-                                   min_width_depends_on_containing_block,
-                                   maybe_left, maybe_right, maybe_margin_left,
-                                   maybe_margin_right, min_width, maybe_height);
+    base::Optional<LayoutUnit> maybe_min_width = GetUsedMinWidthIfNotAuto(
+        computed_style(), layout_params.containing_block_size,
+        &min_width_depends_on_containing_block);
+    if (maybe_min_width && (width() < maybe_min_width.value_or(LayoutUnit()))) {
+      UpdateContentWidthAndMargins(
+          layout_params.containing_block_direction,
+          layout_params.containing_block_size.width(),
+          layout_params.shrink_to_fit_width_forced,
+          min_width_depends_on_containing_block, maybe_left, maybe_right,
+          maybe_margin_left, maybe_margin_right, maybe_min_width, maybe_height);
     }
   }
 
@@ -239,9 +250,9 @@ void BlockContainerBox::UpdateContentSizeAndMargins(
   // applied again, but this time using the value of 'min-height' as the
   // computed value for 'height'.
   //   https://www.w3.org/TR/CSS21/visudet.html#min-max-heights
-  base::Optional<LayoutUnit> min_height =
-      GetUsedMinHeight(computed_style(), layout_params.containing_block_size);
-  if (height() < min_height.value()) {
+  base::Optional<LayoutUnit> min_height = GetUsedMinHeightIfNotAuto(
+      computed_style(), layout_params.containing_block_size);
+  if (min_height && (height() < min_height.value())) {
     UpdateContentHeightAndMargins(layout_params.containing_block_size,
                                   maybe_top, maybe_bottom, maybe_margin_top,
                                   maybe_margin_bottom, min_height);
@@ -249,10 +260,9 @@ void BlockContainerBox::UpdateContentSizeAndMargins(
 }
 
 WrapResult BlockContainerBox::TryWrapAt(
-    WrapAtPolicy /*wrap_at_policy*/,
-    WrapOpportunityPolicy /*wrap_opportunity_policy*/,
-    bool /*is_line_existence_justified*/, LayoutUnit /*available_width*/,
-    bool /*should_collapse_trailing_white_space*/) {
+    WrapAtPolicy wrap_at_policy, WrapOpportunityPolicy wrap_opportunity_policy,
+    bool is_line_existence_justified, LayoutUnit available_width,
+    bool should_collapse_trailing_white_space) {
   DCHECK(!IsAbsolutelyPositioned());
   DCHECK_EQ(kInlineLevel, GetLevel());
   return kWrapResultNoWrap;
@@ -265,13 +275,13 @@ base::Optional<int> BlockContainerBox::GetBidiLevel() const {
 }
 
 void BlockContainerBox::SetShouldCollapseLeadingWhiteSpace(
-    bool /*should_collapse_leading_white_space*/) {
+    bool should_collapse_leading_white_space) {
   DCHECK_EQ(kInlineLevel, GetLevel());
   // Do nothing.
 }
 
 void BlockContainerBox::SetShouldCollapseTrailingWhiteSpace(
-    bool /*should_collapse_trailing_white_space*/) {
+    bool should_collapse_trailing_white_space) {
   DCHECK_EQ(kInlineLevel, GetLevel());
   // Do nothing.
 }
@@ -336,6 +346,7 @@ void BlockContainerBox::DumpProperties(std::ostream* stream) const {
 //     + "padding-right" + "border-right-width" + "margin-right" + "right"
 //     = width of containing block
 void BlockContainerBox::UpdateWidthAssumingAbsolutelyPositionedBox(
+    BaseDirection containing_block_direction,
     LayoutUnit containing_block_width,
     const base::Optional<LayoutUnit>& maybe_left,
     const base::Optional<LayoutUnit>& maybe_right,
@@ -349,11 +360,23 @@ void BlockContainerBox::UpdateWidthAssumingAbsolutelyPositionedBox(
     set_margin_left(maybe_margin_left.value_or(LayoutUnit()));
     set_margin_right(maybe_margin_right.value_or(LayoutUnit()));
 
-    // Then set "left" to the static position...
-    set_left(GetStaticPositionLeft());
+    // Then, if the "direction" property of the element establishing the
+    // static-position containing block is "ltr"...
+    if (containing_block_direction == kLeftToRightBaseDirection) {
+      // ...set "left" to the static position...
+      set_left(GetStaticPositionLeft());
 
-    // ...and apply rule number three (the width is shrink-to-fit).
-    set_width(GetShrinkToFitWidth(containing_block_width, maybe_height));
+      // ...and apply rule number three (the width is shrink-to-fit; solve for
+      // "right").
+      set_width(GetShrinkToFitWidth(containing_block_width, maybe_height));
+    } else {
+      // ...otherwise, set "right" to the static position...
+      // ...and apply rule number one (the width is shrink-to-fit; solve for
+      // "left").
+      set_width(GetShrinkToFitWidth(containing_block_width, maybe_height));
+      set_left(containing_block_width - GetStaticPositionRight() -
+               GetMarginBoxWidth());
+    }
     return;
   }
 
@@ -370,10 +393,17 @@ void BlockContainerBox::UpdateWidthAssumingAbsolutelyPositionedBox(
       // under the extra constraint that the two margins get equal values...
       LayoutUnit horizontal_margin = horizontal_margin_sum / 2;
       if (horizontal_margin < LayoutUnit()) {
-        // ...unless this would make them negative, in which case set
-        // "margin-left" to zero and solve for "margin-right".
-        set_margin_left(LayoutUnit());
-        set_margin_right(horizontal_margin_sum);
+        // ...unless this would make them negative, in which case when direction
+        // of the containing block is "ltr" ("rtl"), set "margin-left"
+        // ("margin-right") to zero and solve for "margin-right"
+        // ("margin-left").
+        if (containing_block_direction == kLeftToRightBaseDirection) {
+          set_margin_left(LayoutUnit());
+          set_margin_right(horizontal_margin_sum);
+        } else {
+          set_margin_left(horizontal_margin_sum);
+          set_margin_right(LayoutUnit());
+        }
       } else {
         set_margin_left(horizontal_margin);
         set_margin_right(horizontal_margin);
@@ -389,9 +419,14 @@ void BlockContainerBox::UpdateWidthAssumingAbsolutelyPositionedBox(
       set_margin_left(*maybe_margin_left);
       set_margin_right(horizontal_margin_sum - *maybe_margin_left);
     } else {
-      // If the values are over-constrained, ignore the value for "right".
+      // If the values are over-constrained, ignore the value for "left" (in
+      // case the "direction" property of the containing block is "rtl") or
+      // "right" (in case "direction" is "ltr") and solve for that value.
       set_margin_left(*maybe_margin_left);
       set_margin_right(*maybe_margin_right);
+      if (containing_block_direction == kRightToLeftBaseDirection) {
+        set_left(containing_block_width - GetMarginBoxWidth() - *maybe_right);
+      }
     }
     return;
   }
@@ -414,8 +449,16 @@ void BlockContainerBox::UpdateWidthAssumingAbsolutelyPositionedBox(
   // 2. "left" and "right" are "auto" and "width" is not "auto"...
   if (!maybe_left && !maybe_right && maybe_width) {
     set_width(*maybe_width);
-    // ...then set "left" to the static position.
-    set_left(GetStaticPositionLeft());
+    // ...if the "direction" property of the element establishing the
+    // static-position containing block is "ltr" set "left" to the static
+    // position, otherwise set "right" to the static position. Then solve for
+    // "left" (if "direction" is "rtl") or "right" (if "direction" is "ltr").
+    if (containing_block_direction == kLeftToRightBaseDirection) {
+      set_left(GetStaticPositionLeft());
+    } else {
+      set_left(containing_block_width - GetStaticPositionRight() -
+               GetMarginBoxWidth());
+    }
     DCHECK_EQ(left(), left());  // Check for NaN.
     return;
   }
@@ -583,6 +626,7 @@ void BlockContainerBox::UpdateHeightAssumingAbsolutelyPositionedBox(
 //     + "padding-right" + "border-right-width" + "margin-right"
 //     = width of containing block
 void BlockContainerBox::UpdateWidthAssumingBlockLevelInFlowBox(
+    BaseDirection containing_block_direction,
     LayoutUnit containing_block_width,
     const base::Optional<LayoutUnit>& maybe_width,
     const base::Optional<LayoutUnit>& possibly_overconstrained_margin_left,
@@ -595,8 +639,8 @@ void BlockContainerBox::UpdateWidthAssumingBlockLevelInFlowBox(
   if (maybe_width) {
     set_width(*maybe_width);
     UpdateHorizontalMarginsAssumingBlockLevelInFlowBox(
-        containing_block_width, GetBorderBoxWidth(), maybe_margin_left,
-        maybe_margin_right);
+        containing_block_direction, containing_block_width, GetBorderBoxWidth(),
+        maybe_margin_left, maybe_margin_right);
   } else {
     // If "width" is set to "auto", any other "auto" values become "0" and
     // "width" follows from the resulting equality.
@@ -634,6 +678,7 @@ LayoutUnit BlockContainerBox::GetShrinkToFitWidth(
     LayoutUnit containing_block_width,
     const base::Optional<LayoutUnit>& maybe_height) {
   LayoutParams child_layout_params;
+  child_layout_params.containing_block_direction = base_direction_;
   // The available width is the width of the containing block minus
   // the used values of "margin-left", "border-left-width", "padding-left",
   // "padding-right", "border-right-width", "margin-right".
@@ -676,9 +721,20 @@ void BlockContainerBox::UpdateHeightAssumingInFlowBox(
     const base::Optional<LayoutUnit>& maybe_margin_top,
     const base::Optional<LayoutUnit>& maybe_margin_bottom,
     const FormattingContext& formatting_context) {
-  // If "margin-top", or "margin-bottom" are "auto", their used value is 0.
-  set_margin_top(maybe_margin_top.value_or(LayoutUnit()));
-  set_margin_bottom(maybe_margin_bottom.value_or(LayoutUnit()));
+  if (collapsed_empty_margin_) {
+    // If empty box has a collapsed margin, only set top margin.
+    //   https://www.w3.org/TR/CSS22/box.html#collapsing-margins
+    set_margin_top(collapsed_empty_margin_.value());
+    set_margin_bottom(LayoutUnit());
+  } else {
+    // If "margin-top", or "margin-bottom" are "auto", their used value is 0.
+    LayoutUnit margin_top =
+        collapsed_margin_top_.value_or(maybe_margin_top.value_or(LayoutUnit()));
+    LayoutUnit margin_bottom = collapsed_margin_bottom_.value_or(
+        maybe_margin_bottom.value_or(LayoutUnit()));
+    set_margin_top(margin_top);
+    set_margin_bottom(margin_bottom);
+  }
 
   // If "height" is "auto", the used value is the distance from box's top
   // content edge to the first applicable of the following:

@@ -16,14 +16,29 @@
 #define STARBOARD_SHARED_STARBOARD_AUDIO_SINK_AUDIO_SINK_INTERNAL_H_
 
 #include "starboard/audio_sink.h"
+
+#include <functional>
+
 #include "starboard/configuration.h"
 #include "starboard/shared/internal_only.h"
 
 struct SbAudioSinkPrivate {
+#if SB_API_VERSION >= 12
+  // When |capability_changed| is true, it hints that the error is caused by a
+  // a transisent capability on the platform.  The app should retry playback to
+  // recover from the error.
+  typedef void (*ErrorFunc)(bool capability_changed, void* context);
+#endif  // SB_API_VERSION >= 12
+
+  typedef std::function<
+      void(int frames_consumed, SbTime frames_consumed_at, void* context)>
+      ConsumeFramesFunc;
+
   class Type {
    public:
     virtual ~Type() {}
 
+    // |error_func| can be NULL to indicate that there is no error handling.
     virtual SbAudioSink Create(
         int channels,
         int sampling_frequency_hz,
@@ -32,7 +47,10 @@ struct SbAudioSinkPrivate {
         SbAudioSinkFrameBuffers frame_buffers,
         int frame_buffers_size_in_frames,
         SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-        SbAudioSinkConsumeFramesFunc consume_frames_func,
+        ConsumeFramesFunc consume_frames_func,
+#if SB_API_VERSION >= 12
+        ErrorFunc error_func,
+#endif  // SB_API_VERSION >= 12
         void* context) = 0;
     virtual bool IsValid(SbAudioSink audio_sink) = 0;
     virtual void Destroy(SbAudioSink audio_sink) = 0;
@@ -60,6 +78,38 @@ struct SbAudioSinkPrivate {
   // Return a valid Type to create a fallback audio sink if fallback to stub is
   // enabled.  Otherwise return NULL.
   static Type* GetFallbackType();
+
+  // Return a valid Type, choosing the Primary type if available, otherwise
+  // Fallback. If Fallback is not enabled, then returns NULL.
+  static Type* GetPreferredType();
+
+  static SbAudioSink Create(
+      int channels,
+      int sampling_frequency_hz,
+      SbMediaAudioSampleType audio_sample_type,
+      SbMediaAudioFrameStorageType audio_frame_storage_type,
+      SbAudioSinkFrameBuffers frame_buffers,
+      int frame_buffers_size_in_frames,
+      SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
+      ConsumeFramesFunc consume_frames_func,
+#if SB_API_VERSION >= 12
+      ErrorFunc error_func,
+#endif  // SB_API_VERSION >= 12
+      void* context);
+
+  static SbAudioSink Create(
+      int channels,
+      int sampling_frequency_hz,
+      SbMediaAudioSampleType audio_sample_type,
+      SbMediaAudioFrameStorageType audio_frame_storage_type,
+      SbAudioSinkFrameBuffers frame_buffers,
+      int frame_buffers_size_in_frames,
+      SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
+      SbAudioSinkConsumeFramesFunc sb_consume_frames_func,
+#if SB_API_VERSION >= 12
+      ErrorFunc error_func,
+#endif  // SB_API_VERSION >= 12
+      void* context);
 
   // Individual implementation has to provide implementation of the following
   // functions, which will be called inside Initialize() and TearDown().

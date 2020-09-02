@@ -14,7 +14,11 @@
 
 #include "cobalt/dom/eme/media_key_system_access.h"
 
+#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
+#include "cobalt/dom/dom_exception.h"
 #include "cobalt/dom/eme/media_keys.h"
+#include "cobalt/media/base/drm_system.h"
 #include "cobalt/script/script_value_factory.h"
 
 namespace cobalt {
@@ -32,14 +36,31 @@ MediaKeySystemAccess::MediaKeySystemAccess(
 // See
 // https://www.w3.org/TR/encrypted-media/#dom-mediakeysystemaccess-createmediakeys.
 script::Handle<MediaKeySystemAccess::InterfacePromise>
-MediaKeySystemAccess::CreateMediaKeys() const {
+MediaKeySystemAccess::CreateMediaKeys(
+    script::EnvironmentSettings* settings) const {
   // 1. Let promise be a new promise.
   script::Handle<MediaKeySystemAccess::InterfacePromise> promise =
       script_value_factory_->CreateInterfacePromise<scoped_refptr<MediaKeys>>();
 
+  // 2.5. Let instance be a new instance of the Key System implementation
+  // represented by this object's cdm implementation value.
+  scoped_refptr<media::DrmSystem> drm_system(
+      new media::DrmSystem(key_system_.c_str()));
+
+  // 2.9. If any of the preceding steps failed, reject promise with a new
+  // DOMException whose name is the appropriate error name.
+  if (!drm_system->is_valid()) {
+    drm_system.reset();
+    promise->Reject(new DOMException(
+        DOMException::kNotSupportedErr,
+        "Failed to load and initialize the Key System implementation."));
+    return promise;
+  }
+
   // 2.10. Let media keys be a new MediaKeys object.
+  // 2.10.5. Let the cdm instance value be instance.
   scoped_refptr<MediaKeys> media_keys(
-      new MediaKeys(key_system_, script_value_factory_));
+      new MediaKeys(settings, drm_system, script_value_factory_));
 
   // 2.11. Resolve promise with media keys.
   promise->Resolve(media_keys);

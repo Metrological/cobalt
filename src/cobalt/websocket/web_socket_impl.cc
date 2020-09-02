@@ -27,9 +27,6 @@
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/websocket/web_socket.h"
 #include "net/http/http_util.h"
-#include "net/websockets/websocket_errors.h"
-#include "net/websockets/websocket_frame.h"
-#include "net/websockets/websocket_handshake_stream_create_helper.h"
 #include "starboard/memory.h"
 
 namespace cobalt {
@@ -45,6 +42,10 @@ WebSocketImpl::WebSocketImpl(cobalt::network::NetworkModule *network_module,
 void WebSocketImpl::ResetWebSocketEventDelegate() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   delegate_ = NULL;
+
+  delegate_task_runner_->PostTask(
+      FROM_HERE, base::Bind(&WebSocketImpl::DoClose, this,
+                            CloseInfo(net::kWebSocketErrorGoingAway)));
 }
 
 void WebSocketImpl::Connect(const std::string &origin, const GURL &url,
@@ -68,6 +69,7 @@ void WebSocketImpl::Connect(const std::string &origin, const GURL &url,
   // priority thread might be required.  Investigation is needed.
   delegate_task_runner_ =
       network_module_->url_request_context_getter()->GetNetworkTaskRunner();
+  DCHECK(delegate_task_runner_);
   base::WaitableEvent channel_created_event(
       base::WaitableEvent::ResetPolicy::MANUAL,
       base::WaitableEvent::InitialState::NOT_SIGNALED);
@@ -94,12 +96,17 @@ void WebSocketImpl::DoConnect(
       std::unique_ptr<net::WebSocketEventInterface>(
           new CobaltWebSocketEventHandler(this)),
       context->GetURLRequestContext());
+
   websocket_channel_->SendAddChannelRequest(
       url, desired_sub_protocols_, url::Origin::Create(GURL(origin_)),
-      GURL() /*site_for_cookies*/,
+      connect_url_ /*site_for_cookies*/,
       net::HttpRequestHeaders() /*additional_headers*/);
   channel_created_event
       ->Signal();  // Signal that this->websocket_channel_ has been assigned.
+
+  // On Cobalt we do not support flow control.
+  auto flow_control_result = websocket_channel_->SendFlowControl(INT_MAX);
+  DCHECK_EQ(net::WebSocketChannel::CHANNEL_ALIVE, flow_control_result);
 }
 
 void WebSocketImpl::Close(const net::WebSocketError code,
@@ -117,17 +124,21 @@ void WebSocketImpl::DoClose(const CloseInfo &close_info) {
 
   auto channel_state = websocket_channel_->StartClosingHandshake(
       close_info.code, close_info.reason);
-  if (channel_state == net::WebSocketChannel::CHANNEL_DELETED) {
+  if (channel_state == net::WebSocketChannel::CHANNEL_DELETED ||
+      close_info.code == net::kWebSocketErrorGoingAway) {
     websocket_channel_.reset();
   }
 }
 
+void WebSocketImpl::ResetChannel() {
+  DCHECK(delegate_task_runner_->BelongsToCurrentThread());
+  websocket_channel_.reset();
+}
+
 WebSocketImpl::~WebSocketImpl() {
-  if (websocket_channel_) {
-    delegate_task_runner_->PostTask(
-        FROM_HERE, base::Bind(&WebSocketImpl::DoClose, base::Unretained(this),
-                              CloseInfo(net::kWebSocketNormalClosure)));
-  }
+  // The channel must have been destroyed already, in order to ensure that it
+  // is destroyed on the correct thread.
+  DCHECK(!websocket_channel_);
 }
 
 // The main reason to call TrampolineClose is to ensure messages that are posted
@@ -143,7 +154,6 @@ void WebSocketImpl::TrampolineClose(const CloseInfo &close_info) {
                                        do_close_closure);
 }
 
-
 void WebSocketImpl::OnHandshakeComplete(
     const std::string &selected_subprotocol) {
   owner_task_runner_->PostTask(
@@ -151,9 +161,16 @@ void WebSocketImpl::OnHandshakeComplete(
                             selected_subprotocol));
 }
 
+void WebSocketImpl::OnFlowControl(int64_t quota) {
+  DCHECK_GE(current_quota_, 0);
+  current_quota_ += quota;
+  ProcessSendQueue();
+}
+
 void WebSocketImpl::OnWebSocketConnected(
     const std::string &selected_subprotocol) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+
   if (delegate_) {
     delegate_->OnConnected(selected_subprotocol);
   }
@@ -169,6 +186,13 @@ void WebSocketImpl::OnWebSocketDisconnected(bool was_clean, uint16 code,
 
 void WebSocketImpl::OnWebSocketReceivedData(
     bool is_text_frame, scoped_refptr<net::IOBufferWithSize> data) {
+  if (!owner_task_runner_->BelongsToCurrentThread()) {
+    owner_task_runner_->PostTask(
+        FROM_HERE, base::Bind(&WebSocketImpl::OnWebSocketReceivedData, this,
+                              is_text_frame, data));
+    return;
+  }
+
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (delegate_) {
     delegate_->OnReceivedData(is_text_frame, data);
@@ -185,10 +209,25 @@ void WebSocketImpl::OnClose(bool was_clean, int error_code,
              << " code[" << close_code << "] reason[" << close_reason << "]"
              << " was_clean: " << was_clean;
 
-  websocket_channel_.reset();
+  // Queue the deletion of |websocket_channel_|.  We would do it here, but this
+  // function may be called as a callback *by* |websocket_channel_|;
+  delegate_task_runner_->PostTask(
+      FROM_HERE, base::Bind(&WebSocketImpl::ResetChannel, this));
   owner_task_runner_->PostTask(
       FROM_HERE, base::Bind(&WebSocketImpl::OnWebSocketDisconnected, this,
                             was_clean, close_code, close_reason));
+}
+
+void WebSocketImpl::OnWriteDone(uint64_t bytes_written) {
+  owner_task_runner_->PostTask(
+      FROM_HERE,
+      base::Bind(&WebSocketImpl::OnWebSocketWriteDone, this, bytes_written));
+}
+
+void WebSocketImpl::OnWebSocketWriteDone(uint64_t bytes_written) {
+  if (delegate_) {
+    delegate_->OnWriteDone(bytes_written);
+  }
 }
 
 // Currently only called in SocketStream::Finish(), so it is meant
@@ -199,7 +238,7 @@ void WebSocketImpl::OnClose(bool was_clean, int error_code,
 
 bool WebSocketImpl::SendHelper(const net::WebSocketFrameHeader::OpCode op_code,
                                const char *data, std::size_t length,
-                               std::string * /*error_message*/) {
+                               std::string *error_message) {
   scoped_refptr<net::IOBuffer> io_buffer(new net::IOBuffer(length));
   SbMemoryCopy(io_buffer->data(), data, length);
 
@@ -212,7 +251,7 @@ bool WebSocketImpl::SendHelper(const net::WebSocketFrameHeader::OpCode op_code,
     delegate_task_runner_->PostTask(FROM_HERE, do_send_closure);
   }
 
-  // TODO[johnx]:Change to void function?
+  // TODO: Change to void function?
   return true;
 }
 
@@ -220,12 +259,45 @@ void WebSocketImpl::SendOnDelegateThread(
     const net::WebSocketFrameHeader::OpCode op_code,
     scoped_refptr<net::IOBuffer> io_buffer, std::size_t length) {
   DCHECK(delegate_task_runner_->BelongsToCurrentThread());
-  // this behavior is not just an optimization, but required in case
-  // we are closing the connection
-  auto channel_state =
-      websocket_channel_->SendFrame(true /*fin*/, op_code, io_buffer, length);
-  if (channel_state == net::WebSocketChannel::CHANNEL_DELETED) {
-    websocket_channel_.reset();
+
+  if (!websocket_channel_) {
+    DLOG(WARNING) << "Attempt to send over a closed channel.";
+    return;
+  }
+  SendQueueMessage new_message = {io_buffer, length, op_code};
+  send_queue_.push(std::move(new_message));
+  ProcessSendQueue();
+}
+
+void WebSocketImpl::ProcessSendQueue() {
+  DCHECK(delegate_task_runner_->BelongsToCurrentThread());
+  while (current_quota_ > 0 && !send_queue_.empty()) {
+    SendQueueMessage message = send_queue_.front();
+    size_t current_message_length = message.length - sent_size_of_top_message_;
+    bool final = false;
+    if (current_quota_ < static_cast<int64_t>(current_message_length)) {
+      // quota is not enough to send the top message.
+      scoped_refptr<net::IOBuffer> new_io_buffer(
+          new net::IOBuffer(static_cast<size_t>(current_quota_)));
+      SbMemoryCopy(new_io_buffer->data(),
+                   message.io_buffer->data() + sent_size_of_top_message_,
+                   current_quota_);
+      sent_size_of_top_message_ += current_quota_;
+      message.io_buffer = new_io_buffer;
+      current_message_length = current_quota_;
+      current_quota_ = 0;
+    } else {
+      // Sent all of the remaining top message.
+      final = true;
+      send_queue_.pop();
+      sent_size_of_top_message_ = 0;
+      current_quota_ -= current_message_length;
+    }
+    auto channel_state = websocket_channel_->SendFrame(
+        final, message.op_code, message.io_buffer, current_message_length);
+    if (channel_state == net::WebSocketChannel::CHANNEL_DELETED) {
+      websocket_channel_.reset();
+    }
   }
 }
 

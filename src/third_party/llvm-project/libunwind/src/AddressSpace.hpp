@@ -43,6 +43,11 @@ namespace libunwind {
 #include "EHHeaderParser.hpp"
 #include "Registers.hpp"
 
+#if defined(STARBOARD_IMPLEMENTATION)
+#include "starboard/memory.h"
+#include "starboard/elf_loader/evergreen_info.h"
+#endif
+
 #ifdef __APPLE__
 
   struct dyld_unwind_sections
@@ -383,8 +388,45 @@ LocalAddressSpace::getEncodedP(pint_t &addr, pint_t end, uint8_t encoding,
   return result;
 }
 
+#if defined(STARBOARD)
+#if !defined(Elf_Half)
+        typedef ElfW(Half) Elf_Half;
+#endif
+#if !defined(Elf_Phdr)
+        typedef ElfW(Phdr) Elf_Phdr;
+#endif
+#if !defined(Elf_Addr) && defined(__ANDROID__)
+        typedef ElfW(Addr) Elf_Addr;
+#endif
+#endif
+
+#if defined(STARBOARD_IMPLEMENTATION)
+int evergreen_dl_iterate_phdr(
+                 int (*callback) (struct dl_phdr_info *info,
+                                  size_t size, void *data),
+                 void *data) {
+  bool ret = false;
+  EvergreenInfo evergreen_info;
+  if(GetEvergreenInfo(&evergreen_info)) {
+    struct dl_phdr_info info;
+    info.dlpi_addr =  evergreen_info.base_address;
+    info.dlpi_name = evergreen_info.file_path_buf;
+    info.dlpi_phdr = reinterpret_cast<Elf_Phdr*>(evergreen_info.phdr_table);
+    info.dlpi_phnum = evergreen_info.phdr_table_num;
+    ret = callback(&info, sizeof(info), data);
+  }
+
+  return ret || ::dl_iterate_phdr(callback, data);
+}
+#endif
 inline bool LocalAddressSpace::findUnwindSections(pint_t targetAddr,
                                                   UnwindInfoSections &info) {
+
+#if defined(STARBOARD) && !defined(STARBOARD_IMPLEMENTATION)
+  return false;
+#endif
+
+
 #ifdef __APPLE__
   dyld_unwind_sections dyldInfo;
   if (_dyld_find_unwind_sections((void *)targetAddr, &dyldInfo)) {
@@ -470,7 +512,11 @@ inline bool LocalAddressSpace::findUnwindSections(pint_t targetAddr,
   };
 
   dl_iterate_cb_data cb_data = {this, &info, targetAddr};
+#if defined(STARBOARD_IMPLEMENTATION)
+  int found = evergreen_dl_iterate_phdr(
+#else
   int found = dl_iterate_phdr(
+#endif
       [](struct dl_phdr_info *pinfo, size_t, void *data) -> int {
         auto cbdata = static_cast<dl_iterate_cb_data *>(data);
         bool found_obj = false;
@@ -482,7 +528,7 @@ inline bool LocalAddressSpace::findUnwindSections(pint_t targetAddr,
         if (cbdata->targetAddr < pinfo->dlpi_addr) {
           return false;
         }
-
+#if !defined(STARBOARD)
 #if !defined(Elf_Half)
         typedef ElfW(Half) Elf_Half;
 #endif
@@ -491,6 +537,7 @@ inline bool LocalAddressSpace::findUnwindSections(pint_t targetAddr,
 #endif
 #if !defined(Elf_Addr) && defined(__ANDROID__)
         typedef ElfW(Addr) Elf_Addr;
+#endif
 #endif
 
  #if defined(_LIBUNWIND_SUPPORT_DWARF_UNWIND)
@@ -530,11 +577,11 @@ inline bool LocalAddressSpace::findUnwindSections(pint_t targetAddr,
 #endif
             cbdata->sects->dwarf_index_section = eh_frame_hdr_start;
             cbdata->sects->dwarf_index_section_length = phdr->p_memsz;
-            EHHeaderParser<LocalAddressSpace>::decodeEHHdr(
+            found_hdr = EHHeaderParser<LocalAddressSpace>::decodeEHHdr(
                 *cbdata->addressSpace, eh_frame_hdr_start, phdr->p_memsz,
                 hdrInfo);
-            cbdata->sects->dwarf_section = hdrInfo.eh_frame_ptr;
-            found_hdr = true;
+            if (found_hdr)
+              cbdata->sects->dwarf_section = hdrInfo.eh_frame_ptr;
           }
         }
 
@@ -584,6 +631,7 @@ inline bool LocalAddressSpace::findOtherFDE(pint_t targetAddr, pint_t &fde) {
 inline bool LocalAddressSpace::findFunctionName(pint_t addr, char *buf,
                                                 size_t bufLen,
                                                 unw_word_t *offset) {
+#if !defined(STARBOARD)
 #if _LIBUNWIND_USE_DLADDR
   Dl_info dyldInfo;
   if (dladdr((void *)addr, &dyldInfo)) {
@@ -593,6 +641,7 @@ inline bool LocalAddressSpace::findFunctionName(pint_t addr, char *buf,
       return true;
     }
   }
+#endif
 #endif
   return false;
 }

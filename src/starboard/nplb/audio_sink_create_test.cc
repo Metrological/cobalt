@@ -35,12 +35,13 @@ void UpdateSourceStatusFuncStub(int* frames_in_buffer,
   *is_eos_reached = false;
 }
 
+#if SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+void ConsumeFramesFuncStub(int frames_consumed, void* context) {}
+#else   // SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 void ConsumeFramesFuncStub(int frames_consumed,
-#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                            SbTime frames_consumed_at,
-#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
-                           void* context) {
-}
+                           void* context) {}
+#endif  // SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 
 }  // namespace
 
@@ -60,7 +61,6 @@ TEST(SbAudioSinkCreateTest, SunnyDay) {
   SbAudioSinkDestroy(audio_sink);
 }
 
-#if SB_API_VERSION >= 10
 TEST(SbAudioSinkCreateTest, MultiSink) {
   ASSERT_GE(SbAudioSinkGetMaxChannels(), 1);
 
@@ -86,7 +86,6 @@ TEST(SbAudioSinkCreateTest, MultiSink) {
     SbAudioSinkDestroy(sink);
   }
 }
-#endif  // SB_API_VERSION >= 10
 
 TEST(SbAudioSinkCreateTest, SunnyDayAllCombinations) {
   std::vector<SbMediaAudioSampleType> sample_types;

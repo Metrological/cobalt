@@ -30,10 +30,6 @@ typedef void (*linker_function_t)();
 // section with dynamic symbols and a
 // string tables.
 
-// The initialization requires calling:
-// 1. InitDynamicSection()
-// 2. InitDynamicSymbols()
-//
 class DynamicSection {
  public:
   DynamicSection(Addr base_memory_address,
@@ -43,9 +39,6 @@ class DynamicSection {
 
   // Initialize the dynamic section.
   bool InitDynamicSection();
-
-  // Initialize all the dynamic symbol tables.
-  bool InitDynamicSymbols();
 
   // Get pointer to the dynamic table.
   const Dyn* GetDynamicTable();
@@ -58,9 +51,6 @@ class DynamicSection {
 
   // Call all the global destructors.
   void CallDestructors();
-
-  // Call a function.
-  void CallFunction(linker_function_t func, const char* func_type);
 
   // Lookup a symbol using its name.
   const Sym* LookupByName(const char* symbol_name) const;
@@ -75,6 +65,9 @@ class DynamicSection {
   const char* LookupNameById(size_t symbol_id) const;
 
  private:
+  // Call a function.
+  void CallFunction(linker_function_t func, const char* func_type);
+
   Addr base_memory_address_;
   const char* soname_;
 

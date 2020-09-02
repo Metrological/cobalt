@@ -15,13 +15,14 @@
 #include "starboard/android/shared/audio_track_audio_sink_type.h"
 
 #include <algorithm>
-#include <deque>
+#include <vector>
 
-#include "starboard/android/shared/jni_env_ext.h"
-#include "starboard/android/shared/jni_utils.h"
-#include "starboard/common/mutex.h"
-#include "starboard/common/scoped_ptr.h"
-#include "starboard/thread.h"
+#include "starboard/shared/starboard/player/filter/common.h"
+
+namespace {
+starboard::android::shared::AudioTrackAudioSinkType*
+    audio_track_audio_sink_type_;
+}
 
 namespace starboard {
 namespace android {
@@ -33,13 +34,15 @@ namespace {
 // we will repeatedly allocate a large byte array which cannot be consumed by
 // audio track completely.
 const int kMaxFramesPerRequest = 65536;
-
 const jint kNoOffset = 0;
-
 const size_t kSilenceFramesPerAppend = 1024;
-// 6 (max channels) * 4 (max sample size) * kSilenceFramesPerAppend, the number
-// is to ensure we always have at least 1024 frames silence to write.
-const uint8_t kSilenceBuffer[24 * kSilenceFramesPerAppend] = {0};
+
+const int kMaxRequiredFrames = 16 * 1024;
+const int kRequiredFramesIncrement = 2 * 1024;
+const int kMinStablePlayedFrames = 12 * 1024;
+
+const int kSampleFrequency22050 = 22050;
+const int kSampleFrequency48000 = 48000;
 
 // Helper function to compute the size of the two valid starboard audio sample
 // types.
@@ -71,62 +74,7 @@ void* IncrementPointerByBytes(void* pointer, size_t offset) {
   return static_cast<uint8_t*>(pointer) + offset;
 }
 
-class AudioTrackAudioSink : public SbAudioSinkPrivate {
- public:
-  AudioTrackAudioSink(
-      Type* type,
-      int channels,
-      int sampling_frequency_hz,
-      SbMediaAudioSampleType sample_type,
-      SbAudioSinkFrameBuffers frame_buffers,
-      int frames_per_channel,
-      SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-      SbAudioSinkConsumeFramesFunc consume_frame_func,
-      void* context);
-  ~AudioTrackAudioSink() override;
-
-  bool IsAudioTrackValid() const { return j_audio_track_bridge_; }
-  bool IsType(Type* type) override { return type_ == type; }
-  void SetPlaybackRate(double playback_rate) override {
-    SB_DCHECK(playback_rate >= 0.0);
-    if (playback_rate != 0.0 && playback_rate != 1.0) {
-      SB_NOTIMPLEMENTED() << "TODO: Only playback rates of 0.0 and 1.0 are "
-                             "currently supported.";
-      playback_rate = (playback_rate > 0.0) ? 1.0 : 0.0;
-    }
-    ScopedLock lock(mutex_);
-    playback_rate_ = playback_rate;
-  }
-
-  void SetVolume(double volume) override;
-
- private:
-  static void* ThreadEntryPoint(void* context);
-  void AudioThreadFunc();
-
-  int WriteData(JniEnvExt* env, const void* buffer, int size);
-
-  Type* type_;
-  int channels_;
-  int sampling_frequency_hz_;
-  SbMediaAudioSampleType sample_type_;
-  void* frame_buffer_;
-  int frames_per_channel_;
-  SbAudioSinkUpdateSourceStatusFunc update_source_status_func_;
-  SbAudioSinkConsumeFramesFunc consume_frame_func_;
-  void* context_;
-  int last_playback_head_position_;
-  jobject j_audio_track_bridge_;
-  jobject j_audio_data_;
-
-  volatile bool quit_;
-  SbThread audio_out_thread_;
-
-  starboard::Mutex mutex_;
-  double playback_rate_;
-
-  int written_frames_;
-};
+}  // namespace
 
 AudioTrackAudioSink::AudioTrackAudioSink(
     Type* type,
@@ -135,8 +83,9 @@ AudioTrackAudioSink::AudioTrackAudioSink(
     SbMediaAudioSampleType sample_type,
     SbAudioSinkFrameBuffers frame_buffers,
     int frames_per_channel,
+    int preferred_buffer_size_in_bytes,
     SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-    SbAudioSinkConsumeFramesFunc consume_frame_func,
+    ConsumeFramesFunc consume_frames_func,
     void* context)
     : type_(type),
       channels_(channels),
@@ -145,7 +94,7 @@ AudioTrackAudioSink::AudioTrackAudioSink(
       frame_buffer_(frame_buffers[0]),
       frames_per_channel_(frames_per_channel),
       update_source_status_func_(update_source_status_func),
-      consume_frame_func_(consume_frame_func),
+      consume_frames_func_(consume_frames_func),
       context_(context),
       last_playback_head_position_(0),
       j_audio_track_bridge_(NULL),
@@ -155,7 +104,7 @@ AudioTrackAudioSink::AudioTrackAudioSink(
       playback_rate_(1.0f),
       written_frames_(0) {
   SB_DCHECK(update_source_status_func_);
-  SB_DCHECK(consume_frame_func_);
+  SB_DCHECK(consume_frames_func_);
   SB_DCHECK(frame_buffer_);
   SB_DCHECK(SbAudioSinkIsAudioSampleTypeSupported(sample_type));
 
@@ -167,7 +116,7 @@ AudioTrackAudioSink::AudioTrackAudioSink(
       j_audio_output_manager.Get(), "createAudioTrackBridge",
       "(IIII)Ldev/cobalt/media/AudioTrackBridge;",
       GetAudioFormatSampleType(sample_type_), sampling_frequency_hz_, channels_,
-      frames_per_channel);
+      preferred_buffer_size_in_bytes);
   if (!j_audio_track_bridge) {
     return;
   }
@@ -214,6 +163,17 @@ AudioTrackAudioSink::~AudioTrackAudioSink() {
   }
 }
 
+void AudioTrackAudioSink::SetPlaybackRate(double playback_rate) {
+  SB_DCHECK(playback_rate >= 0.0);
+  if (playback_rate != 0.0 && playback_rate != 1.0) {
+    SB_NOTIMPLEMENTED() << "TODO: Only playback rates of 0.0 and 1.0 are "
+                           "currently supported.";
+    playback_rate = (playback_rate > 0.0) ? 1.0 : 0.0;
+  }
+  ScopedLock lock(mutex_);
+  playback_rate_ = playback_rate;
+}
+
 // static
 void* AudioTrackAudioSink::ThreadEntryPoint(void* context) {
   SB_DCHECK(context);
@@ -226,6 +186,12 @@ void* AudioTrackAudioSink::ThreadEntryPoint(void* context) {
 void AudioTrackAudioSink::AudioThreadFunc() {
   JniEnvExt* env = JniEnvExt::Get();
   bool was_playing = false;
+
+  SB_LOG(INFO) << "AudioTrackAudioSink thread started.";
+
+#if defined(SB_PLAYER_FILTER_ENABLE_STATE_CHECK)
+  SbTime last_playback_head_changed_at = -1;
+#endif  // defined(SB_PLAYER_FILTER_ENABLE_STATE_CHECK)
 
   while (!quit_) {
     int playback_head_position = 0;
@@ -248,12 +214,29 @@ void AudioTrackAudioSink::AudioThreadFunc() {
           std::max(playback_head_position, last_playback_head_position_);
       int frames_consumed =
           playback_head_position - last_playback_head_position_;
+
+#if defined(SB_PLAYER_FILTER_ENABLE_STATE_CHECK)
+      if (last_playback_head_position_ == playback_head_position) {
+        auto now = SbTimeGetMonotonicNow();
+        SbTime elapsed = now - last_playback_head_changed_at;
+        if (was_playing && elapsed > 5 * kSbTimeSecond) {
+          last_playback_head_changed_at = now;
+          SB_LOG(INFO) << "last playback head position is "
+                       << last_playback_head_position_
+                       << " and it hasn't been updated for " << elapsed
+                       << " microseconds.";
+        }
+      } else {
+        last_playback_head_changed_at = SbTimeGetMonotonicNow();
+      }
+#endif  // defined(SB_PLAYER_FILTER_ENABLE_STATE_CHECK)
+
       last_playback_head_position_ = playback_head_position;
       frames_consumed = std::min(frames_consumed, written_frames_);
 
       if (frames_consumed != 0) {
         SB_DCHECK(frames_consumed >= 0);
-        consume_frame_func_(frames_consumed, frames_consumed_at, context_);
+        consume_frames_func_(frames_consumed, frames_consumed_at, context_);
         written_frames_ -= frames_consumed;
       }
     }
@@ -274,9 +257,11 @@ void AudioTrackAudioSink::AudioThreadFunc() {
     if (was_playing && !is_playing) {
       was_playing = false;
       env->CallVoidMethodOrAbort(j_audio_track_bridge_, "pause", "()V");
+      SB_LOG(INFO) << "AudioTrackAudioSink paused.";
     } else if (!was_playing && is_playing) {
       was_playing = true;
       env->CallVoidMethodOrAbort(j_audio_track_bridge_, "play", "()V");
+      SB_LOG(INFO) << "AudioTrackAudioSink playing.";
     }
 
     if (!is_playing || frames_in_buffer == 0) {
@@ -305,8 +290,11 @@ void AudioTrackAudioSink::AudioThreadFunc() {
       // its buffer is fully filled once.
       if (is_eos_reached) {
         // Currently AudioDevice and AudioRenderer will write tail silence.
-        // It should be reached only in tests.
-        WriteData(env, kSilenceBuffer, kSilenceFramesPerAppend);
+        // It should be reached only in tests. It's not ideal to allocate
+        // a new silence buffer every time.
+        std::vector<uint8_t> silence_buffer(
+            channels_ * GetSampleSize(sample_type_) * kSilenceFramesPerAppend);
+        WriteData(env, silence_buffer.data(), kSilenceFramesPerAppend);
       }
       SbThreadSleep(10 * kSbTimeMillisecond);
       continue;
@@ -384,7 +372,39 @@ void AudioTrackAudioSink::SetVolume(double volume) {
   }
 }
 
-}  // namespace
+int AudioTrackAudioSink::GetUnderrunCount() {
+  auto* env = JniEnvExt::Get();
+  jint underrun_count = env->CallIntMethodOrAbort(j_audio_track_bridge_,
+                                                  "getUnderrunCount", "()I");
+  return underrun_count;
+}
+
+// static
+int AudioTrackAudioSinkType::GetMinBufferSizeInFrames(
+    int channels,
+    SbMediaAudioSampleType sample_type,
+    int sampling_frequency_hz) {
+  SB_DCHECK(audio_track_audio_sink_type_);
+
+  JniEnvExt* env = JniEnvExt::Get();
+  ScopedLocalJavaRef<jobject> j_audio_output_manager(
+      env->CallStarboardObjectMethodOrAbort(
+          "getAudioOutputManager", "()Ldev/cobalt/media/AudioOutputManager;"));
+  int audio_track_min_buffer_size = static_cast<int>(env->CallIntMethodOrAbort(
+      j_audio_output_manager.Get(), "getMinBufferSize", "(III)I",
+      GetAudioFormatSampleType(sample_type), sampling_frequency_hz, channels));
+  int audio_track_min_buffer_size_in_frames =
+      audio_track_min_buffer_size / channels / GetSampleSize(sample_type);
+  return std::max(
+      audio_track_min_buffer_size_in_frames,
+      audio_track_audio_sink_type_->GetMinBufferSizeInFramesInternal(
+          channels, sample_type, sampling_frequency_hz));
+}
+
+AudioTrackAudioSinkType::AudioTrackAudioSinkType()
+    : min_required_frames_tester_(kMaxRequiredFrames,
+                                  kRequiredFramesIncrement,
+                                  kMinStablePlayedFrames) {}
 
 SbAudioSink AudioTrackAudioSinkType::Create(
     int channels,
@@ -394,12 +414,18 @@ SbAudioSink AudioTrackAudioSinkType::Create(
     SbAudioSinkFrameBuffers frame_buffers,
     int frames_per_channel,
     SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-    SbAudioSinkConsumeFramesFunc consume_frames_func,
+    SbAudioSinkPrivate::ConsumeFramesFunc consume_frames_func,
+    SbAudioSinkPrivate::ErrorFunc error_func,
     void* context) {
+  int min_required_frames = SbAudioSinkGetMinBufferSizeInFrames(
+      channels, audio_sample_type, sampling_frequency_hz);
+  SB_DCHECK(frames_per_channel >= min_required_frames);
+  int preferred_buffer_size_in_bytes =
+      min_required_frames * channels * GetSampleSize(audio_sample_type);
   AudioTrackAudioSink* audio_sink = new AudioTrackAudioSink(
       this, channels, sampling_frequency_hz, audio_sample_type, frame_buffers,
-      frames_per_channel, update_source_status_func, consume_frames_func,
-      context);
+      frames_per_channel, preferred_buffer_size_in_bytes,
+      update_source_status_func, consume_frames_func, context);
   if (!audio_sink->IsAudioTrackValid()) {
     SB_DLOG(ERROR)
         << "AudioTrackAudioSinkType::Create failed to create audio track";
@@ -409,13 +435,54 @@ SbAudioSink AudioTrackAudioSinkType::Create(
   return audio_sink;
 }
 
+void AudioTrackAudioSinkType::TestMinRequiredFrames() {
+  auto onMinRequiredFramesForWebAudioReceived =
+      [&](int number_of_channels, SbMediaAudioSampleType sample_type,
+          int sample_rate, int min_required_frames) {
+        SB_LOG(INFO) << "Received min required frames " << min_required_frames
+                     << " for " << number_of_channels << " channels, "
+                     << sample_rate << "hz.";
+        ScopedLock lock(min_required_frames_map_mutex_);
+        min_required_frames_map_[sample_rate] = min_required_frames;
+      };
+
+  SbMediaAudioSampleType sample_type = kSbMediaAudioSampleTypeFloat32;
+  if (!SbAudioSinkIsAudioSampleTypeSupported(sample_type)) {
+    sample_type = kSbMediaAudioSampleTypeInt16Deprecated;
+    SB_DCHECK(SbAudioSinkIsAudioSampleTypeSupported(sample_type));
+  }
+  min_required_frames_tester_.AddTest(2, sample_type, kSampleFrequency48000,
+                                      onMinRequiredFramesForWebAudioReceived,
+                                      8 * 1024);
+  min_required_frames_tester_.AddTest(2, sample_type, kSampleFrequency22050,
+                                      onMinRequiredFramesForWebAudioReceived,
+                                      4 * 1024);
+  min_required_frames_tester_.Start();
+}
+
+int AudioTrackAudioSinkType::GetMinBufferSizeInFramesInternal(
+    int channels,
+    SbMediaAudioSampleType sample_type,
+    int sampling_frequency_hz) {
+  if (sampling_frequency_hz <= kSampleFrequency22050) {
+    ScopedLock lock(min_required_frames_map_mutex_);
+    if (min_required_frames_map_.find(kSampleFrequency22050) !=
+        min_required_frames_map_.end()) {
+      return min_required_frames_map_[kSampleFrequency22050];
+    }
+  } else if (sampling_frequency_hz <= kSampleFrequency48000) {
+    ScopedLock lock(min_required_frames_map_mutex_);
+    if (min_required_frames_map_.find(kSampleFrequency48000) !=
+        min_required_frames_map_.end()) {
+      return min_required_frames_map_[kSampleFrequency48000];
+    }
+  }
+  return kMaxRequiredFrames;
+}
+
 }  // namespace shared
 }  // namespace android
 }  // namespace starboard
-
-namespace {
-SbAudioSinkPrivate::Type* audio_track_audio_sink_type_;
-}  // namespace
 
 // static
 void SbAudioSinkPrivate::PlatformInitialize() {
@@ -424,6 +491,7 @@ void SbAudioSinkPrivate::PlatformInitialize() {
       new starboard::android::shared::AudioTrackAudioSinkType;
   SetPrimaryType(audio_track_audio_sink_type_);
   EnableFallbackToStub();
+  audio_track_audio_sink_type_->TestMinRequiredFrames();
 }
 
 // static

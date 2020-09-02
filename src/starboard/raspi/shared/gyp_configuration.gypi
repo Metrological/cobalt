@@ -14,7 +14,13 @@
 
 {
   'variables': {
-    'target_arch': 'arm',
+    # Override that omits the "data" subdirectory.
+    # TODO: Remove when omitted for all platforms in base_configuration.gypi.
+    'sb_static_contents_output_data_dir': '<(PRODUCT_DIR)/content',
+
+    # The Raspberry Pi compiler does not have support for C++14.
+    'sb_disable_cpp14_audit': 1,
+
     'target_os': 'linux',
 
     'sysroot%': '/',
@@ -26,13 +32,15 @@
       '-O2',
     ],
     'compiler_flags': [
-      # We'll pretend not to be Linux, but Starboard instead.
-      '-U__linux__',
-
       # Force char to be signed.
       '-fsigned-char',
+
       # Disable strict aliasing.
       '-fno-strict-aliasing',
+
+      # Allow Skia's SkVx.h to convert between vectors of different element
+      # types or number of subparts.
+      '-flax-vector-conversions',
 
       # To support large files
       '-D_FILE_OFFSET_BITS=64',
@@ -95,15 +103,25 @@
       '-frtti',
     ],
     'compiler_flags_qa': [
-      '-O2',
       '-Wno-unused-but-set-variable',
+    ],
+    'compiler_flags_qa_size': [
+      '-Os',
+    ],
+    'compiler_flags_qa_speed': [
+      '-O2',
     ],
     'compiler_flags_cc_qa': [
       '-fno-rtti',
     ],
     'compiler_flags_gold': [
-      '-O2',
       '-Wno-unused-but-set-variable',
+    ],
+    'compiler_flags_gold_size': [
+      '-Os',
+    ],
+    'compiler_flags_gold_speed': [
+      '-O2',
     ],
     'compiler_flags_cc_gold': [
       '-fno-rtti',
@@ -174,4 +192,8 @@
       }],
     ],
   }, # end of target_defaults
+
+  'includes': [
+    '<(DEPTH)/starboard/sabi/sabi.gypi',
+  ],
 }

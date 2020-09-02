@@ -40,6 +40,8 @@
 #include "starboard/file.h"
 #endif
 
+#include "cobalt/configuration/configuration.h"
+
 /************************************************************************/
 
 namespace JS {
@@ -1090,27 +1092,19 @@ class JS_PUBLIC_API(RuntimeOptions) {
   public:
     RuntimeOptions()
       :
-#if defined(COBALT_DISABLE_JIT)
-        baseline_(false),
-        ion_(false),
-        asmJS_(false),
-#else
-        baseline_(true),
-        ion_(true),
-        asmJS_(true),
-#endif
         throwOnAsmJSValidationFailure_(false),
-#if defined(COBALT_DISABLE_JIT)
-        nativeRegExp_(false),
-#else
-        nativeRegExp_(true),
-#endif
         unboxedArrays_(false),
         asyncStack_(true),
         werror_(false),
         strictMode_(false),
         extraWarnings_(false)
     {
+      bool enable_jit = cobalt::configuration::Configuration::GetInstance()
+                            ->CobaltEnableJit();
+      baseline_ = enable_jit;
+      ion_ = enable_jit;
+      asmJS_ = enable_jit;
+      nativeRegExp_ = enable_jit;
     }
 
     bool baseline() const { return baseline_; }
@@ -5169,7 +5163,6 @@ JS_NewObjectForConstructor(JSContext* cx, const JSClass* clasp, const JS::CallAr
 
 /************************************************************************/
 
-#ifdef JS_GC_ZEAL
 #define JS_DEFAULT_ZEAL_FREQ 100
 
 extern JS_PUBLIC_API(void)
@@ -5180,7 +5173,6 @@ JS_SetGCZeal(JSContext* cx, uint8_t zeal, uint32_t frequency);
 
 extern JS_PUBLIC_API(void)
 JS_ScheduleGC(JSContext* cx, uint32_t count);
-#endif
 
 extern JS_PUBLIC_API(void)
 JS_SetParallelParsingEnabled(JSRuntime* rt, bool enabled);

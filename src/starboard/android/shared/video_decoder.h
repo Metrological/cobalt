@@ -15,7 +15,9 @@
 #ifndef STARBOARD_ANDROID_SHARED_VIDEO_DECODER_H_
 #define STARBOARD_ANDROID_SHARED_VIDEO_DECODER_H_
 
+#include <atomic>
 #include <deque>
+#include <string>
 
 #include "starboard/android/shared/drm_system.h"
 #include "starboard/android/shared/media_codec_bridge.h"
@@ -49,11 +51,17 @@ class VideoDecoder
 
   class Sink;
 
+  static int number_of_hardware_decoders() {
+    return number_of_hardware_decoders_;
+  }
+
   VideoDecoder(SbMediaVideoCodec video_codec,
                SbDrmSystem drm_system,
                SbPlayerOutputMode output_mode,
                SbDecodeTargetGraphicsContextProvider*
-                   decode_target_graphics_context_provider);
+                   decode_target_graphics_context_provider,
+               const char* max_video_capabilities,
+               std::string* error_message);
   ~VideoDecoder() override;
 
   scoped_refptr<VideoRendererSink> GetSink();
@@ -62,6 +70,11 @@ class VideoDecoder
                   const ErrorCB& error_cb) override;
   size_t GetPrerollFrameCount() const override;
   SbTime GetPrerollTimeout() const override;
+  // As we hold output buffers received from MediaCodec, the max number of
+  // cached frames depends on the max number of output buffers in MediaCodec,
+  // which is device dependent. The media decoder may stall if we hold all
+  // output buffers. But it would continue working once we release output
+  // buffer.
   size_t GetMaxNumberOfCachedFrames() const override { return 12; }
 
   void WriteInputBuffer(const scoped_refptr<InputBuffer>& input_buffer)
@@ -72,10 +85,12 @@ class VideoDecoder
 
   bool is_valid() const { return media_decoder_ != NULL; }
 
+  void OnNewTextureAvailable();
+
  private:
   // Attempt to initialize the codec.  Returns whether initialization was
   // successful.
-  bool InitializeCodec();
+  bool InitializeCodec(std::string* error_message);
   void TeardownCodec();
 
   void ProcessOutputBuffer(MediaCodecBridge* media_codec_bridge,
@@ -85,6 +100,9 @@ class VideoDecoder
   void OnFlushing() override;
 
   void OnSurfaceDestroyed() override;
+  void ReportError(SbPlayerError error, const std::string& error_message);
+
+  static int number_of_hardware_decoders_;
 
   // These variables will be initialized inside ctor or Initialize() and will
   // not be changed during the life time of this class.
@@ -92,15 +110,18 @@ class VideoDecoder
   DecoderStatusCB decoder_status_cb_;
   ErrorCB error_cb_;
   DrmSystem* drm_system_;
-
-  SbPlayerOutputMode output_mode_;
-
+  const SbPlayerOutputMode output_mode_;
   SbDecodeTargetGraphicsContextProvider*
       decode_target_graphics_context_provider_;
+  // Android doesn't offically support multi concurrent codecs. But the device
+  // usually has at least one hardware decoder and Google's software decoders.
+  // Google's software decoders can work concurrently. So, we use HW decoder for
+  // the main player and SW decoder for sub players.
+  const bool require_software_codec_;
 
   // If decode-to-texture is enabled, then we store the decode target texture
   // inside of this |decode_target_| member.
-  SbDecodeTarget decode_target_;
+  SbDecodeTarget decode_target_ = kSbDecodeTargetInvalid;
 
   // Since GetCurrentDecodeTarget() needs to be called from an arbitrary thread
   // to obtain the current decode target (which ultimately ends up being a
@@ -109,8 +130,8 @@ class VideoDecoder
   starboard::Mutex decode_target_mutex_;
 
   // The width and height of the latest decoded frame.
-  int32_t frame_width_;
-  int32_t frame_height_;
+  int32_t frame_width_ = 0;
+  int32_t frame_height_ = 0;
 
   // The last enqueued |SbMediaColorMetadata|.
   optional<SbMediaColorMetadata> color_metadata_;
@@ -120,8 +141,10 @@ class VideoDecoder
   atomic_int32_t number_of_frames_being_decoded_;
   scoped_refptr<Sink> sink_;
 
-  bool first_buffer_received_;
+  bool first_buffer_received_ = false;
+  bool first_texture_received_ = false;
   volatile SbTime first_buffer_timestamp_;
+  atomic_bool has_new_texture_available_;
 
   // Use |owns_video_surface_| only on decoder thread, to avoid unnecessary
   // invocation of ReleaseVideoSurface(), though ReleaseVideoSurface() would

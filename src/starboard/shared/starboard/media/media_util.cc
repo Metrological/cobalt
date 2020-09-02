@@ -42,6 +42,11 @@ bool IsSupportedAudioCodec(const MimeType& mime_type,
   if (audio_codec == kSbMediaAudioCodecNone) {
     return false;
   }
+
+  // TODO: allow platform-specific rejection of a combination of codec &
+  // number of channels, by passing channels to SbMediaAudioIsSupported and /
+  // or SbMediaIsSupported.
+
   if (SbStringGetLength(key_system) != 0) {
     if (!SbMediaIsSupported(kSbMediaVideoCodecNone, audio_codec, key_system)) {
       return false;
@@ -55,7 +60,11 @@ bool IsSupportedAudioCodec(const MimeType& mime_type,
 
   int bitrate = mime_type.GetParamIntValue("bitrate", kDefaultBitRate);
 
-  if (!SbMediaIsAudioSupported(audio_codec, bitrate)) {
+  if (!SbMediaIsAudioSupported(audio_codec,
+#if SB_API_VERSION >= 12
+                               mime_type.raw_content_type().c_str(),
+#endif  // SB_API_VERSION >= 12
+                               bitrate)) {
     return false;
   }
 
@@ -65,12 +74,23 @@ bool IsSupportedAudioCodec(const MimeType& mime_type,
       return false;
     case kSbMediaAudioCodecAac:
       return mime_type.subtype() == "mp4";
-#if SB_HAS(AC3_AUDIO)
+#if SB_API_VERSION >= 12 || SB_HAS(AC3_AUDIO)
     case kSbMediaAudioCodecAc3:
+      if (!kSbHasAc3Audio) {
+        SB_NOTREACHED() << "AC3 audio is not enabled on this platform. To "
+                        << "enable it, set kSbHasAc3Audio to |true|.";
+        return false;
+      }
       return mime_type.subtype() == "mp4";
     case kSbMediaAudioCodecEac3:
+      if (!kSbHasAc3Audio) {
+        SB_NOTREACHED() << "AC3 audio is not enabled on this platform. To "
+                        << "enable it, set kSbHasAc3Audio to |true|.";
+        return false;
+      }
       return mime_type.subtype() == "mp4";
-#endif  // SB_HAS(AC3_AUDIO)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(AC3_AUDIO)
     case kSbMediaAudioCodecOpus:
     case kSbMediaAudioCodecVorbis:
       return mime_type.subtype() == "webm";
@@ -84,10 +104,6 @@ bool IsSupportedVideoCodec(const MimeType& mime_type,
                            const std::string& codec,
                            const char* key_system,
                            bool decode_to_texture_required) {
-#if SB_API_VERSION < 10
-  SB_UNREFERENCED_PARAMETER(decode_to_texture_required);
-#endif  // SB_API_VERSION < 10
-
   SbMediaVideoCodec video_codec;
   int profile = -1;
   int level = -1;
@@ -110,15 +126,19 @@ bool IsSupportedVideoCodec(const MimeType& mime_type,
 
   std::string eotf = mime_type.GetParamStringValue("eotf", "");
   if (!eotf.empty()) {
-    SB_LOG_IF(WARNING, transfer_id != kSbMediaTransferIdUnspecified)
-        << "transfer_id " << transfer_id << " set by the codec string \""
-        << codec << "\" will be overwritten by the eotf attribute " << eotf;
-    transfer_id = GetTransferIdFromString(eotf);
+    SbMediaTransferId transfer_id_from_eotf = GetTransferIdFromString(eotf);
     // If the eotf is not known, reject immediately - without checking with
     // the platform.
-    if (transfer_id == kSbMediaTransferIdUnknown) {
+    if (transfer_id_from_eotf == kSbMediaTransferIdUnknown) {
       return false;
     }
+    if (transfer_id != kSbMediaTransferIdUnspecified &&
+        transfer_id != transfer_id_from_eotf) {
+      SB_LOG_IF(WARNING, transfer_id != kSbMediaTransferIdUnspecified)
+          << "transfer_id " << transfer_id << " set by the codec string \""
+          << codec << "\" will be overwritten by the eotf attribute " << eotf;
+    }
+    transfer_id = transfer_id_from_eotf;
 #if !SB_HAS(MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
     if (!SbMediaIsTransferCharacteristicsSupported(transfer_id)) {
       return false;
@@ -141,23 +161,18 @@ bool IsSupportedVideoCodec(const MimeType& mime_type,
   int bitrate = mime_type.GetParamIntValue("bitrate", kDefaultBitRate);
 
 #if SB_HAS(MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
-  if (!SbMediaIsVideoSupported(video_codec, profile, level, bit_depth,
-                               primary_id, transfer_id, matrix_id, width,
-                               height, bitrate, fps
-#if SB_API_VERSION >= 10
-                               ,
-                               decode_to_texture_required
-#endif  // SB_API_VERSION >= 10
-                               )) {
+  if (!SbMediaIsVideoSupported(video_codec,
+#if SB_API_VERSION >= 12
+                               mime_type.raw_content_type().c_str(),
+#endif  // SB_API_VERSION >= 12
+                               profile, level, bit_depth, primary_id,
+                               transfer_id, matrix_id, width, height, bitrate,
+                               fps, decode_to_texture_required)) {
     return false;
   }
 #else  //  SB_HAS(MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
-  if (!SbMediaIsVideoSupported(video_codec, width, height, bitrate, fps
-#if SB_API_VERSION >= 10
-                               ,
-                               decode_to_texture_required
-#endif  // SB_API_VERSION >= 10
-                               )) {
+  if (!SbMediaIsVideoSupported(video_codec, width, height, bitrate, fps,
+                               decode_to_texture_required)) {
     return false;
   }
 #endif  // SB_HAS(MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
@@ -180,8 +195,9 @@ bool IsSupportedVideoCodec(const MimeType& mime_type,
 #endif  // SB_API_VERSION < 11
       return mime_type.subtype() == "mp4";
     case kSbMediaVideoCodecVp8:
-    case kSbMediaVideoCodecVp9:
       return mime_type.subtype() == "webm";
+    case kSbMediaVideoCodecVp9:
+      return mime_type.subtype() == "mp4" || mime_type.subtype() == "webm";
   }
 
   SB_NOTREACHED();
@@ -189,6 +205,73 @@ bool IsSupportedVideoCodec(const MimeType& mime_type,
 }
 
 }  // namespace
+
+AudioSampleInfo::AudioSampleInfo() {
+  SbMemorySet(this, 0, sizeof(SbMediaAudioSampleInfo));
+#if SB_API_VERSION >= 11
+  codec = kSbMediaAudioCodecNone;
+#endif  // SB_API_VERSION >= 11
+}
+
+AudioSampleInfo::AudioSampleInfo(const SbMediaAudioSampleInfo& that) {
+  *this = that;
+}
+
+AudioSampleInfo& AudioSampleInfo::operator=(
+    const SbMediaAudioSampleInfo& that) {
+  *static_cast<SbMediaAudioSampleInfo*>(this) = that;
+  if (audio_specific_config_size > 0) {
+    audio_specific_config_storage.resize(audio_specific_config_size);
+    SbMemoryCopy(audio_specific_config_storage.data(), audio_specific_config,
+                 audio_specific_config_size);
+    audio_specific_config = audio_specific_config_storage.data();
+  }
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+  if (codec == kSbMediaAudioCodecNone) {
+    mime_storage.clear();
+  } else {
+    SB_DCHECK(that.mime);
+    mime_storage = that.mime;
+  }
+  mime = mime_storage.c_str();
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+  return *this;
+}
+
+VideoSampleInfo::VideoSampleInfo() {
+  SbMemorySet(this, 0, sizeof(SbMediaAudioSampleInfo));
+#if SB_API_VERSION >= 11
+  codec = kSbMediaVideoCodecNone;
+#endif  // SB_API_VERSION >= 11
+}
+
+VideoSampleInfo::VideoSampleInfo(const SbMediaVideoSampleInfo& that) {
+  *this = that;
+}
+
+VideoSampleInfo& VideoSampleInfo::operator=(
+    const SbMediaVideoSampleInfo& that) {
+  *static_cast<SbMediaVideoSampleInfo*>(this) = that;
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+  if (codec == kSbMediaVideoCodecNone) {
+    mime_storage.clear();
+    max_video_capabilities_storage.clear();
+  } else {
+    SB_DCHECK(that.mime);
+    mime_storage = that.mime;
+    max_video_capabilities_storage = that.max_video_capabilities;
+  }
+  mime = mime_storage.c_str();
+  max_video_capabilities = max_video_capabilities_storage.c_str();
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+#if SB_API_VERSION < 11
+  if (color_metadata) {
+    color_metadata_storage = *color_metadata;
+    color_metadata = &color_metadata_storage;
+  }
+#endif  // SB_API_VERSION < 11
+  return *this;
+}
 
 bool IsAudioOutputSupported(SbMediaAudioCodingType coding_type, int channels) {
   int count = SbMediaGetAudioOutputCount();
@@ -217,17 +300,20 @@ bool IsSDRVideo(int bit_depth,
   }
 
   if (primary_id != kSbMediaPrimaryIdBt709 &&
-      primary_id != kSbMediaPrimaryIdUnspecified) {
+      primary_id != kSbMediaPrimaryIdUnspecified &&
+      primary_id != kSbMediaPrimaryIdSmpte170M) {
     return false;
   }
 
   if (transfer_id != kSbMediaTransferIdBt709 &&
-      transfer_id != kSbMediaTransferIdUnspecified) {
+      transfer_id != kSbMediaTransferIdUnspecified &&
+      transfer_id != kSbMediaTransferIdSmpte170M) {
     return false;
   }
 
   if (matrix_id != kSbMediaMatrixIdBt709 &&
-      matrix_id != kSbMediaMatrixIdUnspecified) {
+      matrix_id != kSbMediaMatrixIdUnspecified &&
+      matrix_id != kSbMediaMatrixIdSmpte170M) {
     return false;
   }
 
@@ -276,7 +362,6 @@ SbMediaSupportType CanPlayMimeAndKeySystem(const MimeType& mime_type,
   }
 
   bool decode_to_texture_required = false;
-#if SB_API_VERSION >= 10
   std::string decode_to_texture_value =
       mime_type.GetParamStringValue("decode-to-texture", "false");
   if (decode_to_texture_value == "true") {
@@ -286,7 +371,6 @@ SbMediaSupportType CanPlayMimeAndKeySystem(const MimeType& mime_type,
     // decode-to-texture, trivially reject.
     return kSbMediaSupportTypeNotSupported;
   }
-#endif  // SB_API_VERSION >= 10
 
   if (codecs.size() == 0) {
     // This is a progressive query.  We only support "video/mp4" in this case.
@@ -340,12 +424,23 @@ const char* GetCodecName(SbMediaAudioCodec codec) {
       return "none";
     case kSbMediaAudioCodecAac:
       return "aac";
-#if SB_HAS(AC3_AUDIO)
+#if SB_API_VERSION >= 12 || SB_HAS(AC3_AUDIO)
     case kSbMediaAudioCodecAc3:
+      if (!kSbHasAc3Audio) {
+        SB_NOTREACHED() << "AC3 audio is not enabled on this platform. To "
+                        << "enable it, set kSbHasAc3Audio to |true|.";
+        return "invalid";
+      }
       return "ac3";
     case kSbMediaAudioCodecEac3:
+      if (!kSbHasAc3Audio) {
+        SB_NOTREACHED() << "AC3 audio is not enabled on this platform. To "
+                        << "enable it, set kSbHasAc3Audio to |true|.";
+        return "invalid";
+      }
       return "ec3";
-#endif  // SB_HAS(AC3_AUDIO)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(AC3_AUDIO)
     case kSbMediaAudioCodecOpus:
       return "opus";
     case kSbMediaAudioCodecVorbis:
@@ -542,7 +637,21 @@ bool operator==(const SbMediaVideoSampleInfo& sample_info_1,
   if (sample_info_1.codec != sample_info_2.codec) {
     return false;
   }
+  if (sample_info_1.codec == kSbMediaVideoCodecNone) {
+    return true;
+  }
 #endif  // SB_API_VERSION >= 11
+
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+  if (SbStringCompareAll(sample_info_1.mime, sample_info_2.mime) != 0) {
+    return false;
+  }
+  if (SbStringCompareAll(sample_info_1.max_video_capabilities,
+                         sample_info_2.max_video_capabilities) != 0) {
+    return false;
+  }
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
   if (sample_info_1.is_key_frame != sample_info_2.is_key_frame) {
     return false;
   }
@@ -570,13 +679,28 @@ bool operator!=(const SbMediaVideoSampleInfo& sample_info_1,
 }
 
 std::ostream& operator<<(std::ostream& os,
+                         const SbMediaMasteringMetadata& metadata) {
+  os << "r(" << metadata.primary_r_chromaticity_x << ", "
+     << metadata.primary_r_chromaticity_y << "), g("
+     << metadata.primary_g_chromaticity_x << ", "
+     << metadata.primary_g_chromaticity_y << "), b("
+     << metadata.primary_b_chromaticity_x << ", "
+     << metadata.primary_b_chromaticity_y << "), white("
+     << metadata.white_point_chromaticity_x << ", "
+     << metadata.white_point_chromaticity_y << "), luminance("
+     << metadata.luminance_min << " to " << metadata.luminance_max << ")";
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os,
                          const SbMediaColorMetadata& metadata) {
   using starboard::shared::starboard::media::GetPrimaryIdName;
   using starboard::shared::starboard::media::GetTransferIdName;
   using starboard::shared::starboard::media::GetMatrixIdName;
   using starboard::shared::starboard::media::GetRangeIdName;
   os << metadata.bits_per_channel
-     << " bits, primary: " << GetPrimaryIdName(metadata.primaries)
+     << " bits, mastering metadata: " << metadata.mastering_metadata
+     << ", primary: " << GetPrimaryIdName(metadata.primaries)
      << ", transfer: " << GetTransferIdName(metadata.transfer)
      << ", matrix: " << GetMatrixIdName(metadata.matrix)
      << ", range: " << GetRangeIdName(metadata.range);

@@ -12,41 +12,84 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <string>
+
 #include "starboard/common/log.h"
-#include "starboard/event.h"
-
 #include "starboard/elf_loader/elf_loader.h"
+#include "starboard/elf_loader/elf_loader_switches.h"
+#include "starboard/elf_loader/evergreen_info.h"
+#include "starboard/event.h"
+#include "starboard/mutex.h"
+#include "starboard/shared/starboard/command_line.h"
+#include "starboard/thread_types.h"
+#include "third_party/crashpad/wrapper/wrapper.h"
 
-starboard::elf_loader::ElfLoader g_elfLoader;
+starboard::elf_loader::ElfLoader g_elf_loader;
 
 void (*g_sb_event_func)(const SbEvent*) = NULL;
 
-void SbEventHandle(const SbEvent* event) {
-  switch (event->type) {
-    case kSbEventTypeStart: {
-      SbEventStartData* data = static_cast<SbEventStartData*>(event->data);
-      if (!g_sb_event_func && data->argument_count == 2) {
-        if (!g_elfLoader.Load(data->argument_values[1])) {
-          SB_LOG(INFO) << "Failed to load library";
-          return;
-        }
-
-        SB_LOG(INFO) << "Successfully loaded library\n";
-        void* p = g_elfLoader.LookupSymbol("SbEventHandle");
-        if (p != NULL) {
-          SB_LOG(INFO) << "Symbol Lookup succeeded address=0x" << std::hex << p;
-          g_sb_event_func = (void (*)(const SbEvent*))p;
-          g_sb_event_func(event);
-        } else {
-          SB_LOG(INFO) << "Symbol Lookup failed\n";
-        }
-      }
-      break;
-    }
-    default: {
-      if (g_sb_event_func) {
-        g_sb_event_func(event);
-      }
-    }
+void LoadLibraryAndInitialize(const std::string& library_path,
+                              const std::string& content_path) {
+  if (library_path.empty()) {
+    SB_LOG(ERROR) << "Library must be specified with --"
+                  << starboard::elf_loader::kEvergreenLibrary
+                  << "=path/to/library/relative/to/loader/content.";
+    return;
   }
+  if (content_path.empty()) {
+    SB_LOG(ERROR) << "Content must be specified with --"
+                  << starboard::elf_loader::kEvergreenContent
+                  << "=path/to/content/relative/to/loader/content.";
+    return;
+  }
+  if (!g_elf_loader.Load(library_path, content_path, true)) {
+    SB_NOTREACHED() << "Failed to load library at '"
+                    << g_elf_loader.GetLibraryPath() << "'.";
+    return;
+  }
+
+  SB_LOG(INFO) << "Successfully loaded '" << g_elf_loader.GetLibraryPath()
+               << "'.";
+
+  EvergreenInfo evergreen_info;
+  GetEvergreenInfo(&evergreen_info);
+  if (!third_party::crashpad::wrapper::AddEvergreenInfoToCrashpad(
+          evergreen_info)) {
+    SB_LOG(ERROR) << "Could not send Cobalt library information into Crashapd.";
+  } else {
+    SB_LOG(INFO) << "Loaded Cobalt library information into Crashpad.";
+  }
+
+  g_sb_event_func = reinterpret_cast<void (*)(const SbEvent*)>(
+      g_elf_loader.LookupSymbol("SbEventHandle"));
+
+  if (!g_sb_event_func) {
+    SB_LOG(ERROR) << "Failed to find SbEventHandle.";
+    return;
+  }
+
+  SB_LOG(INFO) << "Found SbEventHandle at address: "
+               << reinterpret_cast<void*>(g_sb_event_func);
+}
+
+void SbEventHandle(const SbEvent* event) {
+  static SbMutex mutex = SB_MUTEX_INITIALIZER;
+
+  SB_CHECK(SbMutexAcquire(&mutex) == kSbMutexAcquired);
+
+  if (!g_sb_event_func) {
+    const SbEventStartData* data =
+        static_cast<SbEventStartData*>(event->data);
+    const starboard::shared::starboard::CommandLine command_line(
+        data->argument_count,
+        const_cast<const char**>(data->argument_values));
+    LoadLibraryAndInitialize(
+        command_line.GetSwitchValue(starboard::elf_loader::kEvergreenLibrary),
+        command_line.GetSwitchValue(starboard::elf_loader::kEvergreenContent));
+    SB_CHECK(g_sb_event_func);
+  }
+
+  g_sb_event_func(event);
+
+  SB_CHECK(SbMutexRelease(&mutex) == true);
 }

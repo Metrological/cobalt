@@ -30,7 +30,8 @@ namespace image {
 
 class WEBPImageDecoder : public ImageDataDecoder {
  public:
-  explicit WEBPImageDecoder(render_tree::ResourceProvider* resource_provider);
+  explicit WEBPImageDecoder(render_tree::ResourceProvider* resource_provider,
+                            const base::DebuggerHooks& debugger_hooks);
   ~WEBPImageDecoder() override;
 
   // From ImageDataDecoder
@@ -49,6 +50,8 @@ class WEBPImageDecoder : public ImageDataDecoder {
   WebPDecoderConfig config_;
   scoped_refptr<AnimatedWebPImage> animated_webp_image_;
   std::unique_ptr<render_tree::ImageData> decoded_image_data_;
+
+  std::string cached_uncompressed_data_;
 };
 
 }  // namespace image

@@ -14,6 +14,7 @@
 
 {
   'variables': {
+    'optimize_target_for_speed': 1,
     'sb_pedantic_warnings': 1,
   },
   'targets': [
@@ -23,8 +24,6 @@
       'sources': [
         'blob_fetcher.cc',
         'blob_fetcher.h',
-        'cobalt_url_fetcher_string_writer.cc',
-        'cobalt_url_fetcher_string_writer.h',
         'cache_fetcher.cc',
         'cache_fetcher.h',
         'cors_preflight.cc',
@@ -65,6 +64,10 @@
         'image/image.h',
         'image/jpeg_image_decoder.cc',
         'image/jpeg_image_decoder.h',
+        'image/lottie_animation.h',
+        'image/lottie_animation.cc',
+        'image/lottie_animation_decoder.cc',
+        'image/lottie_animation_decoder.h',
         'image/png_image_decoder.cc',
         'image/png_image_decoder.h',
         'image/stub_image_decoder.h',
@@ -95,17 +98,16 @@
         'sync_loader.cc',
         'sync_loader.h',
         'text_decoder.h',
-      ],
-      'includes': [
-        '<(DEPTH)/cobalt/renderer/renderer_parameters_setup.gypi',
+        'url_fetcher_string_writer.cc',
+        'url_fetcher_string_writer.h',
       ],
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
+        '<(DEPTH)/cobalt/configuration/configuration.gyp:configuration',
         '<(DEPTH)/cobalt/csp/csp.gyp:csp',
         '<(DEPTH)/cobalt/loader/origin.gyp:origin',
         '<(DEPTH)/cobalt/network/network.gyp:network',
         '<(DEPTH)/cobalt/render_tree/render_tree.gyp:render_tree',
-        '<(DEPTH)/cobalt/renderer/test/jpeg_utils/jpeg_utils.gyp:jpeg_utils',
         '<(DEPTH)/cobalt/renderer/test/png_utils/png_utils.gyp:png_utils',
         '<(DEPTH)/url/url.gyp:url',
         '<(DEPTH)/third_party/libjpeg/libjpeg.gyp:libjpeg',
@@ -114,25 +116,17 @@
         'embed_resources_as_header_files',
       ],
       'conditions': [
+        ['cobalt_config != "gold"', {
+          'dependencies': [
+            '<(DEPTH)/cobalt/renderer/test/jpeg_utils/jpeg_utils.gyp:jpeg_utils',
+          ],
+        }],
         ['enable_about_scheme == 1', {
           'defines': [ 'ENABLE_ABOUT_SCHEME' ],
           'sources': [
             'about_fetcher.cc',
             'about_fetcher.h',
           ]
-        }],
-        ['enable_xhr_header_filtering == 1', {
-          'dependencies': [
-            '<@(cobalt_platform_dependencies)',
-          ],
-          'defines': [
-            'COBALT_ENABLE_XHR_HEADER_FILTERING',
-          ],
-          'direct_dependent_settings': {
-            'defines': [
-              'COBALT_ENABLE_XHR_HEADER_FILTERING',
-            ],
-          },
         }],
       ],
     },
@@ -154,7 +148,6 @@
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
         '<(DEPTH)/cobalt/math/math.gyp:math',
-        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
         '<(DEPTH)/third_party/ots/ots.gyp:ots',
@@ -162,6 +155,7 @@
         'loader_copy_test_data',
         '<@(cobalt_platform_dependencies)',
       ],
+      'includes': [ '<(DEPTH)/cobalt/test/test.gypi' ],
     },
 
     {
@@ -205,6 +199,7 @@
         '<(input_directory)/black_splash_screen.html',
         '<(input_directory)/cobalt_splash_screen.css',
         '<(input_directory)/cobalt_splash_screen.html',
+        '<(input_directory)/cobalt_word_logo_356.png',
         '<(input_directory)/dialog.css',
         '<(input_directory)/dialog.js',
         '<(input_directory)/equirectangular_40_40.msh',

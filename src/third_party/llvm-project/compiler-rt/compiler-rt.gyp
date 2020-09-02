@@ -44,6 +44,60 @@
         'lib/builtins/udivmodti4.c',
         'lib/builtins/umodti3.c',
       ],
+      'conditions': [
+        ['sb_evergreen == 1 and target_arch == "arm"', {
+          'sources': [
+            'lib/builtins/divdi3.c',
+            'lib/builtins/divmoddi4.c',
+            'lib/builtins/divmodsi4.c',
+            'lib/builtins/divsi3.c',
+            'lib/builtins/fixdfdi.c',
+            'lib/builtins/fixsfdi.c',
+            'lib/builtins/fixunsdfdi.c',
+            'lib/builtins/fixunssfdi.c',
+            'lib/builtins/floatdidf.c',
+            'lib/builtins/floatdisf.c',
+            'lib/builtins/floatundidf.c',
+            'lib/builtins/floatundisf.c',
+            'lib/builtins/udivmoddi4.c',
+            'lib/builtins/udivmodsi4.c',
+            'lib/builtins/udivsi3.c',
+
+            'lib/builtins/arm/aeabi_idivmod.S',
+            'lib/builtins/arm/aeabi_ldivmod.S',
+            'lib/builtins/arm/aeabi_memcmp.S',
+            'lib/builtins/arm/aeabi_memcpy.S',
+            'lib/builtins/arm/aeabi_memmove.S',
+            'lib/builtins/arm/aeabi_memset.S',
+            'lib/builtins/arm/aeabi_uidivmod.S',
+            'lib/builtins/arm/aeabi_uldivmod.S',
+          ],
+        }],
+        ['sb_evergreen == 1 and target_arch == "arm64"', {
+          'sources': [
+            'lib/builtins/addtf3.c',
+            'lib/builtins/comparetf2.c',
+            'lib/builtins/divtf3.c',
+            'lib/builtins/extenddftf2.c',
+            'lib/builtins/extendsftf2.c',
+            'lib/builtins/fixtfsi.c',
+            'lib/builtins/floatsitf.c',
+            'lib/builtins/floatunsitf.c',
+            'lib/builtins/multf3.c',
+            'lib/builtins/subtf3.c',
+            'lib/builtins/trunctfdf2.c',
+            'lib/builtins/trunctfsf2.c',
+          ],
+        }],
+        ['sb_evergreen == 1 and target_arch == "x86"', {
+          'sources': [
+            'lib/builtins/i386/divdi3.S',
+            'lib/builtins/i386/moddi3.S',
+            'lib/builtins/i386/udivdi3.S',
+            'lib/builtins/i386/umoddi3.S',
+          ],
+        }],
+      ]
     }
   ]
 }

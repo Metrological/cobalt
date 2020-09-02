@@ -25,6 +25,7 @@
 
 #include "starboard/common/log.h"
 #include "starboard/common/mutex.h"
+#include "starboard/types.h"
 
 namespace starboard {
 namespace android {
@@ -54,13 +55,12 @@ class DrmSystem : public ::SbDrmSystemPrivate {
   void UpdateServerCertificate(int ticket,
                                const void* certificate,
                                int certificate_size) override {
-    SB_UNREFERENCED_PARAMETER(ticket);
-    SB_UNREFERENCED_PARAMETER(certificate);
-    SB_UNREFERENCED_PARAMETER(certificate_size);
   }
+  const void* GetMetrics(int* size) override;
 
   jobject GetMediaCrypto() const { return j_media_crypto_; }
   void CallUpdateRequestCallback(int ticket,
+                                 SbDrmSessionRequestType request_type,
                                  const void* session_id,
                                  int session_id_size,
                                  const void* content,
@@ -92,6 +92,8 @@ class DrmSystem : public ::SbDrmSystemPrivate {
   Mutex mutex_;
   std::unordered_map<std::string, std::vector<SbDrmKeyId> > cached_drm_key_ids_;
   bool hdcp_lost_;
+
+  std::vector<uint8_t> metrics_;
 };
 
 }  // namespace shared

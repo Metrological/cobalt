@@ -21,6 +21,8 @@
       'target_name': 'debug',
       'type': 'static_library',
       'sources': [
+        'backend/agent_base.cc',
+        'backend/agent_base.h',
         'backend/command_map.h',
         'backend/console_agent.cc',
         'backend/console_agent.h',
@@ -34,16 +36,22 @@
         'backend/debug_module.h',
         'backend/debug_script_runner.cc',
         'backend/debug_script_runner.h',
+        'backend/debugger_hooks_impl.cc',
+        'backend/debugger_hooks_impl.h',
         'backend/dom_agent.cc',
         'backend/dom_agent.h',
         'backend/log_agent.cc',
         'backend/log_agent.h',
+        'backend/overlay_agent.cc',
+        'backend/overlay_agent.h',
         'backend/page_agent.cc',
         'backend/page_agent.h',
         'backend/render_layer.cc',
         'backend/render_layer.h',
         'backend/render_overlay.cc',
         'backend/render_overlay.h',
+        'backend/runtime_agent.cc',
+        'backend/runtime_agent.h',
         'backend/script_debugger_agent.cc',
         'backend/script_debugger_agent.h',
         'backend/tracing_agent.cc',
@@ -101,7 +109,9 @@
         'content_web_input_files': [
           '<(DEPTH)/cobalt/debug/backend/content/',
         ],
-        'content_web_output_subdir': 'cobalt/debug/backend',
+        # Canonically this should be "cobalt/debug/backend" to match the source
+        # path, but we put it in the root of the content dir to reduce depth.
+        'content_web_output_subdir': 'debug_backend',
       },
       'includes': [ '<(DEPTH)/cobalt/build/copy_web_data.gypi' ],
     },
@@ -113,7 +123,9 @@
         'content_web_input_files': [
           '<(DEPTH)/cobalt/debug/console/content/',
         ],
-        'content_web_output_subdir': 'cobalt/debug/console',
+        # Canonically this should be "cobalt/debug/console" to match the source
+        # path, but we put it in the root of the content dir to reduce depth.
+        'content_web_output_subdir': 'debug_console',
       },
       'includes': [ '<(DEPTH)/cobalt/build/copy_web_data.gypi' ],
     },
@@ -125,7 +137,9 @@
         'content_web_input_files': [
           '<(DEPTH)/cobalt/debug/remote/content/',
         ],
-        'content_web_output_subdir': 'cobalt/debug/remote',
+        # Canonically this should be "cobalt/debug/remote" to match the source
+        # path, but we put it in the root of the content dir to reduce depth.
+        'content_web_output_subdir': 'debug_remote',
       },
       'includes': [ '<(DEPTH)/cobalt/build/copy_web_data.gypi' ],
     },

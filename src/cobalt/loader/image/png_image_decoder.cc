@@ -16,6 +16,7 @@
 
 #include "base/logging.h"
 #include "base/trace_event/trace_event.h"
+#include "cobalt/base/console_log.h"
 #include "nb/memory_scope.h"
 
 namespace cobalt {
@@ -66,8 +67,9 @@ void DecodingWarning(png_structp png, png_const_charp warning_msg) {
 }  // namespace
 
 PNGImageDecoder::PNGImageDecoder(
-    render_tree::ResourceProvider* resource_provider)
-    : ImageDataDecoder(resource_provider),
+    render_tree::ResourceProvider* resource_provider,
+    const base::DebuggerHooks& debugger_hooks)
+    : ImageDataDecoder(resource_provider, debugger_hooks),
       png_(NULL),
       info_(NULL),
       has_alpha_(false),
@@ -143,7 +145,6 @@ PNGImageDecoder::~PNGImageDecoder() {
 // static
 void PNGImageDecoder::HeaderAvailable(png_structp png, png_infop info) {
   TRACK_MEMORY_SCOPE("Rendering");
-  SB_UNREFERENCED_PARAMETER(info);
   TRACE_EVENT0("cobalt::loader::image", "PNGImageDecoder::~PNGImageDecoder()");
   PNGImageDecoder* decoder =
       static_cast<PNGImageDecoder*>(png_get_progressive_ptr(png));
@@ -154,7 +155,6 @@ void PNGImageDecoder::HeaderAvailable(png_structp png, png_infop info) {
 // static
 void PNGImageDecoder::RowAvailable(png_structp png, png_bytep row_buffer,
                                    png_uint_32 row_index, int interlace_pass) {
-  SB_UNREFERENCED_PARAMETER(interlace_pass);
   PNGImageDecoder* decoder =
       static_cast<PNGImageDecoder*>(png_get_progressive_ptr(png));
   decoder->RowAvailableCallback(row_buffer, row_index);
@@ -164,7 +164,6 @@ void PNGImageDecoder::RowAvailable(png_structp png, png_bytep row_buffer,
 // static
 void PNGImageDecoder::DecodeDone(png_structp png, png_infop info) {
   TRACK_MEMORY_SCOPE("Rendering");
-  SB_UNREFERENCED_PARAMETER(info);
   TRACE_EVENT0("cobalt::loader::image", "PNGImageDecoder::DecodeDone()");
 
   PNGImageDecoder* decoder =
@@ -237,6 +236,8 @@ void PNGImageDecoder::HeaderAvailableCallback() {
   if (interlace_type == PNG_INTERLACE_ADAM7) {
     // Notify libpng to send us rows for interlaced pngs.
     png_set_interlace_handling(png_);
+    CLOG(WARNING, debugger_hooks()) << "Interlaced PNGs are not displayed "
+                                       "properly in older versions of Cobalt";
   }
 
   // Updates |info_| to reflect any transformations that have been requested.
@@ -321,7 +322,7 @@ void PNGImageDecoder::RowAvailableCallback(png_bytep row_buffer,
       decoded_image_data_->GetMemory() +
       decoded_image_data_->GetDescriptor().pitch_in_bytes * row_index;
 
-  png_bytep pixel = row_buffer;
+  png_bytep pixel = row;
 
   switch (pixel_format()) {
     case render_tree::kPixelFormatRGBA8: {

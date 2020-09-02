@@ -13,22 +13,26 @@
 // limitations under the License.
 
 #include <cmath>
+#include <deque>
 #include <functional>
 #include <numeric>
+#include <queue>
 
 #include "starboard/common/mutex.h"
 #include "starboard/common/scoped_ptr.h"
+#include "starboard/configuration_constants.h"
 #include "starboard/shared/starboard/media/media_support_internal.h"
 #include "starboard/shared/starboard/player/filter/audio_decoder_internal.h"
 #include "starboard/shared/starboard/player/filter/player_components.h"
-#include "starboard/shared/starboard/player/filter/stub_player_components_impl.h"
+#include "starboard/shared/starboard/player/filter/stub_player_components_factory.h"
+#include "starboard/shared/starboard/player/filter/testing/test_util.h"
+#include "starboard/shared/starboard/player/job_queue.h"
 #include "starboard/shared/starboard/player/video_dmp_reader.h"
 #include "starboard/thread.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 // TODO: Implement AudioDecoderMock and refactor the test accordingly.
-#if SB_HAS(PLAYER_FILTER_TESTS) && \
-    SB_API_VERSION >= 11
+#if SB_API_VERSION >= 11
 
 namespace starboard {
 namespace shared {
@@ -47,38 +51,34 @@ using video_dmp::VideoDmpReader;
 
 const SbTimeMonotonic kWaitForNextEventTimeOut = 5 * kSbTimeSecond;
 
-void DeallocateSampleFunc(SbPlayer player,
-                          void* context,
-                          const void* sample_buffer) {
-  SB_UNREFERENCED_PARAMETER(player);
-  SB_UNREFERENCED_PARAMETER(context);
-  SB_UNREFERENCED_PARAMETER(sample_buffer);
-}
-
-scoped_refptr<InputBuffer> GetAudioInputBuffer(const VideoDmpReader& dmp_reader,
+scoped_refptr<InputBuffer> GetAudioInputBuffer(VideoDmpReader* dmp_reader,
                                                size_t index) {
+  SB_DCHECK(dmp_reader);
+
   auto player_sample_info =
-      dmp_reader.GetPlayerSampleInfo(kSbMediaTypeAudio, index);
+      dmp_reader->GetPlayerSampleInfo(kSbMediaTypeAudio, index);
 #if SB_API_VERSION >= 11
-  return new InputBuffer(DeallocateSampleFunc, NULL, NULL, player_sample_info);
+  return new InputBuffer(StubDeallocateSampleFunc, NULL, NULL,
+                         player_sample_info);
 #else   // SB_API_VERSION >= 11
   SbMediaAudioSampleInfo audio_sample_info =
       dmp_reader.GetAudioSampleInfo(index);
-  return new InputBuffer(kSbMediaTypeAudio, DeallocateSampleFunc, NULL, NULL,
-                         player_sample_info, &audio_sample_info);
+  return new InputBuffer(kSbMediaTypeAudio, StubDeallocateSampleFunc, NULL,
+                         NULL, player_sample_info, &audio_sample_info);
 #endif  // SB_API_VERSION >= 11
 }
 
 string GetTestInputDirectory() {
-  const size_t kPathSize = SB_FILE_MAX_PATH + 1;
+  const size_t kPathSize = kSbFileMaxPath + 1;
 
-  char content_path[kPathSize];
-  SB_CHECK(
-      SbSystemGetPath(kSbSystemPathContentDirectory, content_path, kPathSize));
-  string directory_path =
-      string(content_path) + SB_FILE_SEP_CHAR + "test" + SB_FILE_SEP_CHAR +
-      "starboard" + SB_FILE_SEP_CHAR + "shared" + SB_FILE_SEP_CHAR +
-      "starboard" + SB_FILE_SEP_CHAR + "player" + SB_FILE_SEP_CHAR + "testdata";
+  std::vector<char> content_path(kPathSize);
+  SB_CHECK(SbSystemGetPath(kSbSystemPathContentDirectory, content_path.data(),
+                           kPathSize));
+  string directory_path = string(content_path.data()) + kSbFileSepChar +
+                          "test" + kSbFileSepChar + "starboard" +
+                          kSbFileSepChar + "shared" + kSbFileSepChar +
+                          "starboard" + kSbFileSepChar + "player" +
+                          kSbFileSepChar + "testdata";
 
   SB_CHECK(SbDirectoryCanOpen(directory_path.c_str()))
       << "Cannot open directory " << directory_path;
@@ -86,10 +86,9 @@ string GetTestInputDirectory() {
 }
 
 string ResolveTestFileName(const char* filename) {
-  return GetTestInputDirectory() + SB_FILE_SEP_CHAR + filename;
+  return GetTestInputDirectory() + kSbFileSepChar + filename;
 }
 
-// TODO: Avoid reading same dmp file repeatly.
 class AdaptiveAudioDecoderTest
     : public ::testing::TestWithParam<std::tuple<vector<const char*>, bool>> {
  protected:
@@ -100,7 +99,8 @@ class AdaptiveAudioDecoderTest
         using_stub_decoder_(std::get<1>(GetParam())) {
     for (auto filename : test_filenames_) {
       dmp_readers_.emplace_back(
-          new VideoDmpReader(ResolveTestFileName(filename).c_str()));
+          new VideoDmpReader(ResolveTestFileName(filename).c_str(),
+                             VideoDmpReader::kEnableReadOnDemand));
     }
 
     auto accumulate_operation = [](string accumulated, const char* str) {
@@ -123,30 +123,22 @@ class AdaptiveAudioDecoderTest
       ASSERT_GT(dmp_reader->number_of_audio_buffers(), 0);
     }
 
-    PlayerComponents::AudioParameters audio_parameters = {
-        dmp_readers_[0]->audio_codec(), dmp_readers_[0]->audio_sample_info(),
-        kSbDrmSystemInvalid};
-
     scoped_ptr<AudioRendererSink> audio_renderer_sink;
-    scoped_ptr<PlayerComponents> components;
-    if (using_stub_decoder_) {
-      components = make_scoped_ptr<StubPlayerComponentsImpl>(
-          new StubPlayerComponentsImpl);
-    } else {
-      components = PlayerComponents::Create();
-    }
-    components->CreateAudioComponents(audio_parameters, &audio_decoder_,
-                                      &audio_renderer_sink);
+    ASSERT_TRUE(CreateAudioComponents(using_stub_decoder_,
+                                      dmp_readers_[0]->audio_codec(),
+                                      dmp_readers_[0]->audio_sample_info(),
+                                      &audio_decoder_, &audio_renderer_sink));
     ASSERT_TRUE(audio_decoder_);
-
     audio_decoder_->Initialize(
         std::bind(&AdaptiveAudioDecoderTest::OnOutput, this),
         std::bind(&AdaptiveAudioDecoderTest::OnError, this));
   }
 
-  void WriteSingleInput(const VideoDmpReader& dmp_reader, size_t buffer_index) {
+  void WriteSingleInput(VideoDmpReader* dmp_reader, size_t buffer_index) {
+    SB_DCHECK(dmp_reader);
+
     ASSERT_TRUE(can_accept_more_input_);
-    ASSERT_LT(buffer_index, dmp_reader.number_of_audio_buffers());
+    ASSERT_LT(buffer_index, dmp_reader->number_of_audio_buffers());
 
     can_accept_more_input_ = false;
     audio_decoder_->Decode(
@@ -154,11 +146,13 @@ class AdaptiveAudioDecoderTest
         std::bind(&AdaptiveAudioDecoderTest::OnConsumed, this));
   }
 
-  void WriteMultipleInputs(const VideoDmpReader& dmp_reader,
+  void WriteMultipleInputs(VideoDmpReader* dmp_reader,
                            size_t buffer_start_index,
                            size_t number_of_inputs_to_write) {
+    SB_DCHECK(dmp_reader);
+
     ASSERT_LT(buffer_start_index + number_of_inputs_to_write,
-              dmp_reader.number_of_audio_buffers());
+              dmp_reader->number_of_audio_buffers());
 
     while (number_of_inputs_to_write > 0) {
       ASSERT_NO_FATAL_FAILURE(WaitAndProcessUntilAcceptInput());
@@ -252,10 +246,6 @@ class AdaptiveAudioDecoderTest
         break;
       }
       case kOutput: {
-        if (!first_output_received_) {
-          output_sample_rate_ = audio_decoder_->GetSamplesPerSecond();
-          first_output_received_ = true;
-        }
         ReadFromDecoder();
         break;
       }
@@ -268,8 +258,16 @@ class AdaptiveAudioDecoderTest
   }
 
   void ReadFromDecoder() {
-    scoped_refptr<DecodedAudio> decoded_audio = audio_decoder_->Read();
+    int samples_per_second;
+    scoped_refptr<DecodedAudio> decoded_audio =
+        audio_decoder_->Read(&samples_per_second);
     ASSERT_TRUE(decoded_audio);
+    if (first_output_received_) {
+      ASSERT_EQ(output_sample_rate_, samples_per_second);
+    } else {
+      output_sample_rate_ = samples_per_second;
+      first_output_received_ = true;
+    }
 
     if (decoded_audio->is_end_of_stream()) {
       last_decoded_audio_ = decoded_audio;
@@ -308,13 +306,14 @@ TEST_P(AdaptiveAudioDecoderTest, SingleInput) {
   for (auto& dmp_reader : dmp_readers_) {
     SB_DCHECK(dmp_reader);
     ASSERT_NO_FATAL_FAILURE(
-        WriteMultipleInputs(*dmp_reader, buffer_index, kBuffersToWrite));
-    auto input_buffer = GetAudioInputBuffer(*dmp_reader, buffer_index);
+        WriteMultipleInputs(dmp_reader.get(), buffer_index, kBuffersToWrite));
+    auto input_buffer = GetAudioInputBuffer(dmp_reader.get(), buffer_index);
     SbTime input_timestamp = input_buffer->timestamp();
     buffer_index += kBuffersToWrite;
     // Use next buffer here, need to make sure dmp file has enough buffers.
     SB_DCHECK(dmp_reader->number_of_audio_buffers() > buffer_index);
-    auto next_input_buffer = GetAudioInputBuffer(*dmp_reader, buffer_index);
+    auto next_input_buffer =
+        GetAudioInputBuffer(dmp_reader.get(), buffer_index);
     SbTime next_timestamp = next_input_buffer->timestamp();
     playing_duration += next_timestamp - input_timestamp;
   }
@@ -341,13 +340,14 @@ TEST_P(AdaptiveAudioDecoderTest, MultipleInput) {
   for (auto& dmp_reader : dmp_readers_) {
     SB_DCHECK(dmp_reader);
     ASSERT_NO_FATAL_FAILURE(
-        WriteMultipleInputs(*dmp_reader, buffer_index, kBuffersToWrite));
-    auto input_buffer = GetAudioInputBuffer(*dmp_reader, buffer_index);
+        WriteMultipleInputs(dmp_reader.get(), buffer_index, kBuffersToWrite));
+    auto input_buffer = GetAudioInputBuffer(dmp_reader.get(), buffer_index);
     SbTime input_timestamp = input_buffer->timestamp();
     buffer_index += kBuffersToWrite;
     // Use next buffer here, need to make sure dmp file has enough buffers.
     SB_DCHECK(dmp_reader->number_of_audio_buffers() > buffer_index);
-    auto next_input_buffer = GetAudioInputBuffer(*dmp_reader, buffer_index);
+    auto next_input_buffer =
+        GetAudioInputBuffer(dmp_reader.get(), buffer_index);
     SbTime next_timestamp = next_input_buffer->timestamp();
     playing_duration += next_timestamp - input_timestamp;
   }
@@ -366,32 +366,14 @@ TEST_P(AdaptiveAudioDecoderTest, MultipleInput) {
 }
 
 vector<vector<const char*>> GetSupportedTests() {
-  // beneath_the_canopy_140_aac.dmp
-  //   codec: kSbMediaAudioCodecAac
-  //   sampling rate: 44.1k
-  //   frames per AU: 1024
-  // beneath_the_canopy_249_opus.dmp
-  //   codec: kSbMediaAudioCodecOpus
-  //   sampling rate: 48.0k
-  //   frames per AU: 960
-  const char* kFilenames[] = {"beneath_the_canopy_140_aac.dmp",
-                              "beneath_the_canopy_249_opus.dmp"};
-
   static vector<vector<const char*>> test_params;
 
   if (!test_params.empty()) {
     return test_params;
   }
 
-  vector<const char*> supported_files;
-  for (auto filename : kFilenames) {
-    VideoDmpReader dmp_reader(ResolveTestFileName(filename).c_str());
-    SB_DCHECK(dmp_reader.number_of_audio_buffers() > 0);
-    if (SbMediaIsAudioSupported(dmp_reader.audio_codec(),
-                                dmp_reader.audio_bitrate())) {
-      supported_files.push_back(filename);
-    }
-  }
+  vector<const char*> supported_files = GetSupportedAudioTestFiles(false);
+
   // Generate test cases. For example, we have |supported_files| [A, B, C].
   // Add tests A->A, A->B, A->C, B->A, B->B, B->C, C->A, C->B and C->C.
   for (int i = 0; i < supported_files.size(); i++) {
@@ -428,5 +410,4 @@ INSTANTIATE_TEST_CASE_P(AdaptiveAudioDecoderTests,
 }  // namespace shared
 }  // namespace starboard
 
-#endif  // SB_HAS(PLAYER_FILTER_TESTS) &&
-        // SB_API_VERSION >= 11
+#endif  // SB_API_VERSION >= 11

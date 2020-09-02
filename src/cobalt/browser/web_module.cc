@@ -29,6 +29,7 @@
 #include "base/synchronization/waitable_event.h"
 #include "base/trace_event/trace_event.h"
 #include "cobalt/base/c_val.h"
+#include "cobalt/base/debugger_hooks.h"
 #include "cobalt/base/language.h"
 #include "cobalt/base/startup_timer.h"
 #include "cobalt/base/tokens.h"
@@ -37,8 +38,8 @@
 #include "cobalt/browser/stack_size_constants.h"
 #include "cobalt/browser/switches.h"
 #include "cobalt/browser/web_module_stat_tracker.h"
+#include "cobalt/configuration/configuration.h"
 #include "cobalt/css_parser/parser.h"
-#include "cobalt/debug/backend/debug_module.h"
 #include "cobalt/dom/blob.h"
 #include "cobalt/dom/csp_delegate_factory.h"
 #include "cobalt/dom/element.h"
@@ -58,9 +59,9 @@
 #include "cobalt/dom/wheel_event.h"
 #include "cobalt/dom/window.h"
 #include "cobalt/dom_parser/parser.h"
-#include "cobalt/h5vcc/h5vcc.h"
 #include "cobalt/layout/topmost_event_target.h"
 #include "cobalt/loader/image/animated_image_tracker.h"
+#include "cobalt/loader/switches.h"
 #include "cobalt/media_session/media_session_client.h"
 #include "cobalt/page_visibility/visibility_state.h"
 #include "cobalt/script/error_report.h"
@@ -68,6 +69,11 @@
 #include "cobalt/storage/storage_manager.h"
 #include "starboard/accessibility.h"
 #include "starboard/common/log.h"
+#include "starboard/gles.h"
+
+#if defined(ENABLE_DEBUGGER)
+#include "cobalt/debug/backend/debug_module.h"
+#endif  // defined(ENABLE_DEBUGGER)
 
 namespace cobalt {
 namespace browser {
@@ -118,7 +124,7 @@ class WebModule::Impl {
   }
 #endif  // ENABLE_DEBUGGER
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   // Injects an on screen keyboard input event into the web module. Event is
   // directed at a specific element if the element is non-null. Otherwise, the
   // currently focused element receives the event. If element is specified, we
@@ -143,7 +149,8 @@ class WebModule::Impl {
   // module. Event is directed at the on screen keyboard element.
   void InjectOnScreenKeyboardSuggestionsUpdatedEvent(int ticket);
 #endif  // SB_API_VERSION >= 11
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
   // Injects a keyboard event into the web module. Event is directed at a
   // specific element if the element is non-null. Otherwise, the currently
@@ -206,7 +213,7 @@ class WebModule::Impl {
   }
 #endif  // defined(ENABLE_DEBUGGER)
 
-  void SetSize(cssom::ViewportSize window_dimensions, float video_pixel_ratio);
+  void SetSize(cssom::ViewportSize viewport_size);
   void SetCamera3D(const scoped_refptr<input::Camera3D>& camera_3d);
   void SetWebMediaPlayerFactory(
       media::WebMediaPlayerFactory* web_media_player_factory);
@@ -420,6 +427,12 @@ class WebModule::Impl {
   base::WaitableEvent wait_for_web_debugger_finished_ = {
       base::WaitableEvent::ResetPolicy::MANUAL,
       base::WaitableEvent::InitialState::NOT_SIGNALED};
+
+  // Interface to report behaviour relevant to the web debugger.
+  debug::backend::DebuggerHooksImpl debugger_hooks_;
+#else
+  // Null implementation used in gold builds without checking ENABLE_DEBUGGER.
+  base::NullDebuggerHooks debugger_hooks_;
 #endif  // ENABLE_DEBUGGER
 
   // DocumentObserver that observes the loading document.
@@ -473,30 +486,13 @@ WebModule::Impl::Impl(const ConstructionData& data)
           false, "True when a render tree is produced but not yet rasterized."),
       resource_provider_(data.resource_provider),
       resource_provider_type_id_(data.resource_provider->GetTypeId()) {
-  // Currently we rely on a platform to explicitly specify that it supports
-  // the map-to-mesh filter via the ENABLE_MAP_TO_MESH define (and the
-  // 'enable_map_to_mesh' gyp variable).  When we have better support for
-  // checking for decode to texture support, it would be nice to switch this
-  // logic to something like:
-  //
-  //   supports_map_to_mesh =
-  //      (resource_provider_->Supports3D() && SbPlayerSupportsDecodeToTexture()
-  //           ? css_parser::Parser::kSupportsMapToMesh
-  //           : css_parser::Parser::kDoesNotSupportMapToMesh);
-  //
-  // Note that it is important that we do not parse map-to-mesh filters if we
-  // cannot render them, since web apps may check for map-to-mesh support by
-  // testing whether it parses or not via the CSS.supports() Web API.
   css_parser::Parser::SupportsMapToMeshFlag supports_map_to_mesh =
-#if defined(ENABLE_MAP_TO_MESH)
-      data.options.enable_map_to_mesh_rectangular
-          ? css_parser::Parser::kSupportsMapToMeshRectangular
-          : css_parser::Parser::kSupportsMapToMesh;
-#else
-      css_parser::Parser::kDoesNotSupportMapToMesh;
-#endif
+      data.options.enable_map_to_mesh
+          ? css_parser::Parser::kSupportsMapToMesh
+          : css_parser::Parser::kDoesNotSupportMapToMesh;
 
-  css_parser_ = css_parser::Parser::Create(supports_map_to_mesh);
+  css_parser_ =
+      css_parser::Parser::Create(debugger_hooks_, supports_map_to_mesh);
   DCHECK(css_parser_);
 
   dom_parser_.reset(new dom_parser::Parser(
@@ -530,7 +526,7 @@ WebModule::Impl::Impl(const ConstructionData& data)
   DCHECK_LE(0, data.options.encoded_image_cache_capacity);
   loader_factory_.reset(new loader::LoaderFactory(
       name_.c_str(), fetcher_factory_.get(), resource_provider_,
-      data.options.encoded_image_cache_capacity,
+      debugger_hooks_, data.options.encoded_image_cache_capacity,
       data.options.loader_thread_priority));
 
   animated_image_tracker_.reset(new loader::image::AnimatedImageTracker(
@@ -538,7 +534,7 @@ WebModule::Impl::Impl(const ConstructionData& data)
 
   DCHECK_LE(0, data.options.image_cache_capacity);
   image_cache_ = loader::image::CreateImageCache(
-      base::StringPrintf("%s.ImageCache", name_.c_str()),
+      base::StringPrintf("%s.ImageCache", name_.c_str()), debugger_hooks_,
       static_cast<uint32>(data.options.image_cache_capacity),
       loader_factory_.get());
   DCHECK(image_cache_);
@@ -551,13 +547,14 @@ WebModule::Impl::Impl(const ConstructionData& data)
   DCHECK_LE(0, data.options.remote_typeface_cache_capacity);
   remote_typeface_cache_ = loader::font::CreateRemoteTypefaceCache(
       base::StringPrintf("%s.RemoteTypefaceCache", name_.c_str()),
+      debugger_hooks_,
       static_cast<uint32>(data.options.remote_typeface_cache_capacity),
       loader_factory_.get());
   DCHECK(remote_typeface_cache_);
 
   DCHECK_LE(0, data.options.mesh_cache_capacity);
   mesh_cache_ = loader::mesh::CreateMeshCache(
-      base::StringPrintf("%s.MeshCache", name_.c_str()),
+      base::StringPrintf("%s.MeshCache", name_.c_str()), debugger_hooks_,
       static_cast<uint32>(data.options.mesh_cache_capacity),
       loader_factory_.get());
   DCHECK(mesh_cache_);
@@ -593,9 +590,19 @@ WebModule::Impl::Impl(const ConstructionData& data)
 
   media_source_registry_.reset(new dom::MediaSource::Registry);
 
-  media_session_client_ = media_session::MediaSessionClient::Create();
+  environment_settings_.reset(new dom::DOMSettings(
+      kDOMMaxElementDepth, fetcher_factory_.get(), data.network_module,
+      media_source_registry_.get(), blob_registry_.get(),
+      data.can_play_type_handler, javascript_engine_.get(),
+      global_environment_.get(), debugger_hooks_,
+      &mutation_observer_task_manager_, data.options.dom_settings_options));
+  DCHECK(environment_settings_);
 
-  system_caption_settings_ = new cobalt::dom::captions::SystemCaptionSettings();
+  media_session_client_ = media_session::MediaSessionClient::Create();
+  media_session_client_->SetMediaPlayerFactory(data.web_media_player_factory);
+
+  system_caption_settings_ = new cobalt::dom::captions::SystemCaptionSettings(
+      environment_settings_.get());
 
   dom::Window::CacheCallback splash_screen_cache_callback =
       CacheUrlContentCallback(data.options.splash_screen_cache);
@@ -626,7 +633,7 @@ WebModule::Impl::Impl(const ConstructionData& data)
 #endif
 
   window_ = new dom::Window(
-      data.window_dimensions, data.video_pixel_ratio,
+      environment_settings_.get(), data.window_dimensions,
       data.initial_application_state, css_parser_.get(), dom_parser_.get(),
       fetcher_factory_.get(), loader_factory_.get(), &resource_provider_,
       animated_image_tracker_.get(), image_cache_.get(),
@@ -655,7 +662,8 @@ WebModule::Impl::Impl(const ConstructionData& data)
                  base::Unretained(this)),
       base::Bind(&WebModule::Impl::OnStopDispatchEvent, base::Unretained(this)),
       data.options.provide_screenshot_function, &synchronous_loader_interrupt_,
-      data.ui_nav_root, data.options.csp_insecure_allowed_token,
+      data.options.enable_inline_script_warnings, data.ui_nav_root,
+      data.options.enable_map_to_mesh, data.options.csp_insecure_allowed_token,
       data.dom_max_element_depth, data.options.video_playback_rate_multiplier,
 #if defined(ENABLE_TEST_RUNNER)
       data.options.layout_trigger == layout::LayoutManager::kTestRunnerMode
@@ -672,15 +680,7 @@ WebModule::Impl::Impl(const ConstructionData& data)
   window_weak_ = base::AsWeakPtr(window_.get());
   DCHECK(window_weak_);
 
-  environment_settings_.reset(new dom::DOMSettings(
-      kDOMMaxElementDepth, fetcher_factory_.get(), data.network_module, window_,
-      media_source_registry_.get(), blob_registry_.get(),
-      data.can_play_type_handler, javascript_engine_.get(),
-      global_environment_.get(), &mutation_observer_task_manager_,
-      data.options.dom_settings_options));
-  DCHECK(environment_settings_);
-
-  window_->SetEnvironmentSettings(environment_settings_.get());
+  environment_settings_->set_window(window_);
 
   global_environment_->CreateGlobalObject(window_, environment_settings_.get());
 
@@ -734,8 +734,9 @@ WebModule::Impl::Impl(const ConstructionData& data)
       new debug::backend::RenderOverlay(render_tree_produced_callback_));
 
   debug_module_.reset(new debug::backend::DebugModule(
-      window_->console(), global_environment_.get(), debug_overlay_.get(),
-      resource_provider_, window_, data.options.debugger_state));
+      &debugger_hooks_, window_->console(), global_environment_.get(),
+      debug_overlay_.get(), resource_provider_, window_,
+      data.options.debugger_state));
 #endif  // ENABLE_DEBUGGER
 
   is_running_ = true;
@@ -811,7 +812,7 @@ void WebModule::Impl::InjectInputEvent(scoped_refptr<dom::Element> element,
   }
 }
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
 void WebModule::Impl::InjectOnScreenKeyboardInputEvent(
     scoped_refptr<dom::Element> element, base::Token type,
     const dom::InputEventInit& event) {
@@ -867,7 +868,8 @@ void WebModule::Impl::InjectOnScreenKeyboardSuggestionsUpdatedEvent(
   window_->on_screen_keyboard()->DispatchSuggestionsUpdatedEvent(ticket);
 }
 #endif  // SB_API_VERSION >= 11
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
 void WebModule::Impl::InjectKeyboardEvent(scoped_refptr<dom::Element> element,
                                           base::Token type,
@@ -1045,8 +1047,7 @@ void WebModule::Impl::InjectCustomWindowAttributes(
            attributes.begin();
        iter != attributes.end(); ++iter) {
     global_environment_->Bind(
-        iter->first, iter->second.Run(window_, &mutation_observer_task_manager_,
-                                      global_environment_.get()));
+        iter->first, iter->second.Run(window_, global_environment_.get()));
   }
 }
 
@@ -1058,14 +1059,8 @@ void WebModule::Impl::SetRemoteTypefaceCacheCapacity(int64_t bytes) {
   remote_typeface_cache_->SetCapacity(static_cast<uint32>(bytes));
 }
 
-void WebModule::Impl::SetSize(cssom::ViewportSize window_dimensions,
-                              float video_pixel_ratio) {
-  // A value of 0.0 for the video pixel ratio means that the ratio could not be
-  // determined. In that case it should be assumed to be the same as the
-  // graphics resolution, which corresponds to a device pixel ratio of 1.0.
-  float device_pixel_ratio =
-      video_pixel_ratio == 0.0f ? 1.0f : video_pixel_ratio;
-  window_->SetSize(window_dimensions, device_pixel_ratio);
+void WebModule::Impl::SetSize(cssom::ViewportSize viewport_size) {
+  window_->SetSize(viewport_size);
 }
 
 void WebModule::Impl::SetCamera3D(
@@ -1076,6 +1071,7 @@ void WebModule::Impl::SetCamera3D(
 void WebModule::Impl::SetWebMediaPlayerFactory(
     media::WebMediaPlayerFactory* web_media_player_factory) {
   window_->set_web_media_player_factory(web_media_player_factory);
+  media_session_client_->SetMediaPlayerFactory(web_media_player_factory);
 }
 
 void WebModule::Impl::SetApplicationState(base::ApplicationState state) {
@@ -1301,7 +1297,8 @@ void WebModule::DestructionObserver::WillDestroyCurrentMessageLoop() {
 WebModule::Options::Options()
     : name("WebModule"),
       layout_trigger(layout::LayoutManager::kOnDocumentMutation),
-      mesh_cache_capacity(COBALT_MESH_CACHE_SIZE_IN_BYTES) {}
+      mesh_cache_capacity(configuration::Configuration::GetInstance()
+                              ->CobaltMeshCacheSizeInBytes()) {}
 
 WebModule::WebModule(
     const GURL& initial_url, base::ApplicationState initial_application_state,
@@ -1312,7 +1309,7 @@ WebModule::WebModule(
     media::CanPlayTypeHandler* can_play_type_handler,
     media::WebMediaPlayerFactory* web_media_player_factory,
     network::NetworkModule* network_module,
-    const ViewportSize& window_dimensions, float video_pixel_ratio,
+    const ViewportSize& window_dimensions,
     render_tree::ResourceProvider* resource_provider, float layout_refresh_rate,
     const Options& options)
     : thread_(options.name.c_str()),
@@ -1324,8 +1321,8 @@ WebModule::WebModule(
       initial_url, initial_application_state, render_tree_produced_callback,
       error_callback, window_close_callback, window_minimize_callback,
       can_play_type_handler, web_media_player_factory, network_module,
-      window_dimensions, video_pixel_ratio, resource_provider,
-      kDOMMaxElementDepth, layout_refresh_rate, ui_nav_root_, options);
+      window_dimensions, resource_provider, kDOMMaxElementDepth,
+      layout_refresh_rate, ui_nav_root_, options);
 
   // Start the dedicated thread and create the internal implementation
   // object on that thread.
@@ -1372,7 +1369,7 @@ void WebModule::Initialize(const ConstructionData& data) {
   impl_.reset(new Impl(data));
 }
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
 
 void WebModule::InjectOnScreenKeyboardInputEvent(
     base::Token type, const dom::InputEventInit& event) {
@@ -1447,7 +1444,8 @@ void WebModule::InjectOnScreenKeyboardSuggestionsUpdatedEvent(int ticket) {
           base::Unretained(impl_.get()), ticket));
 }
 #endif  // SB_API_VERSION >= 11
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
 void WebModule::InjectKeyboardEvent(base::Token type,
                                     const dom::KeyboardEventInit& event) {
@@ -1572,12 +1570,10 @@ std::unique_ptr<debug::backend::DebuggerState> WebModule::FreezeDebugger() {
 }
 #endif  // defined(ENABLE_DEBUGGER)
 
-void WebModule::SetSize(const ViewportSize& viewport_size,
-                        float video_pixel_ratio) {
+void WebModule::SetSize(const ViewportSize& viewport_size) {
   message_loop()->task_runner()->PostTask(
-      FROM_HERE,
-      base::Bind(&WebModule::Impl::SetSize, base::Unretained(impl_.get()),
-                 viewport_size, video_pixel_ratio));
+      FROM_HERE, base::Bind(&WebModule::Impl::SetSize,
+                            base::Unretained(impl_.get()), viewport_size));
 }
 
 void WebModule::SetCamera3D(const scoped_refptr<input::Camera3D>& camera_3d) {

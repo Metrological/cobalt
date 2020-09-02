@@ -18,7 +18,7 @@
 #include <list>
 
 #include "starboard/android/shared/jni_env_ext.h"
-#include "starboard/shared/starboard/player/filter/video_renderer_internal.h"
+#include "starboard/shared/starboard/player/filter/video_render_algorithm.h"
 
 namespace starboard {
 namespace android {
@@ -30,6 +30,7 @@ class VideoRenderAlgorithm : public ::starboard::shared::starboard::player::
   void Render(MediaTimeProvider* media_time_provider,
               std::list<scoped_refptr<VideoFrame>>* frames,
               VideoRendererSink::DrawFrameCB draw_frame_cb) override;
+  void Seek(SbTime seek_to_time) override {}
   int GetDroppedFrames() override { return dropped_frames_; }
 
  private:

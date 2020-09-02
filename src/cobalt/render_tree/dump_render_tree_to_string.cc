@@ -20,6 +20,7 @@
 #include "cobalt/render_tree/composition_node.h"
 #include "cobalt/render_tree/filter_node.h"
 #include "cobalt/render_tree/image_node.h"
+#include "cobalt/render_tree/lottie_node.h"
 #include "cobalt/render_tree/matrix_transform_3d_node.h"
 #include "cobalt/render_tree/matrix_transform_node.h"
 #include "cobalt/render_tree/node_visitor.h"
@@ -43,11 +44,12 @@ class DebugTreePrinter : public NodeVisitor {
  public:
   DebugTreePrinter() : indent_(0) {}
 
-  void Visit(animations::AnimateNode* /* animate */) override { NOTREACHED(); }
+  void Visit(animations::AnimateNode* animate) override { NOTREACHED(); }
   void Visit(ClearRectNode* clear_rect) override;
   void Visit(CompositionNode* composition) override;
   void Visit(FilterNode* text) override;
   void Visit(ImageNode* image) override;
+  void Visit(LottieNode* lottie) override;
   void Visit(MatrixTransform3DNode* transform) override;
   void Visit(MatrixTransformNode* transform) override;
   void Visit(PunchThroughVideoNode* punch_through) override;
@@ -134,6 +136,11 @@ void DebugTreePrinter::Visit(ImageNode* image) {
   result_ << "\n";
 }
 
+void DebugTreePrinter::Visit(LottieNode* lottie) {
+  AddNamedNodeString(lottie, "LottieNode");
+  result_ << "\n";
+}
+
 void DebugTreePrinter::Visit(MatrixTransform3DNode* transform) {
   AddNamedNodeString(transform, "MatrixTransform3DNode");
   result_ << "\n";
@@ -164,17 +171,14 @@ class BrushPrinterVisitor : public render_tree::BrushVisitor {
 
   void Visit(
       const cobalt::render_tree::SolidColorBrush* solid_color_brush) override {
-    SB_UNREFERENCED_PARAMETER(solid_color_brush);
     brush_type_ = "(SolidColorBrush)";
   }
   void Visit(const cobalt::render_tree::LinearGradientBrush*
                  linear_gradient_brush) override {
-    SB_UNREFERENCED_PARAMETER(linear_gradient_brush);
     brush_type_ = "(LinearGradientBrush)";
   }
   void Visit(const cobalt::render_tree::RadialGradientBrush*
                  radial_gradient_brush) override {
-    SB_UNREFERENCED_PARAMETER(radial_gradient_brush);
     brush_type_ = "(RadialGradientBrush)";
   }
 

@@ -88,12 +88,13 @@ typedef enum SbInputDeviceType {
   // Produces |Move|, |Press|, and |Unpress| events.
   kSbInputDeviceTypeTouchPad,
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   // Keyboard input from an on screen keyboard.
   //
   // Produces |Input| events.
   kSbInputDeviceTypeOnScreenKeyboard,
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 } SbInputDeviceType;
 
 // The action that an input event represents.
@@ -132,10 +133,11 @@ typedef enum SbInputEventType {
   // Wheel movement. Provides relative movements of the |Mouse| wheel.
   kSbInputEventTypeWheel,
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   // https://w3c.github.io/uievents/#event-type-input
   kSbInputEventTypeInput,
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 } SbInputEventType;
 
 // A 2-dimensional vector used to represent points and motion vectors.
@@ -146,14 +148,12 @@ typedef struct SbInputVector {
 
 // Event data for |kSbEventTypeInput| events.
 typedef struct SbInputData {
-#if SB_API_VERSION >= 10
   // The time that should be reported for this event. This is intended to
   // facilitate calculation of time-sensitive information (e.g. velocity for
   // kSbInputEventTypeMove). This may be set to 0 to have the relevant systems
   // automatically set the timestamp. However, this may happen at a later time,
   // so the relative time between events may not be preserved.
   SbTimeMonotonic timestamp;
-#endif
 
   // The window in which the input was generated.
   SbWindow window;
@@ -213,7 +213,7 @@ typedef struct SbInputData {
   // towards the user (y). Use (NaN, NaN) for devices that do not report tilt.
   // This value is used for input events with device type mouse or touch screen.
   SbInputVector tilt;
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   // The text to input for events of type |Input|.
   const char* input_text;
 

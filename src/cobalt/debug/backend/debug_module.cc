@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
-
 #include "cobalt/debug/backend/debug_module.h"
+
+#include <memory>
 
 #include "cobalt/debug/backend/render_layer.h"
 
@@ -24,10 +24,12 @@ namespace backend {
 
 namespace {
 constexpr char kScriptDebuggerAgent[] = "ScriptDebuggerAgent";
+constexpr char kRuntimeAgent[] = "RuntimeAgent";
 constexpr char kConsoleAgent[] = "ConsoleAgent";
 constexpr char kLogAgent[] = "LogAgent";
 constexpr char kDomAgent[] = "DomAgent";
 constexpr char kCssAgent[] = "CssAgent";
+constexpr char kOverlayAgent[] = "OverlayAgent";
 constexpr char kPageAgent[] = "PageAgent";
 constexpr char kTracingAgent[] = "TracingAgent";
 
@@ -65,30 +67,33 @@ void StoreAgentState(base::DictionaryValue* state_dict,
 
 }  // namespace
 
-DebugModule::DebugModule(dom::Console* console,
+DebugModule::DebugModule(DebuggerHooksImpl* debugger_hooks,
+                         dom::Console* console,
                          script::GlobalEnvironment* global_environment,
                          RenderOverlay* render_overlay,
                          render_tree::ResourceProvider* resource_provider,
                          dom::Window* window, DebuggerState* debugger_state) {
-  ConstructionData data(console, global_environment,
+  ConstructionData data(debugger_hooks, console, global_environment,
                         base::MessageLoop::current(), render_overlay,
                         resource_provider, window, debugger_state);
   Build(data);
 }
 
-DebugModule::DebugModule(dom::Console* console,
+DebugModule::DebugModule(DebuggerHooksImpl* debugger_hooks,
+                         dom::Console* console,
                          script::GlobalEnvironment* global_environment,
                          RenderOverlay* render_overlay,
                          render_tree::ResourceProvider* resource_provider,
                          dom::Window* window, DebuggerState* debugger_state,
                          base::MessageLoop* message_loop) {
-  ConstructionData data(console, global_environment, message_loop,
-                        render_overlay, resource_provider, window,
+  ConstructionData data(debugger_hooks, console, global_environment,
+                        message_loop, render_overlay, resource_provider, window,
                         debugger_state);
   Build(data);
 }
 
 DebugModule::~DebugModule() {
+  debugger_hooks_->DetachDebugger();
   if (!is_frozen_) {
     // Shutting down without navigating. Give everything a chance to cleanup by
     // freezing, but throw away the state.
@@ -139,13 +144,16 @@ void DebugModule::BuildInternal(const ConstructionData& data,
       data.global_environment, script_debugger_.get(),
       base::Bind(&DebugModule::SendEvent, base::Unretained(this))));
 
+  debugger_hooks_ = data.debugger_hooks;
+  debugger_hooks_->AttachDebugger(script_debugger_.get());
+
   // Create render layers for the agents that need them and chain them
   // together. Ownership will be passed to the agent that uses each layer.
   // The layers will be painted in the reverse order they are listed here.
   std::unique_ptr<RenderLayer> page_render_layer(new RenderLayer(base::Bind(
       &RenderOverlay::SetOverlay, base::Unretained(data.render_overlay))));
 
-  std::unique_ptr<RenderLayer> dom_render_layer(new RenderLayer(
+  std::unique_ptr<RenderLayer> overlay_render_layer(new RenderLayer(
       base::Bind(&RenderLayer::SetBackLayer, page_render_layer->AsWeakPtr())));
 
   // Create the agents that implement the various devtools protocol domains by
@@ -154,11 +162,16 @@ void DebugModule::BuildInternal(const ConstructionData& data,
   // directly handle one or more protocol domains.
   script_debugger_agent_.reset(
       new ScriptDebuggerAgent(debug_dispatcher_.get(), script_debugger_.get()));
+  if (!script_debugger_agent_->IsSupportedDomain("Runtime")) {
+    runtime_agent_.reset(
+        new RuntimeAgent(debug_dispatcher_.get(), data.window));
+  }
   console_agent_.reset(new ConsoleAgent(debug_dispatcher_.get(), data.console));
   log_agent_.reset(new LogAgent(debug_dispatcher_.get()));
-  dom_agent_.reset(
-      new DOMAgent(debug_dispatcher_.get(), std::move(dom_render_layer)));
+  dom_agent_.reset(new DOMAgent(debug_dispatcher_.get()));
   css_agent_ = WrapRefCounted(new CSSAgent(debug_dispatcher_.get()));
+  overlay_agent_.reset(new OverlayAgent(debug_dispatcher_.get(),
+                                        std::move(overlay_render_layer)));
   page_agent_.reset(new PageAgent(debug_dispatcher_.get(), data.window,
                                   std::move(page_render_layer),
                                   data.resource_provider));
@@ -183,10 +196,14 @@ void DebugModule::BuildInternal(const ConstructionData& data,
                                      : data.debugger_state->agents_state.get();
   script_debugger_agent_->Thaw(
       RemoveAgentState(kScriptDebuggerAgent, agents_state));
+  if (runtime_agent_) {
+    runtime_agent_->Thaw(RemoveAgentState(kRuntimeAgent, agents_state));
+  }
   console_agent_->Thaw(RemoveAgentState(kConsoleAgent, agents_state));
   log_agent_->Thaw(RemoveAgentState(kLogAgent, agents_state));
   dom_agent_->Thaw(RemoveAgentState(kDomAgent, agents_state));
   css_agent_->Thaw(RemoveAgentState(kCssAgent, agents_state));
+  overlay_agent_->Thaw(RemoveAgentState(kOverlayAgent, agents_state));
   page_agent_->Thaw(RemoveAgentState(kPageAgent, agents_state));
   tracing_agent_->Thaw(RemoveAgentState(kTracingAgent, agents_state));
 
@@ -207,10 +224,14 @@ std::unique_ptr<DebuggerState> DebugModule::Freeze() {
   base::DictionaryValue* agents_state = debugger_state->agents_state.get();
   StoreAgentState(agents_state, kScriptDebuggerAgent,
                   script_debugger_agent_->Freeze());
+  if (runtime_agent_) {
+    StoreAgentState(agents_state, kRuntimeAgent, runtime_agent_->Freeze());
+  }
   StoreAgentState(agents_state, kConsoleAgent, console_agent_->Freeze());
   StoreAgentState(agents_state, kLogAgent, log_agent_->Freeze());
   StoreAgentState(agents_state, kDomAgent, dom_agent_->Freeze());
   StoreAgentState(agents_state, kCssAgent, css_agent_->Freeze());
+  StoreAgentState(agents_state, kOverlayAgent, overlay_agent_->Freeze());
   StoreAgentState(agents_state, kPageAgent, page_agent_->Freeze());
   StoreAgentState(agents_state, kTracingAgent, tracing_agent_->Freeze());
 
@@ -222,7 +243,7 @@ std::unique_ptr<DebuggerState> DebugModule::Freeze() {
 }
 
 void DebugModule::SendEvent(const std::string& method,
-                            const base::Optional<std::string>& params) {
+                            const std::string& params) {
   DCHECK(debug_dispatcher_);
   debug_dispatcher_->SendEvent(method, params);
 }

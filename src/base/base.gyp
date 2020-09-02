@@ -142,6 +142,8 @@
         'files/file_util.cc',
         'files/file_util.h',
         'files/file_util_starboard.cc',
+        'files/important_file_writer.cc',
+        'files/important_file_writer.h',
         'files/platform_file.h',
         'files/scoped_file.cc',
         'files/scoped_file.h',
@@ -690,30 +692,13 @@
       'sources': [
       ],
     },
-
-
-    # Include this target for a main() function that simply instantiates
-    # and runs a base::TestSuite.
-    {
-      'target_name': 'run_all_unittests',
-      'type': 'static_library',
-      'dependencies': [
-        'test_support_base',
-      ],
-      'sources': [
-        'test/run_all_unittests.cc',
-      ],
-      'dependencies': [
-        '<(DEPTH)/testing/gmock.gyp:gmock',
-        '<(DEPTH)/testing/gtest.gyp:gtest',
-      ],
-    },
     {
       'target_name': 'base_unittests',
       'type': '<(gtest_target_type)',
       'defines': [
         'GMOCK_NO_MOVE_MOCK',
         'STARBOARD_OLD_ICU',
+        'BASE_DONT_ENFORCE_THREAD_NAME_LENGTH',
       ],
       'sources': [
         'at_exit_unittest.cc',
@@ -773,6 +758,7 @@
         'files/file_proxy_unittest.cc',
         'files/file_unittest.cc',
         'files/file_util_unittest.cc',
+        'files/important_file_writer_unittest.cc',
         'files/scoped_temp_dir_unittest.cc',
         'gmock_unittest.cc',
         'guid_unittest.cc',
@@ -798,6 +784,9 @@
         'json/json_writer_unittest.cc',
         'json/string_escape_unittest.cc',
         'lazy_instance_unittest.cc',
+        'log_once_unittest.cc',
+        'log_once_unittest_1.h',
+        'log_once_unittest_2.h',
         'logging_unittest.cc',
         'md5_unittest.cc',
         'memory/aligned_memory_unittest.cc',
@@ -926,7 +915,7 @@
         'trace_event/trace_event_filter_test_utils.cc',
         'trace_event/trace_event_filter_test_utils.h',
         'trace_event/trace_event_system_stats_monitor_unittest.cc',
-        # TODO[johnx]:re-enable these.
+        # TODO[Cobalt]:re-enable these.
         # 'trace_event/blame_context_unittest.cc',
         # 'trace_event/trace_event_unittest.cc',
         'tuple_unittest.cc',
@@ -945,7 +934,6 @@
         'base',
         'base_i18n',
         'base_static',
-        'run_all_unittests',
         'test_support_base',
         'third_party/dynamic_annotations/dynamic_annotations.gyp:dynamic_annotations',
       ],
@@ -966,6 +954,7 @@
         # Destructor is explicitly deleted.
         4624,
       ],
+      'includes': ['<(DEPTH)/base/test/test.gypi'],
     },
     {
       'target_name': 'test_support_base',
