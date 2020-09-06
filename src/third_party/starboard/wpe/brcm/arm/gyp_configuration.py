@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Starboard Raspberry Pi platform configuration."""
+"""Starboard Broadcom platform configuration."""
 
 import os
 from starboard.build import clang
@@ -28,13 +28,14 @@ _UNDEFINED_COBALT_TOOLCHAIN_PREFIX = '/UNDEFINED/COBALT_TOOLCHAIN_PREFIX'
 class WpePlatformConfig(platform_configuration.PlatformConfiguration):
   """Starboard WPE BRCM ARM platform configuration."""
 
-  def __init__(self, platform):
+  def __init__(self, platform, sabi_json_path='starboard/sabi/default/sabi.json'):
     super(WpePlatformConfig, self).__init__(platform)
     self.AppendApplicationConfigurationPath(os.path.dirname(__file__))
     self.build_home = os.environ.get('COBALT_STAGING_DIR', _UNDEFINED_COBALT_STAGING_DIR)
     if self.build_home != _UNDEFINED_COBALT_STAGING_DIR:
       self.sysroot = os.path.realpath(os.path.join(self.build_home, ''))
       self.toolchain = os.environ.get('COBALT_TOOLCHAIN_PREFIX', _UNDEFINED_COBALT_TOOLCHAIN_PREFIX)
+      self.sabi_json_path = sabi_json_path
 
   def GetBuildFormat(self):
     """Returns the desired build format."""
@@ -50,8 +51,6 @@ class WpePlatformConfig(platform_configuration.PlatformConfiguration):
         'sysroot': self.sysroot,
     })
     variables.update({
-        'javascript_engine': 'v8',
-        'cobalt_enable_jit': 1,
         'include_path_platform_deploy_gypi':
              'third_party/starboard/wpe/brcm/arm/platform_deploy.gypi',
     })
@@ -118,5 +117,8 @@ class WpePlatformConfig(platform_configuration.PlatformConfiguration):
       ],
   }
 
+  def GetPathToSabiJsonFile(self):
+    return self.sabi_json_path
+
 def CreatePlatformConfig():
-  return WpePlatformConfig('wpe-brcm-arm')
+  return WpePlatformConfig('wpe-brcm-arm', sabi_json_path='starboard/sabi/arm/hardfp/sabi-v{sb_api_version}.json')
