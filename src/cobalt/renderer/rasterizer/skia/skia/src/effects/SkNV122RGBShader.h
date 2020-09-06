@@ -54,7 +54,7 @@ class SkNV122RGBShader : public SkShaderBase {
       const GrFPArgs&) const override;
 #endif
 
-  SK_FLATTENABLE_HOOKS(SkNV122RGBShader)
+  // SK_FLATTENABLE_HOOKS(SkNV122RGBShader)
 
  protected:
   void flatten(SkWriteBuffer&) const override;

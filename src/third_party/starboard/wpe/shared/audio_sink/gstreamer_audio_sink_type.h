@@ -34,7 +34,10 @@ class GStreamerAudioSinkType : public SbAudioSinkPrivate::Type {
       SbAudioSinkFrameBuffers frame_buffers,
       int frame_buffers_size_in_frames,
       SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-      SbAudioSinkConsumeFramesFunc consume_frames_func,
+      SbAudioSinkPrivate::ConsumeFramesFunc consume_frames_func,
+#if SB_API_VERSION >= 12
+      SbAudioSinkPrivate::ErrorFunc error_func,
+#endif  // SB_API_VERSION >= 12
       void* context);
 
   bool IsValid(SbAudioSink audio_sink) override {

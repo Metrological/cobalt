@@ -956,10 +956,11 @@ PlayerImpl::~PlayerImpl() {
   GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline_));
   gst_bus_set_sync_handler(bus, nullptr, nullptr, nullptr);
   gst_object_unref(bus);
-  DispatchOnWorkerThread(
+  // Note: kSbPlayerDecoderStateDestroyed is not supported with new SB_API_VERSION
+  /* DispatchOnWorkerThread(
       new DecoderStatusTask(decoder_status_func_, player_, ticket_, context_,
                             kSbPlayerDecoderStateDestroyed,
-                            GetBothMediaTypeTakingCodecsIntoAccount()));
+                            GetBothMediaTypeTakingCodecsIntoAccount())); */
   DispatchOnWorkerThread(new PlayerDestroyedTask(
       player_status_func_, player_, ticket_, context_, main_loop_));
   SbThreadJoin(playback_thread_, nullptr);

@@ -48,6 +48,7 @@
         '<(DEPTH)/starboard/shared/starboard/drm/drm_close_session.cc',
         '<(DEPTH)/starboard/shared/starboard/drm/drm_destroy_system.cc',
         '<(DEPTH)/starboard/shared/starboard/drm/drm_generate_session_update_request.cc',
+        '<(DEPTH)/starboard/shared/starboard/drm/drm_get_metrics.cc',
         '<(DEPTH)/starboard/shared/starboard/drm/drm_is_server_certificate_updatable.cc',
         '<(DEPTH)/starboard/shared/starboard/drm/drm_system_internal.h',
         '<(DEPTH)/starboard/shared/starboard/drm/drm_update_server_certificate.cc',
@@ -58,6 +59,7 @@
     ],
 
     'file_sources': [
+        '<(DEPTH)/starboard/shared/posix/file_atomic_replace.cc',
         '<(DEPTH)/starboard/shared/posix/file_can_open.cc',
         '<(DEPTH)/starboard/shared/posix/file_close.cc',
         '<(DEPTH)/starboard/shared/posix/file_delete.cc',
@@ -89,7 +91,6 @@
     'media_sources': [
         '<(DEPTH)/starboard/shared/starboard/media/codec_util.cc',
         '<(DEPTH)/starboard/shared/starboard/media/media_can_play_mime_and_key_system.cc',
-        '<(DEPTH)/starboard/shared/starboard/media/media_set_output_protection.cc',
         '<(DEPTH)/starboard/shared/starboard/media/media_util.cc',
         '<(DEPTH)/starboard/shared/starboard/media/mime_type.cc',
         '<(DEPTH)/starboard/shared/stub/media_set_audio_write_duration.cc',
@@ -112,6 +113,23 @@
         '<(DEPTH)/third_party/starboard/wpe/shared/media/media_is_supported.cc',
         '<(DEPTH)/third_party/starboard/wpe/shared/media/media_is_transfer_characteristics_supported.cc',
         '<(DEPTH)/third_party/starboard/wpe/shared/media/media_is_video_supported.cc',
+
+        '<(DEPTH)/starboard/shared/stub/microphone_close.cc',
+        '<(DEPTH)/starboard/shared/stub/microphone_create.cc',
+        '<(DEPTH)/starboard/shared/stub/microphone_destroy.cc',
+        '<(DEPTH)/starboard/shared/stub/microphone_get_available.cc',
+        '<(DEPTH)/starboard/shared/stub/microphone_is_sample_rate_supported.cc',
+        '<(DEPTH)/starboard/shared/stub/microphone_open.cc',
+        '<(DEPTH)/starboard/shared/stub/microphone_read.cc',
+        '<(DEPTH)/starboard/shared/stub/speech_recognizer_cancel.cc',
+        '<(DEPTH)/starboard/shared/stub/speech_recognizer_create.cc',
+        '<(DEPTH)/starboard/shared/stub/speech_recognizer_destroy.cc',
+        '<(DEPTH)/starboard/shared/stub/speech_recognizer_is_supported.cc',
+        '<(DEPTH)/starboard/shared/stub/speech_recognizer_start.cc',
+        '<(DEPTH)/starboard/shared/stub/speech_recognizer_stop.cc',
+        '<(DEPTH)/starboard/shared/stub/speech_synthesis_cancel.cc',
+        '<(DEPTH)/starboard/shared/stub/speech_synthesis_is_supported.cc',
+        '<(DEPTH)/starboard/shared/stub/speech_synthesis_speak.cc',
     ],
 
     'memory_sources': [
@@ -138,6 +156,9 @@
         '<(DEPTH)/starboard/shared/posix/memory_allocate_aligned_unchecked.cc',
         '<(DEPTH)/starboard/shared/posix/memory_flush.cc',
         '<(DEPTH)/starboard/shared/posix/memory_free_aligned.cc',
+
+        '<(DEPTH)/starboard/shared/starboard/memory.cc',
+        '<(DEPTH)/starboard/shared/starboard/new.cc',
     ],
 
     'player_sources': [
@@ -179,6 +200,7 @@
         '<(DEPTH)/starboard/shared/posix/socket_resolve.cc',
         '<(DEPTH)/starboard/shared/posix/socket_send_to.cc',
         '<(DEPTH)/starboard/shared/posix/socket_set_broadcast.cc',
+        '<(DEPTH)/starboard/shared/posix/socket_is_ipv6_supported.cc',
 
         '<(DEPTH)/starboard/shared/posix/socket_set_receive_buffer_size.cc',
         '<(DEPTH)/starboard/shared/posix/socket_set_reuse_address.cc',
@@ -305,7 +327,7 @@
         '<(DEPTH)/starboard/shared/posix/time_get_now.cc',
         '<(DEPTH)/starboard/shared/posix/time_zone_get_current.cc',
         '<(DEPTH)/starboard/shared/posix/time_zone_get_name.cc',
-
+        '<(DEPTH)/starboard/shared/posix/time_is_time_thread_now_supported.cc',
     ],
 
     'threading_sources': [
@@ -331,6 +353,8 @@
         '<(DEPTH)/starboard/shared/pthread/mutex_release.cc',
         '<(DEPTH)/starboard/shared/pthread/once.cc',
         '<(DEPTH)/starboard/shared/pthread/thread_context_get_pointer.cc',
+        '<(DEPTH)/starboard/shared/pthread/thread_context_internal.cc',
+        '<(DEPTH)/starboard/shared/pthread/thread_context_internal.h',
         '<(DEPTH)/starboard/shared/pthread/thread_create.cc',
         '<(DEPTH)/starboard/shared/pthread/thread_create_local_key.cc',
         '<(DEPTH)/starboard/shared/pthread/thread_destroy_local_key.cc',
@@ -348,12 +372,21 @@
         '<(DEPTH)/starboard/shared/pthread/thread_set_local_value.cc',
         '<(DEPTH)/starboard/shared/pthread/thread_types_public.h',
         '<(DEPTH)/starboard/shared/pthread/thread_yield.cc',
+        '<(DEPTH)/starboard/shared/stub/thread_create_priority.cc',
     ],
 
     'window_sources': [
         # STUB
+        '<(DEPTH)/starboard/shared/stub/window_blur_on_screen_keyboard.cc',
+        '<(DEPTH)/starboard/shared/stub/window_focus_on_screen_keyboard.cc',
         '<(DEPTH)/starboard/shared/stub/window_get_diagonal_size_in_inches.cc',
+        '<(DEPTH)/starboard/shared/stub/window_get_on_screen_keyboard_bounding_rect.cc',
+        '<(DEPTH)/starboard/shared/stub/window_hide_on_screen_keyboard.cc',
+        '<(DEPTH)/starboard/shared/stub/window_is_on_screen_keyboard_shown.cc',
+        '<(DEPTH)/starboard/shared/stub/window_on_screen_keyboard_is_supported.cc',
         '<(DEPTH)/starboard/shared/stub/window_on_screen_keyboard_suggestions_supported.cc',
+        '<(DEPTH)/starboard/shared/stub/window_set_on_screen_keyboard_keep_focus.cc',
+        '<(DEPTH)/starboard/shared/stub/window_show_on_screen_keyboard.cc',
         '<(DEPTH)/starboard/shared/stub/window_update_on_screen_keyboard_suggestions.cc',
 
         # SB
@@ -414,11 +447,14 @@
         '<(DEPTH)/starboard/shared/starboard/cryptography/cryptography_transform.cc',
         '<(DEPTH)/starboard/shared/starboard/event_cancel.cc',
         '<(DEPTH)/starboard/shared/starboard/event_schedule.cc',
+        '<(DEPTH)/starboard/shared/starboard/file_atomic_replace_write_file.cc',
         '<(DEPTH)/starboard/shared/starboard/file_mode_string_to_flags.cc',
         '<(DEPTH)/starboard/shared/starboard/log_message.cc',
         '<(DEPTH)/starboard/shared/starboard/queue_application.cc',
         '<(DEPTH)/starboard/shared/stub/accessibility_get_display_settings.cc',
         '<(DEPTH)/starboard/shared/stub/accessibility_get_text_to_speech_settings.cc',
+        '<(DEPTH)/starboard/shared/stub/accessibility_get_caption_settings.cc',
+        '<(DEPTH)/starboard/shared/stub/accessibility_set_captions_enabled.cc',
         '<(DEPTH)/starboard/shared/stub/ui_nav_get_interface.cc',
         '<(DEPTH)/starboard/shared/nouser/user_get_current.cc',
         '<(DEPTH)/starboard/shared/nouser/user_get_property.cc',

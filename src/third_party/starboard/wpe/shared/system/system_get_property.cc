@@ -14,9 +14,6 @@
 
 #include <string>
 
-#if SB_API_VERSION >= 11
-#include "starboard/format_string.h"
-#endif  // SB_API_VERSION >= 11
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
 
@@ -88,7 +85,9 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
             std::to_string(SB_PLATFORM_MODEL_YEAR).c_str());
       }
     }
-#if SB_API_VERSION >= 11
+#if SB_API_VERSION >= 12
+    case kSbSystemPropertySystemIntegratorName:
+#elif SB_API_VERSION == 11
     case kSbSystemPropertyOriginalDesignManufacturerName:
 #else
     case kSbSystemPropertyNetworkOperatorName:

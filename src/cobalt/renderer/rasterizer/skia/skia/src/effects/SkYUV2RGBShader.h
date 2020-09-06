@@ -57,7 +57,7 @@ class SkYUV2RGBShader : public SkShaderBase {
       const GrFPArgs&) const override;
 #endif
 
-  SK_FLATTENABLE_HOOKS(SkYUV2RGBShader)
+  // SK_FLATTENABLE_HOOKS(SkYUV2RGBShader)
 
  protected:
   void flatten(SkWriteBuffer&) const override;
