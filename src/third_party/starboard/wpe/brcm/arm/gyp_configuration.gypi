@@ -17,6 +17,7 @@
     'architecture.gypi',
   ],
   'variables': {
+    'enable_map_to_mesh': 1,
     'target_arch': 'arm',
     'target_os': 'linux',
 
