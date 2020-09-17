@@ -118,8 +118,22 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       return CopyStringAndTestIfSuccess(out_value, value_length, kPlatformName);
 
 #if SB_API_VERSION >= 11
-    case kSbSystemPropertyCertificationScope:
-    case kSbSystemPropertyBase64EncodedCertificationSecret:
+    case kSbSystemPropertyCertificationScope: {
+      auto* property_name = std::getenv("COBALT_CERTIFICATION_SCOPE");
+      if (property_name) {
+        return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
+      } else {
+        return (false);
+      }
+    }
+    case kSbSystemPropertyBase64EncodedCertificationSecret: {
+      auto* property_name = std::getenv("COBALT_CERTIFICATION_SECRET");
+      if (property_name) {
+        return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
+      } else {
+        return (false);
+      }
+    }
 #endif  // SB_API_VERSION >= 11
 
     default:
