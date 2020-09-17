@@ -31,8 +31,6 @@ namespace nplb {
 // type and storage type that is valid on this platform.
 class AudioSinkTestFrameBuffers {
  public:
-  static const int kFramesPerChannel = 4096;
-
   explicit AudioSinkTestFrameBuffers(int channels);
   AudioSinkTestFrameBuffers(int channels, SbMediaAudioSampleType sample_type);
   AudioSinkTestFrameBuffers(int channels,
@@ -48,7 +46,7 @@ class AudioSinkTestFrameBuffers {
   int bytes_per_frame() const {
     return sample_type_ == kSbMediaAudioSampleTypeInt16Deprecated ? 2 : 4;
   }
-  static int frames_per_channel() { return kFramesPerChannel; }
+  int frames_per_channel() const { return frames_per_channel_; }
   void** frame_buffers() {
     return frame_buffers_.empty() ? NULL : &frame_buffers_[0];
   }
@@ -59,6 +57,7 @@ class AudioSinkTestFrameBuffers {
   int channels_;
   SbMediaAudioSampleType sample_type_;
   SbMediaAudioFrameStorageType storage_type_;
+  int frames_per_channel_;
   std::vector<uint8_t> frame_buffer_;
   std::vector<void*> frame_buffers_;
 };
@@ -81,7 +80,7 @@ class AudioSinkTestEnvironment {
   }
   void SetIsPlaying(bool is_playing);
   void AppendFrame(int frames_to_append);
-  int GetFrameBufferFreeSpaceAmount() const;
+  int GetFrameBufferFreeSpaceInFrames() const;
 
   // The following functions return true when the expected condition are met.
   // Return false on timeout.
@@ -90,26 +89,32 @@ class AudioSinkTestEnvironment {
   bool WaitUntilAllFramesAreConsumed();
 
  private:
+  void AppendFrame_Locked(int frames_to_append);
+  int GetFrameBufferFreeSpaceInFrames_Locked() const;
   void OnUpdateSourceStatus(int* frames_in_buffer,
                             int* offset_in_frames,
                             bool* is_playing,
                             bool* is_eos_reached);
-#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
-  void OnConsumeFrames(int frames_consumed, SbTime frames_consumed_at);
-#else   // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+#if SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
   void OnConsumeFrames(int frames_consumed);
-#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+#else   // SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+  void OnConsumeFrames(int frames_consumed, SbTime frames_consumed_at);
+#endif  // SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 
   static void UpdateSourceStatusFunc(int* frames_in_buffer,
                                      int* offset_in_frames,
                                      bool* is_playing,
                                      bool* is_eos_reached,
                                      void* context);
+
+#if SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+  static void ConsumeFramesFunc(int frames_consumed, void* context);
+#else   // SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
   static void ConsumeFramesFunc(int frames_consumed,
-#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                 SbTime frames_consumed_at,
-#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                 void* context);
+#endif  // SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+
   SbAudioSink sink_;
 
   AudioSinkTestFrameBuffers frame_buffers_;

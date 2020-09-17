@@ -89,8 +89,8 @@
           'JS_PUNBOX64=1',
           # arm64 jit appears to not be ready, won't even compile without
           # compiling in the simulator.  It is highly recommended that
-          # |cobalt_enable_jit| be set to |0| when building for architecture
-          # |arm64|.
+          # |CobaltExtensionConfigurationApi::CobaltEnableJit()| return false
+          # when building for architecture |arm64|.
           'JS_SIMULATOR=1',
           'JS_SIMULATOR_ARM64=1',
         ],
@@ -110,15 +110,6 @@
         ],
       }],
 
-      # TODO: Remove once ps4 configuration todos are addressed.
-      ['target_arch == "ps4" or sb_target_platform == "ps4"', {
-        'common_defines': [
-          'JS_CPU_X64=1',
-          'JS_CODEGEN_X64=1',
-          'JS_PUNBOX64=1',
-        ],
-      }],
-
       ['cobalt_config != "gold"', {
         'common_defines': [
           'JS_TRACE_LOGGING=1',
@@ -132,17 +123,6 @@
       }]
     ],
   },
-  # Required GYP massaging to allow |cobalt_enable_jit| to be a default
-  # variable.  Just pretend this is part of |variables| above.
-  'conditions': [
-    ['cobalt_enable_jit != 1', {
-      'variables': {
-        'common_defines': [
-          'COBALT_DISABLE_JIT=1',
-        ],
-      },
-    }],
-  ],
   'target_defaults': {
     'defines': [ '<@(common_defines)', ],
     'msvs_settings': {
@@ -186,6 +166,7 @@
       'hard_dependency': 1,
       'dependencies': [
         'build_include_directory',
+        '<(DEPTH)/cobalt/configuration/configuration.gyp:configuration',
         '<(DEPTH)/starboard/client_porting/pr_starboard/pr_starboard.gyp:pr_starboard',
         '<(DEPTH)/starboard/starboard.gyp:starboard',
         '<(DEPTH)/third_party/icu/icu.gyp:icui18n',
@@ -227,8 +208,7 @@
             'js/src/jit/x86/Trampoline-x86.cpp',
           ],
         }],
-        # TODO: Remove "* == ps4" once ps4 configuration todos are addressed.
-        ['target_arch == "x64" or target_arch == "ps4" or sb_target_platform == "ps4"', {
+        ['target_arch == "x64"', {
           'sources': [
             'js/src/jit/x64/Assembler-x64.cpp',
             'js/src/jit/x64/Bailouts-x64.cpp',

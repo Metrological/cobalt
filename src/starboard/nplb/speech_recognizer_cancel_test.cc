@@ -20,9 +20,11 @@
 namespace starboard {
 namespace nplb {
 
-#if SB_HAS(SPEECH_RECOGNIZER) && SB_API_VERSION >= 5
+#if SB_API_VERSION >= 12 || SB_HAS(SPEECH_RECOGNIZER) && SB_API_VERSION >= 5
 
 TEST_F(SpeechRecognizerTest, CancelTestSunnyDay) {
+  if (SkipLocale())
+    return;
   SbSpeechRecognizer recognizer = SbSpeechRecognizerCreate(handler());
   EXPECT_TRUE(SbSpeechRecognizerIsValid(recognizer));
   SbSpeechConfiguration configuration = {true, true, 1};
@@ -38,6 +40,8 @@ TEST_F(SpeechRecognizerTest, CancelTestSunnyDay) {
 }
 
 TEST_F(SpeechRecognizerTest, CancelIsCalledMultipleTimes) {
+  if (SkipLocale())
+    return;
   SbSpeechRecognizer recognizer = SbSpeechRecognizerCreate(handler());
   EXPECT_TRUE(SbSpeechRecognizerIsValid(recognizer));
   SbSpeechConfiguration configuration = {true, false, 1};
@@ -55,6 +59,8 @@ TEST_F(SpeechRecognizerTest, CancelIsCalledMultipleTimes) {
 }
 
 TEST_F(SpeechRecognizerTest, CancelTestStartIsNotCalled) {
+  if (SkipLocale())
+    return;
   SbSpeechRecognizer recognizer = SbSpeechRecognizerCreate(handler());
   EXPECT_TRUE(SbSpeechRecognizerIsValid(recognizer));
   SbSpeechRecognizerCancel(recognizer);
@@ -62,10 +68,13 @@ TEST_F(SpeechRecognizerTest, CancelTestStartIsNotCalled) {
 }
 
 TEST_F(SpeechRecognizerTest, CancelWithInvalidSpeechRecognizer) {
+  if (SkipLocale())
+    return;
   SbSpeechRecognizerCancel(kSbSpeechRecognizerInvalid);
 }
 
-#endif  // SB_HAS(SPEECH_RECOGNIZER) && SB_API_VERSION >= 5
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(SPEECH_RECOGNIZER) && SB_API_VERSION >= 5
 
 }  // namespace nplb
 }  // namespace starboard

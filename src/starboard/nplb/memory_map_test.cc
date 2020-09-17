@@ -14,6 +14,7 @@
 
 #include <algorithm>
 
+#include "starboard/configuration_constants.h"
 #include "starboard/memory.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -21,8 +22,8 @@ namespace starboard {
 namespace nplb {
 namespace {
 
-#if SB_HAS(MMAP)
-const size_t kSize = SB_MEMORY_PAGE_SIZE * 8;
+#if SB_API_VERSION >= 12 || SB_HAS(MMAP)
+const size_t kSize = kSbMemoryPageSize * 8;
 const void* kFailed = SB_MEMORY_MAP_FAILED;
 
 TEST(SbMemoryMapTest, AllocatesNormally) {
@@ -45,9 +46,9 @@ TEST(SbMemoryMapTest, AllocatesOne) {
 
 TEST(SbMemoryMapTest, AllocatesOnePage) {
   void* memory =
-      SbMemoryMap(SB_MEMORY_PAGE_SIZE, kSbMemoryMapProtectRead, "test");
+      SbMemoryMap(kSbMemoryPageSize, kSbMemoryMapProtectRead, "test");
   ASSERT_NE(kFailed, memory);
-  EXPECT_TRUE(SbMemoryUnmap(memory, SB_MEMORY_PAGE_SIZE));
+  EXPECT_TRUE(SbMemoryUnmap(memory, kSbMemoryPageSize));
 }
 
 // Disabled because it is too slow -- currently ~5 seconds on a Linux desktop
@@ -78,12 +79,12 @@ TEST(SbMemoryMapTest, DISABLED_DoesNotLeak) {
             ? size_t(1u)
             : std::max(static_cast<size_t>(
                            kBytesMappedPerIteration /
-                           (kSparseCommittedPages * SB_MEMORY_PAGE_SIZE)),
+                           (kSparseCommittedPages * kSbMemoryPageSize)),
                        size_t(1u));
 
     for (uint8_t* page = first_page;
          page < first_page + kBytesMappedPerIteration;
-         page += SB_MEMORY_PAGE_SIZE * page_increment_factor) {
+         page += kSbMemoryPageSize * page_increment_factor) {
       *page = 0x55;
     }
 
@@ -142,8 +143,8 @@ CopySumFunctionIntoMemory(void* memory) {
   // A function pointer can't be cast to void*, but uint8* seems to be okay. So
   // cast to a uint* which will be implicitly casted to a void* below.
   SumFunction original_function = &Sum;
-  if (reinterpret_cast<uintptr_t>(&Sum2) % SB_MEMORY_PAGE_SIZE <
-      reinterpret_cast<uintptr_t>(&Sum) % SB_MEMORY_PAGE_SIZE) {
+  if (reinterpret_cast<uintptr_t>(&Sum2) % kSbMemoryPageSize <
+      reinterpret_cast<uintptr_t>(&Sum) % kSbMemoryPageSize) {
     original_function = &Sum2;
   }
 
@@ -161,14 +162,14 @@ CopySumFunctionIntoMemory(void* memory) {
 
   // Get the last address of the page that |sum_function_start| is on.
   uint8_t* sum_function_page_end = reinterpret_cast<uint8_t*>(
-      (reinterpret_cast<uintptr_t>(sum_function_start) / SB_MEMORY_PAGE_SIZE) *
-          SB_MEMORY_PAGE_SIZE +
-      SB_MEMORY_PAGE_SIZE);
-  if (!SbMemoryIsAligned(sum_function_page_end, SB_MEMORY_PAGE_SIZE)) {
+      (reinterpret_cast<uintptr_t>(sum_function_start) / kSbMemoryPageSize) *
+          kSbMemoryPageSize +
+      kSbMemoryPageSize);
+  if (!SbMemoryIsAligned(sum_function_page_end, kSbMemoryPageSize)) {
     return std::make_tuple(::testing::AssertionFailure()
                                << "Expected |Sum| page end ("
                                << static_cast<void*>(sum_function_page_end)
-                               << ") to be aligned to " << SB_MEMORY_PAGE_SIZE,
+                               << ") to be aligned to " << kSbMemoryPageSize,
                            nullptr, nullptr);
   }
   if (sum_function_start >= sum_function_page_end) {
@@ -182,11 +183,11 @@ CopySumFunctionIntoMemory(void* memory) {
   }
 
   size_t bytes_to_copy = sum_function_page_end - sum_function_start;
-  if (bytes_to_copy > SB_MEMORY_PAGE_SIZE) {
+  if (bytes_to_copy > kSbMemoryPageSize) {
     return std::make_tuple(
         ::testing::AssertionFailure()
             << "Expected bytes required to copy |Sum| to be less than "
-            << SB_MEMORY_PAGE_SIZE << ", Actual: " << bytes_to_copy,
+            << kSbMemoryPageSize << ", Actual: " << bytes_to_copy,
         nullptr, nullptr);
   }
 
@@ -200,7 +201,6 @@ CopySumFunctionIntoMemory(void* memory) {
                          original_function);
 }
 
-#if SB_API_VERSION >= 10
 // Cobalt can not map executable memory. If executable memory is needed, map
 // non-executable memory first and use SbMemoryProtect to change memory accesss
 // to executable.
@@ -218,10 +218,8 @@ TEST(SbMemoryMapTest, CanNotDirectlyMapMemoryWithExecFlag) {
     EXPECT_FALSE(SbMemoryUnmap(memory, 0));
   }
 }
-#endif  // 10
 #endif  // SB_CAN(MAP_EXECUTABLE_MEMORY)
 
-#if SB_API_VERSION >= 10
 TEST(SbMemoryMapTest, CanChangeMemoryProtection) {
   SbMemoryMapFlags all_from_flags[] = {
     SbMemoryMapFlags(kSbMemoryMapProtectReserved),
@@ -291,9 +289,8 @@ TEST(SbMemoryMapTest, CanChangeMemoryProtection) {
     }
   }
 }
-#endif  // SB_API_VERSION >= 10
 
-#endif  // SB_HAS(MMAP)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(MMAP)
 
 }  // namespace
 }  // namespace nplb

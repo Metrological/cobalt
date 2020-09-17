@@ -189,7 +189,7 @@ GoogleSpeechService::GoogleSpeechService(
       started_(false),
       event_callback_(event_callback),
       fetcher_creator_(fetcher_creator),
-      thread_("speech_recognizer"),
+      thread_("SpeechRecognizr"),
       ALLOW_THIS_IN_INITIALIZER_LIST(weak_ptr_factory_(this)),
       ALLOW_THIS_IN_INITIALIZER_LIST(
           weak_this_(weak_ptr_factory_.GetWeakPtr())),
@@ -229,18 +229,22 @@ void GoogleSpeechService::RecognizeAudio(
                             is_last_chunk));
 }
 
+// TODO: Refactor OnURLFetchDownloadProgress() into a private function that is
+//       called by OnURLFetchDownloadProgress() and OnURLFetchComplete(), to
+//       explicitly remove the unreferenced parameters.
 void GoogleSpeechService::OnURLFetchDownloadProgress(
-    const net::URLFetcher* source, int64_t /*current*/, int64_t /*total*/,
-    int64_t /*current_network_bytes*/) {
+    const net::URLFetcher* source, int64_t current, int64_t total,
+    int64_t current_network_bytes) {
   DCHECK_EQ(thread_.message_loop(), base::MessageLoop::current());
-  std::unique_ptr<std::string> data = download_data_writer_->data();
+  std::string data;
+  download_data_writer_->GetAndResetData(&data);
 
   const net::URLRequestStatus& status = source->GetStatus();
   const int response_code = source->GetResponseCode();
 
   if (source == downstream_fetcher_.get()) {
     if (status.is_success() && IsResponseCodeSuccess(response_code)) {
-      chunked_byte_buffer_.Append(*data);
+      chunked_byte_buffer_.Append(data);
       while (chunked_byte_buffer_.HasChunks()) {
         std::unique_ptr<std::vector<uint8_t> > chunk =
             chunked_byte_buffer_.PopChunk();
@@ -272,12 +276,11 @@ void GoogleSpeechService::OnURLFetchDownloadProgress(
 
 void GoogleSpeechService::OnURLFetchComplete(const net::URLFetcher* source) {
   DCHECK_EQ(thread_.message_loop(), base::MessageLoop::current());
-  std::unique_ptr<std::string> remaining_data = download_data_writer_->data();
-  int64_t length = remaining_data->length();
-  if (remaining_data && length > 0) {
-    OnURLFetchDownloadProgress(source, length, length, length);
+  if (download_data_writer_->HasData()) {
+    // Explicitly pass '-1' for all sizes, as it is not used by
+    // OnURLFetchDownloadProgress();
+    OnURLFetchDownloadProgress(source, -1, -1, -1);
   }
-  // no-op.
 }
 
 // static
@@ -317,9 +320,9 @@ void GoogleSpeechService::StartInternal(const SpeechRecognitionConfig& config,
 
   downstream_fetcher_ =
       fetcher_creator_.Run(down_url, net::URLFetcher::GET, this);
-  download_data_writer_ = new CobaltURLFetcherStringWriter();
+  download_data_writer_ = new loader::URLFetcherStringWriter();
   downstream_fetcher_->SaveResponseWithWriter(
-      std::unique_ptr<CobaltURLFetcherStringWriter>(download_data_writer_));
+      std::unique_ptr<loader::URLFetcherStringWriter>(download_data_writer_));
   downstream_fetcher_->SetRequestContext(
       network_module_->url_request_context_getter());
   downstream_fetcher_->Start();

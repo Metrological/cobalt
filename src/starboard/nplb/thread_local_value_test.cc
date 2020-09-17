@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "starboard/configuration_constants.h"
 #include "starboard/thread.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -117,9 +118,7 @@ TEST(SbThreadLocalValueTest, NoDestructorsForNullValue) {
   struct LocalStatic {
     // Used as a fake destructor for thread-local-storage objects in this
     // test.
-    static void CountsDestructorCalls(void* /*value*/) {
-      s_num_destructor_calls++;
-    }
+    static void CountsDestructorCalls(void* value) { s_num_destructor_calls++; }
 
     // Sets a thread local non-NULL value, and then sets it back to NULL.
     static void* ThreadEntryPoint(void* ptr) {
@@ -176,8 +175,8 @@ TEST(SbThreadLocalValueTest, SunnyDayFreshlyCreatedValuesAreNull) {
 }
 
 TEST(SbThreadLocalValueTest, SunnyDayMany) {
-  const int kMany = (2 * SB_MAX_THREAD_LOCAL_KEYS) / 3;
-  SbThreadLocalKey keys[kMany];
+  const int kMany = (2 * kSbMaxThreadLocalKeys) / 3;
+  std::vector<SbThreadLocalKey> keys(kMany);
 
   for (int i = 0; i < kMany; ++i) {
     keys[i] = SbThreadCreateLocalKey(NULL);

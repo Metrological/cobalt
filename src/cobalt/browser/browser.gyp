@@ -20,9 +20,6 @@
     {
       'target_name': 'browser',
       'type': 'static_library',
-      'includes': [
-        '../renderer/renderer_parameters_setup.gypi',
-      ],
       'sources': [
         'application.cc',
         'application.h',
@@ -109,28 +106,11 @@
         'web_module_stat_tracker.cc',
         'web_module_stat_tracker.h',
       ],
-      'defines': [
-        'COBALT_FALLBACK_SPLASH_SCREEN_URL="<(fallback_splash_screen_url)"',
-        'COBALT_SKIA_CACHE_SIZE_IN_BYTES=<(skia_cache_size_in_bytes)',
-        'COBALT_SKIA_GLYPH_ATLAS_WIDTH=<(skia_glyph_atlas_width)',
-        'COBALT_SKIA_GLYPH_ATLAS_HEIGHT=<(skia_glyph_atlas_height)',
-        'COBALT_ENCODED_IMAGE_CACHE_SIZE_IN_BYTES=<(encoded_image_cache_size_in_bytes)',
-        'COBALT_IMAGE_CACHE_SIZE_IN_BYTES=<(image_cache_size_in_bytes)',
-        'COBALT_REMOTE_TYPEFACE_CACHE_SIZE_IN_BYTES=<(remote_font_cache_size_in_bytes)',
-        'COBALT_IMAGE_CACHE_CAPACITY_MULTIPLIER_WHEN_PLAYING_VIDEO=<(image_cache_capacity_multiplier_when_playing_video)',
-        'COBALT_OFFSCREEN_TARGET_CACHE_SIZE_IN_BYTES=<(offscreen_target_cache_size_in_bytes)',
-        'COBALT_SOFTWARE_SURFACE_CACHE_SIZE_IN_BYTES=<(software_surface_cache_size_in_bytes)',
-        'COBALT_JS_GARBAGE_COLLECTION_THRESHOLD_IN_BYTES=<(mozjs_garbage_collection_threshold_in_bytes)',
-        'COBALT_MAX_CPU_USAGE_IN_BYTES=<(max_cobalt_cpu_usage)',
-        'COBALT_MAX_GPU_USAGE_IN_BYTES=<(max_cobalt_gpu_usage)',
-        'COBALT_REDUCE_CPU_MEMORY_BY=<(reduce_cpu_memory_by)',
-        'COBALT_REDUCE_GPU_MEMORY_BY=<(reduce_gpu_memory_by)',
-      ],
       'dependencies': [
-        '<@(cobalt_platform_dependencies)',
         '<(DEPTH)/cobalt/account/account.gyp:account',
         '<(DEPTH)/cobalt/audio/audio.gyp:audio',
         '<(DEPTH)/cobalt/base/base.gyp:base',
+        '<(DEPTH)/cobalt/configuration/configuration.gyp:configuration',
         '<(DEPTH)/cobalt/css_parser/css_parser.gyp:css_parser',
         '<(DEPTH)/cobalt/dom/dom.gyp:dom',
         '<(DEPTH)/cobalt/dom_parser/dom_parser.gyp:dom_parser',
@@ -150,6 +130,7 @@
         '<(DEPTH)/cobalt/script/engine.gyp:engine',
         '<(DEPTH)/cobalt/speech/speech.gyp:speech',
         '<(DEPTH)/cobalt/sso/sso.gyp:sso',
+        '<(DEPTH)/cobalt/subtlecrypto/subtlecrypto.gyp:subtlecrypto',
         '<(DEPTH)/cobalt/system_window/system_window.gyp:system_window',
         '<(DEPTH)/cobalt/trace_event/trace_event.gyp:trace_event',
         '<(DEPTH)/cobalt/ui_navigation/ui_navigation.gyp:ui_navigation',
@@ -179,11 +160,14 @@
         '<(SHARED_INTERMEDIATE_DIR)',
       ],
       'conditions': [
+        ['max_cobalt_cpu_usage != -1', {
+          'defines': [ 'COBALT_MAX_CPU_USAGE_IN_BYTES' ],
+        }],
+        ['max_cobalt_gpu_usage != -1', {
+          'defines': [ 'COBALT_MAX_GPU_USAGE_IN_BYTES' ],
+        }],
         ['enable_about_scheme == 1', {
           'defines': [ 'ENABLE_ABOUT_SCHEME' ],
-        }],
-        ['enable_map_to_mesh == 1', {
-          'defines' : ['ENABLE_MAP_TO_MESH'],
         }],
         ['enable_debugger == 1', {
           'sources': [
@@ -196,21 +180,18 @@
             '<(DEPTH)/cobalt/debug/debug.gyp:debug',
           ],
         }],
-        ['mesh_cache_size_in_bytes == "auto"', {
-          'conditions': [
-            ['enable_map_to_mesh==1', {
-              'defines': [
-                'COBALT_MESH_CACHE_SIZE_IN_BYTES=1*1024*1024',
-              ],
-            }, {
-              'defines': [
-                'COBALT_MESH_CACHE_SIZE_IN_BYTES=0',
-              ],
-            }],
+        ['sb_evergreen == 1', {
+          'dependencies': [
+            '<(DEPTH)/cobalt/updater/updater.gyp:updater',
           ],
         }, {
+          'dependencies': [
+            '<@(cobalt_platform_dependencies)',
+          ],
+        }],
+        ['"<(cobalt_webapi_extension_source_idl_files)"!="" or "<(cobalt_webapi_extension_generated_header_idl_files)"!=""', {
           'defines': [
-            'COBALT_MESH_CACHE_SIZE_IN_BYTES=<(mesh_cache_size_in_bytes)',
+            'COBALT_WEBAPI_EXTENSION_DEFINED',
           ],
         }],
       ],
@@ -241,11 +222,11 @@
         '<(DEPTH)/cobalt/speech/speech.gyp:speech',
         '<(DEPTH)/cobalt/storage/storage.gyp:storage',
         '<(DEPTH)/cobalt/storage/storage.gyp:storage_upgrade_copy_test_data',
-        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
         'browser',
       ],
+      'includes': [ '<(DEPTH)/cobalt/test/test.gypi' ],
     },
 
     {

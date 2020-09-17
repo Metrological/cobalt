@@ -29,17 +29,21 @@ BlockLevelReplacedBox::BlockLevelReplacedBox(
     const base::Optional<LayoutUnit>& maybe_intrinsic_height,
     const base::Optional<float>& maybe_intrinsic_ratio,
     UsedStyleProvider* used_style_provider,
-    base::Optional<bool> is_video_punched_out, const math::SizeF& content_size,
+    base::Optional<ReplacedBox::ReplacedBoxMode> replaced_box_mode,
+    const math::SizeF& content_size,
+    base::Optional<render_tree::LottieAnimation::LottieProperties>
+        lottie_properties,
     LayoutStatTracker* layout_stat_tracker)
     : ReplacedBox(css_computed_style_declaration, replace_image_cb,
                   set_bounds_cb, paragraph, text_position,
                   maybe_intrinsic_width, maybe_intrinsic_height,
-                  maybe_intrinsic_ratio, used_style_provider,
-                  is_video_punched_out, content_size, layout_stat_tracker) {}
+                  maybe_intrinsic_ratio, used_style_provider, replaced_box_mode,
+                  content_size, lottie_properties, layout_stat_tracker) {}
 
 Box::Level BlockLevelReplacedBox::GetLevel() const { return kBlockLevel; }
 
 void BlockLevelReplacedBox::UpdateHorizontalMargins(
+    BaseDirection containing_block_direction,
     LayoutUnit containing_block_width, LayoutUnit border_box_width,
     const base::Optional<LayoutUnit>& maybe_margin_left,
     const base::Optional<LayoutUnit>& maybe_margin_right) {
@@ -47,8 +51,8 @@ void BlockLevelReplacedBox::UpdateHorizontalMargins(
   // normal flow.
   //   https://www.w3.org/TR/CSS21/visudet.html#block-replaced-width
   UpdateHorizontalMarginsAssumingBlockLevelInFlowBox(
-      containing_block_width, border_box_width, maybe_margin_left,
-      maybe_margin_right);
+      containing_block_direction, containing_block_width,
+      border_box_width, maybe_margin_left, maybe_margin_right);
 }
 
 #ifdef COBALT_BOX_DUMP_ENABLED

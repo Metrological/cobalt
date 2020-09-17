@@ -83,17 +83,22 @@ float SystemWindow::GetDiagonalSizeInches() const {
 #endif
 }
 
-float SystemWindow::GetVideoPixelRatio() const {
-  SbWindowSize window_size;
-  if (!SbWindowGetSize(window_, &window_size)) {
+float SystemWindow::GetDevicePixelRatio() const {
+  SbWindowSize size;
+  if (!SbWindowGetSize(window_, &size)) {
     DLOG(WARNING) << "SbWindowGetSize() failed.";
     return 1.0;
   }
-  return window_size.video_pixel_ratio;
+  // A value of 0.0 for the video pixel ratio means that the ratio could not be
+  // determined. In that case it should be assumed to be the same as the
+  // graphics resolution, which corresponds to a device pixel ratio of 1.0.
+  float device_pixel_ratio =
+      (size.video_pixel_ratio == 0) ? 1.0f : size.video_pixel_ratio;
+  return device_pixel_ratio;
 }
 
 math::Size SystemWindow::GetVideoOutputResolution() const {
-  float ratio = GetVideoPixelRatio();
+  float ratio = GetDevicePixelRatio();
   math::Size size = GetWindowSize();
   return math::Size(Round(size.width() * ratio), Round(size.height() * ratio));
 }
@@ -109,13 +114,11 @@ void SystemWindow::DispatchInputEvent(const SbInputData& data,
   // Use the current time unless it was overridden.
   SbTimeMonotonic timestamp = 0;
 
-#if SB_API_VERSION >= 10
   bool use_input_timestamp =
       SbSystemHasCapability(kSbSystemCapabilitySetsInputTimestamp);
   if (use_input_timestamp) {
     timestamp = data.timestamp;
   }
-#endif
 
   if (timestamp == 0) {
     timestamp = SbTimeGetMonotonicNow();
@@ -156,7 +159,7 @@ void SystemWindow::DispatchInputEvent(const SbInputData& data,
     }
   }
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   std::unique_ptr<InputEvent> input_event(
       new InputEvent(timestamp, type, data.device_id, key_code, modifiers,
                      is_repeat, math::PointF(data.position.x, data.position.y),
@@ -165,14 +168,16 @@ void SystemWindow::DispatchInputEvent(const SbInputData& data,
                      math::PointF(data.tilt.x, data.tilt.y),
                      data.input_text ? data.input_text : "",
                      data.is_composing ? data.is_composing : false));
-#else   // SB_HAS(ON_SCREEN_KEYBOARD)
+#else   // SB_API_VERSION >= 12 ||
+  // SB_HAS(ON_SCREEN_KEYBOARD)
   std::unique_ptr<InputEvent> input_event(
       new InputEvent(timestamp, type, data.device_id, key_code, modifiers,
                      is_repeat, math::PointF(data.position.x, data.position.y),
                      math::PointF(data.delta.x, data.delta.y), pressure,
                      math::PointF(data.size.x, data.size.y),
                      math::PointF(data.tilt.x, data.tilt.y)));
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
   event_dispatcher()->DispatchEvent(
       std::unique_ptr<base::Event>(input_event.release()));
 }
@@ -249,12 +254,13 @@ void SystemWindow::HandleInputEvent(const SbInputData& data) {
       DispatchInputEvent(data, InputEvent::kKeyMove, false /* is_repeat */);
       break;
     }
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
     case kSbInputEventTypeInput: {
       DispatchInputEvent(data, InputEvent::kInput, false /* is_repeat */);
       break;
     }
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
     default:
       break;
   }

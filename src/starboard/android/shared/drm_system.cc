@@ -17,6 +17,7 @@
 #include "starboard/android/shared/jni_env_ext.h"
 #include "starboard/android/shared/jni_utils.h"
 #include "starboard/android/shared/media_common.h"
+#include "starboard/common/instance_counter.h"
 
 namespace {
 
@@ -40,6 +41,8 @@ const jint MEDIA_DRM_KEY_STATUS_USABLE = 0;
 const jint REQUEST_TYPE_INITIAL = 0;
 const jint REQUEST_TYPE_RENEWAL = 1;
 const jint REQUEST_TYPE_RELEASE = 2;
+
+DECLARE_INSTANCE_COUNTER(AndroidDrmSystem)
 
 SbDrmSessionRequestType SbDrmSessionRequestTypeFromMediaDrmKeyRequestType(
     jint request_type) {
@@ -180,6 +183,8 @@ DrmSystem::DrmSystem(
       j_media_drm_bridge_(NULL),
       j_media_crypto_(NULL),
       hdcp_lost_(false) {
+  ON_INSTANCE_CREATED(AndroidDrmSystem);
+
   JniEnvExt* env = JniEnvExt::Get();
   j_media_drm_bridge_ = env->CallStaticObjectMethodOrAbort(
       "dev/cobalt/media/MediaDrmBridge", "create",
@@ -199,6 +204,8 @@ DrmSystem::DrmSystem(
 }
 
 DrmSystem::~DrmSystem() {
+  ON_INSTANCE_RELEASED(AndroidDrmSystem);
+
   JniEnvExt* env = JniEnvExt::Get();
   if (j_media_crypto_) {
     env->DeleteGlobalRef(j_media_crypto_);
@@ -235,13 +242,22 @@ void DrmSystem::UpdateSession(int ticket,
       ByteArrayFromRaw(session_id, session_id_size));
   ScopedLocalJavaRef<jbyteArray> j_response(ByteArrayFromRaw(key, key_size));
 
-  jboolean status = JniEnvExt::Get()->CallBooleanMethodOrAbort(
-      j_media_drm_bridge_, "updateSession", "([B[B)Z", j_session_id.Get(),
-      j_response.Get());
-  session_updated_callback_(
-      this, context_, ticket,
-      status == JNI_TRUE ? kSbDrmStatusSuccess : kSbDrmStatusUnknownError, NULL,
-      session_id, session_id_size);
+  auto env = JniEnvExt::Get();
+  ScopedLocalJavaRef<jobject> update_result(env->CallObjectMethodOrAbort(
+      j_media_drm_bridge_, "updateSession",
+      "(I[B[B)Ldev/cobalt/media/MediaDrmBridge$UpdateSessionResult;",
+      static_cast<jint>(ticket), j_session_id.Get(), j_response.Get()));
+  jboolean update_success =
+      env->CallBooleanMethodOrAbort(update_result.Get(), "isSuccess", "()Z");
+  ScopedLocalJavaRef<jstring> error_msg_java(env->CallObjectMethodOrAbort(
+      update_result.Get(), "getErrorMessage", "()Ljava/lang/String;"));
+  std::string error_msg =
+      env->GetStringStandardUTFOrAbort(error_msg_java.Get());
+  session_updated_callback_(this, context_, ticket,
+                            update_success == JNI_TRUE
+                                ? kSbDrmStatusSuccess
+                                : kSbDrmStatusUnknownError,
+                            error_msg.c_str(), session_id, session_id_size);
 }
 
 void DrmSystem::CloseSession(const void* session_id, int session_id_size) {
@@ -273,6 +289,27 @@ DrmSystem::DecryptStatus DrmSystem::Decrypt(InputBuffer* buffer) {
   // TODO: Returns kRetry when |UpdateSession| is not called at all to allow the
   //       player worker to handle the retry logic.
   return kSuccess;
+}
+
+const void* DrmSystem::GetMetrics(int* size) {
+  JniEnvExt* env = JniEnvExt::Get();
+  jbyteArray j_metrics = static_cast<jbyteArray>(env->CallObjectMethodOrAbort(
+      j_media_drm_bridge_, "getMetricsInBase64", "()[B"));
+
+  if (!j_metrics) {
+    *size = 0;
+    return nullptr;
+  }
+
+  jbyte* metrics_elements = env->GetByteArrayElements(j_metrics, NULL);
+  jsize metrics_size = env->GetArrayLength(j_metrics);
+  SB_DCHECK(metrics_elements);
+
+  metrics_.assign(metrics_elements, metrics_elements + metrics_size);
+
+  env->ReleaseByteArrayElements(j_metrics, metrics_elements, JNI_ABORT);
+  *size = static_cast<int>(metrics_.size());
+  return metrics_.data();
 }
 
 void DrmSystem::CallUpdateRequestCallback(int ticket,

@@ -68,6 +68,7 @@ class HTMLStyleElement;
 class HTMLTitleElement;
 class HTMLUnknownElement;
 class HTMLVideoElement;
+class LottiePlayer;
 
 // The enum PseudoElementType is used to track the type of pseudo element
 enum PseudoElementType {
@@ -80,7 +81,7 @@ enum PseudoElementType {
 
 // The basic interface, from which all the HTML elements' interfaces inherit,
 // and which must be used by elements that have no additional requirements.
-//   https://www.w3.org/TR/html5/dom.html#htmlelement
+//   https://www.w3.org/TR/html50/dom.html#htmlelement
 class HTMLElement : public Element, public cssom::MutationObserver {
  public:
   typedef cssom::SelectorTree::Nodes SelectorTreeNodes;
@@ -132,6 +133,14 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   enum AncestorsAreDisplayed {
     kAncestorsAreDisplayed,
     kAncestorsAreNotDisplayed,
+  };
+
+  // https://html.spec.whatwg.org/commit-snapshots/ebcac971c2add28a911283899da84ec509876c44/#the-dir-attribute
+  enum DirState {
+    kDirAuto,
+    kDirLeftToRight,
+    kDirRightToLeft,
+    kDirNotDefined,
   };
 
   // Web API: HTMLElement
@@ -218,11 +227,24 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   virtual scoped_refptr<HTMLTitleElement> AsHTMLTitleElement();
   virtual scoped_refptr<HTMLUnknownElement> AsHTMLUnknownElement();
   virtual scoped_refptr<HTMLVideoElement> AsHTMLVideoElement();
+  virtual scoped_refptr<LottiePlayer> AsLottiePlayer();
 
   // Returns the directionality of the element, which is based upon the
-  // underlying "dir" attribute, and is updated when the attribute changes.
-  // https://dev.w3.org/html5/spec-preview/global-attributes.html#the-directionalityy.
-  Directionality directionality() const { return directionality_; }
+  // element's "dir" attribute if it was set, or that of the parent's if not
+  // set.
+  //   https://html.spec.whatwg.org/commit-snapshots/ebcac971c2add28a911283899da84ec509876c44/#the-directionality
+  Directionality directionality();
+
+  // Retrieve the dir attribute state. This is similar to dir() but returns the
+  // enumerated state rather than string.
+  DirState dir_state() const { return dir_; }
+
+  // This is similar to dir_state() except it will resolve kDirAuto to
+  // kDirLeftToRight or kDirRightToLeft according to the spec:
+  //   https://html.spec.whatwg.org/commit-snapshots/ebcac971c2add28a911283899da84ec509876c44/#the-directionality
+  // If "dir" was not defined for this element, then this function will return
+  // kDirNotDefined.
+  virtual DirState GetUsedDirState();
 
   // Rule matching related methods.
   //
@@ -335,8 +357,14 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   }
 
   // Returns true if the element is the root element as defined in
-  // https://www.w3.org/TR/html5/semantics.html#the-root-element.
+  // https://www.w3.org/TR/html50/semantics.html#the-root-element.
   bool IsRootElement();
+
+  // Returns true if this is a document element.
+  // https://dom.spec.whatwg.org/#document-element
+  bool IsDocumentElement() const {
+    return parent_node() && parent_node()->IsDocument();
+  }
 
   DEFINE_WRAPPABLE_TYPE(HTMLElement);
 
@@ -368,14 +396,9 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   void RunFocusingSteps();
   void RunUnFocusingSteps();
 
-  // This both updates the directionality based upon the string value and
+  // This both updates the 'dir' attribute based upon the string value and
   // invalidates layout box caching if the value has changed.
-  // NOTE1: Value "auto" is not supported.
-  // NOTE2: Cobalt does not support either the CSS 'direction" or "unicode-bidi'
-  // properties, and instead relies entirely upon the 'dir' attribute for
-  // determining directionality of elements. As a result of this, setting the
-  // directionality does not invalidate the computed style.
-  void SetDirectionality(const std::string& value);
+  void SetDir(const std::string& value);
 
   // Update the cached value of tabindex.
   void SetTabIndex(const std::string& value);
@@ -416,15 +439,17 @@ class HTMLElement : public Element, public cssom::MutationObserver {
 
   bool locked_for_focus_;
 
-  // The directionality of the html element is determined by the 'dir'
-  // attribute.
-  // https://dev.w3.org/html5/spec-preview/global-attributes.html#the-directionality
-  // NOTE1: Value "auto" is not supported.
-  // NOTE2: Cobalt does not support either the CSS 'direction" or "unicode-bidi'
+  // This represents the enumerated value of the 'dir' attribute.
+  //   https://html.spec.whatwg.org/commit-snapshots/ebcac971c2add28a911283899da84ec509876c44/#the-dir-attribute
+  DirState dir_;
+
+  // This represents the computed directionality for this element.
+  //   https://html.spec.whatwg.org/commit-snapshots/ebcac971c2add28a911283899da84ec509876c44/#the-directionality
+  // NOTE: Cobalt does not support either the CSS 'direction' or 'unicode-bidi'
   // properties, and instead relies entirely upon the 'dir' attribute for
   // determining directionality. Inheritance of directionality occurs via the
   // base direction of the parent element's paragraph.
-  Directionality directionality_;
+  base::Optional<Directionality> directionality_;
 
   // Cache the tabindex value.
   base::Optional<int32> tabindex_;
@@ -482,6 +507,12 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   // then query starboard for position data each frame, thus animating the
   // boxes without requiring a new layout.
   scoped_refptr<ui_navigation::NavItem> ui_nav_item_;
+
+  // This temporary flag is used to avoid a cycle on focus changes. When the
+  // HTML element receives focus, it must inform the UI navigation item. When
+  // the UI navigation item receives focus (either by calling SetFocus or by an
+  // update from the UI engine), it will tell the HTML element it was focused.
+  bool ui_nav_focusing_ = false;
 
   // HTMLElement is a friend of Animatable so that animatable can insert and
   // remove animations into HTMLElement's set of animations.

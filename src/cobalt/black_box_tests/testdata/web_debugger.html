@@ -3,10 +3,11 @@
 <head>
   <title>Connect to web debugger</title>
   <script src='black_box_js_test_utils.js'></script>
+  <script src='web_debugger_test_utils.js'></script>
 </head>
 
 <body>
-  <h1>
+  <h1 class="name" data-who="robot">
     <span>Web debugger</span>
   </h1>
   <div id="test">
@@ -14,7 +15,12 @@
       <div id="A1" />
       <div id="A2" />
     </div>
-    <div id="B" />
+    <div id="B">
+      <span id="B1">
+      </span>
+    </div>
+    <span id="C">
+    </span>
   </div>
   <script>
     setupFinished();

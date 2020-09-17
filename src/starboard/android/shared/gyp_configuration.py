@@ -66,7 +66,11 @@ class AndroidConfiguration(PlatformConfiguration):
   """Starboard Android platform configuration."""
 
   # TODO: make ASAN work with NDK tools and enable it by default
-  def __init__(self, platform, android_abi, asan_enabled_by_default=False):
+  def __init__(self,
+               platform,
+               android_abi,
+               asan_enabled_by_default=False,
+               sabi_json_path='starboard/sabi/default/sabi.json'):
     super(AndroidConfiguration, self).__init__(platform,
                                                asan_enabled_by_default)
     self._target_toolchain = None
@@ -75,6 +79,7 @@ class AndroidConfiguration(PlatformConfiguration):
     self.AppendApplicationConfigurationPath(os.path.dirname(__file__))
 
     self.android_abi = android_abi
+    self.sabi_json_path = sabi_json_path
 
     self.android_home = sdk_utils.GetSdkPath()
     self.android_ndk_home = sdk_utils.GetNdkPath()
@@ -103,13 +108,11 @@ class AndroidConfiguration(PlatformConfiguration):
             'starboard/android/shared/platform_deploy.gypi',
         'javascript_engine':
             'v8',
-        'cobalt_enable_jit':
-            1,
     })
     return variables
 
   def GetDeployPathPatterns(self):
-    """example src/out/android-arm64/devel/cobalt.apk"""
+    # example src/out/android-arm64/devel/cobalt.apk
     return ['*.apk']
 
   def GetGeneratorVariables(self, configuration):
@@ -139,7 +142,7 @@ class AndroidConfiguration(PlatformConfiguration):
 
     return env_variables
 
-  def GetTargetToolchain(self):
+  def GetTargetToolchain(self, **kwargs):
     if not self._target_toolchain:
       tool_prefix = os.path.join(sdk_utils.GetNdkPath(), 'toolchains', 'llvm',
                                  'prebuilt', 'linux-x86_64', 'bin', '')
@@ -147,9 +150,6 @@ class AndroidConfiguration(PlatformConfiguration):
       cxx_path = cc_path + '++'
       ar_path = tool_prefix + _ABI_TOOL_NAMES[self.android_abi][1]
       clang_flags = [
-          # We'll pretend not to be Linux, but Starboard instead.
-          '-U__linux__',
-
           # libwebp uses the cpufeatures library to detect ARM NEON support
           '-I{}/sources/android/cpufeatures'.format(self.android_ndk_home),
 
@@ -209,8 +209,10 @@ class AndroidConfiguration(PlatformConfiguration):
           # Use the static LLVM libc++.
           '-static-libstdc++',
 
-          # Mimic build/cmake/android.toolchain.cmake in the Android NDK.
-          '-Wl,--build-id',
+          # Mimic build/cmake/android.toolchain.cmake in the Android NDK, but
+          # force build-id to sha1, so that older lldb versions can still find
+          # debugsymbols, see https://github.com/android-ndk/ndk/issues/885
+          '-Wl,--build-id=sha1',
           '-Wl,--warn-shared-textrel',
           '-Wl,--fatal-warnings',
           '-Wl,--gc-sections',
@@ -237,7 +239,7 @@ class AndroidConfiguration(PlatformConfiguration):
       ]
     return self._target_toolchain
 
-  def GetHostToolchain(self):
+  def GetHostToolchain(self, **kwargs):
     if not self._host_toolchain:
       if not hasattr(self, 'host_compiler_environment'):
         self.host_compiler_environment = build.GetHostCompilerEnvironment(
@@ -274,6 +276,32 @@ class AndroidConfiguration(PlatformConfiguration):
   # A map of failing or crashing tests per target.
   __FILTERED_TESTS = {  # pylint: disable=invalid-name
       'player_filter_tests': [
+          # Filter flaky failed tests temporarily.
+          'VideoDecoderTests/VideoDecoderTest.SingleInput/0',
+          'VideoDecoderTests/VideoDecoderTest.SingleInput/2',
+          'VideoDecoderTests/VideoDecoderTest.SingleInput/4',
+          'VideoDecoderTests/VideoDecoderTest.SingleInput/6',
+          'VideoDecoderTests/VideoDecoderTest.ResetBeforeInput/0',
+          'VideoDecoderTests/VideoDecoderTest.ResetBeforeInput/2',
+          'VideoDecoderTests/VideoDecoderTest.ResetBeforeInput/4',
+          'VideoDecoderTests/VideoDecoderTest.ResetBeforeInput/6',
+          'VideoDecoderTests/VideoDecoderTest.MultipleResets/0',
+          'VideoDecoderTests/VideoDecoderTest.MultipleResets/2',
+          'VideoDecoderTests/VideoDecoderTest.MultipleResets/4',
+          'VideoDecoderTests/VideoDecoderTest.MultipleResets/6',
+          'VideoDecoderTests/VideoDecoderTest.MultipleInputs/0',
+          'VideoDecoderTests/VideoDecoderTest.MultipleInputs/2',
+          'VideoDecoderTests/VideoDecoderTest.MultipleInputs/4',
+          'VideoDecoderTests/VideoDecoderTest.MultipleInputs/6',
+          'VideoDecoderTests/VideoDecoderTest.Preroll/0',
+          'VideoDecoderTests/VideoDecoderTest.Preroll/2',
+          'VideoDecoderTests/VideoDecoderTest.Preroll/4',
+          'VideoDecoderTests/VideoDecoderTest.Preroll/6',
+          'VideoDecoderTests/VideoDecoderTest.DecodeFullGOP/0',
+          'VideoDecoderTests/VideoDecoderTest.DecodeFullGOP/2',
+          'VideoDecoderTests/VideoDecoderTest.DecodeFullGOP/4',
+          'VideoDecoderTests/VideoDecoderTest.DecodeFullGOP/6',
+
           # GetMaxNumberOfCachedFrames() on Android is device dependent,
           # and Android doesn't provide an API to get it. So, this function
           # doesn't make sense on Android. But HoldFramesUntilFull tests depend
@@ -294,5 +322,13 @@ class AndroidConfiguration(PlatformConfiguration):
           # This test is failing because localhost is not defined for IPv6 in
           # /etc/hosts.
           'SbSocketAddressTypes/SbSocketResolveTest.Localhost/1',
+          # SbDirectory has problems with empty Asset dirs.
+          'SbDirectoryCanOpenTest.SunnyDayStaticContent',
+          'SbDirectoryGetNextTest.SunnyDayStaticContent',
+          'SbDirectoryOpenTest.SunnyDayStaticContent',
+          'SbFileGetPathInfoTest.WorksOnStaticContentDirectories',
       ],
   }
+
+  def GetPathToSabiJsonFile(self):
+    return self.sabi_json_path

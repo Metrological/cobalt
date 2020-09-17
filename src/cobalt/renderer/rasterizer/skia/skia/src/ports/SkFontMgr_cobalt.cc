@@ -21,8 +21,11 @@
 #include "SkStream.h"
 #include "SkString.h"
 #include "SkTSearch.h"
+#include "base/base_switches.h"
+#include "base/command_line.h"
 #include "base/memory/ptr_util.h"
 #include "base/trace_event/trace_event.h"
+#include "cobalt/configuration/configuration.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkFontConfigParser_cobalt.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkFreeType_cobalt.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkTypeface_cobalt.h"
@@ -33,8 +36,10 @@ SkFontMgr_Cobalt::SkFontMgr_Cobalt(
     const char* system_font_config_directory,
     const char* system_font_files_directory,
     const SkTArray<SkString, true>& default_families)
-    : local_typeface_stream_manager_("Font.LocalTypefaceCache",
-                                     COBALT_LOCAL_TYPEFACE_CACHE_SIZE_IN_BYTES),
+    : local_typeface_stream_manager_(
+          "Font.LocalTypefaceCache",
+          cobalt::configuration::Configuration::GetInstance()
+              ->CobaltLocalTypefaceCacheSizeInBytes()),
       default_family_(NULL) {
   TRACE_EVENT0("cobalt::renderer", "SkFontMgr_Cobalt::SkFontMgr_Cobalt()");
 
@@ -73,7 +78,7 @@ void SkFontMgr_Cobalt::PurgeCaches() {
 
   // Lock the family mutex prior to purging each family's unreferenced
   // typefaces.
-  SkAutoMutexAcquire scoped_mutex(family_mutex_);
+  SkAutoMutexExclusive scoped_mutex(family_mutex_);
   for (int i = 0; i < families_.count(); ++i) {
     families_[i]->PurgeUnreferencedTypefaces();
   }
@@ -88,7 +93,7 @@ SkTypeface* SkFontMgr_Cobalt::MatchFaceName(const char face_name[]) {
   std::string face_name_string(face_name_to_lc.lc(), face_name_to_lc.length());
 
   // Lock the family mutex prior to accessing them.
-  SkAutoMutexAcquire scoped_mutex(family_mutex_);
+  SkAutoMutexExclusive scoped_mutex(family_mutex_);
 
   // Prioritize looking up the postscript name first since some of our client
   // applications prefer this method to specify face names.
@@ -179,7 +184,7 @@ SkTypeface* SkFontMgr_Cobalt::onMatchFaceStyle(const SkTypeface* family_member,
                                                const SkFontStyle& style) const {
   // Lock the family mutex prior to calling private SkFontStyleSet_Cobalt
   // functions that expect the mutex to already be locked.
-  SkAutoMutexAcquire scoped_mutex(family_mutex_);
+  SkAutoMutexExclusive scoped_mutex(family_mutex_);
 
   for (int i = 0; i < families_.count(); ++i) {
     if (families_[i]->ContainsTypeface(family_member)) {
@@ -198,7 +203,7 @@ SkTypeface* SkFontMgr_Cobalt::onMatchFamilyStyleCharacter(
 
   // Lock the family mutex prior to calling FindFamilyStyleCharacter(). It
   // expects the mutex to already be locked.
-  SkAutoMutexAcquire scoped_mutex(family_mutex_);
+  SkAutoMutexExclusive scoped_mutex(family_mutex_);
 
   // Search the fallback families for ones matching the requested language.
   // They are given priority over other fallback families in checking for
@@ -228,37 +233,35 @@ SkTypeface* SkFontMgr_Cobalt::onMatchFamilyStyleCharacter(
                            : default_family_->MatchStyleWithoutLocking(style);
 }
 
-SkTypeface* SkFontMgr_Cobalt::onCreateFromData(SkData* data,
-                                               int face_index) const {
-  std::unique_ptr<SkStreamAsset> stream(
-      new SkMemoryStream(data->data(), data->size()));
-  return createFromStream(stream.get(), face_index);
+sk_sp<SkTypeface> SkFontMgr_Cobalt::onMakeFromData(sk_sp<SkData> data,
+                                                   int face_index) const {
+  return makeFromStream(std::make_unique<SkMemoryStream>(std::move(data)),
+                        face_index);
 }
 
-SkTypeface* SkFontMgr_Cobalt::onCreateFromStream(SkStreamAsset* stream,
-                                                 int face_index) const {
-  TRACE_EVENT0("cobalt::renderer", "SkFontMgr_Cobalt::onCreateFromStream()");
+sk_sp<SkTypeface> SkFontMgr_Cobalt::onMakeFromStreamIndex(
+    std::unique_ptr<SkStreamAsset> stream, int face_index) const {
+  TRACE_EVENT0("cobalt::renderer", "SkFontMgr_Cobalt::onMakeFromStreamIndex()");
   bool is_fixed_pitch;
-  SkTypeface::Style style;
+  SkFontStyle style;
   SkString name;
-  if (!sk_freetype_cobalt::ScanFont(stream, face_index, &name, &style,
+  if (!sk_freetype_cobalt::ScanFont(stream.get(), face_index, &name, &style,
                                     &is_fixed_pitch)) {
     return NULL;
   }
-  return new SkTypeface_CobaltStream(stream, face_index, style, is_fixed_pitch,
-                                     name);
+  return sk_sp<SkTypeface>(new SkTypeface_CobaltStream(
+      std::move(stream), face_index, style, is_fixed_pitch, name));
 }
 
-SkTypeface* SkFontMgr_Cobalt::onCreateFromFile(const char path[],
-                                               int face_index) const {
-  TRACE_EVENT0("cobalt::renderer", "SkFontMgr_Cobalt::onCreateFromFile()");
-  std::unique_ptr<SkStreamAsset> stream = SkStream::MakeFromFile(path);
-  return stream.get() ? createFromStream(stream.release(), face_index) : NULL;
+sk_sp<SkTypeface> SkFontMgr_Cobalt::onMakeFromFile(const char path[],
+                                                   int face_index) const {
+  TRACE_EVENT0("cobalt::renderer", "SkFontMgr_Cobalt::onMakeFromFile()");
+  return makeFromStream(SkStream::MakeFromFile(path), face_index);
 }
 
-SkTypeface* SkFontMgr_Cobalt::onLegacyCreateTypeface(const char family_name[],
-                                                     SkFontStyle style) const {
-  return matchFamilyStyle(family_name, style);
+sk_sp<SkTypeface> SkFontMgr_Cobalt::onLegacyMakeTypeface(
+    const char family_name[], SkFontStyle style) const {
+  return sk_sp<SkTypeface>(matchFamilyStyle(family_name, style));
 }
 
 void SkFontMgr_Cobalt::ParseConfigAndBuildFamilies(
@@ -280,6 +283,25 @@ void SkFontMgr_Cobalt::BuildNameToFamilyMap(
     SkTDArray<FontFamilyInfo*>* config_font_families,
     PriorityStyleSetArrayMap* priority_fallback_families) {
   TRACE_EVENT0("cobalt::renderer", "SkFontMgr_Cobalt::BuildNameToFamilyMap()");
+
+  auto command_line = base::CommandLine::ForCurrentProcess();
+  SkFontStyleSet_Cobalt::FontFormatSetting font_format =
+      SkFontStyleSet_Cobalt::kWoff2Preferred;
+  if (command_line->HasSwitch(switches::kFontFormat)) {
+    std::string setting =
+        command_line->GetSwitchValueASCII(switches::kFontFormat);
+    if (setting.compare("woff2") == 0) {
+      font_format = SkFontStyleSet_Cobalt::kWoff2;
+    } else if (setting.compare("ttf") == 0) {
+      font_format = SkFontStyleSet_Cobalt::kTtf;
+    } else if (setting.compare("ttf-preferred") == 0) {
+      font_format = SkFontStyleSet_Cobalt::kTtfPreferred;
+    } else if (setting.compare("woff2-preferred") != 0) {
+      LOG(WARNING) << "Invalid setting specified for font format. "
+                   << "Using default: Woff2 with TTF fallbacks.";
+    }
+  }
+
   for (int i = 0; i < config_font_families->count(); i++) {
     FontFamilyInfo& family_info = *(*config_font_families)[i];
     bool is_named_family = family_info.names.count() > 0;
@@ -293,7 +315,7 @@ void SkFontMgr_Cobalt::BuildNameToFamilyMap(
 
     sk_sp<SkFontStyleSet_Cobalt> new_family(new SkFontStyleSet_Cobalt(
         family_info, font_files_directory, &local_typeface_stream_manager_,
-        &family_mutex_));
+        &family_mutex_, font_format));
 
     // Do not add the family if none of its fonts were available. This allows
     // the configuration files to specify a superset of all fonts, and ones that
@@ -302,8 +324,7 @@ void SkFontMgr_Cobalt::BuildNameToFamilyMap(
       continue;
     }
 
-    families_.push_back().reset(SkRef(new_family.get()));
-
+    bool is_duplicate_font = false;
     if (is_named_family) {
       for (int j = 0; j < family_info.names.count(); j++) {
         // Verify that the name was not previously added.
@@ -313,21 +334,20 @@ void SkFontMgr_Cobalt::BuildNameToFamilyMap(
           name_to_family_map_.insert(
               std::make_pair(family_info.names[j].c_str(), new_family.get()));
         } else {
-          NOTREACHED() << "Duplicate Font name: \""
-                       << family_info.names[j].c_str() << "\"";
+          is_duplicate_font = true;
+          SB_LOG(WARNING) << "Duplicate Font name: \""
+                          << family_info.names[j].c_str() << "\"";
         }
       }
     }
 
-    // If this is a fallback family, add it to the fallback family array
-    // that corresponds to its priority. This will be used to generate a
-    // priority-ordered fallback families list once the family map is fully
-    // built.
-    if (family_info.is_fallback_family) {
-      (*priority_fallback_families)[family_info.fallback_priority].push_back(
-          new_family.get());
+    // If there was a duplicate font we would not add the family
+    // again but re-use the original family.
+    if (!is_duplicate_font) {
+      families_.push_back().reset(SkRef(new_family.get()));
     }
 
+    bool is_duplicate_font_face = false;
     for (sk_sp<SkFontStyleSet_Cobalt::SkFontStyleSetEntry_Cobalt>*
              family_style_entry = new_family->styles_.begin();
          family_style_entry != new_family->styles_.end();
@@ -353,12 +373,26 @@ void SkFontMgr_Cobalt::BuildNameToFamilyMap(
             font_face_name_to_family_map.end()) {
           font_face_name_to_family_map[font_face_name] = new_family.get();
         } else {
+          is_duplicate_font_face = true;
           const std::string font_face_name_type =
               i == 0 ? "Full Font" : "Postscript";
-          NOTREACHED() << "Duplicate " << font_face_name_type << " name: \""
-                       << font_face_name << "\"";
+          SB_LOG(WARNING) << "Duplicate " << font_face_name_type << " name: \""
+                          << font_face_name << "\"";
         }
       }
+    }
+
+    // If this is a fallback family, add it to the fallback family array
+    // that corresponds to its priority. This will be used to generate a
+    // priority-ordered fallback families list once the family map is fully
+    // built.
+    //
+    // Also if there was a duplicate font or font face we would not add the
+    // family again but re-use the original family.
+    if (family_info.is_fallback_family && !is_duplicate_font &&
+        !is_duplicate_font_face) {
+      (*priority_fallback_families)[family_info.fallback_priority].push_back(
+          new_family.get());
     }
   }
 }

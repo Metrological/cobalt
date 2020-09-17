@@ -22,6 +22,7 @@
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
 #include "starboard/configuration.h"
+#include "starboard/configuration_constants.h"
 
 namespace starboard {
 namespace shared {
@@ -575,18 +576,73 @@ bool ParseVp9Info(const char* codec, int* profile) {
 
 }  // namespace
 
+VideoConfig::VideoConfig(SbMediaVideoCodec video_codec,
+                         int width,
+                         int height,
+                         const uint8_t* data,
+                         size_t size)
+    : width_(width), height_(height) {
+  if (video_codec == kSbMediaVideoCodecVp9) {
+    video_codec_ = video_codec;
+  }
+#if SB_API_VERSION >= 11
+  else if(video_codec == kSbMediaVideoCodecAv1) {
+    video_codec_ = video_codec;
+  }
+#endif  // SB_API_VERSION >= 11
+  else if (video_codec == kSbMediaVideoCodecH264) {
+    avc_parameter_sets_ =
+        AvcParameterSets(AvcParameterSets::kAnnexB, data, size);
+    if (avc_parameter_sets_->is_valid()) {
+      video_codec_ = video_codec;
+    }
+  } else {
+    SB_NOTREACHED();
+  }
+}
+
+#if SB_API_VERSION >= 11
+VideoConfig::VideoConfig(const SbMediaVideoSampleInfo& video_sample_info,
+                         const uint8_t* data,
+                         size_t size)
+    : VideoConfig(video_sample_info.codec,
+                  video_sample_info.frame_width,
+                  video_sample_info.frame_height,
+                  data,
+                  size) {
+  SB_DCHECK(video_sample_info.is_key_frame);
+}
+#endif  // SB_API_VERSION >= 11
+
+bool VideoConfig::operator==(const VideoConfig& that) const {
+  if (video_codec_ == kSbMediaVideoCodecNone &&
+      that.video_codec_ == kSbMediaVideoCodecNone) {
+    return true;
+  }
+  return video_codec_ == that.video_codec_ &&
+         avc_parameter_sets_ == that.avc_parameter_sets_ &&
+         width_ == that.width_ && height_ == that.height_;
+}
+
+bool VideoConfig::operator!=(const VideoConfig& that) const {
+  return !(*this == that);
+}
+
 SbMediaAudioCodec GetAudioCodecFromString(const char* codec) {
   if (SbStringCompare(codec, "mp4a.40.", 8) == 0) {
     return kSbMediaAudioCodecAac;
   }
-#if SB_HAS(AC3_AUDIO)
-  if (SbStringCompareAll(codec, "ac-3") == 0) {
-    return kSbMediaAudioCodecAc3;
+#if SB_API_VERSION >= 12 || defined(SB_HAS_AC3_AUDIO)
+  if (kSbHasAc3Audio) {
+    if (SbStringCompareAll(codec, "ac-3") == 0) {
+      return kSbMediaAudioCodecAc3;
+    }
+    if (SbStringCompareAll(codec, "ec-3") == 0) {
+      return kSbMediaAudioCodecEac3;
+    }
   }
-  if (SbStringCompareAll(codec, "ec-3") == 0) {
-    return kSbMediaAudioCodecEac3;
-  }
-#endif  // SB_HAS(AC3_AUDIO)
+#endif  // SB_API_VERSION >= 12 ||
+        // defined(SB_HAS_AC3_AUDIO)
   if (SbStringCompare(codec, "opus", 4) == 0) {
     return kSbMediaAudioCodecOpus;
   }

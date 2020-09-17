@@ -12,115 +12,123 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-function initDebugCommands() {
-  debug = new Object();
-  d = debug;
+function DebugCommands(debugConsole) {
+  this.debugConsole = debugConsole;
+  this.consoleValues = debugConsole.consoleValues;
 
-  debug.cvalList = function() {
-    var result = consoleValues.listAll();
-    printToMessageLog(messageLog.INTERACTIVE, result);
-  }
-  debug.cvalList.shortHelp = 'List all registered console values.';
-  debug.cvalList.longHelp =
+  this.commandRegistry = {};
+  this.addBuiltinCommands();
+  this.addConsoleCommands();
+}
+
+DebugCommands.prototype.addBuiltinCommands = function() {
+
+  this.commandRegistry.cvalList = () => {
+    let result = this.consoleValues.listAll();
+    printToMessageLog(MessageLog.INTERACTIVE, result);
+  };
+  this.commandRegistry.cvalList.shortHelp =
+      'List all registered console values.';
+  this.commandRegistry.cvalList.longHelp =
       'List all registered console values that can be displayed.\n' +
       'You can change what subset is displayed in the HUD using ' +
       'the cvalAdd and cvalRemove debug methods.';
 
-  debug.cvalAdd = function(substringToMatch) {
-    var result = consoleValues.addActive(substringToMatch);
-    printToMessageLog(messageLog.INTERACTIVE, result);
+  this.commandRegistry.cvalAdd = (substringToMatch) => {
+    let result = this.consoleValues.addActive(substringToMatch);
+    printToMessageLog(MessageLog.INTERACTIVE, result);
     // After each change, save the active set with the default key.
     this.cvalSave();
-  }
-  debug.cvalAdd.shortHelp = 'Adds one or more consoles value to the HUD.';
-  debug.cvalAdd.longHelp =
+  };
+  this.commandRegistry.cvalAdd.shortHelp =
+      'Adds one or more consoles value to the HUD.';
+  this.commandRegistry.cvalAdd.longHelp =
       'Adds any of the registered consolve values (displayed with cvalList) ' +
       'to the HUD whose name matches one of the specified space-separated '
       'prefixes.';
 
-  debug.cvalRemove = function(substringToMatch) {
-    var result = consoleValues.removeActive(substringToMatch);
-    printToMessageLog(messageLog.INTERACTIVE, result);
+  this.commandRegistry.cvalRemove = (substringToMatch) => {
+    let result = this.consoleValues.removeActive(substringToMatch);
+    printToMessageLog(MessageLog.INTERACTIVE, result);
     // After each change, save the active set with the default key.
     this.cvalSave();
-  }
-  debug.cvalRemove.shortHelp =
+  };
+  this.commandRegistry.cvalRemove.shortHelp =
       'Removes one or more consoles value from the HUD.';
-  debug.cvalRemove.longHelp =
+  this.commandRegistry.cvalRemove.longHelp =
       'Removes any of the consolve values displayed in the HUD ' +
       'whose name matches one of the specified space-separated prefixes.';
 
-  debug.cvalSave = function(key) {
-    var result = consoleValues.saveActiveSet(key);
-    printToMessageLog(messageLog.INTERACTIVE, result);
-  }
-  debug.cvalSave.shortHelp =
+  this.commandRegistry.cvalSave = (key) => {
+    let result = this.consoleValues.saveActiveSet(key);
+    printToMessageLog(MessageLog.INTERACTIVE, result);
+  };
+  this.commandRegistry.cvalSave.shortHelp =
       'Saves the current set of console values displayed in the HUD.';
-  debug.cvalSave.longHelp =
+  this.commandRegistry.cvalSave.longHelp =
       'Saves the set of console values currently displayed in the HUD ' +
       'to web local storage using the specified key. Saved display sets can ' +
       'be reloaded later using the cvalLoad debug method and the same key.\n' +
       'If no key is specified, uses a default value.';
 
-  debug.cvalLoad = function(key) {
-    var result = consoleValues.loadActiveSet(key);
-    printToMessageLog(messageLog.INTERACTIVE, result);
-  }
-  debug.cvalLoad.shortHelp =
+  this.commandRegistry.cvalLoad = (key) => {
+    let result = this.consoleValues.loadActiveSet(key);
+    printToMessageLog(MessageLog.INTERACTIVE, result);
+  };
+  this.commandRegistry.cvalLoad.shortHelp =
       'Loads a previously stored set of console values displayed in the HUD.';
-  debug.cvalLoad.longHelp =
+  this.commandRegistry.cvalLoad.longHelp =
       'Loads the set of console values currently displayed in the HUD ' +
       'from a set previously saved in web local storage using the cvalSave ' +
       'debug method and the same key.\n' +
       'If no key is specified, uses a default value.';
 
-  debug.history = history;
-  debug.history.shortHelp = 'Display command history.';
-  debug.history.longHelp =
+  this.commandRegistry.history = this.history.bind(this);
+  this.commandRegistry.history.shortHelp = 'Display command history.';
+  this.commandRegistry.history.longHelp =
       'Display a list of all previously executed commands with an '+
       'index. You can re-execute any of the commands from the ' +
       'history by typing "!" followed by the index of that command.'
 
-  debug.help = help;
-  debug.help.shortHelp = 'Display this message, or detail for a specific command.';
-  debug.help.longHelp =
+  this.commandRegistry.help = this.help.bind(this);
+  this.commandRegistry.help.shortHelp =
+      'Display this message, or detail for a specific command.';
+  this.commandRegistry.help.longHelp =
       'With no arguments, displays a summary of all commands. If the name of ' +
       'a command is specified, displays additional details about that command.';
 
-  debug.dir = dir;
-  debug.dir.shortHelp =
+  this.commandRegistry.dir = this.dir.bind(this);
+  this.commandRegistry.dir.shortHelp =
       'Lists the properties of an object in the main web module.';
-  debug.dir.longHelp =
+  this.commandRegistry.dir.longHelp =
       'Lists the properties of the specified object in the main web module. ' +
       'Remember to enclose the name of the object in quotes.';
 
-  debug.debugger = function() {
-    return debuggerClient;
-  }
-  debug.debugger.shortHelp =
+  this.commandRegistry.debugger = () => {
+    return this.debugConsole.debuggerClient;
+  };
+  this.commandRegistry.debugger.shortHelp =
       'Get the debugger client';
-  debug.debugger.longHelp =
+  this.commandRegistry.debugger.longHelp =
       'Get the debugger client. The debugger client can be used to issue ' +
       'JavaScript debugging commands to the main web module.';
-
-  addConsoleCommands();
 }
 
-function help(command) {
-  var helpString = '';
+DebugCommands.prototype.help = function(command) {
+  let helpString = '';
   if (command) {
     // Detailed help on a specific command.
-    if (debug[command]) {
-      helpString = debug[command].longHelp;
+    if (this.commandRegistry[command]) {
+      helpString = this.commandRegistry[command].longHelp;
     } else {
       helpString = 'Command "' + command + '" not found.';
     }
   } else {
     // Summary help for all commands.
     helpString = 'Cobalt Debug Console commands:\n\n';
-    for (cmd in debug) {
+    for (cmd in this.commandRegistry) {
       helpString += 'debug.' + cmd + '() - ';
-      helpString += debug[cmd].shortHelp + '\n';
+      helpString += this.commandRegistry[cmd].shortHelp + '\n';
     }
     helpString +=
         '\nYou are entering JavaScript, so remember to use parentheses, ' +
@@ -129,37 +137,54 @@ function help(command) {
         'All other text will be executed as JavaScript in the main web ' +
         'module.\n';
   }
-  printToMessageLog(messageLog.INTERACTIVE, helpString);
+  printToMessageLog(MessageLog.INTERACTIVE, helpString);
 }
 
-function history() {
-  var history = commandInput.getHistory();
-  for (var i = 0; i < history.length; i += 1) {
-    printToMessageLog(messageLog.INTERACTIVE, i + ' ' + history[i]);
+DebugCommands.prototype.history = function() {
+  let history = this.debugConsole.commandInput.getHistory();
+  for (let i = 0; i < history.length; i += 1) {
+    printToMessageLog(MessageLog.INTERACTIVE, i + ' ' + history[i]);
   }
 }
 
-function dir(objectName) {
-  var js = '(function(obj) {' +
-           '  var properties = obj + "\\n";' +
+DebugCommands.prototype.dir = function(objectName) {
+  let js = '(function(obj) {' +
+           '  let properties = obj + "\\n";' +
            '  for (p in obj) { properties += p + "\\n"; }' +
            '  return properties;' +
            '}(' + objectName + '))';
-  executeMain(js);
+  this.debugConsole.executeMain(js);
 }
 
-function addConsoleCommands() {
-  var consoleCommands = window.debugHub.consoleCommands;
-  for (var i = 0; i < consoleCommands.length; i++) {
-    var c = consoleCommands[i];
-    addOneConsoleCommand(c.command, c.shortHelp, c.longHelp);
+DebugCommands.prototype.addConsoleCommands = function() {
+  let consoleCommands = window.debugHub.consoleCommands;
+  for (let i = 0; i < consoleCommands.length; i++) {
+    let c = consoleCommands[i];
+    this.addOneConsoleCommand(c.command, c.shortHelp, c.longHelp);
   }
 }
 
-function addOneConsoleCommand(command, shortHelp, longHelp) {
-  debug[command] = function(message) {
+DebugCommands.prototype.addOneConsoleCommand = function(
+    command, shortHelp, longHelp) {
+  this.commandRegistry[command] = (message) => {
     window.debugHub.sendConsoleCommand(command, message);
+  };
+  this.commandRegistry[command].shortHelp = shortHelp;
+  this.commandRegistry[command].longHelp = longHelp;
+}
+
+// Run a registered debugger command. If the command appears to be a method of
+// the virtual "debug" (or shorthand "d") object it is run in the debug console
+// web module and true is returned. Otherwise the command is not run and false
+// is returned.
+DebugCommands.prototype.executeCommand = function(command) {
+  if (command.trim().indexOf('debug.') == 0 ||
+      command.trim().indexOf('d.') == 0) {
+    // The "debug" and "d" objects exist only while evaluating the command.
+    let debug = this.commandRegistry;
+    let d = this.commandRegistry;
+    eval(command);
+    return true;
   }
-  debug[command].shortHelp = shortHelp;
-  debug[command].longHelp = longHelp;
+  return false;
 }

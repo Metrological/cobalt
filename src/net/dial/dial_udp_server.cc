@@ -140,25 +140,41 @@ void DialUdpServer::DidRead(int bytes_read) {
   // If M-Search request was valid, send response. Else, keep quiet.
   if (ParseSearchRequest(std::string(read_buf_->data()))) {
     auto response = std::make_unique<std::string>();
-    *response = ConstructSearchResponse();
+    *response = std::move(ConstructSearchResponse());
     // Using the fake IOBuffer to avoid another copy.
     scoped_refptr<WrappedIOBuffer> fake_buffer =
         new WrappedIOBuffer(response->data());
     // After optimization, some compiler will dereference and get response size
     // later than passing response.
     auto response_size = response->size();
-    auto sent_num = socket_->SendTo(
+    int result = socket_->SendTo(
         fake_buffer.get(), response_size, client_address_,
-        base::Bind([](scoped_refptr<WrappedIOBuffer>,
-                      std::unique_ptr<std::string>, int /*rv*/) {},
+        base::Bind(&DialUdpServer::WriteComplete, base::Unretained(this),
                    fake_buffer, base::Passed(&response)));
-    DCHECK_EQ(sent_num, response_size);
+    if (result == ERR_IO_PENDING) {
+      // WriteComplete is responsible for posting the next callback to accept
+      // connection.
+      return;
+    } else if (result < 0) {
+      LOG(ERROR) << "UDPSocket SendTo error: " << result;
+    }
   }
 
   // Register a watcher on the message loop and wait for the next dial message.
   // If we call AcceptAndProcessConnection directly, the function could call
   // DidRead and quickly increase stack size or even loop infinitely if the
   // socket can always provide messages through RecvFrom.
+  thread_.task_runner()->PostTask(
+      FROM_HERE, base::Bind(&DialUdpServer::AcceptAndProcessConnection,
+                            base::Unretained(this)));
+}
+
+void DialUdpServer::WriteComplete(scoped_refptr<WrappedIOBuffer>,
+                                  std::unique_ptr<std::string>,
+                                  int rv) {
+  if (rv < 0) {
+    LOG(ERROR) << "UDPSocket completion callback error: " << rv;
+  }
   thread_.task_runner()->PostTask(
       FROM_HERE, base::Bind(&DialUdpServer::AcceptAndProcessConnection,
                             base::Unretained(this)));
@@ -213,7 +229,7 @@ bool DialUdpServer::IsValidMSearchRequest(const HttpServerRequestInfo& info) {
 
 // Since we are constructing a response from user-generated string,
 // ensure all user-generated strings pass through StringPrintf.
-const std::string DialUdpServer::ConstructSearchResponse() const {
+std::string DialUdpServer::ConstructSearchResponse() const {
   DCHECK(!location_url_.empty());
 
   std::string ret("HTTP/1.1 200 OK\r\n");
@@ -235,7 +251,7 @@ const std::string DialUdpServer::ConstructSearchResponse() const {
                                 DialSystemConfig::GetInstance()->model_uuid(),
                                 kDialStRequest));
   ret.append("\r\n");
-  return ret;
+  return std::move(ret);
 }
 
 }  // namespace net

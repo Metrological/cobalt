@@ -39,7 +39,7 @@
         '<(DEPTH)/starboard/common/test_main.cc',
         '<(DEPTH)/starboard/testing/fake_graphics_context_provider.cc',
         '<(DEPTH)/starboard/testing/fake_graphics_context_provider.h',
-        'accessibility_get_setting_test.cc',
+        'accessibility_test.cc',
         'align_test.cc',
         'atomic_base_test.cc',
         'atomic_test.cc',
@@ -118,26 +118,31 @@
         'double_is_finite_test.cc',
         'double_is_nan_test.cc',
         'drm_create_system_test.cc',
+        'drm_get_metrics_test.cc',
         'drm_helpers.cc',
         'drm_helpers.h',
         'drm_is_server_certificate_updatable_test.cc',
         'drm_update_server_certificate_test.cc',
         'egl_test.cc',
         'extern_c_test.cc',
+        'file_atomic_replace_test.cc',
         'file_can_open_test.cc',
         'file_close_test.cc',
+        'file_delete_recursive_test.cc',
         'file_get_info_test.cc',
         'file_get_path_info_test.cc',
         'file_helpers.cc',
         'file_mode_string_to_flags_test.cc',
         'file_open_test.cc',
         'file_read_test.cc',
+        'file_read_write_all_test.cc',
         'file_seek_test.cc',
         'file_truncate_test.cc',
         'file_write_test.cc',
         'flat_map_test.cc',
         'gles_test.cc',
         'murmurhash2_test.cc',
+        'image_test.cc',
         'include_all.c',
         'include_all_too.c',
         'key_test.cc',
@@ -150,7 +155,7 @@
         # TODO: Separate functions tested by media buffer test into multiple
         # files.
         'media_buffer_test.cc',
-        'media_set_audio_write_duration_test.cc',
+        'media_can_play_mime_and_key_system_test.cc',
         'memory_align_to_page_size_test.cc',
         'memory_allocate_aligned_test.cc',
         'memory_allocate_test.cc',
@@ -180,7 +185,12 @@
         'once_test.cc',
         'optional_test.cc',
         'player_create_test.cc',
+        'player_creation_param_helpers.cc',
+        'player_creation_param_helpers.h',
+        'player_get_preferred_output_mode_test.cc',
         'player_output_mode_supported_test.cc',
+        'player_test_util.cc',
+        'player_test_util.h',
         'random_helpers.cc',
         'recursive_mutex_test.cc',
         'rwlock_test.cc',
@@ -286,6 +296,7 @@
         'time_narrow_test.cc',
         'time_zone_get_current_test.cc',
         'time_zone_get_name_test.cc',
+        'ui_navigation_test.cc',
         'undefined_behavior_test.cc',
         'unsafe_math_test.cc',
         'url_player_create_test.cc',
@@ -297,6 +308,7 @@
         'window_get_diagonal_size_in_inches_test.cc',
         'window_get_platform_handle_test.cc',
         'window_get_size_test.cc',
+        '<@(sabi_sources)',
         # Include private c headers, if present.
         '<!@(python "<(DEPTH)/starboard/tools/find_private_files.py" "<(DEPTH)" "nplb/include_all_private.c")',
         # Include private tests, if present.
@@ -304,13 +316,26 @@
       ],
       'dependencies': [
         '<@(cobalt_platform_dependencies)',
-        '<(DEPTH)/starboard/shared/starboard/player/player.gyp:video_dmp',
+        '<(DEPTH)/starboard/shared/starboard/media/media.gyp:media_util',
         '<(DEPTH)/starboard/shared/starboard/player/player.gyp:player_copy_test_data',
+        '<(DEPTH)/starboard/shared/starboard/player/player.gyp:video_dmp',
         '<(DEPTH)/starboard/starboard.gyp:starboard',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
+        'copy_nplb_file_tests_data',
       ],
       'conditions': [
+        ['sb_disable_cpp14_audit != 1', {
+          'dependencies': [
+            '<(DEPTH)/starboard/nplb/compiler_compliance/compiler_compliance.gyp:cpp14_supported',
+          ],
+        }],
+        ['sb_evergreen != 1', {
+          'sources': [
+            # Segfaults or causes unresolved symbols for Cobalt Evergreen.
+            'media_set_audio_write_duration_test.cc',
+          ],
+        }],
         ['gl_type != "none"', {
           'dependencies': [
              # This is needed because SbPlayerTest depends on
@@ -319,6 +344,18 @@
           ],
         }],
       ],
+      'includes': [ '<(DEPTH)/starboard/nplb/sabi/sabi.gypi' ],
+    },
+    {
+      'target_name': 'copy_nplb_file_tests_data',
+      'type': 'none',
+      'variables': {
+        'content_test_input_files': [
+          '<(DEPTH)/starboard/nplb/testdata/file_tests/',
+        ],
+        'content_test_output_subdir': 'starboard/nplb/file_tests',
+      },
+      'includes': [ '<(DEPTH)/starboard/build/copy_test_data.gypi' ],
     },
     {
       'target_name': 'nplb_deploy',

@@ -66,9 +66,7 @@ class ReuseAllocatorBase : public Allocator {
                           std::size_t* size_hint);
 
   std::size_t max_capacity() const { return max_capacity_; }
-  void set_max_capacity(std::size_t max_capacity) {
-    // TODO: Properly implement decreasing the max capacity so that the
-    // capacity is not suddenly exceeded.
+  void IncreaseMaxCapacityIfNecessary(std::size_t max_capacity) {
     max_capacity_ = std::max(max_capacity, max_capacity_);
   }
 
@@ -145,7 +143,6 @@ class ReuseAllocatorBase : public Allocator {
                                                    FreeBlockSet::iterator begin,
                                                    FreeBlockSet::iterator end,
                                                    bool* allocate_from_front) {
-    SB_UNREFERENCED_PARAMETER(context);
     return FindFreeBlock(size, alignment, begin, end, allocate_from_front);
   }
 

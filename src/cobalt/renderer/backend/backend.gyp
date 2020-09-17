@@ -23,12 +23,44 @@
         'render_target.cc',
         'render_target.h',
       ],
-
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
         '<(DEPTH)/cobalt/math/math.gyp:math',
         '<(DEPTH)/cobalt/renderer/backend/starboard/platform_backend.gyp:renderer_platform_backend',
       ],
+      'conditions': [
+        ['enable_map_to_mesh != -1', {
+          'defines' : [
+            'ENABLE_MAP_TO_MESH=<(enable_map_to_mesh)',
+          ],
+        }],
+      ],
+    },
+    {
+      'target_name': 'graphics_system_test',
+      'type': '<(gtest_target_type)',
+      'sources': [
+        'graphics_system_test.cc',
+      ],
+      'dependencies': [
+        '<(DEPTH)/cobalt/base/base.gyp:base',
+        '<(DEPTH)/testing/gmock.gyp:gmock',
+        '<(DEPTH)/testing/gtest.gyp:gtest',
+        '<(DEPTH)/cobalt/renderer/backend/backend.gyp:renderer_backend',
+        '<(DEPTH)/cobalt/system_window/system_window.gyp:system_window',
+      ],
+      'includes': [ '<(DEPTH)/cobalt/test/test.gypi' ],
+    },
+    {
+      'target_name': 'graphics_system_test_deploy',
+      'type': 'none',
+      'dependencies': [
+        'graphics_system_test',
+      ],
+      'variables': {
+        'executable_name': 'graphics_system_test',
+      },
+      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ],
 }

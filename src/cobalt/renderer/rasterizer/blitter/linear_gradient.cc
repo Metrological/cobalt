@@ -29,7 +29,7 @@
 #include "third_party/skia/include/core/SkShader.h"
 #include "third_party/skia/include/effects/SkGradientShader.h"
 
-#if SB_HAS(BLITTER)
+#if SB_API_VERSION < 12 && SB_HAS(BLITTER)
 
 namespace {
 
@@ -125,7 +125,7 @@ void RenderComplexLinearGradient(const LinearGradientBrush& brush,
   SkiaColorStops skia_color_stops(color_stops);
   sk_sp<SkShader> shader(SkGradientShader::MakeLinear(
       points, skia_color_stops.colors.data(), skia_color_stops.positions.data(),
-      skia_color_stops.size(), SkShader::kClamp_TileMode,
+      skia_color_stops.size(), SkTileMode::kClamp,
       SkGradientShader::kInterpolateColorsInPremul_Flag, NULL));
   SkPaint paint;
   paint.setShader(shader);
@@ -410,4 +410,4 @@ bool RenderLinearGradient(SbBlitterDevice device, SbBlitterContext context,
 }  // namespace renderer
 }  // namespace cobalt
 
-#endif  // #if SB_HAS(BLITTER)
+#endif  // SB_API_VERSION < 12 && SB_HAS(BLITTER)

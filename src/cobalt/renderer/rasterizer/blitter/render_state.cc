@@ -16,7 +16,7 @@
 
 #include "cobalt/renderer/rasterizer/blitter/cobalt_blitter_conversions.h"
 
-#if SB_HAS(BLITTER)
+#if SB_API_VERSION < 12 && SB_HAS(BLITTER)
 
 namespace cobalt {
 namespace renderer {
@@ -55,4 +55,4 @@ void BoundsStack::UpdateContext() {
 }  // namespace renderer
 }  // namespace cobalt
 
-#endif  // #if SB_HAS(BLITTER)
+#endif  // SB_API_VERSION < 12 && SB_HAS(BLITTER)

@@ -1,6 +1,6 @@
 
 
-// Copyright 2019 The Cobalt Authors. All Rights Reserved.
+// Copyright 2020 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -244,6 +244,7 @@ void IndexedPropertyDescriptorCallback(
 void IndexedPropertyEnumeratorCallback(
     const v8::PropertyCallbackInfo<v8::Array>& info) {
   v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Context> context = isolate->GetCurrentContext();
   v8::Local<v8::Object> object = info.Holder();
   AnonymousNamedIndexedGetterInterface* impl =
           script::v8c::shared_bindings::get_impl_from_object<
@@ -254,7 +255,7 @@ void IndexedPropertyEnumeratorCallback(
   const uint32_t length = impl->length();
   v8::Local<v8::Array> array = v8::Array::New(isolate, length);
   for (uint32_t i = 0; i < length; ++i) {
-    array->Set(i, v8::Integer::New(isolate, i));
+    array->Set(context, i, v8::Integer::New(isolate, i)).Check();
   }
   info.GetReturnValue().Set(array);
 }

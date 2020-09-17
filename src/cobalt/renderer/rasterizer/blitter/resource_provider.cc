@@ -20,7 +20,7 @@
 #include "cobalt/renderer/rasterizer/blitter/render_tree_blitter_conversions.h"
 #include "starboard/blitter.h"
 
-#if SB_HAS(BLITTER)
+#if SB_API_VERSION < 12 && SB_HAS(BLITTER)
 
 namespace cobalt {
 namespace renderer {
@@ -84,8 +84,6 @@ scoped_refptr<render_tree::Image> ResourceProvider::CreateImage(
       new SinglePlaneImage(std::move(blitter_source_data)));
 }
 
-#if SB_HAS(GRAPHICS)
-
 scoped_refptr<render_tree::Image>
 ResourceProvider::CreateImageFromSbDecodeTarget(SbDecodeTarget decode_target) {
   SbDecodeTargetInfo info;
@@ -113,8 +111,6 @@ ResourceProvider::CreateImageFromSbDecodeTarget(SbDecodeTarget decode_target) {
   SbDecodeTargetRelease(decode_target);
   return NULL;
 }
-
-#endif  // SB_HAS(GRAPHICS)
 
 std::unique_ptr<render_tree::RawImageMemory>
 ResourceProvider::AllocateRawImageMemory(size_t size_in_bytes,
@@ -187,6 +183,12 @@ scoped_refptr<GlyphBuffer> ResourceProvider::CreateGlyphBuffer(
   return skia_resource_provider_->CreateGlyphBuffer(utf8_string, font);
 }
 
+scoped_refptr<render_tree::LottieAnimation>
+ResourceProvider::CreateLottieAnimation(const char* data, size_t length) {
+  NOTIMPLEMENTED();
+  return scoped_refptr<render_tree::LottieAnimation>(NULL);
+}
+
 scoped_refptr<render_tree::Mesh> ResourceProvider::CreateMesh(
     std::unique_ptr<std::vector<render_tree::Mesh::Vertex> > vertices,
     render_tree::Mesh::DrawMode draw_mode) {
@@ -205,4 +207,4 @@ scoped_refptr<render_tree::Image> ResourceProvider::DrawOffscreenImage(
 }  // namespace renderer
 }  // namespace cobalt
 
-#endif  // #if SB_HAS(BLITTER)
+#endif  // SB_API_VERSION < 12 && SB_HAS(BLITTER)

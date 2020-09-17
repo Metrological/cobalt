@@ -45,6 +45,7 @@ namespace base {
     MacroOpWithNameOnly(childList)                                   \
     MacroOpWithNameOnly(click)                                       \
     MacroOpWithNameOnly(close)                                       \
+    MacroOpWithNameOnly(complete)                                    \
     MacroOpWithNameOnly(dataavailable)                               \
     MacroOpWithNameOnly(deviceorientation)                           \
     MacroOpWithNameOnly(durationchange)                              \
@@ -55,6 +56,7 @@ namespace base {
     MacroOpWithNameOnly(focus)                                       \
     MacroOpWithNameOnly(focusin)                                     \
     MacroOpWithNameOnly(focusout)                                    \
+    MacroOpWithNameOnly(freeze)                                      \
     MacroOpWithNameOnly(gotpointercapture)                           \
     MacroOpWithNameOnly(hashchange)                                  \
     MacroOpWithNameOnly(hide)                                        \
@@ -68,6 +70,7 @@ namespace base {
     MacroOpWithNameOnly(loadedmetadata)                              \
     MacroOpWithNameOnly(loadend)                                     \
     MacroOpWithNameOnly(loadstart)                                   \
+    MacroOpWithNameOnly(loop)                                        \
     MacroOpWithNameOnly(lostpointercapture)                          \
     MacroOpWithNameOnly(mark)                                        \
     MacroOpWithNameOnly(message)                                     \
@@ -94,6 +97,7 @@ namespace base {
     MacroOpWithNameOnly(polite)                                      \
     MacroOpWithNameOnly(progress)                                    \
     MacroOpWithNameOnly(ratechange)                                  \
+    MacroOpWithNameOnly(ready)                                       \
     MacroOpWithNameOnly(readystatechange)                            \
     MacroOpWithNameOnly(removals)                                    \
     MacroOpWithNameOnly(removesourcebuffer)                          \

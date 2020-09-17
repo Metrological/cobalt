@@ -46,6 +46,8 @@
         'h5vcc_runtime.h',
         'h5vcc_runtime_event_target.cc',
         'h5vcc_runtime_event_target.h',
+        'h5vcc_screen.cc',
+        'h5vcc_screen.h',
         'h5vcc_settings.cc',
         'h5vcc_settings.h',
         'h5vcc_storage.cc',
@@ -57,6 +59,7 @@
       ],
       'dependencies': [
         '<(DEPTH)/cobalt/build/cobalt_build_id.gyp:cobalt_build_id',
+        '<(DEPTH)/cobalt/configuration/configuration.gyp:configuration',
         '<(DEPTH)/cobalt/dom/dom.gyp:dom',
         '<(DEPTH)/cobalt/speech/speech.gyp:speech',
         '<(DEPTH)/net/net.gyp:net',
@@ -102,9 +105,12 @@
             ],
           },
         }],
-      ],
-      'defines': [
-        'COBALT_USER_ON_EXIT_STRATEGY="<(cobalt_user_on_exit_strategy)"',
+        ['sb_evergreen == 1', {
+          'sources': [
+            'h5vcc_updater.cc',
+            'h5vcc_updater.h',
+          ],
+        }],
       ],
     },
 

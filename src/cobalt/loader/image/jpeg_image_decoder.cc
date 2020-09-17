@@ -18,6 +18,7 @@
 
 #include "base/logging.h"
 #include "base/trace_event/trace_event.h"
+#include "cobalt/base/console_log.h"
 #include "nb/memory_scope.h"
 #include "third_party/libjpeg/jpegint.h"
 
@@ -86,12 +87,10 @@ void ErrorManagerExit(j_common_ptr common_ptr) {
 }
 
 void SourceManagerInitSource(j_decompress_ptr decompress_ptr) {
-  SB_UNREFERENCED_PARAMETER(decompress_ptr);
   // no-op.
 }
 
 boolean SourceManagerFillInputBuffer(j_decompress_ptr decompress_ptr) {
-  SB_UNREFERENCED_PARAMETER(decompress_ptr);
   // Normally, this function is called when we need to read more of the encoded
   // buffer into memory and a return false indicates that we have no data to
   // supply yet, but in our case, the encoded buffer is always in memory, so
@@ -102,13 +101,10 @@ boolean SourceManagerFillInputBuffer(j_decompress_ptr decompress_ptr) {
 
 boolean SourceManagerResyncToRestart(j_decompress_ptr decompress_ptr,
                                      int desired) {
-  SB_UNREFERENCED_PARAMETER(decompress_ptr);
-  SB_UNREFERENCED_PARAMETER(desired);
   return false;
 }
 
 void SourceManagerTermSource(j_decompress_ptr decompress_ptr) {
-  SB_UNREFERENCED_PARAMETER(decompress_ptr);
   // no-op.
 }
 
@@ -130,8 +126,9 @@ void SourceManagerSkipInputData(j_decompress_ptr decompress_ptr,
 
 JPEGImageDecoder::JPEGImageDecoder(
     render_tree::ResourceProvider* resource_provider,
+    const base::DebuggerHooks& debugger_hooks,
     bool allow_image_decoding_to_multi_plane)
-    : ImageDataDecoder(resource_provider),
+    : ImageDataDecoder(resource_provider, debugger_hooks),
       allow_image_decoding_to_multi_plane_(
           allow_image_decoding_to_multi_plane) {
   TRACE_EVENT0("cobalt::loader::image", "JPEGImageDecoder::JPEGImageDecoder()");

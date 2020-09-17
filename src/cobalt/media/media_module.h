@@ -64,8 +64,6 @@ class MediaModule : public WebMediaPlayerFactory,
   // already been set to the expected value.  Returns false when the setting is
   // invalid or not set to the expected value.
   bool SetConfiguration(const std::string& name, int32 value) {
-    SB_UNREFERENCED_PARAMETER(name);
-    SB_UNREFERENCED_PARAMETER(value);
     return false;
   }
 
@@ -90,11 +88,7 @@ class MediaModule : public WebMediaPlayerFactory,
 
   SbDecodeTargetGraphicsContextProvider*
   GetSbDecodeTargetGraphicsContextProvider() {
-#if SB_HAS(GRAPHICS)
     return resource_provider_->GetSbDecodeTargetGraphicsContextProvider();
-#else   // SB_HAS(GRAPHICS)
-    return NULL;
-#endif  // SB_HAS(GRAPHICS)
   }
 
   // When the value of a particular player is true, it means the player is

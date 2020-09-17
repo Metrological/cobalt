@@ -232,6 +232,7 @@ void FlexContainerBox::UpdateContentSizeAndMargins(
 
   if (IsAbsolutelyPositioned()) {
     UpdateWidthAssumingAbsolutelyPositionedBox(
+        layout_params.containing_block_direction,
         layout_params.containing_block_size.width(), maybe_left, maybe_right,
         maybe_width, maybe_margin_left, maybe_margin_right, maybe_height);
 
@@ -252,6 +253,7 @@ void FlexContainerBox::UpdateContentSizeAndMargins(
   if (main_direction_is_horizontal) {
     if (!layout_params.freeze_width) {
       UpdateContentWidthAndMargins(
+          layout_params.containing_block_direction,
           layout_params.containing_block_size.width(),
           layout_params.shrink_to_fit_width_forced,
           width_depends_on_containing_block, maybe_left, maybe_right,

@@ -23,7 +23,7 @@
 #include "cobalt/renderer/backend/blitter/surface_render_target.h"
 #include "starboard/blitter.h"
 
-#if SB_HAS(BLITTER)
+#if SB_API_VERSION < 12 && SB_HAS(BLITTER)
 
 namespace cobalt {
 namespace renderer {
@@ -90,4 +90,4 @@ void GraphicsContextBlitter::Finish() {
 }  // namespace renderer
 }  // namespace cobalt
 
-#endif  // #if SB_HAS(BLITTER)
+#endif  // SB_API_VERSION < 12 && SB_HAS(BLITTER)

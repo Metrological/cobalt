@@ -76,6 +76,10 @@
 #include "cobalt/debug/debug_client.h"
 #endif  // ENABLE_DEBUGGER
 
+#if SB_IS(EVERGREEN)
+#include "cobalt/updater/updater_module.h"
+#endif
+
 namespace cobalt {
 namespace browser {
 
@@ -93,13 +97,10 @@ class BrowserModule {
               memory_settings::AutoMemSettings::kTypeCommandLine),
           build_auto_mem_settings(memory_settings::AutoMemSettings::kTypeBuild),
           enable_splash_screen_on_reloads(true) {}
-    network::NetworkModule::Options network_module_options;
     renderer::RendererModule::Options renderer_module_options;
-    storage::StorageManager::Options storage_manager_options;
     WebModule::Options web_module_options;
     media::MediaModule::Options media_module_options;
-    std::string initial_deep_link;
-    base::Closure web_module_recreated_callback;
+    base::Closure web_module_created_callback;
     memory_settings::AutoMemSettings command_line_auto_mem_settings;
     memory_settings::AutoMemSettings build_auto_mem_settings;
     base::Optional<GURL> fallback_splash_screen_url;
@@ -116,10 +117,14 @@ class BrowserModule {
                 base::ApplicationState initial_application_state,
                 base::EventDispatcher* event_dispatcher,
                 account::AccountManager* account_manager,
+                network::NetworkModule* network_module,
+#if SB_IS(EVERGREEN)
+                updater::UpdaterModule* updater_module,
+#endif
                 const Options& options);
   ~BrowserModule();
 
-  std::string GetUserAgent() { return network_module_.GetUserAgent(); }
+  std::string GetUserAgent() { return network_module_->GetUserAgent(); }
 
   // Recreates web module with the given URL. In the case where Cobalt is
   // currently suspended, this defers the navigation and instead sets
@@ -186,11 +191,10 @@ class BrowserModule {
 
 #if SB_API_VERSION >= 8
   // Called when a kSbEventTypeWindowSizeChange event is fired.
-  void OnWindowSizeChanged(const cssom::ViewportSize& viewport_size,
-                           float video_pixel_ratio);
+  void OnWindowSizeChanged(const cssom::ViewportSize& viewport_size);
 #endif  // SB_API_VERSION >= 8
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   void OnOnScreenKeyboardShown(const base::OnScreenKeyboardShownEvent* event);
   void OnOnScreenKeyboardHidden(const base::OnScreenKeyboardHiddenEvent* event);
   void OnOnScreenKeyboardFocused(
@@ -201,12 +205,15 @@ class BrowserModule {
   void OnOnScreenKeyboardSuggestionsUpdated(
       const base::OnScreenKeyboardSuggestionsUpdatedEvent* event);
 #endif  // SB_API_VERSION >= 11
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
-#if SB_HAS(CAPTIONS)
+#if SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
   void OnCaptionSettingsChanged(
       const base::AccessibilityCaptionSettingsChangedEvent* event);
-#endif  // SB_HAS(CAPTIONS)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
+
+  bool IsWebModuleLoaded() { return web_module_loaded_.IsSignaled(); }
 
  private:
 #if SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
@@ -253,13 +260,14 @@ class BrowserModule {
   // persist the user's preference.
   void SaveDebugConsoleMode();
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   // Glue function to deal with the production of an input event from an on
   // screen keyboard input device, and manage handing it off to the web module
   // for interpretation.
   void OnOnScreenKeyboardInputEventProduced(base::Token type,
                                             const dom::InputEventInit& event);
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
   // Glue function to deal with the production of a keyboard input event from a
   // keyboard input device, and manage handing it off to the web module for
@@ -278,12 +286,13 @@ class BrowserModule {
   // interpretation.
   void OnWheelEventProduced(base::Token type, const dom::WheelEventInit& event);
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   // Injects an on screen keyboard input event directly into the main web
   // module.
   void InjectOnScreenKeyboardInputEventToMainWebModule(
       base::Token type, const dom::InputEventInit& event);
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
   // Injects a key event directly into the main web module, useful for setting
   // up an input fuzzer whose input should be sent directly to the main
@@ -458,8 +467,6 @@ class BrowserModule {
 
   base::EventDispatcher* event_dispatcher_;
 
-  storage::StorageManager storage_manager_;
-
   // Whether the browser module has yet rendered anything. On the very first
   // render, we hide the system splash screen.
   bool is_rendered_;
@@ -487,7 +494,12 @@ class BrowserModule {
   std::unique_ptr<media::CanPlayTypeHandler> can_play_type_handler_;
 
   // Sets up the network component for requesting internet resources.
-  network::NetworkModule network_module_;
+  network::NetworkModule* network_module_;
+
+#if SB_IS(EVERGREEN)
+  // A reference to the Cobalt updater.
+  updater::UpdaterModule* updater_module_;
+#endif
 
   // Manages the three render trees, combines and renders them.
   RenderTreeCombiner render_tree_combiner_;
@@ -523,9 +535,9 @@ class BrowserModule {
   // Will be signalled when the WebModule's Window.onload event is fired.
   base::WaitableEvent web_module_loaded_;
 
-  // This will be called after the WebModule has been destroyed and recreated,
-  // which could occur on navigation.
-  base::Closure web_module_recreated_callback_;
+  // This will be called after a WebModule has been recreated, which could occur
+  // on navigation.
+  base::Closure web_module_created_callback_;
 
   // The time when a URL navigation starts. This is recorded after the previous
   // WebModule is destroyed.

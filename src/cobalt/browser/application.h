@@ -22,12 +22,16 @@
 #include "base/command_line.h"
 #include "base/macros.h"
 #include "base/message_loop/message_loop.h"
+#include "base/synchronization/lock.h"
 #include "base/threading/thread_checker.h"
 #include "cobalt/account/account_manager.h"
 #include "cobalt/base/event_dispatcher.h"
 #include "cobalt/browser/browser_module.h"
 #include "cobalt/browser/memory_tracker/tool.h"
 #include "cobalt/system_window/system_window.h"
+#if SB_IS(EVERGREEN)
+#include "cobalt/updater/updater_module.h"
+#endif
 #include "starboard/event.h"
 
 #if defined(ENABLE_WEBDRIVER)
@@ -46,8 +50,8 @@ namespace browser {
 // loop. This class is not designed to be thread safe.
 class Application {
  public:
-  // The passed in |quit_closure| can be called internally by the Application to
-  // signal that it would like to quit.
+  // The passed in |quit_closure| can be called internally by the Application
+  // to signal that it would like to quit.
   Application(const base::Closure& quit_closure, bool should_preload);
   virtual ~Application();
 
@@ -65,15 +69,12 @@ class Application {
   // Called to handle an application event.
   void OnApplicationEvent(SbEventType event_type);
 
-  // Called to handle a deep link event.
-  void OnDeepLinkEvent(const base::Event* event);
-
 #if SB_API_VERSION >= 8
   // Called to handle a window size change event.
   void OnWindowSizeChangedEvent(const base::Event* event);
 #endif  // SB_API_VERSION >= 8
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   void OnOnScreenKeyboardShownEvent(const base::Event* event);
   void OnOnScreenKeyboardHiddenEvent(const base::Event* event);
   void OnOnScreenKeyboardFocusedEvent(const base::Event* event);
@@ -81,14 +82,15 @@ class Application {
 #if SB_API_VERSION >= 11
   void OnOnScreenKeyboardSuggestionsUpdatedEvent(const base::Event* event);
 #endif  // SB_API_VERSION >= 11
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
-#if SB_HAS(CAPTIONS)
+#if SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
   void OnCaptionSettingsChangedEvent(const base::Event* event);
-#endif  // SB_HAS(CAPTIONS)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
 
   // Called when a navigation occurs in the BrowserModule.
-  void WebModuleRecreated();
+  void WebModuleCreated();
 
   // A conduit for system events.
   base::EventDispatcher event_dispatcher_;
@@ -96,16 +98,25 @@ class Application {
   // Account manager.
   std::unique_ptr<account::AccountManager> account_manager_;
 
+  // Storage manager used by the network module below.
+  std::unique_ptr<storage::StorageManager> storage_manager_;
+
+  // Sets up the network component for requesting internet resources.
+  std::unique_ptr<network::NetworkModule> network_module_;
+
+#if SB_IS(EVERGREEN)
+  // Cobalt Updater.
+  std::unique_ptr<updater::UpdaterModule> updater_module_;
+#endif
+
   // Main components of the Cobalt browser application.
   std::unique_ptr<BrowserModule> browser_module_;
 
   // Event callbacks.
-  base::EventCallback network_event_callback_;
-  base::EventCallback deep_link_event_callback_;
 #if SB_API_VERSION >= 8
   base::EventCallback window_size_change_event_callback_;
 #endif  // SB_API_VERSION >= 8
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   base::EventCallback on_screen_keyboard_shown_event_callback_;
   base::EventCallback on_screen_keyboard_hidden_event_callback_;
   base::EventCallback on_screen_keyboard_focused_event_callback_;
@@ -113,10 +124,11 @@ class Application {
 #if SB_API_VERSION >= 11
   base::EventCallback on_screen_keyboard_suggestions_updated_event_callback_;
 #endif  // SB_API_VERSION >= 11
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
-#if SB_HAS(CAPTIONS)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
   base::EventCallback on_caption_settings_changed_event_callback_;
-#endif  // SB_HAS(CAPTIONS)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
 
   // Thread checkers to ensure that callbacks for network and application events
   // always occur on the same thread.
@@ -207,6 +219,19 @@ class Application {
   // Create a memory tracker with the given message
   void OnMemoryTrackerCommand(const std::string& message);
 #endif  // defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
+
+  // Deep links are stored here until they are reported consumed.
+  std::string unconsumed_deep_link_;
+
+  // Lock for access to unconsumed_deep_link_ from different threads.
+  base::Lock unconsumed_deep_link_lock_;
+
+  // Called when deep links are consumed.
+  void OnDeepLinkConsumedCallback(const std::string& link);
+
+  // Dispach events for deep links.
+  void DispatchDeepLink(const char* link);
+  void DispatchDeepLinkIfNotConsumed();
 
   DISALLOW_COPY_AND_ASSIGN(Application);
 };

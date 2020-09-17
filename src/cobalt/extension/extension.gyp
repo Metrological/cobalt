@@ -24,13 +24,19 @@
         'extension_test.cc',
       ],
       'dependencies': [
-        '<@(cobalt_platform_dependencies)',
         '<(DEPTH)/cobalt/base/base.gyp:base',
-        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/starboard/starboard.gyp:starboard',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
       ],
+      'conditions': [
+        ['sb_evergreen == 0', {
+          'dependencies': [
+            '<@(cobalt_platform_dependencies)',
+          ],
+        }],
+      ],
+      'includes': [ '<(DEPTH)/cobalt/test/test.gypi' ],
     },
     {
       'target_name': 'extension_test_deploy',

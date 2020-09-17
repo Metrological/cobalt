@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# This files contains all targets that should be created by gyp_cobalt by
+# This file contains all targets that should be created by gyp_cobalt by
 # default.
 
 {
@@ -30,7 +30,7 @@
       'target_name': 'All',
       'type': 'none',
       'dependencies': [
-        '<(DEPTH)/base/base.gyp:base_unittests',
+        '<(DEPTH)/base/base.gyp:base_unittests_deploy',
         '<(DEPTH)/cobalt/audio/audio.gyp:*',
         '<(DEPTH)/cobalt/audio/audio_test.gyp:*',
         '<(DEPTH)/cobalt/base/base.gyp:*',
@@ -84,16 +84,37 @@
         '<(DEPTH)/cobalt/webdriver/webdriver_test.gyp:*',
         '<(DEPTH)/cobalt/websocket/websocket.gyp:*',
         '<(DEPTH)/cobalt/xhr/xhr.gyp:*',
-        '<(DEPTH)/crypto/crypto.gyp:crypto_unittests',
-        '<(DEPTH)/net/net.gyp:net_unittests',
-        '<(DEPTH)/sql/sql.gyp:sql_unittests',
+        '<(DEPTH)/crypto/crypto.gyp:crypto_unittests_deploy',
+        '<(DEPTH)/third_party/boringssl/boringssl_tool.gyp:*',
+        '<(DEPTH)/third_party/zlib/zlib.gyp:zip_unittests_deploy',
+        '<(DEPTH)/net/net.gyp:net_unittests_deploy',
+        '<(DEPTH)/sql/sql.gyp:sql_unittests_deploy',
+        '<(DEPTH)/starboard/elf_loader/elf_loader.gyp:elf_loader_test_deploy',
+        '<(DEPTH)/starboard/loader_app/loader_app.gyp:loader_app',
+        '<(DEPTH)/starboard/nplb/nplb_evergreen_compat_tests/nplb_evergreen_compat_tests.gyp:nplb_evergreen_compat_tests_deploy',
       ],
       'conditions': [
+        ['sb_evergreen != 1', {
+          'dependencies': [
+            '<!@pymod_do_main(starboard.optional.get_optional_tests -g -d <(DEPTH))',
+          ],
+        }],
         ['OS=="starboard"', {
           'dependencies': [
-            '<(DEPTH)/nb/nb_test.gyp:nb_test',
+            '<(DEPTH)/nb/nb_test.gyp:nb_test_deploy',
             '<(DEPTH)/nb/nb_test.gyp:reuse_allocator_benchmark',
             '<(DEPTH)/starboard/starboard_all.gyp:starboard_all',
+          ],
+        }],
+        ['sb_evergreen==1', {
+          'dependencies': [
+            '<(DEPTH)/third_party/musl/musl.gyp:musl_unittests',
+            '<(DEPTH)/starboard/loader_app/installation_manager.gyp:*',
+          ],
+        }],
+        ['sb_evergreen_compatible==1', {
+          'dependencies': [
+            '<(DEPTH)/third_party/crashpad/handler/handler.gyp:crashpad_handler',
           ],
         }],
       ],

@@ -26,6 +26,7 @@
 #include "base/trace_event/trace_event.h"
 #include "cobalt/base/c_val.h"
 #include "cobalt/browser/stack_size_constants.h"
+#include "cobalt/configuration/configuration.h"
 #include "cobalt/script/v8c/isolate_fellowship.h"
 #include "cobalt/script/v8c/v8c_global_environment.h"
 #include "starboard/once.h"
@@ -35,18 +36,6 @@ namespace script {
 namespace v8c {
 
 namespace {
-
-void VisitWeakHandlesForMinorGC(v8::Isolate* isolate) {
-  class V8cPersistentHandleVisitor : public v8::PersistentHandleVisitor {
-   public:
-    void VisitPersistentHandle(v8::Persistent<v8::Value>* value,
-                               uint16_t class_id) override {
-      DCHECK(value);
-      value->MarkActive();
-    }
-  } visitor;
-  isolate->VisitWeakHandles(&visitor);
-}
 
 size_t UsedHeapSize(v8::Isolate* isolate) {
   v8::HeapStatistics heap_statistics;
@@ -60,7 +49,6 @@ void GCPrologueCallback(v8::Isolate* isolate, v8::GCType type,
     case v8::kGCTypeScavenge:
       TRACE_EVENT_BEGIN1("cobalt::script", "MinorGC", "usedHeapSizeBefore",
                          UsedHeapSize(isolate));
-      VisitWeakHandlesForMinorGC(isolate);
       break;
     case v8::kGCTypeMarkSweepCompact:
       TRACE_EVENT_BEGIN2("cobalt::script", "MajorGC", "usedHeapSizeBefore",
@@ -103,6 +91,26 @@ void GCEpilogueCallback(v8::Isolate* isolate, v8::GCType type,
   }
 }
 
+void ErrorMessageListener(v8::Local<v8::Message> message,
+                          v8::Local<v8::Value> data) {
+  v8::Isolate* isolate = message->GetIsolate();
+  std::string description(*v8::String::Utf8Value(isolate, message->Get()));
+
+  v8::Local<v8::StackTrace> stack = message->GetStackTrace();
+  for (int i = 0; i < stack->GetFrameCount(); ++i) {
+    v8::Local<v8::StackFrame> frame = stack->GetFrame(isolate, i);
+    description += "\n";
+    description += *v8::String::Utf8Value(isolate, frame->GetScriptName());
+    description += ":";
+    description += std::to_string(frame->GetLineNumber());
+    description += ":";
+    description += std::to_string(frame->GetColumn());
+  }
+
+  // TODO: Send the description to the console instead of logging it.
+  LOG(ERROR) << description;
+}
+
 }  // namespace
 
 V8cEngine::V8cEngine(const Options& options) : options_(options) {
@@ -113,17 +121,6 @@ V8cEngine::V8cEngine(const Options& options) : options_(options) {
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
       isolate_fellowship->array_buffer_allocator;
-#if !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
-  auto* startup_data = &isolate_fellowship->startup_data;
-  if (startup_data->data != nullptr) {
-    create_params.snapshot_blob = startup_data;
-  } else {
-    // Technically possible to attempt to recover here, but hitting this
-    // indicates that something is probably seriously wrong.
-    LOG(WARNING) << "Isolate fellowship startup data was null, this will "
-                    "significantly slow down startup time.";
-  }
-#endif  // !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
 
   isolate_ = v8::Isolate::New(create_params);
   CHECK(isolate_);
@@ -150,6 +147,12 @@ V8cEngine::V8cEngine(const Options& options) : options_(options) {
   uintptr_t here = reinterpret_cast<uintptr_t>(&here);
   isolate_->SetStackLimit(here -
                           (3 * cobalt::browser::kWebModuleStackSize) / 4);
+
+#if !defined(COBALT_BUILD_TYPE_GOLD)
+  // Report callstacks for exceptions.
+  isolate_->AddMessageListener(&ErrorMessageListener);
+  isolate_->SetCaptureStackTraceForUncaughtExceptions(true);
+#endif
 }
 
 V8cEngine::~V8cEngine() {
@@ -158,6 +161,7 @@ V8cEngine::~V8cEngine() {
 
   IsolateFellowship::GetInstance()->platform->UnregisterIsolateOnThread(
       isolate_);
+  DCHECK(!isolate_->InContext());  // global object must be out of scope now.
   // Send a low memory notification to V8 in order to force a garbage
   // collection before shut down.  This is required to run weak callbacks that
   // are responsible for freeing native objects that live in the internal
@@ -208,7 +212,11 @@ std::unique_ptr<JavaScriptEngine> JavaScriptEngine::CreateEngine(
 }
 
 std::string GetJavaScriptEngineNameAndVersion() {
-  return std::string("v8/") + v8::V8::GetVersion();
+  static std::string jit_flag =
+      configuration::Configuration::GetInstance()->CobaltEnableJit()
+          ? "-jit"
+          : "-jitless";
+  return std::string("v8/") + v8::V8::GetVersion() + jit_flag;
 }
 
 }  // namespace script

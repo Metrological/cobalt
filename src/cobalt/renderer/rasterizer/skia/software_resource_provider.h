@@ -21,7 +21,7 @@
 
 #include "cobalt/render_tree/resource_provider.h"
 #include "cobalt/renderer/rasterizer/skia/text_shaper.h"
-#include "third_party/skia/include/ports/SkFontMgr.h"
+#include "third_party/skia/include/core/SkFontMgr.h"
 
 namespace cobalt {
 namespace renderer {
@@ -51,7 +51,6 @@ class SoftwareResourceProvider : public render_tree::ResourceProvider {
   scoped_refptr<render_tree::Image> CreateImage(
       std::unique_ptr<render_tree::ImageData> pixel_data) override;
 
-#if SB_HAS(GRAPHICS)
   scoped_refptr<render_tree::Image> CreateImageFromSbDecodeTarget(
       SbDecodeTarget decode_target) override {
     NOTREACHED();
@@ -65,7 +64,6 @@ class SoftwareResourceProvider : public render_tree::ResourceProvider {
   }
 
   bool SupportsSbDecodeTarget() override { return false; }
-#endif  // SB_HAS(GRAPHICS)
 
   std::unique_ptr<render_tree::RawImageMemory> AllocateRawImageMemory(
       size_t size_in_bytes, size_t alignment) override;
@@ -107,6 +105,9 @@ class SoftwareResourceProvider : public render_tree::ResourceProvider {
                      const std::string& language, bool is_rtl,
                      render_tree::FontProvider* font_provider,
                      render_tree::FontVector* maybe_used_fonts) override;
+
+  scoped_refptr<render_tree::LottieAnimation> CreateLottieAnimation(
+      const char* data, size_t length) override;
 
   scoped_refptr<render_tree::Mesh> CreateMesh(
       std::unique_ptr<std::vector<render_tree::Mesh::Vertex> > vertices,

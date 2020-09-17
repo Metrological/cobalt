@@ -28,6 +28,7 @@
 #include "cobalt/dom/dom_exception.h"
 #include "cobalt/dom/event_target.h"
 #include "cobalt/media/base/shell_audio_bus.h"
+#include "cobalt/script/environment_settings.h"
 
 namespace cobalt {
 namespace audio {
@@ -51,7 +52,7 @@ class AudioNode : public dom::EventTarget {
   typedef media::ShellAudioBus ShellAudioBus;
 
  public:
-  explicit AudioNode(AudioContext* context);
+  AudioNode(script::EnvironmentSettings* settings, AudioContext* context);
 
   // Web API: AudioNode
   //
@@ -74,7 +75,7 @@ class AudioNode : public dom::EventTarget {
   // any inputs to the node. The default value is 2 except for specific nodes
   // where its value is specially determined. This attributes has no effect for
   // nodes with no inputs.
-  uint32 channel_count(script::ExceptionState* /* unused */) const {
+  uint32 channel_count(script::ExceptionState* unused) const {
     return channel_count_;
   }
   void set_channel_count(uint32 channel_count,

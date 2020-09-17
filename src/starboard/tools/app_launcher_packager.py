@@ -33,6 +33,7 @@ from paths import THIRD_PARTY_ROOT
 sys.path.append(THIRD_PARTY_ROOT)
 # pylint: disable=g-import-not-at-top,g-bad-import-order
 import jinja2
+from starboard.tools import port_symlink
 import starboard.tools.platform
 
 # Default python directories to app launcher resources.
@@ -58,20 +59,6 @@ _INCLUDE_BLACK_BOX_TESTS_PATTERNS = [
 
 # Do not allow .git directories to make it into the build.
 _EXCLUDE_DIRECTORY_PATTERNS = ['.git']
-
-_IS_WINDOWS = sys.platform in ['win32', 'cygwin']
-
-
-def _ToWinUncPath(dos_path, encoding=None):
-  """Windows supports long file names when using a UNC path."""
-  assert _IS_WINDOWS
-  do_convert = (not isinstance(dos_path, unicode) and encoding is not None)
-  if do_convert:
-    dos_path = dos_path.decode(encoding)
-  path = os.path.abspath(dos_path)
-  if path.startswith(u'\\\\'):
-    return u'\\\\?\\UNC\\' + path[2:]
-  return u'\\\\?\\' + path
 
 
 def _MakeDir(d):
@@ -142,7 +129,9 @@ def _WritePlatformsInfo(repo_root, dest_root):
   for p in starboard.tools.platform.GetAll():
     platform_path = os.path.relpath(
         starboard.tools.platform.Get(p).path, repo_root)
-    platforms_map[p] = platform_path
+    # Store posix paths even on Windows so MH Linux hosts can use them.
+    # The template has code to re-normalize them when used on Windows hosts.
+    platforms_map[p] = platform_path.replace('\\', '/')
   template = jinja2.Template(
       open(os.path.join(current_dir, 'platform.py.template')).read())
   with open(os.path.join(dest_dir, 'platform.py'), 'w+') as f:
@@ -177,8 +166,7 @@ def _PrepareDestination(dest_root):  # pylint: disable=missing-docstring
   dest_root = os.path.normpath(dest_root)
   if not os.path.isabs(dest_root):
     dest_root = os.path.join(os.getcwd(), dest_root)
-  if _IS_WINDOWS:
-    dest_root = _ToWinUncPath(dest_root)
+  dest_root = port_symlink.ToLongPath(dest_root)
   logging.info('Absolute destination path = %s', dest_root)
   # Remove previous output directory if it exists
   if os.path.isdir(dest_root):

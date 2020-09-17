@@ -100,6 +100,7 @@ class BlockContainerBox : public ContainerBox {
 
  private:
   void UpdateContentWidthAndMargins(
+      BaseDirection containing_block_direction,
       LayoutUnit containing_block_width, bool shrink_to_fit_width_forced,
       bool width_depends_on_containing_block,
       const base::Optional<LayoutUnit>& maybe_left,
@@ -117,6 +118,7 @@ class BlockContainerBox : public ContainerBox {
       const base::Optional<LayoutUnit>& maybe_height);
 
   void UpdateWidthAssumingAbsolutelyPositionedBox(
+      BaseDirection containing_block_direction,
       LayoutUnit containing_block_width,
       const base::Optional<LayoutUnit>& maybe_left,
       const base::Optional<LayoutUnit>& maybe_right,
@@ -134,6 +136,7 @@ class BlockContainerBox : public ContainerBox {
       const FormattingContext& formatting_context);
 
   void UpdateWidthAssumingBlockLevelInFlowBox(
+      BaseDirection containing_block_direction,
       LayoutUnit containing_block_width,
       const base::Optional<LayoutUnit>& maybe_width,
       const base::Optional<LayoutUnit>& maybe_margin_left,

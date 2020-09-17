@@ -40,6 +40,7 @@
 #define STARBOARD_MEMORY_H_
 
 #include "starboard/configuration.h"
+#include "starboard/configuration_constants.h"
 #include "starboard/export.h"
 #include "starboard/system.h"
 #include "starboard/types.h"
@@ -55,9 +56,7 @@ extern "C" {
 typedef enum SbMemoryMapFlags {
 // No flags set: Reserves virtual address space. SbMemoryProtect() can later
 // make it accessible.
-#if SB_API_VERSION >= 10
   kSbMemoryMapProtectReserved = 0,
-#endif
   kSbMemoryMapProtectRead = 1 << 0,   // Mapped memory can be read.
   kSbMemoryMapProtectWrite = 1 << 1,  // Mapped memory can be written to.
 #if SB_CAN(MAP_EXECUTABLE_MEMORY)
@@ -73,9 +72,9 @@ static SB_C_FORCE_INLINE bool SbMemoryIsAligned(const void* memory,
   return ((uintptr_t)memory) % alignment == 0;
 }
 
-// Rounds |size| up to SB_MEMORY_PAGE_SIZE.
+// Rounds |size| up to kSbMemoryPageSize.
 static SB_C_FORCE_INLINE size_t SbMemoryAlignToPageSize(size_t size) {
-  return (size + SB_MEMORY_PAGE_SIZE - 1) & ~(SB_MEMORY_PAGE_SIZE - 1);
+  return (size + kSbMemoryPageSize - 1) & ~(kSbMemoryPageSize - 1);
 }
 
 static SB_C_FORCE_INLINE void SbAbortIfAllocationFailed(size_t requested_bytes,
@@ -193,7 +192,7 @@ SB_DEPRECATED_EXTERNAL(
 SB_DEPRECATED_EXTERNAL(
     SB_EXPORT void SbMemoryFreeAligned(void* memory));
 
-#if SB_HAS(MMAP)
+#if SB_API_VERSION >= 12 || SB_HAS(MMAP)
 // Allocates |size_bytes| worth of physical memory pages and maps them into
 // an available virtual region. This function returns |SB_MEMORY_MAP_FAILED|
 // on failure. |NULL| is a valid return value.
@@ -220,13 +219,11 @@ SB_EXPORT void* SbMemoryMap(int64_t size_bytes, int flags, const char* name);
 // |SbMemoryUnmap(0xA000, 0x2000)| should free both regions.
 SB_EXPORT bool SbMemoryUnmap(void* virtual_address, int64_t size_bytes);
 
-#if SB_API_VERSION >= 10
 // Change the protection of |size_bytes| of memory regions, starting from
 // |virtual_address|, to |flags|, returning |true| on success.
 SB_EXPORT bool SbMemoryProtect(void* virtual_address,
                                int64_t size_bytes,
                                int flags);
-#endif
 
 #if SB_CAN(MAP_EXECUTABLE_MEMORY)
 // Flushes any data in the given virtual address range that is cached locally in
@@ -235,7 +232,7 @@ SB_EXPORT bool SbMemoryProtect(void* virtual_address,
 // memory that has been written to and might be executed in the future.
 SB_EXPORT void SbMemoryFlush(void* virtual_address, int64_t size_bytes);
 #endif
-#endif  // SB_HAS(MMAP)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(MMAP)
 
 // Gets the stack bounds for the current thread.
 //

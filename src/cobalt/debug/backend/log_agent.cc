@@ -21,17 +21,10 @@ namespace debug {
 namespace backend {
 
 namespace {
-// Definitions from the set specified here:
-// https://chromedevtools.github.io/devtools-protocol/1-3/Log
-constexpr char kInspectorDomain[] = "Log";
-
 // Error levels:
 constexpr char kInfoLevel[] = "info";
 constexpr char kWarningLevel[] = "warning";
 constexpr char kErrorLevel[] = "error";
-
-// State keys
-constexpr char kEnabledState[] = "enabled";
 
 const char* GetLogLevelFromSeverity(int severity) {
   switch (severity) {
@@ -49,15 +42,7 @@ const char* GetLogLevelFromSeverity(int severity) {
 }
 }  // namespace
 
-LogAgent::LogAgent(DebugDispatcher* dispatcher)
-    : dispatcher_(dispatcher),
-      ALLOW_THIS_IN_INITIALIZER_LIST(commands_(this, kInspectorDomain)),
-      enabled_(false) {
-  DCHECK(dispatcher_);
-
-  commands_["enable"] = &LogAgent::Enable;
-  commands_["disable"] = &LogAgent::Disable;
-
+LogAgent::LogAgent(DebugDispatcher* dispatcher) : AgentBase("Log", dispatcher) {
   // Get log output while still making it available elsewhere.
   log_message_handler_callback_id_ =
       base::LogMessageHandler::GetInstance()->AddCallback(
@@ -69,37 +54,8 @@ LogAgent::~LogAgent() {
       log_message_handler_callback_id_);
 }
 
-void LogAgent::Thaw(JSONObject agent_state) {
-  if (agent_state) {
-    agent_state->GetBoolean(kEnabledState, &enabled_);
-  }
-
-  dispatcher_->AddDomain(kInspectorDomain, commands_.Bind());
-}
-
-JSONObject LogAgent::Freeze() {
-  dispatcher_->RemoveDomain(kInspectorDomain);
-
-  JSONObject agent_state(new base::DictionaryValue());
-  agent_state->SetBoolean(kEnabledState, enabled_);
-  return agent_state;
-}
-
-void LogAgent::Enable(const Command& command) {
-  enabled_ = true;
-  command.SendResponse();
-}
-
-void LogAgent::Disable(const Command& command) {
-  enabled_ = false;
-  command.SendResponse();
-}
-
 bool LogAgent::OnLogMessage(int severity, const char* file, int line,
                             size_t message_start, const std::string& str) {
-  SB_UNREFERENCED_PARAMETER(file);
-  SB_UNREFERENCED_PARAMETER(line);
-  SB_UNREFERENCED_PARAMETER(message_start);
   DCHECK(this);
 
   if (enabled_) {
@@ -109,8 +65,7 @@ bool LogAgent::OnLogMessage(int severity, const char* file, int line,
     JSONObject params(new base::DictionaryValue());
     params->SetString("entry.text", str);
     params->SetString("entry.level", GetLogLevelFromSeverity(severity));
-    dispatcher_->SendEvent(std::string(kInspectorDomain) + ".browserEntryAdded",
-                           params);
+    dispatcher_->SendEvent(domain_ + ".browserEntryAdded", params);
   }
 
   // Don't suppress the log message.

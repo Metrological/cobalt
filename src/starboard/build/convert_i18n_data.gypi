@@ -14,7 +14,7 @@
 
 # This file is meant to be included into an action to convert a set of XLB files
 # into files of a simpler format (e.g. CSV) in the product directory, e.g.
-# e.g. out/ps4_debug/content/data/i18n.
+# e.g. out/stub_debug/content/data/i18n.
 #
 # To use this, define the variable xlb_files and include this file.
 #  'variables': {
@@ -27,7 +27,7 @@
 
 {
   'variables': {
-    'output_dir': '<(sb_static_contents_output_base_dir)/data/i18n'
+    'output_dir': '<(sb_static_contents_output_data_dir)/i18n'
   },
   'targets': [
     {

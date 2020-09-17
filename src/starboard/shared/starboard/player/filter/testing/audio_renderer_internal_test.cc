@@ -12,22 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "starboard/shared/starboard/player/filter/audio_renderer_internal.h"
+#include "starboard/shared/starboard/player/filter/audio_renderer_internal_impl.h"
 
 #include <functional>
 #include <set>
 
+#include "base/logging.h"
 #include "starboard/common/scoped_ptr.h"
 #include "starboard/media.h"
 #include "starboard/memory.h"
 #include "starboard/shared/starboard/media/media_util.h"
+#include "starboard/shared/starboard/player/filter/audio_renderer_sink.h"
 #include "starboard/shared/starboard/player/filter/audio_renderer_sink_impl.h"
 #include "starboard/shared/starboard/player/filter/mock_audio_decoder.h"
 #include "starboard/shared/starboard/player/filter/mock_audio_renderer_sink.h"
 #include "starboard/thread.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-#if SB_HAS(PLAYER_FILTER_TESTS)
 namespace starboard {
 namespace shared {
 namespace starboard {
@@ -44,12 +45,13 @@ using ::testing::InSequence;
 using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
 using ::testing::SaveArg;
+using ::testing::SetArgPointee;
 
 // TODO: Write tests to cover callbacks.
 class AudioRendererTest : public ::testing::Test {
  protected:
   static const int kDefaultNumberOfChannels = 2;
-  static const int kDefaultSamplesPerSecond = 100000;
+  static const int kDefaultSamplesPerSecond;
   static const SbMediaAudioSampleType kDefaultAudioSampleType =
       kSbMediaAudioSampleTypeFloat32;
   static const SbMediaAudioFrameStorageType kDefaultAudioFrameStorageType =
@@ -71,14 +73,19 @@ class AudioRendererTest : public ::testing::Test {
     audio_decoder_ = new MockAudioDecoder(sample_type_, storage_type_,
                                           kDefaultSamplesPerSecond);
 
-    ON_CALL(*audio_renderer_sink_, Start(_, _, _, _, _, _, _))
+    ON_CALL(*audio_decoder_, Read(_))
+        .WillByDefault(
+            DoAll(SetArgPointee<0>(kDefaultSamplesPerSecond),
+                  Return(scoped_refptr<DecodedAudio>(new DecodedAudio()))));
+    ON_CALL(*audio_renderer_sink_, Start(_, _, _, _, _, _, _, _))
         .WillByDefault(DoAll(InvokeWithoutArgs([this]() {
                                audio_renderer_sink_->SetHasStarted(true);
                              }),
-                             SaveArg<6>(&renderer_callback_)));
+                             SaveArg<7>(&renderer_callback_)));
     ON_CALL(*audio_renderer_sink_, Stop())
-        .WillByDefault(InvokeWithoutArgs(
-            [this]() { audio_renderer_sink_->SetHasStarted(false); }));
+        .WillByDefault(InvokeWithoutArgs([this]() {
+          audio_renderer_sink_->SetHasStarted(false);
+        }));  // NOLINT
 
     ON_CALL(*audio_renderer_sink_, HasStarted())
         .WillByDefault(::testing::ReturnPointee(
@@ -107,7 +114,7 @@ class AudioRendererTest : public ::testing::Test {
 
     const int kMaxCachedFrames = 256 * 1024;
     const int kMaxFramesPerAppend = 16384;
-    audio_renderer_.reset(new AudioRenderer(
+    audio_renderer_.reset(new AudioRendererImpl(
         make_scoped_ptr<AudioDecoder>(audio_decoder_),
         make_scoped_ptr<AudioRendererSink>(audio_renderer_sink_),
         GetDefaultAudioSampleInfo(), kMaxCachedFrames, kMaxFramesPerAppend));
@@ -121,14 +128,14 @@ class AudioRendererTest : public ::testing::Test {
   // until the renderer reaches its preroll threshold.
   // Once the renderer is "full", an EndOfStream is written.
   // Returns the number of frames written.
-  int FillRendererWithDecodedAudioAndWriteEOS() {
+  int FillRendererWithDecodedAudioAndWriteEOS(SbTime start_timestamp) {
     const int kFramesPerBuffer = 1024;
 
     int frames_written = 0;
 
-    while (audio_renderer_->IsSeekingInProgress()) {
-      SbTime timestamp =
-          frames_written * kSbTimeSecond / kDefaultSamplesPerSecond;
+    while (!prerolled_) {
+      SbTime timestamp = start_timestamp + frames_written * kSbTimeSecond /
+                                               kDefaultSamplesPerSecond;
       scoped_refptr<InputBuffer> input_buffer = CreateInputBuffer(timestamp);
       WriteSample(input_buffer);
       CallConsumedCB();
@@ -162,9 +169,11 @@ class AudioRendererTest : public ::testing::Test {
     job_queue_.RunUntilIdle();
   }
   void Seek(SbTime seek_to_time) {
+    EXPECT_TRUE(prerolled_);
+    prerolled_ = false;
     audio_renderer_->Seek(seek_to_time);
     job_queue_.RunUntilIdle();
-    EXPECT_TRUE(audio_renderer_->IsSeekingInProgress());
+    EXPECT_FALSE(prerolled_);
   }
 
   void CallConsumedCB() {
@@ -177,7 +186,9 @@ class AudioRendererTest : public ::testing::Test {
   void SendDecoderOutput(const scoped_refptr<DecodedAudio>& decoded_audio) {
     ASSERT_TRUE(output_cb_);
 
-    EXPECT_CALL(*audio_decoder_, Read()).WillOnce(Return(decoded_audio));
+    EXPECT_CALL(*audio_decoder_, Read(_))
+        .WillOnce(DoAll(SetArgPointee<0>(kDefaultSamplesPerSecond),
+                        Return(decoded_audio)));
     output_cb_();
     job_queue_.RunUntilIdle();
   }
@@ -210,7 +221,10 @@ class AudioRendererTest : public ::testing::Test {
   }
 
   void OnError() {}
-  void OnPrerolled() {}
+  void OnPrerolled() {
+    SB_DCHECK(job_queue_.BelongsToCurrentThread());
+    prerolled_ = true;
+  }
   void OnEnded() {}
 
   SbMediaAudioSampleType sample_type_;
@@ -221,8 +235,9 @@ class AudioRendererTest : public ::testing::Test {
 
   AudioDecoder::OutputCB output_cb_;
   AudioDecoder::ConsumedCB consumed_cb_;
+  bool prerolled_ = true;
 
-  scoped_ptr<AudioRenderer> audio_renderer_;
+  scoped_ptr<AudioRendererImpl> audio_renderer_;
   MockAudioDecoder* audio_decoder_;
   MockAudioRendererSink* audio_renderer_sink_;
   AudioRendererSink::RenderCallback* renderer_callback_;
@@ -235,10 +250,13 @@ class AudioRendererTest : public ::testing::Test {
   }
 
   static const SbMediaAudioSampleInfo& GetDefaultAudioSampleInfo() {
-    static SbMediaAudioSampleInfo audio_sample_info = {};
+    static starboard::media::AudioSampleInfo audio_sample_info = {};
 
 #if SB_API_VERSION >= 11
     audio_sample_info.codec = kSbMediaAudioCodecAac;
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+    audio_sample_info.mime = "";
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
 #endif  // SB_API_VERSION >= 11
     audio_sample_info.number_of_channels = kDefaultNumberOfChannels;
     audio_sample_info.samples_per_second = kDefaultSamplesPerSecond;
@@ -256,62 +274,87 @@ class AudioRendererTest : public ::testing::Test {
   static void DeallocateSampleCB(SbPlayer player,
                                  void* context,
                                  const void* sample_buffer) {
-    SB_UNREFERENCED_PARAMETER(player);
     AudioRendererTest* test = static_cast<AudioRendererTest*>(context);
     EXPECT_TRUE(test != NULL);
     test->OnDeallocateSample(sample_buffer);
   }
 };
 
+bool HasAsyncAudioFramesReporting() {
+#if SB_API_VERSION >= 12
+  // TODO: When deprecating Starboard API versions less than
+  // 12 it is safe to assume that all tests can be run regardless of
+  // whether the platform has asynchronous audio frames reporting.
+  // This function can be removed then.
+  return false;
+#else  // SB_API_VERSION >=  12
+#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+  return true;
+#else   // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+  return false;
+#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+#endif  // SB_API_VERSION >=  12
+}
+
+// static
+const int AudioRendererTest::kDefaultSamplesPerSecond = 100000;
+
 TEST_F(AudioRendererTest, StateAfterConstructed) {
   EXPECT_FALSE(audio_renderer_->IsEndOfStreamWritten());
   EXPECT_FALSE(audio_renderer_->IsEndOfStreamPlayed());
   EXPECT_TRUE(audio_renderer_->CanAcceptMoreData());
-  EXPECT_FALSE(audio_renderer_->IsSeekingInProgress());
   bool is_playing = true;
   bool is_eos_played = true;
   bool is_underflow = true;
+  double playback_rate = -1.0;
   EXPECT_EQ(audio_renderer_->GetCurrentMediaTime(&is_playing, &is_eos_played,
-                                                 &is_underflow),
+                                                 &is_underflow, &playback_rate),
             0);
   EXPECT_FALSE(is_playing);
   EXPECT_FALSE(is_eos_played);
+  EXPECT_EQ(playback_rate, 1.0);
 }
 
-// TODO: adapt these tests for async audio frames reporting.
-#if !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 TEST_F(AudioRendererTest, SunnyDay) {
+  if (HasAsyncAudioFramesReporting()) {
+    SB_LOG(INFO) << "Platform has async audio frames reporting. Test skipped.";
+    return;
+  }
+
   {
     InSequence seq;
     EXPECT_CALL(*audio_renderer_sink_, Stop()).Times(AnyNumber());
     EXPECT_CALL(
         *audio_renderer_sink_,
-        Start(kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
+        Start(0, kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
               kDefaultAudioSampleType, kDefaultAudioFrameStorageType, _, _, _));
   }
 
   Seek(0);
 
-  FillRendererWithDecodedAudioAndWriteEOS();
+  int frames_written = FillRendererWithDecodedAudioAndWriteEOS(0);
 
   bool is_playing = true;
   bool is_eos_played = true;
   bool is_underflow = true;
+  double playback_rate = -1.0;
   EXPECT_EQ(audio_renderer_->GetCurrentMediaTime(&is_playing, &is_eos_played,
-                                                 &is_underflow),
+                                                 &is_underflow, &playback_rate),
             0);
   EXPECT_FALSE(is_playing);
   EXPECT_FALSE(is_eos_played);
-  EXPECT_FALSE(audio_renderer_->IsSeekingInProgress());
+  EXPECT_EQ(playback_rate, 1.0);
+  EXPECT_TRUE(prerolled_);
 
   audio_renderer_->Play();
 
   SendDecoderOutput(new DecodedAudio);
 
   SbTime media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
   EXPECT_TRUE(is_playing);
   EXPECT_FALSE(is_eos_played);
+  EXPECT_EQ(playback_rate, 1.0);
 
   int frames_in_buffer;
   int offset_in_frames;
@@ -325,25 +368,27 @@ TEST_F(AudioRendererTest, SunnyDay) {
 
   // Consume frames in two batches, so we can test if |GetCurrentMediaTime()|
   // is incrementing in an expected manner.
-  const int frames_to_consume = frames_in_buffer / 4;
+  const int frames_to_consume = std::min(frames_written, frames_in_buffer) / 2;
   SbTime new_media_time;
 
   EXPECT_FALSE(audio_renderer_->IsEndOfStreamPlayed());
 
-  renderer_callback_->ConsumeFrames(frames_to_consume);
+  renderer_callback_->ConsumeFrames(frames_to_consume, SbTimeGetMonotonicNow());
   new_media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
   EXPECT_TRUE(is_playing);
   EXPECT_FALSE(is_eos_played);
+  EXPECT_EQ(playback_rate, 1.0);
   EXPECT_GT(new_media_time, media_time);
   media_time = new_media_time;
 
   const int remaining_frames = frames_in_buffer - frames_to_consume;
-  renderer_callback_->ConsumeFrames(remaining_frames);
+  renderer_callback_->ConsumeFrames(remaining_frames, SbTimeGetMonotonicNow());
   new_media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
   EXPECT_TRUE(is_playing);
   EXPECT_TRUE(is_eos_played);
+  EXPECT_EQ(playback_rate, 1.0);
   EXPECT_GT(new_media_time, media_time);
 
   EXPECT_TRUE(audio_renderer_->IsEndOfStreamPlayed());
@@ -351,6 +396,11 @@ TEST_F(AudioRendererTest, SunnyDay) {
 
 #if SB_HAS_QUIRK(SUPPORT_INT16_AUDIO_SAMPLES)
 TEST_F(AudioRendererTest, SunnyDayWithDoublePlaybackRateAndInt16Samples) {
+  if (HasAsyncAudioFramesReporting()) {
+    SB_LOG(INFO) << "Platform has async audio frames reporting. Test skipped.";
+    return;
+  }
+
   const int kPlaybackRate = 2;
 
   // Resets |audio_renderer_sink_|, so all the gtest codes need to be below
@@ -363,7 +413,7 @@ TEST_F(AudioRendererTest, SunnyDayWithDoublePlaybackRateAndInt16Samples) {
     EXPECT_CALL(*audio_renderer_sink_, Stop()).Times(AnyNumber());
     EXPECT_CALL(
         *audio_renderer_sink_,
-        Start(kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
+        Start(0, kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
               kDefaultAudioSampleType, kDefaultAudioFrameStorageType, _, _, _));
   }
 
@@ -373,24 +423,26 @@ TEST_F(AudioRendererTest, SunnyDayWithDoublePlaybackRateAndInt16Samples) {
 
   Seek(0);
 
-  FillRendererWithDecodedAudioAndWriteEOS();
+  int frames_written = FillRendererWithDecodedAudioAndWriteEOS(0);
   bool is_playing = false;
   bool is_eos_played = true;
   bool is_underflow = true;
+  double playback_rate = -1.0;
 
   EXPECT_EQ(audio_renderer_->GetCurrentMediaTime(&is_playing, &is_eos_played,
-                                                 &is_underflow),
+                                                 &is_underflow, &playback_rate),
             0);
   EXPECT_FALSE(is_playing);
   EXPECT_FALSE(is_eos_played);
-  EXPECT_FALSE(audio_renderer_->IsSeekingInProgress());
+  EXPECT_EQ(playback_rate, kPlaybackRate);
+  EXPECT_TRUE(prerolled_);
 
   audio_renderer_->Play();
 
   SendDecoderOutput(new DecodedAudio);
 
   SbTime media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
 
   int frames_in_buffer;
   int offset_in_frames;
@@ -405,21 +457,22 @@ TEST_F(AudioRendererTest, SunnyDayWithDoublePlaybackRateAndInt16Samples) {
 
   // Consume frames in two batches, so we can test if |GetCurrentMediaTime()|
   // is incrementing in an expected manner.
-  const int frames_to_consume = frames_in_buffer / 4;
+  const int frames_to_consume =
+      std::min(frames_written / kPlaybackRate, frames_in_buffer) / 2;
   SbTime new_media_time;
 
   EXPECT_FALSE(audio_renderer_->IsEndOfStreamPlayed());
 
-  renderer_callback_->ConsumeFrames(frames_to_consume);
+  renderer_callback_->ConsumeFrames(frames_to_consume, SbTimeGetMonotonicNow());
   new_media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
   EXPECT_GT(new_media_time, media_time);
   media_time = new_media_time;
 
   const int remaining_frames = frames_in_buffer - frames_to_consume;
-  renderer_callback_->ConsumeFrames(remaining_frames);
+  renderer_callback_->ConsumeFrames(remaining_frames, SbTimeGetMonotonicNow());
   new_media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
   EXPECT_GT(new_media_time, media_time);
 
   EXPECT_TRUE(audio_renderer_->IsEndOfStreamPlayed());
@@ -427,12 +480,17 @@ TEST_F(AudioRendererTest, SunnyDayWithDoublePlaybackRateAndInt16Samples) {
 #endif  // SB_HAS_QUIRK(SUPPORT_INT16_AUDIO_SAMPLES)
 
 TEST_F(AudioRendererTest, StartPlayBeforePreroll) {
+  if (HasAsyncAudioFramesReporting()) {
+    SB_LOG(INFO) << "Platform has async audio frames reporting. Test skipped.";
+    return;
+  }
+
   {
     ::testing::InSequence seq;
     EXPECT_CALL(*audio_renderer_sink_, Stop()).Times(AnyNumber());
     EXPECT_CALL(
         *audio_renderer_sink_,
-        Start(kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
+        Start(0, kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
               kDefaultAudioSampleType, kDefaultAudioFrameStorageType, _, _, _));
   }
 
@@ -440,15 +498,16 @@ TEST_F(AudioRendererTest, StartPlayBeforePreroll) {
 
   audio_renderer_->Play();
 
-  FillRendererWithDecodedAudioAndWriteEOS();
+  int frames_written = FillRendererWithDecodedAudioAndWriteEOS(0);
 
   SendDecoderOutput(new DecodedAudio);
 
   bool is_playing = false;
   bool is_eos_played = true;
   bool is_underflow = true;
+  double playback_rate = -1.0;
   SbTime media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
 
   int frames_in_buffer;
   int offset_in_frames;
@@ -462,37 +521,44 @@ TEST_F(AudioRendererTest, StartPlayBeforePreroll) {
 
   // Consume frames in two batches, so we can test if |GetCurrentMediaTime()|
   // is incrementing in an expected manner.
-  const int frames_to_consume = frames_in_buffer / 4;
+  const int frames_to_consume = std::min(frames_written, frames_in_buffer) / 2;
   SbTime new_media_time;
 
   EXPECT_FALSE(audio_renderer_->IsEndOfStreamPlayed());
 
-  renderer_callback_->ConsumeFrames(frames_to_consume);
+  renderer_callback_->ConsumeFrames(frames_to_consume, SbTimeGetMonotonicNow());
   new_media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
   EXPECT_TRUE(is_playing);
   EXPECT_FALSE(is_eos_played);
+  EXPECT_EQ(playback_rate, 1.0);
   EXPECT_GE(new_media_time, media_time);
   media_time = new_media_time;
 
   const int remaining_frames = frames_in_buffer - frames_to_consume;
-  renderer_callback_->ConsumeFrames(remaining_frames);
+  renderer_callback_->ConsumeFrames(remaining_frames, SbTimeGetMonotonicNow());
   new_media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
   EXPECT_TRUE(is_playing);
   EXPECT_TRUE(is_eos_played);
+  EXPECT_EQ(playback_rate, 1.0);
   EXPECT_GE(new_media_time, media_time);
 
   EXPECT_TRUE(audio_renderer_->IsEndOfStreamPlayed());
 }
 
 TEST_F(AudioRendererTest, DecoderReturnsEOSWithoutAnyData) {
+  if (HasAsyncAudioFramesReporting()) {
+    SB_LOG(INFO) << "Platform has async audio frames reporting. Test skipped.";
+    return;
+  }
+
   {
     ::testing::InSequence seq;
     EXPECT_CALL(*audio_renderer_sink_, Stop()).Times(AnyNumber());
     EXPECT_CALL(
         *audio_renderer_sink_,
-        Start(kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
+        Start(0, kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
               kDefaultAudioSampleType, kDefaultAudioFrameStorageType, _, _, _));
   }
 
@@ -505,31 +571,38 @@ TEST_F(AudioRendererTest, DecoderReturnsEOSWithoutAnyData) {
 
   EXPECT_TRUE(audio_renderer_->IsEndOfStreamWritten());
   EXPECT_FALSE(audio_renderer_->CanAcceptMoreData());
-  EXPECT_TRUE(audio_renderer_->IsSeekingInProgress());
+  EXPECT_FALSE(prerolled_);
 
   // Return EOS from decoder without sending any audio data, which is valid.
   SendDecoderOutput(new DecodedAudio);
 
   EXPECT_TRUE(audio_renderer_->IsEndOfStreamPlayed());
-  EXPECT_FALSE(audio_renderer_->IsSeekingInProgress());
+  EXPECT_TRUE(prerolled_);
   bool is_playing = true;
   bool is_eos_played = false;
   bool is_underflow = true;
+  double playback_rate = -1.0;
   EXPECT_EQ(audio_renderer_->GetCurrentMediaTime(&is_playing, &is_eos_played,
-                                                 &is_underflow),
+                                                 &is_underflow, &playback_rate),
             0);
   EXPECT_FALSE(is_playing);
   EXPECT_TRUE(is_eos_played);
+  EXPECT_EQ(playback_rate, 1.0);
 }
 
 // Test decoders that take many input samples before returning any output.
 TEST_F(AudioRendererTest, DecoderConsumeAllInputBeforeReturningData) {
+  if (HasAsyncAudioFramesReporting()) {
+    SB_LOG(INFO) << "Platform has async audio frames reporting. Test skipped.";
+    return;
+  }
+
   {
     ::testing::InSequence seq;
     EXPECT_CALL(*audio_renderer_sink_, Stop()).Times(AnyNumber());
     EXPECT_CALL(
         *audio_renderer_sink_,
-        Start(kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
+        Start(0, kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
               kDefaultAudioSampleType, kDefaultAudioFrameStorageType, _, _, _));
   }
 
@@ -549,30 +622,37 @@ TEST_F(AudioRendererTest, DecoderConsumeAllInputBeforeReturningData) {
 
   EXPECT_TRUE(audio_renderer_->IsEndOfStreamWritten());
   EXPECT_FALSE(audio_renderer_->CanAcceptMoreData());
-  EXPECT_TRUE(audio_renderer_->IsSeekingInProgress());
+  EXPECT_FALSE(prerolled_);
 
   // Return EOS from decoder without sending any audio data, which is valid.
   SendDecoderOutput(new DecodedAudio);
 
   EXPECT_TRUE(audio_renderer_->IsEndOfStreamPlayed());
-  EXPECT_FALSE(audio_renderer_->IsSeekingInProgress());
+  EXPECT_TRUE(prerolled_);
   bool is_playing = true;
   bool is_eos_played = false;
   bool is_underflow = true;
+  double playback_rate = -1.0;
   EXPECT_EQ(audio_renderer_->GetCurrentMediaTime(&is_playing, &is_eos_played,
-                                                 &is_underflow),
+                                                 &is_underflow, &playback_rate),
             0);
   EXPECT_FALSE(is_playing);
   EXPECT_TRUE(is_eos_played);
+  EXPECT_EQ(playback_rate, 1.0);
 }
 
 TEST_F(AudioRendererTest, MoreNumberOfOuputBuffersThanInputBuffers) {
+  if (HasAsyncAudioFramesReporting()) {
+    SB_LOG(INFO) << "Platform has async audio frames reporting. Test skipped.";
+    return;
+  }
+
   {
     ::testing::InSequence seq;
     EXPECT_CALL(*audio_renderer_sink_, Stop()).Times(AnyNumber());
     EXPECT_CALL(
         *audio_renderer_sink_,
-        Start(kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
+        Start(0, kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
               kDefaultAudioSampleType, kDefaultAudioFrameStorageType, _, _, _));
   }
 
@@ -582,7 +662,7 @@ TEST_F(AudioRendererTest, MoreNumberOfOuputBuffersThanInputBuffers) {
 
   int frames_written = 0;
 
-  while (audio_renderer_->IsSeekingInProgress()) {
+  while (!prerolled_) {
     SbTime timestamp =
         frames_written * kSbTimeSecond / kDefaultSamplesPerSecond;
     WriteSample(CreateInputBuffer(timestamp));
@@ -599,19 +679,21 @@ TEST_F(AudioRendererTest, MoreNumberOfOuputBuffersThanInputBuffers) {
   bool is_playing = true;
   bool is_eos_played = true;
   bool is_underflow = true;
+  double playback_rate = -1.0;
   EXPECT_EQ(audio_renderer_->GetCurrentMediaTime(&is_playing, &is_eos_played,
-                                                 &is_underflow),
+                                                 &is_underflow, &playback_rate),
             0);
   EXPECT_FALSE(is_playing);
   EXPECT_FALSE(is_eos_played);
-  EXPECT_FALSE(audio_renderer_->IsSeekingInProgress());
+  EXPECT_EQ(playback_rate, 1.0);
+  EXPECT_TRUE(prerolled_);
 
   audio_renderer_->Play();
 
   SendDecoderOutput(new DecodedAudio);
 
   SbTime media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
 
   int frames_in_buffer;
   int offset_in_frames;
@@ -626,31 +708,38 @@ TEST_F(AudioRendererTest, MoreNumberOfOuputBuffersThanInputBuffers) {
 
   // Consume frames in two batches, so we can test if |GetCurrentMediaTime()|
   // is incrementing in an expected manner.
-  const int frames_to_consume = frames_in_buffer / 4;
+  const int frames_to_consume = std::min(frames_written, frames_in_buffer) / 2;
   SbTime new_media_time;
 
   EXPECT_FALSE(audio_renderer_->IsEndOfStreamPlayed());
 
-  renderer_callback_->ConsumeFrames(frames_to_consume);
+  renderer_callback_->ConsumeFrames(frames_to_consume, SbTimeGetMonotonicNow());
   new_media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
   EXPECT_TRUE(is_playing);
   EXPECT_FALSE(is_eos_played);
+  EXPECT_EQ(playback_rate, 1.0);
   EXPECT_GE(new_media_time, media_time);
   media_time = new_media_time;
 
   const int remaining_frames = frames_in_buffer - frames_to_consume;
-  renderer_callback_->ConsumeFrames(remaining_frames);
+  renderer_callback_->ConsumeFrames(remaining_frames, SbTimeGetMonotonicNow());
   new_media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
   EXPECT_TRUE(is_playing);
   EXPECT_TRUE(is_eos_played);
+  EXPECT_EQ(playback_rate, 1.0);
   EXPECT_GE(new_media_time, media_time);
 
   EXPECT_TRUE(audio_renderer_->IsEndOfStreamPlayed());
 }
 
 TEST_F(AudioRendererTest, LessNumberOfOuputBuffersThanInputBuffers) {
+  if (HasAsyncAudioFramesReporting()) {
+    SB_LOG(INFO) << "Platform has async audio frames reporting. Test skipped.";
+    return;
+  }
+
   {
     ::testing::InSequence seq;
     EXPECT_CALL(*audio_renderer_sink_, Stop()).Times(AnyNumber());
@@ -658,9 +747,9 @@ TEST_F(AudioRendererTest, LessNumberOfOuputBuffersThanInputBuffers) {
         .WillRepeatedly(Return(false));
     EXPECT_CALL(
         *audio_renderer_sink_,
-        Start(kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
+        Start(0, kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
               kDefaultAudioSampleType, kDefaultAudioFrameStorageType, _, _, _))
-        .WillOnce(SaveArg<6>(&renderer_callback_));
+        .WillOnce(SaveArg<7>(&renderer_callback_));
     EXPECT_CALL(*audio_renderer_sink_, HasStarted())
         .WillRepeatedly(Return(true));
   }
@@ -671,7 +760,7 @@ TEST_F(AudioRendererTest, LessNumberOfOuputBuffersThanInputBuffers) {
 
   int frames_written = 0;
 
-  while (audio_renderer_->IsSeekingInProgress()) {
+  while (!prerolled_) {
     SbTime timestamp =
         frames_written * kSbTimeSecond / kDefaultSamplesPerSecond;
     SbTime output_time = timestamp;
@@ -690,17 +779,18 @@ TEST_F(AudioRendererTest, LessNumberOfOuputBuffersThanInputBuffers) {
   bool is_playing;
   bool is_eos_played;
   bool is_underflow;
+  double playback_rate = -1.0;
   EXPECT_EQ(audio_renderer_->GetCurrentMediaTime(&is_playing, &is_eos_played,
-                                                 &is_underflow),
+                                                 &is_underflow, &playback_rate),
             0);
-  EXPECT_FALSE(audio_renderer_->IsSeekingInProgress());
+  EXPECT_TRUE(prerolled_);
 
   audio_renderer_->Play();
 
   SendDecoderOutput(new DecodedAudio);
 
   SbTime media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
 
   int frames_in_buffer;
   int offset_in_frames;
@@ -714,60 +804,68 @@ TEST_F(AudioRendererTest, LessNumberOfOuputBuffersThanInputBuffers) {
 
   // Consume frames in two batches, so we can test if |GetCurrentMediaTime()|
   // is incrementing in an expected manner.
-  const int frames_to_consume = frames_in_buffer / 4;
+  const int frames_to_consume = std::min(frames_written, frames_in_buffer) / 2;
   SbTime new_media_time;
 
   EXPECT_FALSE(audio_renderer_->IsEndOfStreamPlayed());
 
-  renderer_callback_->ConsumeFrames(frames_to_consume);
+  renderer_callback_->ConsumeFrames(frames_to_consume, SbTimeGetMonotonicNow());
   new_media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
   EXPECT_GE(new_media_time, media_time);
   media_time = new_media_time;
 
   const int remaining_frames = frames_in_buffer - frames_to_consume;
-  renderer_callback_->ConsumeFrames(remaining_frames);
+  renderer_callback_->ConsumeFrames(remaining_frames, SbTimeGetMonotonicNow());
   new_media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
   EXPECT_GE(new_media_time, media_time);
 
   EXPECT_TRUE(audio_renderer_->IsEndOfStreamPlayed());
 }
 
 TEST_F(AudioRendererTest, Seek) {
+  if (HasAsyncAudioFramesReporting()) {
+    SB_LOG(INFO) << "Platform has async audio frames reporting. Test skipped.";
+    return;
+  }
+
+  const double kSeekTime = 0.5 * kSbTimeSecond;
+
   {
     ::testing::InSequence seq;
     EXPECT_CALL(*audio_renderer_sink_, Stop()).Times(AnyNumber());
     EXPECT_CALL(
         *audio_renderer_sink_,
-        Start(kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
+        Start(0, kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
               kDefaultAudioSampleType, kDefaultAudioFrameStorageType, _, _, _));
     EXPECT_CALL(*audio_renderer_sink_, Stop());
     EXPECT_CALL(*audio_decoder_, Reset());
     EXPECT_CALL(
         *audio_renderer_sink_,
-        Start(kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
+        Start(kSeekTime, kDefaultNumberOfChannels, kDefaultSamplesPerSecond,
               kDefaultAudioSampleType, kDefaultAudioFrameStorageType, _, _, _));
   }
 
   Seek(0);
 
-  int frames_written = FillRendererWithDecodedAudioAndWriteEOS();
+  int frames_written = FillRendererWithDecodedAudioAndWriteEOS(0);
 
   bool is_playing;
   bool is_eos_played;
   bool is_underflow;
+  double playback_rate = -1.0;
   EXPECT_EQ(audio_renderer_->GetCurrentMediaTime(&is_playing, &is_eos_played,
-                                                 &is_underflow),
+                                                 &is_underflow, &playback_rate),
             0);
-  EXPECT_FALSE(audio_renderer_->IsSeekingInProgress());
+  EXPECT_TRUE(prerolled_);
 
   audio_renderer_->Play();
 
   SendDecoderOutput(new DecodedAudio);
 
   SbTime media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
 
   int frames_in_buffer;
   int offset_in_frames;
@@ -781,24 +879,23 @@ TEST_F(AudioRendererTest, Seek) {
 
   // Consume frames in multiple batches, so we can test if
   // |GetCurrentMediaTime()| is incrementing in an expected manner.
-  const double seek_time = 0.5 * kSbTimeSecond;
-  const int frames_to_consume = frames_in_buffer / 10;
+  const int frames_to_consume = std::min(frames_written, frames_in_buffer) / 10;
   SbTime new_media_time;
 
   EXPECT_FALSE(audio_renderer_->IsEndOfStreamPlayed());
 
-  renderer_callback_->ConsumeFrames(frames_to_consume);
+  renderer_callback_->ConsumeFrames(frames_to_consume, SbTimeGetMonotonicNow());
   new_media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
   EXPECT_GE(new_media_time, media_time);
-  Seek(seek_time);
+  Seek(kSeekTime);
 
-  frames_written = FillRendererWithDecodedAudioAndWriteEOS();
+  frames_written += FillRendererWithDecodedAudioAndWriteEOS(kSeekTime);
 
   EXPECT_GE(audio_renderer_->GetCurrentMediaTime(&is_playing, &is_eos_played,
-                                                 &is_underflow),
-            seek_time);
-  EXPECT_FALSE(audio_renderer_->IsSeekingInProgress());
+                                                 &is_underflow, &playback_rate),
+            kSeekTime);
+  EXPECT_TRUE(prerolled_);
 
   audio_renderer_->Play();
   SendDecoderOutput(new DecodedAudio);
@@ -809,15 +906,13 @@ TEST_F(AudioRendererTest, Seek) {
   EXPECT_GE(offset_in_frames, 0);
   EXPECT_TRUE(is_playing);
   EXPECT_TRUE(is_eos_reached);
-  const int remaining_frames = frames_in_buffer - offset_in_frames;
-  renderer_callback_->ConsumeFrames(remaining_frames);
+  renderer_callback_->ConsumeFrames(frames_in_buffer, SbTimeGetMonotonicNow());
   new_media_time = audio_renderer_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
-  EXPECT_GE(new_media_time, seek_time);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
+  EXPECT_GE(new_media_time, kSeekTime);
 
   EXPECT_TRUE(audio_renderer_->IsEndOfStreamPlayed());
 }
-#endif  // !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 
 // TODO: Add more Seek tests.
 
@@ -828,4 +923,3 @@ TEST_F(AudioRendererTest, Seek) {
 }  // namespace starboard
 }  // namespace shared
 }  // namespace starboard
-#endif  // SB_HAS(PLAYER_FILTER_TESTS)

@@ -21,10 +21,12 @@
 #include "base/callback.h"
 #include "base/message_loop/message_loop.h"
 #include "base/optional.h"
+#include "cobalt/base/debugger_hooks.h"
 #include "cobalt/css_parser/parser.h"
 #include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/local_storage_database.h"
 #include "cobalt/dom/screen.h"
+#include "cobalt/dom/testing/stub_environment_settings.h"
 #include "cobalt/dom_parser/parser.h"
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/media_session/media_session.h"
@@ -49,7 +51,8 @@ class MockErrorCallback
 class WindowTest : public ::testing::Test {
  protected:
   WindowTest()
-      : message_loop_(base::MessageLoop::TYPE_DEFAULT),
+      : environment_settings_(new testing::StubEnvironmentSettings),
+        message_loop_(base::MessageLoop::TYPE_DEFAULT),
         css_parser_(css_parser::Parser::Create()),
         dom_parser_(new dom_parser::Parser(mock_error_callback_)),
         fetcher_factory_(new loader::FetcherFactory(NULL)),
@@ -60,11 +63,11 @@ class WindowTest : public ::testing::Test {
 
     ViewportSize view_size(1920, 1080);
     window_ = new Window(
-        view_size, 1.f, base::kApplicationStateStarted, css_parser_.get(),
-        dom_parser_.get(), fetcher_factory_.get(), NULL, NULL, NULL, NULL, NULL,
-        NULL, NULL, &local_storage_database_, NULL, NULL, NULL, NULL,
-        global_environment_->script_value_factory(), NULL, NULL, url_, "",
-        "en-US", "en", base::Callback<void(const GURL &)>(),
+        environment_settings_.get(), view_size, base::kApplicationStateStarted,
+        css_parser_.get(), dom_parser_.get(), fetcher_factory_.get(), NULL,
+        NULL, NULL, NULL, NULL, NULL, NULL, &local_storage_database_, NULL,
+        NULL, NULL, NULL, global_environment_->script_value_factory(), NULL,
+        NULL, url_, "", "en-US", "en", base::Callback<void(const GURL &)>(),
         base::Bind(&MockErrorCallback::Run,
                    base::Unretained(&mock_error_callback_)),
         NULL, network_bridge::PostSender(), csp::kCSPRequired,
@@ -79,6 +82,7 @@ class WindowTest : public ::testing::Test {
 
   ~WindowTest() override {}
 
+  const std::unique_ptr<testing::StubEnvironmentSettings> environment_settings_;
   base::MessageLoop message_loop_;
   MockErrorCallback mock_error_callback_;
   std::unique_ptr<css_parser::Parser> css_parser_;

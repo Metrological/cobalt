@@ -43,11 +43,14 @@ class AudioDevice::Impl {
   static void UpdateSourceStatusFunc(int* frames_in_buffer,
                                      int* offset_in_frames, bool* is_playing,
                                      bool* is_eos_reached, void* context);
+
+#if SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+  static void ConsumeFramesFunc(int frames_consumed, void* context);
+#else   // SB_API_VERSION >=  12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
   static void ConsumeFramesFunc(int frames_consumed,
-#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                 SbTime frames_consumed_at,
-#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                 void* context);
+#endif  // SB_API_VERSION >=  12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 
   void UpdateSourceStatus(int* frames_in_buffer, int* offset_in_frames,
                           bool* is_playing, bool* is_eos_reached);
@@ -91,7 +94,8 @@ AudioDevice::Impl::Impl(int number_of_channels, RenderCallback* callback)
 #if SB_API_VERSION >= 11
       frames_per_channel_(std::max(SbAudioSinkGetMinBufferSizeInFrames(
                                        number_of_channels, output_sample_type_,
-                                       kStandardOutputSampleRate),
+                                       kStandardOutputSampleRate) +
+                                       kRenderBufferSizeFrames * 2,
                                    kDefaultFramesPerChannel)),
 #else  // SB_API_VERSION >= 11
       frames_per_channel_(kDefaultFramesPerChannel),
@@ -143,16 +147,15 @@ void AudioDevice::Impl::UpdateSourceStatusFunc(int* frames_in_buffer,
                            is_eos_reached);
 }
 
+#if SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 // static
+void AudioDevice::Impl::ConsumeFramesFunc(int frames_consumed, void* context) {
+#else   // SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 void AudioDevice::Impl::ConsumeFramesFunc(int frames_consumed,
-#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                           SbTime frames_consumed_at,
-#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                           void* context) {
-#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
   SB_UNREFERENCED_PARAMETER(frames_consumed_at);
-#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
-
+#endif  // SB_API_VERSION >=  12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
   AudioDevice::Impl* impl = reinterpret_cast<AudioDevice::Impl*>(context);
   DCHECK(impl);
 
@@ -174,7 +177,7 @@ void AudioDevice::Impl::UpdateSourceStatus(int* frames_in_buffer,
   DCHECK_GE(frames_rendered_, frames_consumed_);
   *frames_in_buffer = static_cast<int>(frames_rendered_ - frames_consumed_);
 
-  if ((frames_per_channel_ - *frames_in_buffer) >= kRenderBufferSizeFrames) {
+  while ((frames_per_channel_ - *frames_in_buffer) >= kRenderBufferSizeFrames) {
     // If there was silence last time we were called, then the buffer has
     // already been zeroed out and we don't need to do it again.
     if (!was_silence_last_update_) {

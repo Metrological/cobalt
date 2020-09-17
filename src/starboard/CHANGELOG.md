@@ -6,13 +6,260 @@ be updated each time a new Starboard version is released.  Each section in
 this file describes the changes made to the Starboard interface since the
 version previous to it.
 
-**NOTE: Starboard versions 3 and below are no longer supported.**
+**NOTE: Starboard versions 9 and below are no longer supported.**
 
 ## Experimental Version
 
 A description of all changes currently in the experimental Starboard version
 can be found in the comments of the "Experimental Feature Defines" section of
 [configuration.h](configuration.h).
+
+## Version 12
+###  Add support for platform-based UI navigation.
+
+The system can be disabled by implementing the function
+`SbUiNavGetInterface()` to return `false`.  Platform-based UI navigation
+allows the platform to receive feedback on where UI elements are located and
+also lets the platform control what is selected and what the scroll
+parameters are.
+
+NOTE: This API is not used in the production web app yet, so please use the
+stub implementation for `SbUiNavGetInterface()` for now.
+
+### Require the OpenGL and Skia renderers on all platforms.
+
+The system must implement `SbGetGlesInterface()` in `starboard/gles.h`
+or use the provided stub implementation.
+
+This change also effectively deprecates the gyp variable
+"enable_map_to_mesh" in favor of CobaltGraphicsExtensionApi function
+`IsMapToMeshEnabled()` and the command line switch --disable_map_to_mesh.
+Now, Cobalt will assume the platform supports map_to_mesh, so platforms that
+do not will have to have return |false| from `IsMapToMeshEnabled()` or use
+the provided command line switch.
+
+### Require the captions API.
+
+The system must implement the captions functions in
+`starboard/accessibility.h` or use the provided stub implementations.
+System caption can be disabled by implementing the function
+`SbAccessibilityGetCaptionSettings(SbAccessibilityCaptionSettings*
+caption_settings)` to return false as the stub implementation does.
+This change also deprecates the SB_HAS_CAPTIONS flag.
+
+### Require compilation with IPv6.
+
+Cobalt must be able to determine at runtime if the system supports IPv6.
+IPv6 can be disabled by defining SB_HAS_IPV6 to 0.
+
+### Require the microphone API.
+
+The system must implement the microphone functions in
+`starboard/microphone.h` or use the provided stub functions.
+The microphone can be disabled by having `SbMicrophoneCreate()` return
+|kSbMicrophoneInvalid|.
+This change also deprecates the SB_HAS_MICROPHONE flag.
+
+###  Require the memory mapping API.
+
+The system must implement the memory mapping functions in
+`starboard/memory.h` and `starboard/shared/dlmalloc.h` or use the provided
+stub implementations.
+This change also deprecates the SB_HAS_MMAP flag.
+
+### Require the on screen keyboard API.
+
+The system must implement the on screen keyboard functions in
+`starboard/window.h` or use the provided stub implementations.
+The on screen keyboard can be disabled by implementing the function
+`SbWindowOnScreenKeyboardIsSupported()` to return false
+as the stub implementation does.
+
+### Require speech recognizer API.
+
+The system must implement the functions in `starboard/speech_recognizer.h`
+or use the provided stub implementations.
+The speech recognizer can be disabled by implementing the function
+`SbSpeechRecognizerIsSupported()` to return `false` as the stub
+implementation does.
+
+### Require the speech synthesis API.
+
+The system must implement the speech synthesis function in
+`starboard/speech_synthesis.h` or use the provided stub implementations.
+Speech synthesis can be disabled by implementing the function
+`SbSpeechSynthesisIsSupported()` to return false as the stub
+implementation does.
+
+### Require the time thread now API.
+
+The system must implement the time thread now functions in
+`starboard/time.h` or use the provided stub implementations.
+Time thread now can be disabled by implementing the function
+`SbTimeIsTimeThreadNowSupported()` to return false as the stub
+implementation does.
+
+### Add SbFileAtomicReplace API.
+
+Introduce the Starboard function SbFileAtomicReplace() to provide the ability
+to atomically replace the content of a file.
+
+### Introduces new system property kSbSystemPathStorageDirectory.
+
+Path to directory for permanent storage. Both read and write
+access are required.
+
+### Introduce Starboard Application Binary Interface (SABI) files.
+
+SABI files are used to describe the configuration for targets such that two
+targets, built with the same SABI file and varying toolchains, have
+compatible Starboard APIs and ABIs.
+
+With this define, we have:
+1) Moved architecture specific defines and configurations from
+  configuration_public.h and *.gyp[i] files into SABI files.
+2) Included the appropriate SABI file in each platform configuration.
+3) Included the //starboard/sabi/sabi.gypi file in each platform
+  configuration which consumes SABI file fields and defines a set of
+  constants that are accessible when building.
+4) Provided a set of tests that ensure the toolchain being used produces
+  an executable or shared library that conforms to the included SABI file.
+
+For further information on what is provided by SABI files, or how these
+values are consumed, take a look at //starboard/sabi.
+
+### Updates the API guarantees of SbMutexAcquireTry.
+
+SbMutexAcquireTry now has undefined behavior when it is invoked on a mutex
+that has already been locked by the calling thread. In addition, since
+SbMutexAcquireTry was used in SbMutexDestroy, SbMutexDestroy now has
+undefined behavior when invoked on a locked mutex.
+
+### Migrate the Starboard configuration variables from macros to extern consts.
+
+The migration allows Cobalt to make platform level decisions at runtime
+instead of compile time which lets us create a more comprehensive Cobalt
+binary.
+
+This means Cobalt must remove all references to these macros that would not
+translate well to constants, i.e. in compile time references or initializing
+arrays. Therefore, we needed to change the functionality of the function
+`SbDirectoryGetNext` in "starboard/directory.h". Because we do not want to
+use variable length arrays, we pass in a c-string and length to the function
+to achieve the same result as before when passing in a `SbDirectoryEntry`.
+
+A platform will define the extern constants declared in
+"starboard/configuration_constants.h". The definitions are done in
+"starboard/<PLATFORM_PATH>/configuration_constants.cc".
+
+The exact mapping between macros and extern variables can be found in
+"starboard/shared/starboard/configuration_constants_compatibility_defines.h"
+though the naming scheme is very nearly the same: the old SB_FOO macro will
+always become the constant kSbFoo.
+
+### Improve player creation and output mode query.
+
+1. Introduce the new type SbPlayerCreationParam that holds the common
+parameters used to create an SbPlayer() and to query for the output mode
+support.
+
+2. Replace SbPlayerOutputModeSupported() by SbPlayerGetPreferredOutputMode()
+so the SbPlayer implementation can explicitly indicate its preference on
+output mode, when all output modes are supported.
+For example, Cobalt used to always query for |kSbPlayerOutputModePunchOut|
+first, without providing details about the video going to be played, and
+not query for output modes if punch out is supported.  The new interface
+allows the implementation to fine tune its output mode.  For example, it
+may decide to use |kSbPlayerOutputModeDecodeToTexture| for low resolution
+videos.
+
+### Introduce error handling into reference SbAudioSinkPrivate.
+
+The implementation is in:
+"starboard/shared/starboard/audio_sink/audio_sink_internal.*".
+
+### Change the thread types to be portable with stable ABI.
+
+The following types were updated:
+SbThread, SbMutex, SbOnce and SbConditionVariable.
+
+### Introduce support of cbcs encryption scheme into SbDrmSystem.
+
+The definition follows ISO/IEC 23001 part 7.
+
+### Add link register to SbThreadContext.
+
+### Make GYP configuration variables cobalt extensions instead.
+
+This change moves all of the GYP configuration variables to be members of
+the struct declared in "cobalt/extension/configuration.h". All members are
+function pointers that can be set for each platform, otherwise defaults
+will be used. These can be referenced through functions declared in
+"cobalt/configuration/configuration.h", which will use the extension API if
+available, but will otherwise fall back onto default values.
+
+### Add the PCLMULQDQ instruction feature.
+
+The PCLMULQDQ was added to the Starboard CPU features interface
+for x86 architectures.
+
+###  |content_type| is added to SbMediaIsVideoSupported() and
+SbMediaIsAudioSupported().
+
+### Enables a test that checks that Opus is supported.
+
+### Add `kSbSystemPropertySystemIntegratorName`
+
+This change also deprecates `kSbSystemPropertyOriginalDesignManufacturerName`.
+The `kSbSystemPropertySystemIntegratorName` value will represent the corporate
+entity responsible for submitting the device to YouTube certification and for
+the device maintenance/updates.
+
+### Deprecated the Blitter API.
+
+Blitter API is no longer supported on any platform. Use the OpenGL ES
+interface instead.
+
+### Deprecated the Crypto API.
+
+Crypto API is no longer supported on any platform. BoringSSL CPU
+optimizations are used instead.
+
+### Deprecate the SB_HAS_VIRTUAL_REGIONS flag as all platforms define it to 0.
+
+### Deprecate the usage of SB_MUST_FREQUENTLY_FLIP_DISPLAY_BUFFER.
+
+### Deprecated unused enums |kSbPlayerDecoderStateBufferFull| and
+|kSbPlayerDecoderStateDestroyed|.
+
+### Deprecated the usage of |SbMediaIsOutputProtected()| and
+|SbMediaSetOutputProtection()|.
+
+### Deprecated the |SB_HAS_QUIRK_SEEK_TO_KEYFRAME| macro.
+
+### Deprecated the |SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING| macro.
+
+### Deprecated 'cobalt_minimum_frame_time_in_milliseconds'.
+
+The variable 'cobalt_minimum_frame_time_in_milliseconds' is deprecated
+in favor of the usage of
+'CobaltExtensionGraphicsApi::GetMinimumFrameIntervalInMilliseconds' API.
+The declaration of 'GetMinimumFrameIntervalInMilliseconds' can be found
+in cobalt/renderer/backend/graphics_context.h
+
+### Deprecate support for GLES3 features.
+
+### Deprecate Web Extension support.
+
+The Platform Services API should be used
+instead. See cobalt/doc/platform_services.md.
+
+### Add event for text-to-speech settings changes.
+
+If the platform supports text-to-speech settings, it must use the new
+kSbEventTypeAccessiblityTextToSpeechSettingsChanged event to inform the app
+when those settings change. For older starboard versions, use
+kSbEventTypeAccessiblitySettingsChanged instead.
 
 ## Version 11
 
@@ -353,289 +600,3 @@ options have been left in Cobalt, though renamed to `cobalt_configuration.gypi`.
 
 Please see [contrib/README.md](contrib/README.md) for description of
 expectations for contents in this directory.
-
-## Version 9
-
-### Add string label to `SbMicrophoneInfo`.
-
-This should indicate the friendly name of the microphone type.
-
-### Introduce additional SbSocketError enum values.
-
-Instead of the single generic kSbSocketErrorFailed to indicate socket errors,
-the enum kSbSocketErrorConnectionReset has been introduced corresponding to
-various dropped TCP connection errors.  This is particularly useful in
-identifying socket errors that can be retried.
-
-### Add new keycode kSbKeyInstantReplay
-
-Identical to OCAP's `VK_INSTANT_REPLAY`
-
-## Version 8
-
-### Add `SbPlayerCreateWithUrl()`, `SbPlayerSetDrmSystem()`, `SbPlayerOutputModeSupportedWithUrl()`
-
-For platform media players that rely on using a URL (like an m3u playlist URL)
-for playback, add `SbPlayerCreateWithUrl()` which takes in a URL, no video or
-audio configs, and no DRM system. Allow the DRM system to be set on a running
-SbPlayer exactly once for SbPlayers created with a URL. Also, since URL players
-will not expose codec information, use a custom
-`SbPlayerOutputModeSupportedWithUrl()` to query player output mode support.
-
-### Add `kSbEventTypeWindowSizeChanged`
-
-An event indicating that an `SbWindow`'s size has changed. The event data is
-`SbEventWindowSizeChangedData`, containing a `SbWindow` and `SbWindowSize`.
-
-### Add `SbWindowShowOnScreenKeyboard()`, `SbWindowHideOnScreenKeyboard()`, `SbWindowFocusOnScreenKeyboard()`, `SbWindowBlurOnScreenKeyboard()`, `SbWindowIsOnScreenKeyboardShown()`, `SbWindowSetOnScreenKeyboardKeepFocus()`
-
-These methods show, hide, focus, and blur a native on screen keyboard,
-determine if the on screen keyboard is shown, and set whether focus is kept to
-the on screen keyboard. The on screen keyboard also handles
-`kSbInputEventTypeInput`, which use a new field `input_text` of `SbInputData`.
-
-## Version 7
-
-### `SbDecodeTargetInfoPlane` can specify color plane information
-
-Previously: Planes of type `kSbDecodeTargetFormat2PlaneYUVNV12`
-were assumed to have the luma mapped to the alpha channel (`GL_ALPHA`)
-and the chroma mapped to blue and alpha (`GL_LUMINANCE_ALPHA`). However,
-some graphics systems require that luma is on `GL_RED_EXT` and the chroma
-is on `GL_RG_EXT`.
-
-## Version 6
-
-### Named `SbStorageRecord`s
-
-This extends the `SbStorage` interface with the ability to open named
-`SbStorageRecord`s. Calling `SbStorageOpenRecord` and `SbStorageDeleteRecord`
-with a `NULL` `name` parameter provides access to the old "default" record.
-
-### Introduce pointer (mouse) input support
-
-This extends the `SbInput` interface with some enum values and data members to
-allow mouse, wheel, and more generic pointer input.
-
-### Flexible audio specific config
-
-`SbMediaAudioHeader::audio_specific_config` will be a pointer instead of an
-array.
-
-### Time Zone API Cleanup
-
-Removes `SbTimeZoneGetDstName()` -- The Daylight Savings Time version of the
-time zone.
-
-Changes `SbTimeZoneGetName()` to be more flexible in what it is allowed to
-return.
-
-### `SbDecodeTargetNumberOfPlanesForFormat`
-
-Adds the convenience inline function, SbDecodeTargetNumberOfPlanesForFormat() to
-`starboard/decode_target.h`.
-
-### Preload Support
-
-Adds the `kSbEventTypePreload` event, and modifies the application state machine
-to utilize it.
-
-### Platform Error Cleanup
-
-Removes `SbSystemPlatformErrorType` values specific to user status.
-
-### `SbDecodeTarget` support for the UYVY (i.e. YUV 422) format
-
-Add support for UYVY decode targets (e.g. YUV 422) via the
-`kSbDecodeTargetFormat1PlaneUYVY` enum.
-
-### Add More Remote Keys
-
-This adds SbKey codes for:
-
-  * Color keys
-  * Closed Caption key
-  * Application launch key
-  * Channel Up/Down keys
-  * Info key
-  * Guide key
-  * Last/Previous Channel key
-  * Media audio track select key
-
-### `kSbEventTypeLowMemory`
-
-Adds a new event type -- `kSbEventTypeLowMemory` -- to allow a platform to
-signal that the application may soon be terminated due to low memory
-availability.
-
-### Interface change to `SbPlayerWriteSample()`
-`const` is added to `sample_buffers` and `sample_buffer_sizes` parameters.
-
-### Support key status change
-Add `key_statuses_changed_callback` parameter to `SbDrmCreateSystem()` to
-support MediaKeySession::keyStatuses and MediaKeySession::onkeystatuseschange.
-
-### Changes thumbstick direction
-
-Change the meaning of negative values for thumbstick position from bottom
-right to upper left.
-
-## Version 5
-
-### Add Speech Recognizer API
-Introduce `starboard/speech_recognizer.h`.
-This newly-introduced `starboard/speech_recognizer.h` adds the on-device speech
-recognizer feature.
-
-### Added new system property to allow platform-specific user agent suffixes
-Adds `kSbSystemPropertyUserAgentAuxField` to the `SbSystemPropertyId` enum to
-allow platform-specific User-Agent suffix.
-
-### Remove unused enums from `starboard/input.h`
-The following unused enum values are removed from `starboard/input.h`:
-  * `kSbInputDeviceTypeMicrophone`
-  * `kSbInputDeviceTypeSpeechCommand`
-  * `kSbInputEventTypeAudio`
-  * `kSbInputEventTypeCommand`
-  * `kSbInputEventTypeGrab`
-  * `kSbInputEventTypeUngrab`
-
-## Version 4
-
-### Decode-to-Texture Player Output Mode
-Feature introducing support for decode-to-texture player output mode, and
-runtime player output mode selection and detection.
-In `starboard/configuration.h`,
-  * `SB_IS_PLAYER_PUNCHED_OUT`, `SB_IS_PLAYER_PRODUCING_TEXTURE`, and
-    `SB_IS_PLAYER_COMPOSITED` now no longer need to be defined (and should not
-    be defined) by platforms.  Instead, these capabilities are detected at
-    runtime via `SbPlayerOutputModeSupported()`.
-
-In `starboard/player.h`,
-  * The enum `SbPlayerOutputMode` is introduced.
-  * `SbPlayerOutputModeSupported()` is introduced to let applications query
-    for player output mode support.
-  * `SbPlayerCreate()` now takes an additional parameter that specifies the
-    desired output mode.
-  * The punch out specific function `SbPlayerSetBounds()` must now be
-    defined on all platforms, even if they don't support punch out (in which
-    case they can implement a stub).
-  * The function `SbPlayerGetCompositionHandle()` is removed.
-  * The function `SbPlayerGetTextureId()` is replaced by the new
-    `SbPlayerGetCurrentFrame()`, which returns a `SbDecodeTarget`.
-
-In `starboard/decode_target.h`,
-  * All get methods (`SbDecodeTargetGetPlane()` and `SbDecodeTargetGetFormat()`,
-    `SbDecodeTargetIsOpaque()`) are now replaced with `SbDecodeTargetGetInfo()`.
-  * The `SbDecodeTargetInfo` structure is introduced and is the return value
-    type of `SbDecodeTargetGetInfo()`.
-  * `SbDecdodeTargetCreate()` is now responsible for creating all its internal
-    planes, and so its `planes` parameter is replaced by `width` and
-    `height` parameters.
-  * The GLES2 version of `SbDecdodeTargetCreate()` has its EGL types
-    (`EGLDisplay`, `EGLContext`) replaced by `void*` types, so that
-    `decode_target.h` can avoid #including EGL/GLES2 headers.
-  * `SbDecodeTargetDestroy()` is renamed to `SbDecodeTargetRelease()`.
-
-In `starboard/player.h`, `starboard/image.h` and `starboard/decode_target.h`,
-  * Replace `SbDecodeTargetProvider` with
-    `SbDecodeTargetGraphicsContextProvider`.
-  * Instead of restricting Starboard implementations to only be able to run
-    `SbDecodeTarget` creation and destruction code on the application's
-    renderer's thread with the application's renderer's `EGLContext` current,
-    Starboard implementations can now run arbitrary code on the application's
-    renderer's thread with its `EGLContext` current.
-  * Remove `SbDecodeTargetCreate()`, `SbDecodeTarget` creation is now an
-    implementation detail to be dealt with in other Starboard API functions
-    that create `SbDecodeTargets`, like `SbImageDecode()` or `SbPlayerCreate()`.
-
-### Playback Rate
-Support for setting the playback rate on an SbPlayer.  This allows for control
-of the playback speed of video at runtime.
-
-### Floating Point Input Vector
-Change `input.h`'s `SbInputVector` structure to contain float members instead of
-ints.
-
-### Delete SbUserApplicationTokenResults
-Deleted the vestigal struct `SbUserApplicationTokenResults` from `user.h`.
-
-### Storage Options for Encoded Audio/Video Data
-Enables the SbPlayer implementation to provide instructions to its user on
-how to store audio/video data.  Encoded audio/video data is cached once being
-demuxed and may occupy a significant amount of memory.  Enabling this feature
-allows the SbPlayer implementation to have better control on where encoded
-audio/video data is stored.
-
-### Unified implementation of `SbMediaCanPlayMimeAndKeySystem()`
-Use a unified implementation of `SbMediaCanPlayMimeAndKeySystem()` based on
-`SbMediaIsSupported()`, `SbMediaIsAudioSupported()`, and
-`SbMediaIsVideoSupported()`.
-
-### Introduce `ticket` parameter to `SbDrmGenerateSessionUpdateRequest()`
-Introduce `ticket` parameter to `SbDrmGenerateSessionUpdateRequest()`
-and `SbDrmSessionUpdateRequestFunc` to allow distinguishing between callbacks
-from multiple concurrent calls.
-
-### Introduce `SbSocketGetInterfaceAddress()`
-`SbSocketGetInterfaceAddress()` is introduced to let applications find out
-which source IP address and the associated netmask will be used to connect to
-the destination. This is very important for multi-homed devices, and for
-certain conditions in IPv6.
-
-### Introduce `starboard/cryptography.h`
-In newly-introduced `starboard/cryptography.h`,
-  * Optional support for accelerated cryptography, which can, in
-    particular, be used for accelerating SSL.
-
-### Introduce z-index parameter to `SbPlayerSetBounds()`
-Allow `SbPlayerSetBounds` to use an extra parameter to indicate the z-index of
-the video so multiple overlapping videos can be rendered.
-
-### Media source buffer settings removed from `configuration.h`
-Media source buffer settings in Starboard.
-
-### Introduce `starboard/accessibility.h`
-In particular, the functions `SbAccessibilityGetDisplaySettings()` and
-`SbAccessibilityGetTextToSpeechSettings()` have now been introduced.
-
-Additionally, a new Starboard event, `kSbEventTypeAccessiblitySettingsChanged`,
-has been defined in `starboard/event.h`.
-
-### HDR decode support
-In `starboard/media.h`, `SbMediaColorMetadata` is now defined and it contains
-HDR metadata. The field `SbMediaColorMetadata color_metadata` is now added to
-`SbMediaVideoSampleInfo`.
-
-### Add `kSbSystemDeviceTypeAndroidTV` to `starboard/system.h`
-A new device type, `kSbSystemDeviceTypeAndroidTV`, is added to
-starboard/system.h.
-
-### Deprecate `SbSpeechSynthesisSetLanguage()`
-SbSpeechSynthesisSetLanguage() has been deprecated.
-
-### Request State Change Support
-Added `SbSystemRequestPause()`, `SbSystemRequestUnpause()`,
-`SbSystemRequestSuspend()`.
-
-`SbSystemRequestSuspend()` in particular can be hooked into a platform's "hide"
-or "minimize" window functionality.
-
-### Font Directory Path Support
-Added `kSbSystemPathFontDirectory` and `kSbSystemPathFontConfigurationDirectory`
-which can be optionally specified for platforms that want to provide system
-fonts to Starboard applications. The font and font configuration formats
-supported are application-specific.
-
-### Add `SB_NORETURN` to `starboard/configuration.h`.
-Added attribute macro `SB_NORETURN` to allow functions to be marked as noreturn.
-
-### Mark `SbSystemBreakIntoDebugger` `SB_NORETURN`.
-Add `SB_NORETURN` to declaration of `SbSystemBreakIntoDebugger`, to allow it to
-be used in a manner similar to `abort`.
-
-### Introduce `SbAudioSinkGetMinBufferSizeInFrames()`
-
-Introduce `SbAudioSinkGetMinBufferSizeInFrames()` to `starboard/audio_sink.h`
-which communicates to the platform how many audio frames are required to ensure
-that audio sink can keep playing without underflow.

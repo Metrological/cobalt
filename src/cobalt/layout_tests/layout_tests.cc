@@ -27,6 +27,9 @@
 #include "cobalt/layout_tests/test_utils.h"
 #include "cobalt/math/size.h"
 #include "cobalt/render_tree/animations/animate_node.h"
+#include "cobalt/renderer/backend/default_graphics_system.h"
+#include "cobalt/renderer/backend/graphics_context.h"
+#include "cobalt/renderer/backend/graphics_system.h"
 #include "cobalt/renderer/render_tree_pixel_tester.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "url/gurl.h"
@@ -98,13 +101,12 @@ struct GetTestName {
   }
 };
 
-}  // namespace
-
-class Layout : public ::testing::TestWithParam<TestInfo> {};
-TEST_P(Layout, Test) {
+void RunTest(const TestInfo& test_info,
+             renderer::backend::GraphicsContext* graphics_context,
+             renderer::RenderTreePixelTester::Options pixel_tester_options) {
   // Output the name of the current input file so that it is visible in test
   // output.
-  std::cout << "(" << GetParam() << ")" << std::endl;
+  LOG(INFO) << "(" << test_info << ")" << std::endl;
 
   // Setup a message loop for the current thread since we will be constructing
   // a WebModule, which requires a message loop to exist for the current
@@ -113,7 +115,6 @@ TEST_P(Layout, Test) {
 
   // Setup the pixel tester we will use to perform pixel tests on the render
   // trees output by the web module.
-  renderer::RenderTreePixelTester::Options pixel_tester_options;
   pixel_tester_options.output_failed_test_details =
       base::CommandLine::ForCurrentProcess()->HasSwitch(
           switches::kOutputFailedTestDetails);
@@ -127,16 +128,16 @@ TEST_P(Layout, Test) {
   // room for tests to maneuver within and speed at which pixel tests can be
   // done.
   const ViewportSize kDefaultViewportSize(640, 360);
-  ViewportSize viewport_size = GetParam().viewport_size
-                                   ? *GetParam().viewport_size
+  ViewportSize viewport_size = test_info.viewport_size
+                                   ? *test_info.viewport_size
                                    : kDefaultViewportSize;
 
   renderer::RenderTreePixelTester pixel_tester(
       viewport_size.width_height(), GetTestInputRootDirectory(),
-      GetTestOutputRootDirectory(), pixel_tester_options);
+      GetTestOutputRootDirectory(), graphics_context, pixel_tester_options);
 
   browser::WebModule::LayoutResults layout_results = SnapshotURL(
-      GetParam().url, viewport_size, pixel_tester.GetResourceProvider(),
+      test_info.url, viewport_size, pixel_tester.GetResourceProvider(),
       base::Bind(&ScreenshotFunction,
                  base::MessageLoop::current()->task_runner(),
                  base::Unretained(&pixel_tester)));
@@ -158,16 +159,62 @@ TEST_P(Layout, Test) {
       twice_animated_node->source();
 
   bool results =
-      pixel_tester.TestTree(static_render_tree, GetParam().base_file_path);
+      pixel_tester.TestTree(static_render_tree, test_info.base_file_path);
 
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
           switches::kRebaseline) ||
       (!results && base::CommandLine::ForCurrentProcess()->HasSwitch(
                        switches::kRebaselineFailedTests))) {
-    pixel_tester.Rebaseline(static_render_tree, GetParam().base_file_path);
+    pixel_tester.Rebaseline(static_render_tree, test_info.base_file_path);
   }
 
   EXPECT_TRUE(results);
+}
+
+}  // namespace
+
+// This test does a fuzzy pixel compare with the expected output.
+class Layout : public ::testing::TestWithParam<TestInfo> {
+ public:
+  static void SetUpTestCase();
+  static void TearDownTestCase();
+
+ protected:
+  static renderer::backend::GraphicsSystem* graphics_system_;
+  static renderer::backend::GraphicsContext* graphics_context_;
+};
+
+// static
+renderer::backend::GraphicsSystem* Layout::graphics_system_ = nullptr;
+// static
+renderer::backend::GraphicsContext* Layout::graphics_context_ = nullptr;
+
+// static
+void Layout::SetUpTestCase() {
+  graphics_system_ = renderer::backend::CreateDefaultGraphicsSystem().release();
+  graphics_context_ = graphics_system_->CreateGraphicsContext().release();
+}
+
+// static
+void Layout::TearDownTestCase() {
+  delete graphics_context_;
+  graphics_context_ = nullptr;
+  delete graphics_system_;
+  graphics_system_ = nullptr;
+}
+
+TEST_P(Layout, Test) {
+  RunTest(GetParam(), graphics_context_,
+          renderer::RenderTreePixelTester::Options());
+}
+
+// This test does an exact pixel compare with the expected output.
+class LayoutExact : public Layout {};
+TEST_P(LayoutExact, Test) {
+  renderer::RenderTreePixelTester::Options pixel_tester_options;
+  pixel_tester_options.gaussian_blur_sigma = 0;
+  pixel_tester_options.acceptable_channel_range = 0;
+  RunTest(GetParam(), graphics_context_, pixel_tester_options);
 }
 
 // Cobalt-specific test cases.
@@ -277,8 +324,14 @@ INSTANTIATE_TEST_CASE_P(
     CSSOMViewLayoutTests, Layout,
     ::testing::ValuesIn(EnumerateLayoutTests("cssom-view")),
     GetTestName());
+// "dir" attribute tests.
+// https://html.spec.whatwg.org/multipage/dom.html#the-dir-attribute
+INSTANTIATE_TEST_CASE_P(
+    DirAttributeLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("the-dir-attribute")),
+    GetTestName());
 
-// JavaScript HTML5 WebAPIs (https://www.w3.org/TR/html5/webappapis.html) test
+// JavaScript HTML5 WebAPIs (https://www.w3.org/TR/html50/webappapis.html) test
 // cases.
 INSTANTIATE_TEST_CASE_P(
     WebAppAPIsLayoutTests, Layout,
@@ -302,7 +355,16 @@ INSTANTIATE_TEST_CASE_P(
 // cases
 INSTANTIATE_TEST_CASE_P(
     IntersectionObserverLayoutTests, Layout,
-    ::testing::ValuesIn(EnumerateLayoutTests("intersection-observer")));
+    ::testing::ValuesIn(EnumerateLayoutTests("intersection-observer")),
+    GetTestName());
+
+// Blitter does not support Skottie.
+#if !SB_HAS(BLITTER)
+// Lottie (https://github.com/LottieFiles/lottie-player) test cases
+INSTANTIATE_TEST_CASE_P(
+    LottiePlayerLayoutTests, Layout,
+    ::testing::ValuesIn(EnumerateLayoutTests("lottie-player")), GetTestName());
+#endif  // !SB_HAS(BLITTER)
 
 // Disable on Windows until network stack is implemented.
 #if !defined(COBALT_WIN)
@@ -312,6 +374,12 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::ValuesIn(EnumerateLayoutTests("csp")),
     GetTestName());
 #endif  // !defined(COBALT_WIN)
+
+// Pixel-perfect tests.
+INSTANTIATE_TEST_CASE_P(
+    CobaltPixelTests, LayoutExact,
+    ::testing::ValuesIn(EnumerateLayoutTests("cobalt-pixel")),
+    GetTestName());
 
 }  // namespace layout_tests
 }  // namespace cobalt

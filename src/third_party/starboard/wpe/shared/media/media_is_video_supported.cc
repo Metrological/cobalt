@@ -17,8 +17,12 @@
 #include "starboard/media.h"
 #include "starboard/shared/starboard/media/media_support_internal.h"
 #include "third_party/starboard/wpe/shared/media/gst_media_utils.h"
+#include "starboard/configuration_constants.h"
 
 SB_EXPORT bool SbMediaIsVideoSupported(SbMediaVideoCodec video_codec,
+#if SB_API_VERSION >= 12
+                                       const char* content_type,
+#endif  // SB_API_VERSION >= 12
 #if SB_HAS(MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
                                        int /*profile*/,
                                        int /*level*/,
@@ -44,7 +48,7 @@ SB_EXPORT bool SbMediaIsVideoSupported(SbMediaVideoCodec video_codec,
 
   return frame_width <= SB_MEDIA_MAX_VIDEO_FRAME_WIDTH &&
          frame_height <= SB_MEDIA_MAX_VIDEO_FRAME_HEIGHT &&
-         bitrate <= SB_MEDIA_MAX_VIDEO_BITRATE_IN_BITS_PER_SECOND &&
+         bitrate <= kSbMediaMaxVideoBitrateInBitsPerSecond &&
          fps <= SB_MEDIA_MAX_VIDEO_FRAMERATE_IN_FRAMES_PER_SECOND &&
          third_party::starboard::wpe::shared::media::
              GstRegistryHasElementForMediaType(video_codec);

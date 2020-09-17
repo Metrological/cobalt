@@ -21,31 +21,40 @@
       'export_dependent_settings': [
         'skia_library',
       ],
-      'conditions': [
-        # Skia should normally be optimized for speed. However, the direct-gles
-        # rasterizer rarely uses skia and normally caches its output anyway, so
-        # optimize skia for size in its case.
-        ['rasterizer_type != "direct-gles"', {
-          'variables': { 'optimize_target_for_speed': 1 },
-        }],
-      ],
     },
 
     {
       # Skia's core code from the Skia repository.
       'target_name': 'skia_library',
       'type': 'static_library',
+      'dependencies': [
+        'skia_library_no_asan',
+      ],
       'includes': [
         'skia_common.gypi',
         'skia_library.gypi',
         'skia_sksl.gypi',
       ],
-      'conditions': [
-        # Skia should normally be optimized for speed. However, the direct-gles
-        # rasterizer rarely uses skia and normally caches its output anyway, so
-        # optimize skia for size in its case.
-        ['rasterizer_type != "direct-gles"', {
-          'variables': { 'optimize_target_for_speed': 1 },
+    },
+
+    {
+      # Skia's core code from the Skia repository that should be compiled
+      # without ASAN. This is done to avoid drastic slowdown in debug unit
+      # tests.
+      'target_name': 'skia_library_no_asan',
+      'type': 'static_library',
+      'includes': [
+        'skia_common.gypi',
+        '<(DEPTH)/third_party/skia/gyp/effects_imagefilters.gypi',
+      ],
+      'sources': [
+        '<@(skia_effects_imagefilter_sources_no_asan)',
+      ],
+      'target_conditions': [
+        ['use_asan==1 and cobalt_config=="debug"', {
+          'cflags!': [
+            '-fsanitize=address',
+          ],
         }],
       ],
     },

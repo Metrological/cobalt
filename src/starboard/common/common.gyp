@@ -28,11 +28,14 @@
         'common.cc',
         'condition_variable.cc',
         'condition_variable.h',
+        'configuration_defaults.cc',
+        'configuration_defaults.h',
+        'file.cc',
+        'file.h',
         'flat_map.h',
         'locked_ptr.h',
         'log.cc',
         'log.h',
-        'memory.cc',
         'move.h',
         'murmurhash2.cc',
         'murmurhash2.h',
@@ -65,11 +68,9 @@
         'thread_collision_warner.h',
         'thread.cc',
         'thread.h',
-      ],
-      'defines': [
-        # This must be defined when building Starboard, and must not when
-        # building Starboard client code.
-        'STARBOARD_IMPLEMENTATION',
+
+        'experimental/concurrency_debug.cc',
+        'experimental/concurrency_debug.h',
       ],
       'conditions': [
         ['custom_media_session_client==0', {

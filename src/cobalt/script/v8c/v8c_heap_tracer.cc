@@ -32,36 +32,45 @@ void V8cHeapTracer::RegisterV8References(
         static_cast<WrapperPrivate*>(embedder_field.first);
     Wrappable* wrappable = wrapper_private->raw_wrappable();
     MaybeAddToFrontier(wrappable);
-
-    // We expect this field to always be null, since we only have it as a
-    // workaround for V8.  See "wrapper_private.h" for details.
-    DCHECK(embedder_field.second == nullptr);
+    DCHECK(embedder_field.second == WrapperPrivate::kInternalFieldIdValue);
   }
 }
 
 void V8cHeapTracer::TracePrologue() {
   TRACE_EVENT0("cobalt::script", "V8cHeapTracer::TracePrologue");
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
+  if (disabled_) {
+    return;
+  }
   DCHECK_EQ(frontier_.size(), 0);
   DCHECK_EQ(visited_.size(), 0);
+}
+
+bool V8cHeapTracer::AdvanceTracing(double deadline_in_ms) {
+  TRACE_EVENT0("cobalt::script", "V8cHeapTracer::AdvanceTracing");
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+
+  double start_time = platform_->MonotonicallyIncreasingTime();
+  if (disabled_) {
+    return true;
+  }
 
   // This feels a bit weird, but as far as I can tell, we're expected to
   // manually decide to trace the from the global object.
   MaybeAddToFrontier(
       V8cGlobalEnvironment::GetFromIsolate(isolate_)->global_wrappable());
 
+  // Objects that we want to keep alive.
   for (Traceable* traceable : roots_) {
     MaybeAddToFrontier(traceable);
   }
-}
+  for (v8::TracedGlobal<v8::Value>* traced_global : globals_) {
+    RegisterEmbedderReference(*traced_global);
+  }
 
-bool V8cHeapTracer::AdvanceTracing(double deadline_in_ms,
-                                   AdvanceTracingActions actions) {
-  TRACE_EVENT0("cobalt::script", "V8cHeapTracer::AdvanceTracing");
-
-  while (actions.force_completion ==
-             v8::EmbedderHeapTracer::ForceCompletionAction::FORCE_COMPLETION ||
-         platform_->MonotonicallyIncreasingTime() < deadline_in_ms) {
+  while (platform_->MonotonicallyIncreasingTime() - start_time <
+         deadline_in_ms) {
     if (frontier_.empty()) {
       return false;
     }
@@ -74,7 +83,8 @@ bool V8cHeapTracer::AdvanceTracing(double deadline_in_ms,
       Wrappable* wrappable = base::polymorphic_downcast<Wrappable*>(traceable);
       auto pair_range = reference_map_.equal_range(wrappable);
       for (auto it = pair_range.first; it != pair_range.second; ++it) {
-        it->second->Get().RegisterExternalReference(isolate_);
+        // Tell v8 this object is referenced on Cobalt heap.
+        RegisterEmbedderReference(it->second->traced_global());
       }
       WrapperFactory* wrapper_factory =
           V8cGlobalEnvironment::GetFromIsolate(isolate_)->wrapper_factory();
@@ -82,7 +92,7 @@ bool V8cHeapTracer::AdvanceTracing(double deadline_in_ms,
           wrapper_factory->MaybeGetWrapperPrivate(
               static_cast<Wrappable*>(traceable));
       if (maybe_wrapper_private) {
-        maybe_wrapper_private->Mark();
+        RegisterEmbedderReference(maybe_wrapper_private->traced_global());
       }
     }
 
@@ -92,28 +102,30 @@ bool V8cHeapTracer::AdvanceTracing(double deadline_in_ms,
   return true;
 }
 
+bool V8cHeapTracer::IsTracingDone() {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  if (disabled_) {
+    return true;
+  }
+  return frontier_.empty();
+}
+
 void V8cHeapTracer::TraceEpilogue() {
   TRACE_EVENT0("cobalt::script", "V8cHeapTracer::TraceEpilogue");
 
+  if (disabled_) {
+    return;
+  }
   DCHECK(frontier_.empty());
   visited_.clear();
 }
 
-void V8cHeapTracer::EnterFinalPause() {
+void V8cHeapTracer::EnterFinalPause(EmbedderStackState stack_state) {
   TRACE_EVENT0("cobalt::script", "V8cHeapTracer::EnterFinalPause");
 }
 
-void V8cHeapTracer::AbortTracing() {
-  TRACE_EVENT0("cobalt::script", "V8cHeapTracer::AbortTracing");
-
-  LOG(WARNING) << "Tracing aborted.";
-  frontier_.clear();
-  visited_.clear();
-}
-
-size_t V8cHeapTracer::NumberOfWrappersToTrace() { return frontier_.size(); }
-
 void V8cHeapTracer::Trace(Traceable* traceable) {
+  DCHECK(!disabled_);
   MaybeAddToFrontier(traceable);
 }
 
@@ -146,6 +158,18 @@ void V8cHeapTracer::RemoveRoot(Traceable* traceable) {
   auto it = roots_.find(traceable);
   DCHECK(it != roots_.end());
   roots_.erase(it);
+}
+
+void V8cHeapTracer::AddRoot(v8::TracedGlobal<v8::Value>* traced_global) {
+  DCHECK(traced_global);
+  globals_.insert(traced_global);
+}
+
+void V8cHeapTracer::RemoveRoot(v8::TracedGlobal<v8::Value>* traced_global) {
+  DCHECK(traced_global);
+  auto it = globals_.find(traced_global);
+  DCHECK(it != globals_.end());
+  globals_.erase(it);
 }
 
 void V8cHeapTracer::MaybeAddToFrontier(Traceable* traceable) {

@@ -19,14 +19,17 @@
 
 #include "base/message_loop/message_loop.h"
 #include "base/synchronization/waitable_event.h"
+#include "cobalt/base/debugger_hooks.h"
 #include "cobalt/debug/backend/console_agent.h"
 #include "cobalt/debug/backend/css_agent.h"
 #include "cobalt/debug/backend/debug_backend.h"
 #include "cobalt/debug/backend/debug_dispatcher.h"
 #include "cobalt/debug/backend/debug_script_runner.h"
+#include "cobalt/debug/backend/debugger_hooks_impl.h"
 #include "cobalt/debug/backend/debugger_state.h"
 #include "cobalt/debug/backend/dom_agent.h"
 #include "cobalt/debug/backend/log_agent.h"
+#include "cobalt/debug/backend/overlay_agent.h"
 #include "cobalt/debug/backend/page_agent.h"
 #include "cobalt/debug/backend/render_overlay.h"
 #include "cobalt/debug/backend/runtime_agent.h"
@@ -51,14 +54,14 @@ namespace backend {
 class DebugModule : public script::ScriptDebugger::Delegate {
  public:
   // Construct the debug dispatcher on the current message loop.
-  DebugModule(dom::Console* console,
+  DebugModule(DebuggerHooksImpl* debugger_hooks, dom::Console* console,
               script::GlobalEnvironment* global_environment,
               RenderOverlay* render_overlay,
               render_tree::ResourceProvider* resource_provider,
               dom::Window* window, DebuggerState* debugger_state);
 
   // Construct the debug dispatcher on the specified message loop.
-  DebugModule(dom::Console* console,
+  DebugModule(DebuggerHooksImpl* debugger_hooks, dom::Console* console,
               script::GlobalEnvironment* global_environment,
               RenderOverlay* render_overlay,
               render_tree::ResourceProvider* resource_provider,
@@ -80,13 +83,14 @@ class DebugModule : public script::ScriptDebugger::Delegate {
   // Data used to construct an instance of this class that does not need to be
   // persisted.
   struct ConstructionData {
-    ConstructionData(dom::Console* console,
+    ConstructionData(DebuggerHooksImpl* debugger_hooks, dom::Console* console,
                      script::GlobalEnvironment* global_environment,
                      base::MessageLoop* message_loop,
                      RenderOverlay* render_overlay,
                      render_tree::ResourceProvider* resource_provider,
                      dom::Window* window, DebuggerState* debugger_state)
-        : console(console),
+        : debugger_hooks(debugger_hooks),
+          console(console),
           global_environment(global_environment),
           message_loop(message_loop),
           render_overlay(render_overlay),
@@ -94,6 +98,7 @@ class DebugModule : public script::ScriptDebugger::Delegate {
           window(window),
           debugger_state(debugger_state) {}
 
+    DebuggerHooksImpl* debugger_hooks;
     dom::Console* console;
     script::GlobalEnvironment* global_environment;
     base::MessageLoop* message_loop;
@@ -112,8 +117,7 @@ class DebugModule : public script::ScriptDebugger::Delegate {
                      base::WaitableEvent* created);
 
   // Sends a protocol event to the frontend through |DebugDispatcher|.
-  void SendEvent(const std::string& method,
-                 const base::Optional<std::string>& params);
+  void SendEvent(const std::string& method, const std::string& params);
 
   // script::ScriptDebugger::Delegate implementation.
   void OnScriptDebuggerPause() override;
@@ -122,6 +126,8 @@ class DebugModule : public script::ScriptDebugger::Delegate {
   void OnScriptDebuggerEvent(const std::string& event) override;
 
   bool is_frozen_ = true;
+
+  DebuggerHooksImpl* debugger_hooks_ = nullptr;
 
   // Handles all debugging interaction with the JavaScript engine.
   std::unique_ptr<script::ScriptDebugger> script_debugger_;
@@ -140,6 +146,7 @@ class DebugModule : public script::ScriptDebugger::Delegate {
   std::unique_ptr<LogAgent> log_agent_;
   std::unique_ptr<DOMAgent> dom_agent_;
   scoped_refptr<CSSAgent> css_agent_;
+  std::unique_ptr<OverlayAgent> overlay_agent_;
   std::unique_ptr<PageAgent> page_agent_;
   std::unique_ptr<RuntimeAgent> runtime_agent_;
   std::unique_ptr<ScriptDebuggerAgent> script_debugger_agent_;

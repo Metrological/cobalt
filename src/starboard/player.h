@@ -39,13 +39,14 @@ typedef enum SbPlayerDecoderState {
   // The decoder is asking for one more sample.
   kSbPlayerDecoderStateNeedsData,
 
+#if SB_API_VERSION < 12
   // The decoder is not ready for any more samples, so do not send them.
   // Note that this enum value has been deprecated and the SbPlayer
   // implementation should no longer use this value.
   kSbPlayerDecoderStateBufferFull,
-
   // The player has been destroyed, and will send no more callbacks.
   kSbPlayerDecoderStateDestroyed,
+#endif  // SB_API_VERSION < 12
 } SbPlayerDecoderState;
 
 // An indicator of the general playback state.
@@ -70,31 +71,21 @@ typedef enum SbPlayerState {
 
   // The player has been destroyed, and will send no more callbacks.
   kSbPlayerStateDestroyed,
-#if !SB_HAS(PLAYER_ERROR_MESSAGE)
-  // The player encountered an error. It expects an SbPlayerDestroy() call
-  // to tear down the player. Calls to other functions may be ignored and
-  // callbacks may not be triggered.
-  kSbPlayerStateError,
-#endif  // !SB_HAS(PLAYER_ERROR_MESSAGE)
 } SbPlayerState;
 
-#if SB_HAS(PLAYER_ERROR_MESSAGE)
 typedef enum SbPlayerError {
   kSbPlayerErrorDecode,
-#if SB_API_VERSION >= 10
   // The playback capability of the player has changed, likely because of a
   // change of the system environment.  For example, the system may support vp9
   // decoding with an external GPU.  When the external GPU is detached, this
   // error code can signal the app to retry the playback, possibly with h264.
   kSbPlayerErrorCapabilityChanged,
-#endif  // SB_API_VERSION >= 10
 #if SB_API_VERSION >= 11
   // The max value of SbPlayer error type. It should always at the bottom
   // of SbPlayerError and never be used.
   kSbPlayerErrorMax,
 #endif  // SB_API_VERSION >= 11
 } SbPlayerError;
-#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
 
 typedef enum SbPlayerOutputMode {
   // Requests for SbPlayer to produce an OpenGL texture that the client must
@@ -116,6 +107,34 @@ typedef enum SbPlayerOutputMode {
   // An invalid output mode.
   kSbPlayerOutputModeInvalid,
 } SbPlayerOutputMode;
+
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
+// The playback related parameters to pass into SbPlayerCreate() and
+// SbPlayerGetPreferredOutputMode().
+typedef struct SbPlayerCreationParam {
+  // Provides an appropriate DRM system if the media stream has encrypted
+  // portions.  It will be |kSbDrmSystemInvalid| if the stream does not have
+  // encrypted portions.
+  SbDrmSystem drm_system;
+  // Contains a populated SbMediaAudioSampleInfo if |audio_sample_info.codec|
+  // isn't |kSbMediaAudioCodecNone|.  When |audio_sample_info.codec| is
+  // |kSbMediaAudioCodecNone|, the video doesn't have an audio track.
+  SbMediaAudioSampleInfo audio_sample_info;
+  // Contains a populated SbMediaVideoSampleInfo if |video_sample_info.codec|
+  // isn't |kSbMediaVideoCodecNone|.  When |video_sample_info.codec| is
+  // |kSbMediaVideoCodecNone|, the video is audio only.
+  SbMediaVideoSampleInfo video_sample_info;
+  // Selects how the decoded video frames will be output.  For example,
+  // |kSbPlayerOutputModePunchOut| indicates that the decoded video frames will
+  // be output to a background video layer by the platform, and
+  // |kSbPlayerOutputDecodeToTexture| indicates that the decoded video frames
+  // should be made available for the application to pull via calls to
+  // SbPlayerGetCurrentFrame().
+  SbPlayerOutputMode output_mode;
+} SbPlayerCreationParam;
+
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
 
 #if SB_API_VERSION >= 11
 
@@ -181,56 +200,6 @@ typedef struct SbPlayerSampleInfo {
   const SbDrmSampleInfo* drm_info;
 } SbPlayerSampleInfo;
 
-#if SB_API_VERSION < 10
-// Information about the current media playback state.
-typedef struct SbPlayerInfo {
-  // The position of the playback head, as precisely as possible, in 90KHz ticks
-  // (PTS).
-  SbMediaTime current_media_pts;
-
-  // The known duration of the currently playing media stream, in 90KHz ticks
-  // (PTS).
-  SbMediaTime duration_pts;
-
-  // The result of getStartDate for the currently playing media stream, in
-  // microseconds since the epoch of January 1, 1601 UTC.
-  SbTime start_date;
-
-  // The width of the currently displayed frame, in pixels, or 0 if not provided
-  // by this player.
-  int frame_width;
-
-  // The height of the currently displayed frame, in pixels, or 0 if not
-  // provided by this player.
-  int frame_height;
-
-  // Whether playback is currently paused.
-  bool is_paused;
-
-  // The current player volume in [0, 1].
-  double volume;
-
-  // The number of video frames sent to the player since the creation of the
-  // player.
-  int total_video_frames;
-
-  // The number of video frames decoded but not displayed since the creation of
-  // the player.
-  int dropped_video_frames;
-
-  // The number of video frames that failed to be decoded since the creation of
-  // the player.
-  int corrupted_video_frames;
-
-  // The rate of playback.  The video is played back in a speed that is
-  // proportional to this.  By default it is 1.0 which indicates that the
-  // playback is at normal speed.  When it is greater than one, the video is
-  // played in a faster than normal speed.  When it is less than one, the video
-  // is played in a slower than normal speed.  Negative speeds are not
-  // supported.
-  double playback_rate;
-} SbPlayerInfo;
-#else  // SB_API_VERSION < 10
 // Information about the current media playback state.
 typedef struct SbPlayerInfo2 {
   // The position of the playback head, as precisely as possible, in
@@ -278,7 +247,6 @@ typedef struct SbPlayerInfo2 {
   // supported.
   double playback_rate;
 } SbPlayerInfo2;
-#endif  // SB_API_VERSION < 10
 
 // An opaque handle to an implementation-private structure representing a
 // player.
@@ -310,7 +278,6 @@ typedef void (*SbPlayerStatusFunc)(SbPlayer player,
                                    SbPlayerState state,
                                    int ticket);
 
-#if SB_HAS(PLAYER_ERROR_MESSAGE)
 // Callback for player errors, that may set a |message|.
 // |error|: indicates the error code.
 // |message|: provides specific informative diagnostic message about the error
@@ -320,7 +287,6 @@ typedef void (*SbPlayerErrorFunc)(SbPlayer player,
                                   void* context,
                                   SbPlayerError error,
                                   const char* message);
-#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
 
 // Callback to free the given sample buffer data.  When more than one buffer
 // are sent in SbPlayerWriteSample(), the implementation only has to call this
@@ -374,24 +340,13 @@ static SB_C_INLINE bool SbPlayerIsValid(SbPlayer player) {
 // |video_codec|: The video codec used for the player. If |video_codec| is
 //   |kSbMediaVideoCodecNone|, the player is an audio-only player. If
 //   |video_codec| is any other value, the player is an audio/video decoder.
-#if SB_API_VERSION >= 10
 //   This can be set to |kSbMediaVideoCodecNone| to play a video with only an
 //   audio track.
-#endif  // SB_API_VERSION >= 10
 //
-// |audio_codec|: The audio codec used for the player. The value should never
-//   be |kSbMediaAudioCodecNone|. In addition, the caller must provide a
-//   populated |audio_sample_info| if the audio codec is
-//   |kSbMediaAudioCodecAac|.
-#if SB_HAS(AUDIOLESS_VIDEO)
-//   This can be set to |kSbMediaAudioCodecNone| to play a video without any
-//   audio track.  In such case |audio_sample_info| must be NULL.
-#endif  // SB_HAS(AUDIOLESS_VIDEO)
-//
-#if SB_API_VERSION < 10
-// |duration_pts|: The expected media duration in 90KHz ticks (PTS). It may be
-//   set to |SB_PLAYER_NO_DURATION| for live streams.
-#endif  // SB_API_VERSION < 10
+// |audio_codec|: The audio codec used for the player. The caller must provide a
+//   populated |audio_sample_info| if audio codec is |kSbMediaAudioCodecAac|.
+//   Can be set to |kSbMediaAudioCodecNone| to play a video without any audio
+//   track.  In such case |audio_sample_info| must be NULL.
 //
 // |drm_system|: If the media stream has encrypted portions, then this
 //   parameter provides an appropriate DRM system, created with
@@ -399,31 +354,38 @@ static SB_C_INLINE bool SbPlayerIsValid(SbPlayer player) {
 //   then |drm_system| may be |kSbDrmSystemInvalid|.
 //
 #if SB_API_VERSION < 11
+//
 // |audio_header|: |audio_header| is same as |audio_sample_info| in old
-// starboard version.
+//   starboard version. When |audio_codec| is |kSbMediaAudioCodecNone|, this
+//   must be set to NULL.
+//
 #else   // SB_API_VERSION < 11
+//
 // |audio_sample_info|: Note that the caller must provide a populated
 //   |audio_sample_info| if the audio codec is |kSbMediaAudioCodecAac|.
 //   Otherwise, |audio_sample_info| can be NULL. See media.h for the format of
 //   the |SbMediaAudioSampleInfo| struct.
+//
 #endif  // SB_API_VERSION < 11
+//
 //   Note that |audio_specific_config| is a pointer and the content it points to
 //   is no longer valid after this function returns.  The implementation has to
 //   make a copy of the content if it is needed after the function returns.
+//
 #if SB_API_VERSION >= 11
-// |max_video_capabilities|: This string communicates the video maximums to the
-//   platform. The web app will not provide a video stream exceeding the
-//   maximums described by this parameter. Allows the platform to optimize
-//   playback pipeline for low quality video streams if it knows that it will
-//   never adapt to higher quality streams. The string uses the same format as
-//   the string passed in to SbMediaCanPlayMimeAndKeySystem(), for example, when
-//   it is set to "width=1920; height=1080; framerate=15;", the video will never
-//   adapt to resolution higher than 1920x1080 or frame per second higher than
-//   15 fps. When the maximums are unknown, this will be set to NULL.
+//
+// |max_video_capabilities|: This string communicates the max video capabilities
+//   required to the platform. The web app will not provide a video stream
+//   exceeding the maximums described by this parameter. Allows the platform to
+//   optimize playback pipeline for low quality video streams if it knows that
+//   it will never adapt to higher quality streams. The string uses the same
+//   format as the string passed in to SbMediaCanPlayMimeAndKeySystem(), for
+//   example, when it is set to "width=1920; height=1080; framerate=15;", the
+//   video will never adapt to resolution higher than 1920x1080 or frame per
+//   second higher than 15 fps. When the maximums are unknown, this will be set
+//   to NULL.
 #endif  // SB_API_VERSION >= 11
-#if SB_HAS(AUDIOLESS_VIDEO)
-//   When |audio_codec| is |kSbMediaAudioCodecNone|, this must be set to NULL.
-#endif  // SB_HAS(AUDIOLESS_VIDEO)
+
 //
 // |sample_deallocator_func|: If not |NULL|, the player calls this function
 //   on an internal thread to free the sample buffers passed into
@@ -439,11 +401,9 @@ static SB_C_INLINE bool SbPlayerIsValid(SbPlayer player) {
 //   should be done on this thread. Rather, it should just signal the client
 //   thread interacting with the decoder.
 //
-#if SB_HAS(PLAYER_ERROR_MESSAGE)
 // |player_error_func|: If not |NULL|, the player calls this function on an
 //   internal thread to provide an update on the error status. This callback is
 //   responsible for setting the media error message.
-#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
 //
 // |context|: This is passed to all callbacks and is generally used to point
 //   at a class or struct that contains state associated with the player.
@@ -462,18 +422,28 @@ static SB_C_INLINE bool SbPlayerIsValid(SbPlayer player) {
 //   the provider is not given, the player will fail by returning
 //   |kSbPlayerInvalid|.
 //
-#if SB_API_VERSION >= 10
 // If |NULL| is passed to any of the callbacks (|sample_deallocator_func|,
 // |decoder_status_func|, |player_status_func|, or |player_error_func| if it
 // applies), then |kSbPlayerInvalid| must be returned.
-#endif  // SB_API_VERSION >= 10
+
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
+SB_EXPORT SbPlayer
+SbPlayerCreate(SbWindow window,
+               const SbPlayerCreationParam* creation_param,
+               SbPlayerDeallocateSampleFunc sample_deallocate_func,
+               SbPlayerDecoderStatusFunc decoder_status_func,
+               SbPlayerStatusFunc player_status_func,
+               SbPlayerErrorFunc player_error_func,
+               void* context,
+               SbDecodeTargetGraphicsContextProvider* context_provider);
+
+#else  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
 SB_EXPORT SbPlayer
 SbPlayerCreate(SbWindow window,
                SbMediaVideoCodec video_codec,
                SbMediaAudioCodec audio_codec,
-#if SB_API_VERSION < 10
-               SbMediaTime duration_pts,
-#endif  // SB_API_VERSION < 10
                SbDrmSystem drm_system,
 #if SB_API_VERSION < 11
                const SbMediaAudioHeader* audio_header,
@@ -486,62 +456,54 @@ SbPlayerCreate(SbWindow window,
                SbPlayerDeallocateSampleFunc sample_deallocate_func,
                SbPlayerDecoderStatusFunc decoder_status_func,
                SbPlayerStatusFunc player_status_func,
-#if SB_HAS(PLAYER_ERROR_MESSAGE)
                SbPlayerErrorFunc player_error_func,
-#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
                void* context,
                SbPlayerOutputMode output_mode,
                SbDecodeTargetGraphicsContextProvider* context_provider);
+
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+// Returns the preferred output mode of the implementation when a video
+// described by |creation_param| is played.  It is assumed that it is okay to
+// call SbPlayerCreate() with the same video described by |creation_param|,
+// with its |output_mode| member replaced by the returned output mode.
+// When the caller has no preference on the output mode, it will set
+// |creation_param->output_mode| to |kSbPlayerOutputModeInvalid|, and the
+// implementation can return its preferred output mode based on the information
+// contained in |creation_param|.  The caller can also set
+// |creation_param->output_mode| to its preferred output mode, and the
+// implementation should return the same output mode if it is supported,
+// otherwise the implementation should return an output mode that it is
+// supported, as if |creation_param->output_mode| is set to
+// |kSbPlayerOutputModeInvalid| prior to the call.
+// Note that it is not the responsibility of this function to verify whether the
+// video described by |creation_param| can be played on the platform, and the
+// implementation should try its best effort to return a valid output mode.
+// |creation_param| will never be NULL.
+SB_EXPORT SbPlayerOutputMode
+SbPlayerGetPreferredOutputMode(const SbPlayerCreationParam* creation_param);
+
+#else   // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
 // Returns true if the given player output mode is supported by the platform.
 // If this function returns true, it is okay to call SbPlayerCreate() with
 // the given |output_mode|.
 SB_EXPORT bool SbPlayerOutputModeSupported(SbPlayerOutputMode output_mode,
                                            SbMediaVideoCodec codec,
                                            SbDrmSystem drm_system);
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
 
-// Destroys |player|, freeing all associated resources. Each callback must
-// receive one more callback to say that the player was destroyed. Callbacks
-// may be in-flight when SbPlayerDestroy is called, and should be ignored once
-// this function is called.
-//
-// It is not allowed to pass |player| into any other |SbPlayer| function once
-// SbPlayerDestroy has been called on that player.
-//
+// Destroys |player|, freeing all associated resources.
+//  * Upon calling this method, there should be one call to the player status
+//    callback (i.e. |player_status_func| used in the creation of the player)
+//    which indicates the player is destroyed. Note, the callback has to be
+//    in-flight when SbPlayerDestroyed is called.
+//  * No more other callbacks should be issued after this function returns.
+//  * It is not allowed to pass |player| into any other |SbPlayer| function
+//    once SbPlayerDestroy has been called on that player.
 // |player|: The player to be destroyed.
 SB_EXPORT void SbPlayerDestroy(SbPlayer player);
 
-#if SB_API_VERSION < 10
-// Tells the player to freeze playback (if playback has already started),
-// reset or flush the decoder pipeline, and go back to the Prerolling state.
-// The player should restart playback once it can display the frame at
-// |seek_to_pts|, or the closest it can get. (Some players can only seek to
-// I-Frames, for example.)
-//
-// - Seek must be called before samples are sent when starting playback for
-//   the first time, or the client never receives the
-//   |kSbPlayerDecoderStateNeedsData| signal.
-// - A call to seek may interrupt another seek.
-// - After this function is called, the client should not send any more audio
-//   or video samples until |SbPlayerDecoderStatusFunc| is called back with
-//   |kSbPlayerDecoderStateNeedsData| for each required media type.
-//   |SbPlayerDecoderStatusFunc| is the |decoder_status_func| callback function
-//   that was specified when the player was created (SbPlayerCreate).
-//
-// |player|: The SbPlayer in which the seek operation is being performed.
-// |seek_to_pts|: The frame at which playback should begin.
-// |ticket|: A user-supplied unique ID that is be passed to all subsequent
-//   |SbPlayerDecoderStatusFunc| calls. (That is the |decoder_status_func|
-//   callback function specified when calling SbPlayerCreate.)
-//
-//   The |ticket| value is used to filter calls that may have been in flight
-//   when SbPlayerSeek was called. To be very specific, once SbPlayerSeek has
-//   been called with ticket X, a client should ignore all
-//   |SbPlayerDecoderStatusFunc| calls that do not pass in ticket X.
-
-SB_EXPORT void SbPlayerSeek(SbPlayer player,
-                            SbMediaTime seek_to_pts,
-                            int ticket);
-#else   // SB_API_VERSION < 10
 // SbPlayerSeek2 is like the deprecated SbPlayerSeek, but accepts SbTime
 // |seek_to_timestamp| instead of SbMediaTime |seek_to_pts|.
 
@@ -575,56 +537,6 @@ SB_EXPORT void SbPlayerSeek(SbPlayer player,
 SB_EXPORT void SbPlayerSeek2(SbPlayer player,
                              SbTime seek_to_timestamp,
                              int ticket);
-#endif  // SB_API_VERSION < 10
-
-// Writes a single sample of the given media type to |player|'s input stream.
-// Its data may be passed in via more than one buffers.  The lifetime of
-// |sample_buffers|, |sample_buffer_sizes|, |video_sample_info|, and
-// |sample_drm_info| (as well as member |subsample_mapping| contained inside it)
-// are not guaranteed past the call to SbPlayerWriteSample. That means that
-// before returning, the implementation must synchronously copy any information
-// it wants to retain from those structures.
-//
-// |player|: The player to which the sample is written.
-// |sample_type|: The type of sample being written. See the |SbMediaType|
-//   enum in media.h.
-// |sample_buffers|: A pointer to an array of buffers with
-//   |number_of_sample_buffers| elements that hold the data for this sample. The
-//   buffers are expected to be a portion of a bytestream of the codec type that
-//   the player was created with. The buffers should contain a sequence of whole
-//   NAL Units for video, or a complete audio frame.  |sample_buffers| cannot be
-//   assumed to live past the call into SbPlayerWriteSample(), so it must be
-//   copied if its content will be used after SbPlayerWriteSample() returns.
-// |sample_buffer_sizes|: A pointer to an array of sizes with
-//   |number_of_sample_buffers| elements.  Each of them specify the number of
-//   bytes in the corresponding buffer contained in |sample_buffers|.  None of
-//   them can be 0.  |sample_buffer_sizes| cannot be assumed to live past the
-//   call into SbPlayerWriteSample(), so it must be copied if its content will
-//   be used after SbPlayerWriteSample() returns.
-// |number_of_sample_buffers|: Specify the number of elements contained inside
-//   |sample_buffers| and |sample_buffer_sizes|.  It has to be at least one, or
-//   the call will be ignored.
-// |sample_pts|: The timestamp of the sample in 90KHz ticks (PTS). Note that
-//   samples MAY be written "slightly" out of order.
-// |video_sample_info|: Information about a video sample. This value is
-//   required if |sample_type| is |kSbMediaTypeVideo|. Otherwise, it must be
-//   |NULL|.
-// |sample_drm_info|: The DRM system related info for the media sample. This
-//   value is required for encrypted samples. Otherwise, it must be |NULL|.
-#if SB_API_VERSION < 10
-SB_EXPORT void SbPlayerWriteSample(
-    SbPlayer player,
-    SbMediaType sample_type,
-    const void* const* sample_buffers,
-    const int* sample_buffer_sizes,
-    int number_of_sample_buffers,
-    SbMediaTime sample_pts,
-    const SbMediaVideoSampleInfo* video_sample_info,
-    const SbDrmSampleInfo* sample_drm_info);
-#else  // SB_API_VERSION < 10
-// SbPlayerWriteSample2 is like the deprecated SbPlayerWriteSample, but accepts
-// SbTime |sample_timestamp| instead of SbMediaTime |sample_pts|, and also
-// allows writing of multiple samples in one SbPlayerWriteSample2() call.
 
 // Writes samples of the given media type to |player|'s input stream. The
 // lifetime of |sample_infos|, and the members of its elements like |buffer|,
@@ -633,6 +545,8 @@ SB_EXPORT void SbPlayerWriteSample(
 // SbPlayerWriteSample2. That means that before returning, the implementation
 // must synchronously copy any information it wants to retain from those
 // structures.
+//
+// SbPlayerWriteSample2 allows writing of multiple samples in one call.
 //
 // |player|: The player to which the sample is written.
 // |sample_type|: The type of sample being written. See the |SbMediaType|
@@ -665,8 +579,6 @@ SB_EXPORT void SbPlayerWriteSample2(SbPlayer player,
 SB_EXPORT int SbPlayerGetMaximumNumberOfSamplesPerWrite(
     SbPlayer player,
     SbMediaType sample_type);
-
-#endif  // SB_API_VERSION < 10
 
 // Writes a marker to |player|'s input stream of |stream_type| indicating that
 // there are no more samples for that media type for the remainder of this
@@ -725,15 +637,6 @@ SB_EXPORT bool SbPlayerSetPlaybackRate(SbPlayer player, double playback_rate);
 //   value of |1.0| means that it should be played at full volume.
 SB_EXPORT void SbPlayerSetVolume(SbPlayer player, double volume);
 
-#if SB_API_VERSION < 10
-// Gets a snapshot of the current player state and writes it to
-// |out_player_info|. This function may be called very frequently and is
-// expected to be inexpensive.
-//
-// |player|: The player about which information is being retrieved.
-// |out_player_info|: The information retrieved for the player.
-SB_EXPORT void SbPlayerGetInfo(SbPlayer player, SbPlayerInfo* out_player_info);
-#else   // SB_API_VERSION < 10
 // SbPlayerGetInfo2 is like the deprecated SbPlayerGetInfo, but accepts
 // SbPlayerInfo2* |out_player_info2| instead of SbPlayerInfo |out_player_info|.
 
@@ -745,7 +648,6 @@ SB_EXPORT void SbPlayerGetInfo(SbPlayer player, SbPlayerInfo* out_player_info);
 // |out_player_info|: The information retrieved for the player.
 SB_EXPORT void SbPlayerGetInfo2(SbPlayer player,
                                 SbPlayerInfo2* out_player_info2);
-#endif  // SB_API_VERSION < 10
 
 // Given a player created with the kSbPlayerOutputModeDecodeToTexture
 // output mode, it will return a SbDecodeTarget representing the current frame

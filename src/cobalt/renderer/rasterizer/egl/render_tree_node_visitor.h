@@ -26,6 +26,7 @@
 #include "cobalt/render_tree/composition_node.h"
 #include "cobalt/render_tree/filter_node.h"
 #include "cobalt/render_tree/image_node.h"
+#include "cobalt/render_tree/lottie_node.h"
 #include "cobalt/render_tree/matrix_transform_3d_node.h"
 #include "cobalt/render_tree/matrix_transform_node.h"
 #include "cobalt/render_tree/node_visitor.h"
@@ -68,7 +69,7 @@ class RenderTreeNodeVisitor : public render_tree::NodeVisitor {
                         backend::RenderTarget* render_target,
                         const math::Rect& content_rect);
 
-  void Visit(render_tree::animations::AnimateNode* /* animate */) override {
+  void Visit(render_tree::animations::AnimateNode* animate) override {
     NOTREACHED();
   }
   void Visit(render_tree::ClearRectNode* clear_rect_node) override;
@@ -77,10 +78,13 @@ class RenderTreeNodeVisitor : public render_tree::NodeVisitor {
   void Visit(render_tree::MatrixTransformNode* transform_node) override;
   void Visit(render_tree::FilterNode* filter_node) override;
   void Visit(render_tree::ImageNode* image_node) override;
+  void Visit(render_tree::LottieNode* lottie_node) override;
   void Visit(render_tree::PunchThroughVideoNode* video_node) override;
   void Visit(render_tree::RectNode* rect_node) override;
   void Visit(render_tree::RectShadowNode* shadow_node) override;
   void Visit(render_tree::TextNode* text_node) override;
+
+  int64_t GetFallbackRasterizeCount();
 
  private:
   void GetScratchTexture(scoped_refptr<render_tree::Node> node, float size,
@@ -96,6 +100,7 @@ class RenderTreeNodeVisitor : public render_tree::NodeVisitor {
                          const math::RectF& content_rect);
 
   void OffscreenRasterize(scoped_refptr<render_tree::Node> node,
+                          bool limit_to_screen_size,
                           const backend::TextureEGL** out_texture,
                           math::Matrix3F* out_texcoord_transform,
                           math::RectF* out_content_rect);
@@ -120,6 +125,8 @@ class RenderTreeNodeVisitor : public render_tree::NodeVisitor {
   SkCanvas* fallback_render_target_;
   backend::RenderTarget* render_target_;
   backend::RenderTarget* onscreen_render_target_;
+
+  int64_t fallback_rasterize_count_;
 
   uint32_t last_draw_id_;
 };

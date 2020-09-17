@@ -26,10 +26,10 @@
 #include "base/containers/linked_list.h"
 #include "base/containers/mru_cache.h"
 #include "base/containers/queue.h"
-#include "base/cpp14oncpp11.h"
 #include "base/stl_util.h"
 #include "base/strings/string16.h"
 #include "base/template_util.h"
+#include "nb/cpp14oncpp11.h"
 #include "starboard/types.h"
 
 // Composable memory usage estimators.
@@ -211,10 +211,12 @@ template <class T, class X = void>
 struct EMUCaller {
   // std::is_same<> below makes static_assert depend on T, in order to
   // prevent it from asserting regardless instantiation.
+#if !defined(_GLIBCXX_DEBUG) && !defined(_LIBCPP_DEBUG)
   static_assert(std::is_same<T, std::false_type>::value,
                 "Neither global function 'size_t EstimateMemoryUsage(T)' "
                 "nor member function 'size_t T::EstimateMemoryUsage() const' "
                 "is defined for the type.");
+#endif
 
   static size_t Call(const T&) { return 0; }
 };
@@ -300,7 +302,7 @@ constexpr bool IsStandardContainerComplexIterator() {
       /*std::forward_list,*/ std::list, std::set, std::multiset>();
 }
 
-#if __cplusplus < 201402L
+#if defined(STARBOARD)
 template <class T>
 struct EMUCaller<
     T,
@@ -308,7 +310,7 @@ struct EMUCaller<
                             std::is_trivially_destructible<T>::value>::type> {
   static size_t Call(const T& value) { return 0; }
 };
-#else
+#else   // defined(STARBOARD)
 // Work around MSVS bug. For some reason constexpr function doesn't work.
 // However variable template does.
 template <typename T>
@@ -322,7 +324,7 @@ struct EMUCaller<
     std::enable_if_t<!HasEMU<T>::value && IsKnownNonAllocatingType_v<T>>> {
   static size_t Call(const T& value) { return 0; }
 };
-#endif
+#endif  // defined(STARBOARD)
 
 }  // namespace internal
 

@@ -1,6 +1,6 @@
 
 
-// Copyright 2019 The Cobalt Authors. All Rights Reserved.
+// Copyright 2020 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -128,7 +128,8 @@ void NamedPropertyGetterCallback(
 void IndexedPropertyGetterCallback(
     uint32_t index,
     const v8::PropertyCallbackInfo<v8::Value>& info) {
-  v8::Local<v8::String> as_string = v8::Integer::New(info.GetIsolate(), index)->ToString();
+  v8::Local<v8::String> as_string = (v8::Integer::New(info.GetIsolate(), index)->ToString(
+                                     info.GetIsolate()->GetCurrentContext())).ToLocalChecked();
   NamedPropertyGetterCallback(as_string, info);
 }
 
@@ -219,7 +220,8 @@ void IndexedPropertySetterCallback(
     uint32_t index,
     v8::Local<v8::Value> value,
     const v8::PropertyCallbackInfo<v8::Value>& info) {
-  v8::Local<v8::String> as_string = v8::Integer::New(info.GetIsolate(), index)->ToString();
+  v8::Local<v8::String> as_string = (v8::Integer::New(info.GetIsolate(), index)->ToString(
+                                     info.GetIsolate()->GetCurrentContext())).ToLocalChecked();
   NamedPropertySetterCallback(as_string, value, info);
 }
 
@@ -255,7 +257,8 @@ void IndexedPropertyDeleterCallback(
     uint32_t index,
     const v8::PropertyCallbackInfo<v8::Boolean>& info) {
   v8::Isolate* isolate = info.GetIsolate();
-  v8::Local<v8::String> as_string = v8::Integer::New(info.GetIsolate(), index)->ToString();
+  v8::Local<v8::String> as_string = (v8::Integer::New(info.GetIsolate(), index)->ToString(
+                                     info.GetIsolate()->GetCurrentContext())).ToLocalChecked();
   NamedPropertyDeleterCallback(as_string, info);
 }
 

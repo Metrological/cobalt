@@ -19,6 +19,7 @@
 #include <string>
 
 #include "base/logging.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/trace_event/trace_event.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/script/v8c/conversion_helpers.h"
@@ -27,6 +28,7 @@
 #include "nb/memory_scope.h"
 #include "v8/include/libplatform/v8-tracing.h"
 #include "v8/include/v8-inspector.h"
+#include "v8/third_party/inspector_protocol/encoding/encoding.h"
 
 namespace cobalt {
 namespace script {
@@ -41,6 +43,22 @@ constexpr const char* kInspectorDomains[] = {
 
 constexpr int kContextGroupId = 1;
 constexpr char kContextName[] = "Cobalt";
+
+// The following implementation is based on Platform in V8's encoding_test.cc.
+class CobaltJsonPlatform
+    : public v8_inspector_protocol_encoding::json::Platform {
+  bool StrToD(const char* str, double* result) const override {
+    return base::StringToDouble(std::string(str), result);
+  }
+  std::unique_ptr<char[]> DToStr(double value) const override {
+    std::string str = base::NumberToString(value);
+    if (str.empty()) return nullptr;
+    std::unique_ptr<char[]> result(new char[str.length() + 1]);
+    SbMemoryCopy(result.get(), str.data(), str.length() + 1);
+    DCHECK_EQ(0, result[str.length()]);
+    return result;
+  }
+};
 
 V8cTracingController* GetTracingController() {
   return base::polymorphic_downcast<V8cTracingController*>(
@@ -111,10 +129,17 @@ std::string V8cScriptDebugger::Detach() {
   // If/when we re-atttach we'll connect a new session and the V8 inspector will
   // then inform the frontend about the sources, etc. in the new context.
   DCHECK(inspector_session_);
-  std::unique_ptr<v8_inspector::StringBuffer> state =
-      inspector_session_->stateJSON();
+  std::vector<uint8_t> state = inspector_session_->state();
   inspector_session_.reset();
-  return FromStringView(state->string());
+  CobaltJsonPlatform platform;
+  std::string state_str;
+  // TODO: there might be an opportunity to utilize the already encoded json to
+  // reduce network traffic size on the wire.
+  v8_inspector_protocol_encoding::json::ConvertCBORToJSON(
+      platform,
+      v8_inspector_protocol_encoding::span<uint8_t>(state.data(), state.size()),
+      &state_str);
+  return state_str;
 }
 
 bool V8cScriptDebugger::EvaluateDebuggerScript(const std::string& js_code,
@@ -140,7 +165,7 @@ bool V8cScriptDebugger::EvaluateDebuggerScript(const std::string& js_code,
   v8::Local<v8::Value> result;
   if (!inspector_->compileAndRunInternalScript(context, source)
            .ToLocal(&result)) {
-    v8::String::Utf8Value exception(try_catch.Exception());
+    v8::String::Utf8Value exception(isolate, try_catch.Exception());
     std::string string(*exception, exception.length());
     if (string.empty()) string.assign("Unknown error");
     LOG(ERROR) << "Debugger script error: " << string;
@@ -241,6 +266,29 @@ void V8cScriptDebugger::StopTracing() {
   tracing_controller->StopTracing();
 }
 
+void V8cScriptDebugger::AsyncTaskScheduled(const void* task,
+                                           const std::string& name,
+                                           bool recurring) {
+  inspector_->asyncTaskScheduled(ToStringView(name), const_cast<void*>(task),
+                                 recurring);
+}
+
+void V8cScriptDebugger::AsyncTaskStarted(const void* task) {
+  inspector_->asyncTaskStarted(const_cast<void*>(task));
+}
+
+void V8cScriptDebugger::AsyncTaskFinished(const void* task) {
+  inspector_->asyncTaskFinished(const_cast<void*>(task));
+}
+
+void V8cScriptDebugger::AsyncTaskCanceled(const void* task) {
+  inspector_->asyncTaskCanceled(const_cast<void*>(task));
+}
+
+void V8cScriptDebugger::AllAsyncTasksCanceled() {
+  inspector_->allAsyncTasksCanceled();
+}
+
 // v8_inspector::V8InspectorClient implementation.
 void V8cScriptDebugger::runMessageLoopOnPause(int contextGroupId) {
   DCHECK(contextGroupId == kContextGroupId);
@@ -258,19 +306,46 @@ void V8cScriptDebugger::runIfWaitingForDebugger(int contextGroupId) {
 }
 
 // v8_inspector::V8InspectorClient implementation.
+std::unique_ptr<v8_inspector::StringBuffer> V8cScriptDebugger::valueSubtype(
+    v8::Local<v8::Value> value) {
+  if (value->IsNullOrUndefined() || !value->IsObject()) {
+    return nullptr;
+  }
+
+  v8::Local<v8::Object> object = value.As<v8::Object>();
+  if (!WrapperPrivate::HasWrapperPrivate(object)) {
+    return nullptr;
+  }
+
+  WrapperPrivate* wrapper_private =
+      WrapperPrivate::GetFromWrapperObject(object);
+  DCHECK(wrapper_private);
+  Wrappable::JSObjectType type =
+      wrapper_private->raw_wrappable()->GetJSObjectType();
+  if (type == Wrappable::JSObjectType::kNode) {
+    return v8_inspector::StringBuffer::create(ToStringView("node"));
+  } else if (type == Wrappable::JSObjectType::kArray) {
+    return v8_inspector::StringBuffer::create(ToStringView("array"));
+  } else if (type == Wrappable::JSObjectType::kError) {
+    return v8_inspector::StringBuffer::create(ToStringView("error"));
+  } else if (type == Wrappable::JSObjectType::kBlob) {
+    return v8_inspector::StringBuffer::create(ToStringView("blob"));
+  }
+  return nullptr;
+}
+
+// v8_inspector::V8InspectorClient implementation.
 void V8cScriptDebugger::consoleAPIMessage(
     int contextGroupId, v8::Isolate::MessageErrorLevel level,
     const v8_inspector::StringView& message,
     const v8_inspector::StringView& url, unsigned lineNumber,
     unsigned columnNumber, v8_inspector::V8StackTrace* trace) {
-  SB_UNREFERENCED_PARAMETER(contextGroupId);
-  SB_UNREFERENCED_PARAMETER(trace);
 
   std::string source;
   if (url.length()) {
     std::ostringstream oss;
     oss << ": " << FromStringView(url) << ", Line " << lineNumber << ", Col "
-       << columnNumber;
+        << columnNumber;
     source = oss.str();
   }
 

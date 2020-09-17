@@ -76,7 +76,7 @@ class ResponseHandlerImpl : public WebDriverServer::ResponseHandler {
         server_(server),
         connection_id_(connection_id) {}
 
-  // https://code.google.com/p/selenium/wiki/JsonWireProtocol#Responses
+  // https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#Responses
   void Success(std::unique_ptr<base::Value> value) override {
     DCHECK(value);
     std::string data;
@@ -94,7 +94,7 @@ class ResponseHandlerImpl : public WebDriverServer::ResponseHandler {
   // Failed commands map to a valid WebDriver command and contain the expected
   // parameters, but otherwise failed to execute for some reason. This should
   // send a 500 Internal Server Error.
-  // https://code.google.com/p/selenium/wiki/JsonWireProtocol#Error_Handling
+  // https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#Error-Handling
   void FailedCommand(std::unique_ptr<base::Value> value) override {
     DCHECK(value);
     std::string data;
@@ -103,7 +103,7 @@ class ResponseHandlerImpl : public WebDriverServer::ResponseHandler {
   }
 
   // A number of cases for invalid requests are explained here:
-  // https://code.google.com/p/selenium/wiki/JsonWireProtocol#Invalid_Requests
+  // https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#Invalid-Requests
   // The response type should be text/plain and the message body is an error
   // message
 
@@ -198,18 +198,18 @@ WebDriverServer::WebDriverServer(int port, const std::string& listen_ip,
       std::make_unique<net::TCPServerSocket>(nullptr, net::NetLogSource());
   server_socket->ListenWithAddressAndPort(listen_ip, port, 1 /*backlog*/);
   server_ = std::make_unique<net::HttpServer>(std::move(server_socket), this);
-  GURL address;
-  int result = GetLocalAddress(&address);
+  net::IPEndPoint ip_addr;
+  int result = server_->GetLocalInterfaceAddress(&ip_addr);
   if (result == net::OK) {
     LOG(INFO) << "Starting WebDriver server on port " << port;
-    server_address_ = address.spec();
+    server_address_ = "http://" + ip_addr.ToString();
   } else {
     LOG(WARNING) << "Could not start WebDriver server";
     server_address_ = "<NOT RUNNING>";
   }
 }
 
-void WebDriverServer::OnConnect(int /*connection_id*/) {}
+void WebDriverServer::OnConnect(int connection_id) {}
 
 void WebDriverServer::OnHttpRequest(int connection_id,
                                     const net::HttpServerRequestInfo& info) {
@@ -244,15 +244,6 @@ void WebDriverServer::OnHttpRequest(int connection_id,
   handle_request_callback_.Run(StringToHttpMethod(info.method), path,
                                std::move(parameters),
                                std::move(response_handler));
-}
-
-int WebDriverServer::GetLocalAddress(GURL* out) const {
-  net::IPEndPoint ip_addr;
-  int result = server_->GetLocalAddress(&ip_addr);
-  if (result == net::OK) {
-    *out = GURL("http://" + ip_addr.ToString());
-  }
-  return result;
 }
 
 }  // namespace webdriver

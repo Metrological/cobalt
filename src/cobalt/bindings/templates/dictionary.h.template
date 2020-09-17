@@ -182,6 +182,8 @@ class {{class_name}} {
 
 {% endfor %}
 
+ using is_a_generated_dict = std::true_type;
+
  private:
 {% for member in members %}
 {% if not member.default_value %}
@@ -199,7 +201,6 @@ class {{class_name}} {
 // in idl test code
 inline std::ostream& operator<<(
     std::ostream& stream, const {{components|join('::')}}::{{class_name}}& in) {
-  SB_UNREFERENCED_PARAMETER(in);
   stream << "[{{class_name}}]";
   return stream;
 }

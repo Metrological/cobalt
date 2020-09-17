@@ -5,13 +5,15 @@
  * found in the LICENSE file.
  */
 
-#include "SkBitmap.h"
-#include "SkRandom.h"
-#include "SkRect.h"
-#include "Test.h"
+#include "include/core/SkBitmap.h"
+#include "include/core/SkColor.h"
+#include "include/core/SkImageInfo.h"
+#include "include/core/SkRect.h"
+#include "include/core/SkTypes.h"
+#include "tests/Test.h"
 
 DEF_TEST(GetColor, reporter) {
-    static const struct Rec {
+    static constexpr struct Rec {
         SkColorType fColorType;
         SkColor     fInColor;
         SkColor     fOutColor;

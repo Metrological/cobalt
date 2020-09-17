@@ -137,7 +137,6 @@ void ApplicationAndroid::Teardown() {
 }
 
 SbWindow ApplicationAndroid::CreateWindow(const SbWindowOptions* options) {
-  SB_UNREFERENCED_PARAMETER(options);
   if (SbWindowIsValid(window_)) {
     return kSbWindowInvalid;
   }
@@ -362,13 +361,17 @@ void ApplicationAndroid::SendAndroidCommand(AndroidCommand::CommandType type,
 }
 
 void ApplicationAndroid::ProcessAndroidInput() {
-  SB_DCHECK(input_events_generator_);
   AInputEvent* android_event = NULL;
   while (AInputQueue_getEvent(input_queue_, &android_event) >= 0) {
     SB_LOG(INFO) << "Android input: type="
                  << AInputEvent_getType(android_event);
     if (AInputQueue_preDispatchEvent(input_queue_, android_event)) {
         continue;
+    }
+    if (!input_events_generator_) {
+      SB_DLOG(WARNING) << "Android input event ignored without an SbWindow.";
+      AInputQueue_finishEvent(input_queue_, android_event, false);
+      continue;
     }
     InputEventsGenerator::Events app_events;
     bool handled = input_events_generator_->CreateInputEventsFromAndroidEvent(
@@ -385,7 +388,10 @@ void ApplicationAndroid::ProcessKeyboardInject() {
   int err = read(keyboard_inject_readfd_, &key, sizeof(key));
   SB_DCHECK(err >= 0) << "Keyboard inject read failed: errno=" << errno;
   SB_LOG(INFO) << "Keyboard inject: " << key;
-
+  if (!input_events_generator_) {
+    SB_DLOG(WARNING) << "Injected input event ignored without an SbWindow.";
+    return;
+  }
   InputEventsGenerator::Events app_events;
   input_events_generator_->CreateInputEventsFromSbKey(key, &app_events);
   for (int i = 0; i < app_events.size(); ++i) {
@@ -408,14 +414,16 @@ extern "C" SB_EXPORT_PLATFORM jboolean
 Java_dev_cobalt_coat_KeyboardInputConnection_nativeHasOnScreenKeyboard(
     JniEnvExt* env,
     jobject unused_this) {
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12
+  return SbWindowOnScreenKeyboardIsSupported() ? JNI_TRUE : JNI_FALSE;
+#elif SB_HAS(ON_SCREEN_KEYBOARD)
   return JNI_TRUE;
-#else   // SB_HAS(ON_SCREEN_KEYBOARD)
+#else
   return JNI_FALSE;
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif
 }
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
 
 void ApplicationAndroid::SbWindowShowOnScreenKeyboard(SbWindow window,
                                                       const char* input_text,
@@ -508,7 +516,8 @@ void ApplicationAndroid::SbWindowSendInputEvent(const char* input_text,
   return;
 }
 
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
 bool ApplicationAndroid::OnSearchRequested() {
   for (int i = 0; i < 2; i++) {

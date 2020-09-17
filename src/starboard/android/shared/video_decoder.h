@@ -15,7 +15,9 @@
 #ifndef STARBOARD_ANDROID_SHARED_VIDEO_DECODER_H_
 #define STARBOARD_ANDROID_SHARED_VIDEO_DECODER_H_
 
+#include <atomic>
 #include <deque>
+#include <string>
 
 #include "starboard/android/shared/drm_system.h"
 #include "starboard/android/shared/media_codec_bridge.h"
@@ -49,11 +51,17 @@ class VideoDecoder
 
   class Sink;
 
+  static int number_of_hardware_decoders() {
+    return number_of_hardware_decoders_;
+  }
+
   VideoDecoder(SbMediaVideoCodec video_codec,
                SbDrmSystem drm_system,
                SbPlayerOutputMode output_mode,
                SbDecodeTargetGraphicsContextProvider*
-                   decode_target_graphics_context_provider);
+                   decode_target_graphics_context_provider,
+               const char* max_video_capabilities,
+               std::string* error_message);
   ~VideoDecoder() override;
 
   scoped_refptr<VideoRendererSink> GetSink();
@@ -82,7 +90,7 @@ class VideoDecoder
  private:
   // Attempt to initialize the codec.  Returns whether initialization was
   // successful.
-  bool InitializeCodec();
+  bool InitializeCodec(std::string* error_message);
   void TeardownCodec();
 
   void ProcessOutputBuffer(MediaCodecBridge* media_codec_bridge,
@@ -92,6 +100,9 @@ class VideoDecoder
   void OnFlushing() override;
 
   void OnSurfaceDestroyed() override;
+  void ReportError(SbPlayerError error, const std::string& error_message);
+
+  static int number_of_hardware_decoders_;
 
   // These variables will be initialized inside ctor or Initialize() and will
   // not be changed during the life time of this class.
@@ -99,11 +110,14 @@ class VideoDecoder
   DecoderStatusCB decoder_status_cb_;
   ErrorCB error_cb_;
   DrmSystem* drm_system_;
-
-  SbPlayerOutputMode output_mode_;
-
+  const SbPlayerOutputMode output_mode_;
   SbDecodeTargetGraphicsContextProvider*
       decode_target_graphics_context_provider_;
+  // Android doesn't offically support multi concurrent codecs. But the device
+  // usually has at least one hardware decoder and Google's software decoders.
+  // Google's software decoders can work concurrently. So, we use HW decoder for
+  // the main player and SW decoder for sub players.
+  const bool require_software_codec_;
 
   // If decode-to-texture is enabled, then we store the decode target texture
   // inside of this |decode_target_| member.

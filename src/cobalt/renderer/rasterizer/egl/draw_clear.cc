@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "starboard/configuration.h"
+#if SB_API_VERSION >= 12 || SB_HAS(GLES2)
+
 #include "cobalt/renderer/rasterizer/egl/draw_clear.h"
 
 #include "cobalt/renderer/backend/egl/utils.h"
@@ -28,14 +31,10 @@ DrawClear::DrawClear(GraphicsState* graphics_state, const BaseState& base_state,
 
 void DrawClear::ExecuteUpdateVertexBuffer(
     GraphicsState* graphics_state, ShaderProgramManager* program_manager) {
-  SB_UNREFERENCED_PARAMETER(graphics_state);
-  SB_UNREFERENCED_PARAMETER(program_manager);
 }
 
 void DrawClear::ExecuteRasterize(GraphicsState* graphics_state,
                                  ShaderProgramManager* program_manager) {
-  SB_UNREFERENCED_PARAMETER(program_manager);
-
   graphics_state->Scissor(base_state_.scissor.x(), base_state_.scissor.y(),
                           base_state_.scissor.width(),
                           base_state_.scissor.height());
@@ -52,3 +51,5 @@ base::TypeId DrawClear::GetTypeId() const {
 }  // namespace rasterizer
 }  // namespace renderer
 }  // namespace cobalt
+
+#endif  // SB_API_VERSION >= 12 || SB_HAS(GLES2)

@@ -42,14 +42,16 @@ consume around 10MB more memory than SpiderMonkey.
 
 To enable V8, you must modify the `GetVariables()` method in your
 `gyp_configuration.py` file and ensure that the variables dictionary that is
-returned contains the following key/value pairs:
+returned contains the following key/value pair:
 
 ```
 {
   'javascript_engine': 'v8',
-  'cobalt_enable_jit': 1,
 }
 ```
+
+Additionally, you must implement the `CobaltExtensionConfigurationApi` such
+that the `CobaltEnableJit()` method returns `true`.
 
 Note also that use of V8 requires Starboard version 10 or higher.
 
@@ -171,8 +173,8 @@ the best or fastest thing to do.  Enabling JIT can result in Cobalt using
 more memory (to store compiled code) and can also actually slow down
 JavaScript execution (e.g. time must now be spent compiling code).  It is
 recommended that JIT support be left disabled, but you can experiment with
-it by setting the `cobalt_enable_jit` `gyp_configuration.gypi` variable to `1`
-to enable JIT, or `0` to disable it.
+it by implementing the CobaltExtensionConfigurationApi method
+`CobaltEnableJit()` to return `true` to enable JIT, or `false` to disable it.
 
 **Tags:** *gyp_configuration.gypi, startup, browse-to-watch, input latency,
            cpu memory.*
@@ -198,14 +200,10 @@ file.
 
 Some platforms require that the display buffer is swapped frequently, and
 so in these cases Cobalt will render the scene every frame, even if it is
-not changing, which consumes CPU resources.  This behavior is defined by the
-value of `SB_MUST_FREQUENTLY_FLIP_DISPLAY_BUFFER` in your platform's
-`configuration_public.h` file.  Unless your platform is restricted in this
-aspect, you should ensure that `SB_MUST_FREQUENTLY_FLIP_DISPLAY_BUFFER`
-is set to `0`.  If the platform needs a new frame submitted periodically,
-an alternative to setting `SB_MUST_FREQUENTLY_FLIP_DISPLAY_BUFFER` to `1`
-is to implement the Cobalt Extension "dev.cobalt.extension.Graphics" and
-report the maximum frame interval via `GetMaximumFrameIntervalInMilliseconds`.
+not changing, which consumes CPU resources.  If the platform needs a new frame
+submitted periodically implement the Cobalt Extension
+"dev.cobalt.extension.Graphics" and report the maximum frame interval via
+`GetMaximumFrameIntervalInMilliseconds`.
 
 See `SbSystemGetExtension` and
 [`CobaltExtensionGraphicsApi`](../extension/graphics.h).
@@ -221,14 +219,14 @@ changed.
 ### Try enabling rendering only to regions that change
 
 If you set the
-[`cobalt_configuration.gypi`](../build/cobalt_configuration.gypi) variable,
-`render_dirty_region_only` to `1`, then Cobalt will invoke logic to detect which
-part of the frame has been affected by animations and can be configured to only
-render to that region.  However, this feature requires support from the driver
-for GLES platforms.  In particular, `eglChooseConfig()` will first be called
-with `EGL_SWAP_BEHAVIOR_PRESERVED_BIT` set in its attribute list.  If this
-fails, Cobalt will call eglChooseConfig() again without
-`EGL_SWAP_BEHAVIOR_PRESERVED_BIT` set and dirty region rendering will
+[`CobaltConfigurationExtensionApi`](../extension/configuration.h) function
+`CobaltRenderDirtyRegionOnly` to return `true`, then Cobalt will invoke logic
+to detect which part of the frame has been affected by animations and can be
+configured to only render to that region.  However, this feature requires
+support from the driver for GLES platforms.  In particular, `eglChooseConfig()`
+will first be called with `EGL_SWAP_BEHAVIOR_PRESERVED_BIT` set in its
+attribute list.  If this fails, Cobalt will call eglChooseConfig() again
+without `EGL_SWAP_BEHAVIOR_PRESERVED_BIT` set and dirty region rendering will
 be disabled.  By having Cobalt render only small parts of the screen,
 CPU (and GPU) resources can be freed to work on other tasks.  This can
 especially affect startup time since usually only a small part of the
@@ -250,7 +248,7 @@ even while JavaScript is being executed, and to ensure that JavaScript is
 processed (e.g. in response to a key press) before images are decoded.  Thus
 having support for priorities can improve the overall performance of the
 application.  To enable thread priority support, you should set the value
-of `SB_HAS_THREAD_PRIORITY_SUPPORT` to `1` in your `configuration_public.h`
+of `kSbHasThreadPrioritySupport` to `true` in your `configuration_constants.h`
 file, and then also ensure that your platform's implementation of
 `SbThreadCreate()` properly forwards the priority parameter down to the
 platform.
@@ -293,15 +291,6 @@ optimization, as it has been reported to yield significant performance
 improvements in many high profile projects.
 
 **Tags:** *framerate, startup, browse-to-watch, input latency*
-
-
-#### The GCC '-mplt' flag for MIPS architectures
-The '-mplt' flag has been found to improve all around performance by
-~20% on MIPS architecture platforms.  If your platform has a MIPS
-architecture, it is suggested that you enable this flag in gold builds.
-
-**Tags:** *gyp_configuration.gypi, framerate, startup, browse-to-watch,
-           input latency.*
 
 
 ### Close "Stats for Nerds" when measuring performance
@@ -421,11 +410,12 @@ to generate this data:
 1. The command line option, "--timed_trace=XX" will instruct Cobalt to trace
    upon startup, for XX seconds (e.g. "--timed_trace=25").  When completed,
    the output will be written to the file `timed_trace.json`.
-2. Using the debug console (hit CTRL+O on a keyboard once or twice), type in the
-   command "d.trace()" and hit enter.  Cobalt will begin a trace.  After
-   some time has passed (and presumably you have performed some actions), you
-   can open the debug console again and type "d.trace()" again to end the trace.
-   The trace output will be written to the file `triggered_trace.json`.
+2. Using the debug console (hit CTRL+O on a keyboard once or twice), type in
+   the command "h5vcc.traceEvent.start()" and hit enter.  Cobalt will begin a
+   trace.  After some time has passed (and presumably you have performed some
+   actions), you can open the debug console again and type
+   "h5vcc.traceEvent.stop()" again to end the trace.
+   The trace output will be written to the file `h5vcc_trace_event.json`.
 
 The directory the output files will be placed within is the directory that the
 Starboard function `SbSystemGetPath()` returns with a `path_id` of

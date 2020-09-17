@@ -12,8 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "starboard/configuration.h"
+#if SB_API_VERSION >= 12 || SB_HAS(GLES2)
+
 #include "cobalt/renderer/backend/egl/display.h"
 
+#include "cobalt/configuration/configuration.h"
 #include "cobalt/renderer/backend/egl/render_target.h"
 #include "cobalt/renderer/egl_and_gles.h"
 
@@ -46,16 +50,18 @@ class DisplayRenderTargetEGL : public RenderTargetEGL {
 DisplayRenderTargetEGL::DisplayRenderTargetEGL(EGLDisplay display,
                                                EGLSurface surface)
     : display_(display), surface_(surface) {
-#if defined(COBALT_RENDER_DIRTY_REGION_ONLY)
-  // Configure the surface to preserve contents on swap.
-  EGLBoolean surface_attrib_set = EGL_CALL_SIMPLE(eglSurfaceAttrib(
-      display_, surface_, EGL_SWAP_BEHAVIOR, EGL_BUFFER_PRESERVED));
-  // NOTE: Must check eglGetError() to clear any error flags and also check
-  // the return value of eglSurfaceAttrib since some implementations may not
-  // set the error condition.
-  content_preserved_on_swap_ = EGL_CALL_SIMPLE(eglGetError()) == EGL_SUCCESS &&
-                               surface_attrib_set == EGL_TRUE;
-#endif  // #if defined(COBALT_RENDER_DIRTY_REGION_ONLY)
+  if (configuration::Configuration::GetInstance()
+          ->CobaltRenderDirtyRegionOnly()) {
+    // Configure the surface to preserve contents on swap.
+    EGLBoolean surface_attrib_set = EGL_CALL_SIMPLE(eglSurfaceAttrib(
+        display_, surface_, EGL_SWAP_BEHAVIOR, EGL_BUFFER_PRESERVED));
+    // NOTE: Must check eglGetError() to clear any error flags and also check
+    // the return value of eglSurfaceAttrib since some implementations may not
+    // set the error condition.
+    content_preserved_on_swap_ =
+        EGL_CALL_SIMPLE(eglGetError()) == EGL_SUCCESS &&
+        surface_attrib_set == EGL_TRUE;
+  }
 
   // Query and cache information about the surface now that we have created it.
   EGLint egl_surface_width;
@@ -87,3 +93,5 @@ scoped_refptr<RenderTarget> DisplayEGL::GetRenderTarget() {
 }  // namespace backend
 }  // namespace renderer
 }  // namespace cobalt
+
+#endif  // SB_API_VERSION >= 12 || SB_HAS(GLES2)

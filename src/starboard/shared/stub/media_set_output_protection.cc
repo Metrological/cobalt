@@ -16,7 +16,8 @@
 
 #include "starboard/common/log.h"
 
+#if SB_API_VERSION < 12
 bool SbMediaSetOutputProtection(bool enabled) {
-  SB_UNREFERENCED_PARAMETER(enabled);
   return false;
 }
+#endif  // SB_API_VERSION < 12

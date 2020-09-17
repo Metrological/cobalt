@@ -45,6 +45,7 @@
 #ifndef COBALT_DOM_SOURCE_BUFFER_H_
 #define COBALT_DOM_SOURCE_BUFFER_H_
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -65,6 +66,7 @@
 #include "cobalt/media/filters/chunk_demuxer.h"
 #include "cobalt/script/array_buffer.h"
 #include "cobalt/script/array_buffer_view.h"
+#include "cobalt/script/environment_settings.h"
 #include "cobalt/script/exception_state.h"
 
 namespace cobalt {
@@ -79,13 +81,13 @@ class SourceBuffer : public dom::EventTarget {
  public:
   // Custom, not in any spec.
   //
-  SourceBuffer(const std::string& id, MediaSource* media_source,
-               media::ChunkDemuxer* chunk_demuxer, EventQueue* event_queue);
+  SourceBuffer(script::EnvironmentSettings* settings, const std::string& id,
+               MediaSource* media_source, media::ChunkDemuxer* chunk_demuxer,
+               EventQueue* event_queue);
 
   // Web API: SourceBuffer
   //
   SourceBufferAppendMode mode(script::ExceptionState* exception_state) const {
-    SB_UNREFERENCED_PARAMETER(exception_state);
     return mode_;
   }
   void set_mode(SourceBufferAppendMode mode,
@@ -94,7 +96,6 @@ class SourceBuffer : public dom::EventTarget {
   scoped_refptr<TimeRanges> buffered(
       script::ExceptionState* exception_state) const;
   double timestamp_offset(script::ExceptionState* exception_state) const {
-    SB_UNREFERENCED_PARAMETER(exception_state);
     return timestamp_offset_;
   }
   void set_timestamp_offset(double offset,
@@ -102,13 +103,11 @@ class SourceBuffer : public dom::EventTarget {
   scoped_refptr<AudioTrackList> audio_tracks() const { return audio_tracks_; }
   scoped_refptr<VideoTrackList> video_tracks() const { return video_tracks_; }
   double append_window_start(script::ExceptionState* exception_state) const {
-    SB_UNREFERENCED_PARAMETER(exception_state);
     return append_window_start_;
   }
   void set_append_window_start(double start,
                                script::ExceptionState* exception_state);
   double append_window_end(script::ExceptionState* exception_state) const {
-    SB_UNREFERENCED_PARAMETER(exception_state);
     return append_window_end_;
   }
   void set_append_window_end(double start,
@@ -122,7 +121,6 @@ class SourceBuffer : public dom::EventTarget {
               script::ExceptionState* exception_state);
   scoped_refptr<TrackDefaultList> track_defaults(
       script::ExceptionState* exception_state) const {
-    SB_UNREFERENCED_PARAMETER(exception_state);
     return track_defaults_;
   }
   void set_track_defaults(const scoped_refptr<TrackDefaultList>& track_defaults,
@@ -168,25 +166,27 @@ class SourceBuffer : public dom::EventTarget {
   const std::string id_;
   media::ChunkDemuxer* chunk_demuxer_;
   MediaSource* media_source_;
-  scoped_refptr<TrackDefaultList> track_defaults_;
+  scoped_refptr<TrackDefaultList> track_defaults_ = new TrackDefaultList(NULL);
   EventQueue* event_queue_;
 
-  SourceBufferAppendMode mode_;
-  bool updating_;
-  double timestamp_offset_;
+  SourceBufferAppendMode mode_ = kSourceBufferAppendModeSegments;
+  bool updating_ = false;
+  double timestamp_offset_ = 0;
   scoped_refptr<AudioTrackList> audio_tracks_;
   scoped_refptr<VideoTrackList> video_tracks_;
-  double append_window_start_;
-  double append_window_end_;
+  double append_window_start_ = 0;
+  double append_window_end_ = std::numeric_limits<double>::infinity();
 
   base::OneShotTimer append_timer_;
-  bool first_initialization_segment_received_;
-  std::vector<uint8_t> pending_append_data_;
-  size_t pending_append_data_offset_;
+  bool first_initialization_segment_received_ = false;
+  std::unique_ptr<uint8_t[]> pending_append_data_;
+  size_t pending_append_data_capacity_ = 0;
+  size_t pending_append_data_size_ = 0;
+  size_t pending_append_data_offset_ = 0;
 
   base::OneShotTimer remove_timer_;
-  double pending_remove_start_;
-  double pending_remove_end_;
+  double pending_remove_start_ = -1;
+  double pending_remove_end_ = -1;
 };
 
 }  // namespace dom

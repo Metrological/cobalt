@@ -1,4 +1,4 @@
-// Copyright 2017 The Cobalt Authors. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,126 +18,22 @@
 #ifndef THIRD_PARTY_STARBOARD_WPE_BRCM_ARM_CONFIGURATION_PUBLIC_H_
 #define THIRD_PARTY_STARBOARD_WPE_BRCM_ARM_CONFIGURATION_PUBLIC_H_
 
-#define SB_API_VERSION 12
-
 // --- Architecture Configuration --------------------------------------------
-
-// Whether the current platform is big endian. SB_IS_LITTLE_ENDIAN will be
-// automatically set based on this.
-#define SB_IS_BIG_ENDIAN 0
-
-// Whether the current platform is big endian. SB_IS_LITTLE_ENDIAN will be
-// automatically set based on this.
-#define SB_IS_BIG_ENDIAN 0
-
-// Whether the current platform is an ARM architecture.
-#define SB_IS_ARCH_ARM 1
-
-// Whether the current platform is a MIPS architecture.
-#define SB_IS_ARCH_MIPS 0
-
-// Whether the current platform is a PPC architecture.
-#define SB_IS_ARCH_PPC 0
-
-// Whether the current platform is an x86 architecture.
-#define SB_IS_ARCH_X86 0
-
-// Whether the current platform is a 32-bit architecture.
-#define SB_IS_32_BIT 1
-
-// Whether the current platform is a 64-bit architecture.
-#define SB_IS_64_BIT 0
-
-// Whether the current platform's pointers are 32-bit.
-// Whether the current platform's longs are 32-bit.
-#if SB_IS(32_BIT)
-#define SB_HAS_32_BIT_POINTERS 1
-#define SB_HAS_32_BIT_LONG 1
-#else
-#define SB_HAS_32_BIT_POINTERS 0
-#define SB_HAS_32_BIT_LONG 0
-#endif
-
-// Whether the current platform's pointers are 64-bit.
-// Whether the current platform's longs are 64-bit.
-#if SB_IS(64_BIT)
-#define SB_HAS_64_BIT_POINTERS 1
-#define SB_HAS_64_BIT_LONG 1
-#else
-#define SB_HAS_64_BIT_POINTERS 0
-#define SB_HAS_64_BIT_LONG 0
-#endif
-
-// Configuration parameters that allow the application to make some general
-// compile-time decisions with respect to the the number of cores likely to be
-// available on this platform. For a definitive measure, the application should
-// still call SbSystemGetNumberOfProcessors at runtime.
-
-// Whether the current platform is expected to have many cores (> 6), or a
-// wildly varying number of cores.
-#define SB_HAS_MANY_CORES 0
-
-// Whether the current platform is expected to have exactly 1 core.
-#define SB_HAS_1_CORE 0
-
-// Whether the current platform is expected to have exactly 2 cores.
-#define SB_HAS_2_CORES 0
-
-// Whether the current platform is expected to have exactly 4 cores.
-#define SB_HAS_4_CORES 1
-
-// Whether the current platform is expected to have exactly 6 cores.
-#define SB_HAS_6_CORES 0
-
-// Whether the current platform's thread scheduler will automatically balance
-// threads between cores, as opposed to systems where threads will only ever run
-// on the specifically pinned core.
-#define SB_HAS_CROSS_CORE_SCHEDULER 1
-
-// Some platforms will not align variables on the stack with an alignment
-// greater than 16 bytes. Platforms where this is the case should define the
-// following quirk.
-#define SB_HAS_QUIRK_DOES_NOT_STACK_ALIGN_OVER_16_BYTES 1
-#define SB_HAS_QUIRK_DOES_NOT_ALIGN_FIELDS_IN_HEAP_OVER_16_BYTES 1
 
 // Some platforms do not have thread affinity support. Platforms where this is
 // the case should define the following quirk.
 #undef SB_HAS_QUIRK_THREAD_AFFINITY_UNSUPPORTED
 
-// Some platforms the mapped GL buffer memory is slow to read from.  Platforms
-// where this is the case should define the following quirk.
-#undef SB_HAS_QUIRK_GL_MAP_BUFFER_MEMORY_IS_SLOW_TO_READ
 // --- System Header Configuration -------------------------------------------
 
 // Any system headers listed here that are not provided by the platform will be
 // emulated in starboard/types.h.
 
-// Whether the current platform provides the standard header stdarg.h.
-#define SB_HAS_STDARG_H 1
-
-// Whether the current platform provides the standard header stdbool.h.
-#define SB_HAS_STDBOOL_H 1
-
-// Whether the current platform provides the standard header stddef.h.
-#define SB_HAS_STDDEF_H 1
-
-// Whether the current platform provides the standard header stdint.h.
-#define SB_HAS_STDINT_H 1
-
-// Whether the current platform provides the standard header inttypes.h.
-#define SB_HAS_INTTYPES_H 1
-
 // Whether the current platform provides the standard header sys/types.h.
 #define SB_HAS_SYS_TYPES_H 1
 
-// Whether the current platform provides the standard header wchar.h.
-#define SB_HAS_WCHAR_H 1
-
-// Whether the current platform provides the standard header limits.h.
-#define SB_HAS_LIMITS_H 1
-
-// Whether the current platform provides the standard header float.h.
-#define SB_HAS_FLOAT_H 1
+// Whether the current platform provides ssize_t.
+#define SB_HAS_SSIZE_T 1
 
 // Type detection for wchar_t.
 #if defined(__WCHAR_MAX__) && \
@@ -148,17 +44,11 @@
 #define SB_IS_WCHAR_T_UTF16 1
 #endif
 
-// Chrome only defines these two if ARMEL or MIPSEL are defined.
+// Chrome only defines this for ARMEL.
 #if defined(__ARMEL__)
 // Chrome has an exclusion for iOS here, we should too when we support iOS.
 #define SB_IS_WCHAR_T_UNSIGNED 1
-#elif defined(__MIPSEL__)
-#define SB_IS_WCHAR_T_SIGNED 1
 #endif
-
-// Some platforms have memset predefined in system headers. Platforms where this
-// is the case should define the following quirk.
-#undef SB_HAS_QUIRK_MEMSET_IN_SYSTEM_HEADERS
 
 // This quirk is used to switch the headers included in
 // starboard/shared/linux/socket_get_interface_address.cc for darwin system
@@ -169,7 +59,7 @@
 // should define the following quirk.
 #undef SB_HAS_QUIRK_NO_GMTIME_R
 
-// --- Compiler Configuration ------------------------------------------------
+// --- Attribute Configuration -----------------------------------------------
 
 // The platform's annotation for forcing a C function to be inlined.
 #define SB_C_FORCE_INLINE __inline__ __attribute__((always_inline))
@@ -189,15 +79,6 @@
 // The platform's annotation for marking a symbol as imported from outside of
 // the current linking unit.
 #define SB_IMPORT_PLATFORM
-
-// On some platforms the __GNUC__ is defined even though parts of the
-// functionality are missing. Setting this to non-zero allows disabling missing
-// functionality encountered.
-#undef SB_HAS_QUIRK_COMPILER_SAYS_GNUC_BUT_ISNT
-
-// On some compilers, the frontend has a quirk such that #ifdef cannot
-// correctly detect __has_feature is defined, and an example error you get is:
-#undef SB_HAS_QUIRK_HASFEATURE_NOT_DEFINED_BUT_IT_IS
 
 // --- Extensions Configuration ----------------------------------------------
 
@@ -233,49 +114,7 @@
 // The location to include hash_set on this platform.
 #define SB_HASH_SET_INCLUDE <ext/hash_set>
 
-// Define this to how this platform copies varargs blocks.
-#define SB_VA_COPY(dest, source) va_copy(dest, source)
-
 // --- Filesystem Configuration ----------------------------------------------
-
-// The current platform's maximum length of the name of a single directory
-// entry, not including the absolute path.
-#define SB_FILE_MAX_NAME 64
-
-// The current platform's maximum length of an absolute path.
-#define SB_FILE_MAX_PATH 4096
-
-// The current platform's maximum number of files that can be opened at the
-// same time by one process.
-#define SB_FILE_MAX_OPEN 256
-
-// The current platform's file path component separator character. This is the
-// character that appears after a directory in a file path. For example, the
-// absolute canonical path of the file "/path/to/a/file.txt" uses '/' as a path
-// component separator character.
-#define SB_FILE_SEP_CHAR '/'
-
-// The current platform's alternate file path component separator character.
-// This is like SB_FILE_SEP_CHAR, except if your platform supports an alternate
-// character, then you can place that here. For example, on windows machines,
-// the primary separator character is probably '\', but the alternate is '/'.
-#define SB_FILE_ALT_SEP_CHAR '/'
-
-// The current platform's search path component separator character. When
-// specifying an ordered list of absolute paths of directories to search for a
-// given reason, this is the character that appears between entries. For
-// example, the search path of "/etc/search/first:/etc/search/second" uses ':'
-// as a search path component separator character.
-#define SB_PATH_SEP_CHAR ':'
-
-// The string form of SB_FILE_SEP_CHAR.
-#define SB_FILE_SEP_STRING "/"
-
-// The string form of SB_FILE_ALT_SEP_CHAR.
-#define SB_FILE_ALT_SEP_STRING "/"
-
-// The string form of SB_PATH_SEP_CHAR.
-#define SB_PATH_SEP_STRING ":"
 
 // Some operating systems constantly return zero values for creation, access
 // and modification time for files and directories. When this quirk is defined,
@@ -298,11 +137,6 @@
 // API. The basic requirement is a scaled, clipped, alpha-blended blit.
 #define SB_HAS_BLITTER 0
 
-// Specifies the preferred byte order of color channels in a pixel. Refer to
-// starboard/configuration.h for the possible values. EGL/GLES platforms should
-// generally prefer a byte order of RGBA, regardless of endianness.
-#define SB_PREFERRED_RGBA_BYTE_ORDER SB_PREFERRED_RGBA_BYTE_ORDER_RGBA
-
 // Indicates whether or not the given platform supports bilinear filtering.
 // This can be checked to enable/disable renderer tests that verify that this is
 // working properly.
@@ -312,16 +146,7 @@
 // textures. These textures typically originate from video decoders.
 #define SB_HAS_NV12_TEXTURE_SUPPORT 1
 
-// Whether the current platform should frequently flip their display buffer.
-// If this is not required (e.g. SB_MUST_FREQUENTLY_FLIP_DISPLAY_BUFFER is set
-// to 0), then optimizations where the display buffer is not flipped if the
-// scene hasn't changed are enabled.
-#define SB_MUST_FREQUENTLY_FLIP_DISPLAY_BUFFER 0
-
 // --- I/O Configuration -----------------------------------------------------
-
-// Whether the current platform has microphone supported.
-#define SB_HAS_MICROPHONE 0
 
 // Whether the current platform implements the on screen keyboard interface.
 #define SB_HAS_ON_SCREEN_KEYBOARD 0
@@ -341,7 +166,12 @@
 // being played without audio for several seconds after seeking.  When the
 // following macro is defined, the app will append audio frames start from the
 // timestamp that is before the timestamp of the video key frame being appended.
-#define SB_HAS_QUIRK_SEEK_TO_KEYFRAME 1
+//
+// This quirk has been deprecated in Starboard version 12 or later.  Please see
+// `configuration_public.md` for more details.
+#if SB_API_VERSION < 12
+#undef SB_HAS_QUIRK_SEEK_TO_KEYFRAME
+#endif  // SB_API_VERSION < 12
 
 // The implementation is allowed to support kSbMediaAudioSampleTypeInt16 only
 // when this macro is defined.
@@ -351,96 +181,32 @@
 // not available should define the following quirk.
 #undef SB_HAS_QUIRK_NO_FFS
 
-// The maximum audio bitrate the platform can decode.  The following value
-// equals to 5M bytes per seconds which is more than enough for compressed
-// audio.
-#define SB_MEDIA_MAX_AUDIO_BITRATE_IN_BITS_PER_SECOND (40 * 1024 * 1024)
-
-// The maximum video bitrate the platform can decode.  The following value
-// equals to 25M bytes per seconds which is more than enough for compressed
-// video.
-#define SB_MEDIA_MAX_VIDEO_BITRATE_IN_BITS_PER_SECOND (200 * 1024 * 1024)
-
 #define SB_MEDIA_MAX_VIDEO_FRAMERATE_IN_FRAMES_PER_SECOND (60)
 
 #define SB_MEDIA_MAX_VIDEO_FRAME_WIDTH (3840)
 
 #define SB_MEDIA_MAX_VIDEO_FRAME_HEIGHT (2160)
 
-// Specifies whether this platform has webm/vp9 support.  This should be set to
-// non-zero on platforms with webm/vp9 support.
-#define SB_HAS_MEDIA_WEBM_VP9_SUPPORT 1
-
-// Specifies whether this platform updates audio frames asynchronously.  In such
-// case an extra parameter will be added to |SbAudioSinkConsumeFramesFunc| to
-// indicate the absolute time that the consumed audio frames are reported.
-// Check document for |SbAudioSinkConsumeFramesFunc| in audio_sink.h for more
-// details.
-#define SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING 0
-
-// Specifies the stack size for threads created inside media stack.  Set to 0 to
-// use the default thread stack size.  Set to non-zero to explicitly set the
-// stack size for media stack threads.
-#define SB_MEDIA_THREAD_STACK_SIZE 0U
-
 // --- Decoder-only Params ---
-
-// Specifies how media buffers must be aligned on this platform as some
-// decoders may have special requirement on the alignment of buffers being
-// decoded.
-#define SB_MEDIA_BUFFER_ALIGNMENT 128U
-
-// Specifies how video frame buffers must be aligned on this platform.
-#define SB_MEDIA_VIDEO_FRAME_ALIGNMENT 256U
-
-// The encoded video frames are compressed in different ways, their decoding
-// time can vary a lot.  Occasionally a single frame can take longer time to
-// decode than the average time per frame.  The player has to cache some frames
-// to account for such inconsistency.  The number of frames being cached are
-// controlled by the following two macros.
-//
-// Specify the number of video frames to be cached before the playback starts.
-// Note that set this value too large may increase the playback start delay.
-#define SB_MEDIA_MAXIMUM_VIDEO_PREROLL_FRAMES 4
-
-// Specify the number of video frames to be cached during playback.  A large
-// value leads to more stable fps but also causes the app to use more memory.
-#define SB_MEDIA_MAXIMUM_VIDEO_FRAMES 12
 
 // --- Memory Configuration --------------------------------------------------
 
-// The memory page size, which controls the size of chunks on memory that
-// allocators deal with, and the alignment of those chunks. This doesn't have to
-// be the hardware-defined physical page size, but it should be a multiple of
-// it.
-#define SB_MEMORY_PAGE_SIZE 4096
-
 // Whether this platform has and should use an MMAP function to map physical
 // memory to the virtual address space.
+#if SB_API_VERSION < 12
 #define SB_HAS_MMAP 1
+#endif
 
 // Whether this platform can map executable memory. Implies SB_HAS_MMAP. This is
 // required for platforms that want to JIT.
 #define SB_CAN_MAP_EXECUTABLE_MEMORY 1
 
-// Whether this platform has and should use an growable heap (e.g. with sbrk())
-// to map physical memory to the virtual address space.
-#define SB_HAS_VIRTUAL_REGIONS 0
+// Some platforms do not not apparently align fields in a heap-allocated struct
+// by over 16 bytes.
+#define SB_HAS_QUIRK_DOES_NOT_ALIGN_FIELDS_IN_HEAP_OVER_16_BYTES 1
 
-// Specifies the alignment for IO Buffers, in bytes. Some low-level network APIs
-// may require buffers to have a specific alignment, and this is the place to
-// specify that.
-#define SB_NETWORK_IO_BUFFER_ALIGNMENT 16
-
-// Determines the alignment that allocations should have on this platform.
-#define SB_MALLOC_ALIGNMENT ((size_t)16U)
-
-// Determines the threshhold of allocation size that should be done with mmap
-// (if available), rather than allocated within the core heap.
-#define SB_DEFAULT_MMAP_THRESHOLD ((size_t)(256 * 1024U))
-
-// Defines the path where memory debugging logs should be written to.
-#define SB_MEMORY_LOG_PATH "/tmp/starboard"
+// Some platforms do not not apparently align stack variables by over 16 bytes.
+#define SB_HAS_QUIRK_DOES_NOT_STACK_ALIGN_OVER_16_BYTES 1
 
 // --- Network Configuration -------------------------------------------------
 
@@ -452,23 +218,6 @@
 
 // --- Thread Configuration --------------------------------------------------
 
-// On the current version of Raspbian, real time thread scheduling seems to be
-// broken in that higher priority threads do not always have priority over lower
-// priority threads.  It looks like the thread created last will always have the
-// highest priority.
-#define SB_HAS_THREAD_PRIORITY_SUPPORT 0
-
-// Defines the maximum number of simultaneous threads for this platform. Some
-// platforms require sharing thread handles with other kinds of system handles,
-// like mutexes, so we want to keep this managable.
-#define SB_MAX_THREADS 90
-
-// The maximum number of thread local storage keys supported by this platform.
-#define SB_MAX_THREAD_LOCAL_KEYS 512
-
-// The maximum length of the name for a thread, including the NULL-terminator.
-#define SB_MAX_THREAD_NAME_LENGTH 16
-
 // --- Timing API ------------------------------------------------------------
 
 // Whether this platform has an API to retrieve how long the current thread
@@ -477,28 +226,9 @@
 
 // --- Tuneable Parameters ---------------------------------------------------
 
-// Specifies the network receive buffer size in bytes, set via
-// SbSocketSetReceiveBufferSize().
-//
-// Setting this to 0 indicates that SbSocketSetReceiveBufferSize() should
-// not be called. Use this for OSs (such as Linux) where receive buffer
-// auto-tuning is better.
-//
-// On some platforms, this may affect max TCP window size which may
-// dramatically affect throughput in the presence of latency.
-//
-// If your platform does not have a good TCP auto-tuning mechanism,
-// a setting of (128 * 1024) here is recommended.
-#define SB_NETWORK_RECEIVE_BUFFER_SIZE (0)
-
 // --- User Configuration ----------------------------------------------------
 
-// The maximum number of users that can be signed in at the same time.
-#define SB_USER_MAX_SIGNED_IN 1
-
 // --- Platform Specific Audits ----------------------------------------------
-
-#undef SB_HAS_NATIVE_AUDIO
 
 #undef SB_NEEDS_VIDEO_OVERLAY_SURFACE
 

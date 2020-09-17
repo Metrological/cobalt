@@ -32,6 +32,7 @@
 #include "cobalt/dom/message_event.h"
 #include "cobalt/script/array_buffer.h"
 #include "cobalt/script/array_buffer_view.h"
+#include "cobalt/script/environment_settings.h"
 #include "cobalt/script/global_environment.h"
 #include "cobalt/script/wrappable.h"
 #include "cobalt/websocket/web_socket_impl.h"
@@ -165,7 +166,6 @@ class WebSocket : public dom::EventTarget {
             script::ExceptionState* exception_state,
             const bool require_network_module);
 
-
   void Initialize(script::EnvironmentSettings* settings, const std::string& url,
                   const std::vector<std::string>& sub_protocols,
                   script::ExceptionState* exception_state);
@@ -242,6 +242,7 @@ class WebSocket : public dom::EventTarget {
   FRIEND_TEST_ALL_PREFIXES(WebSocketTest, FailInvalidSubProtocols);
   FRIEND_TEST_ALL_PREFIXES(WebSocketTest, SubProtocols);
   FRIEND_TEST_ALL_PREFIXES(WebSocketTest, DuplicatedSubProtocols);
+  friend class WebSocketImplTest;
 
   DISALLOW_COPY_AND_ASSIGN(WebSocket);
 };

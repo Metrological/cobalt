@@ -15,24 +15,23 @@
 #include "starboard/shared/starboard/media/media_support_internal.h"
 
 #include "starboard/configuration.h"
+#include "starboard/configuration_constants.h"
 #include "starboard/media.h"
 #include "starboard/shared/starboard/media/media_util.h"
 
-SB_EXPORT bool SbMediaIsVideoSupported(SbMediaVideoCodec video_codec,
-                                       int profile,
-                                       int level,
-                                       int bit_depth,
-                                       SbMediaPrimaryId primary_id,
-                                       SbMediaTransferId transfer_id,
-                                       SbMediaMatrixId matrix_id,
-                                       int frame_width,
-                                       int frame_height,
-                                       int64_t bitrate,
-                                       int fps,
-                                       bool decode_to_texture_required) {
-  SB_UNREFERENCED_PARAMETER(profile);
-  SB_UNREFERENCED_PARAMETER(level);
-
+bool SbMediaIsVideoSupported(SbMediaVideoCodec video_codec,
+                             const char* content_type,
+                             int profile,
+                             int level,
+                             int bit_depth,
+                             SbMediaPrimaryId primary_id,
+                             SbMediaTransferId transfer_id,
+                             SbMediaMatrixId matrix_id,
+                             int frame_width,
+                             int frame_height,
+                             int64_t bitrate,
+                             int fps,
+                             bool decode_to_texture_required) {
   using starboard::shared::starboard::media::IsSDRVideo;
 
   if (!IsSDRVideo(bit_depth, primary_id, transfer_id, matrix_id)) {
@@ -44,5 +43,5 @@ SB_EXPORT bool SbMediaIsVideoSupported(SbMediaVideoCodec video_codec,
   }
   return video_codec == kSbMediaVideoCodecH264 && frame_width <= 1920 &&
          frame_height <= 1080 &&
-         bitrate <= SB_MEDIA_MAX_VIDEO_BITRATE_IN_BITS_PER_SECOND && fps <= 30;
+         bitrate <= kSbMediaMaxVideoBitrateInBitsPerSecond && fps <= 30;
 }

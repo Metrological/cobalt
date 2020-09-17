@@ -22,6 +22,7 @@
 #include "starboard/client_porting/poem/string_poem.h"
 #include "starboard/common/string.h"
 #include "starboard/configuration.h"
+#include "starboard/configuration_constants.h"
 #include "starboard/types.h"
 
 namespace cobalt {
@@ -121,7 +122,6 @@ void LogWriterTool::OnMapMemory(void* context, const void* memory,
 
 void LogWriterTool::OnUnMapMemory(void* context, const void* memory,
                                   size_t size) {
-  SB_UNREFERENCED_PARAMETER(size);
   LogWriterTool* self = static_cast<LogWriterTool*>(context);
   self->OnMemoryDeallocation(memory);
 }
@@ -135,12 +135,12 @@ std::string LogWriterTool::MemoryLogPath() {
     const int back_idx_signed = static_cast<int>(path.length()) - 1;
     if (back_idx_signed >= 0) {
       const size_t idx = back_idx_signed;
-      if (path[idx] == SB_FILE_SEP_CHAR) {
+      if (path[idx] == kSbFileSepChar) {
         path.erase(idx);
       }
     }
   }
-  path.push_back(SB_FILE_SEP_CHAR);
+  path.push_back(kSbFileSepChar);
   path.append("memory_log.txt");
   return path;
 }

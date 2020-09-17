@@ -33,7 +33,7 @@
 #include "cobalt/renderer/rasterizer/common/utils.h"
 #include "starboard/blitter.h"
 
-#if SB_HAS(BLITTER)
+#if SB_API_VERSION < 12 && SB_HAS(BLITTER)
 
 // This define exists so that developers can quickly toggle it temporarily and
 // obtain trace results for the render tree visit process here.  In general
@@ -273,6 +273,11 @@ void RenderTreeNodeVisitor::Visit(render_tree::ImageNode* image_node) {
       RectFToBlitterRect(local_transform.TransformRect(RectF(image_size))),
       RectFToBlitterRect(render_state_.transform.TransformRect(
           image_node->data().destination_rect)));
+}
+
+void RenderTreeNodeVisitor::Visit(render_tree::LottieNode* lottie_node) {
+  // Use Skottie to render Lottie animations.
+  RenderWithSoftwareRenderer(lottie_node);
 }
 
 void RenderTreeNodeVisitor::Visit(
@@ -582,4 +587,4 @@ RenderTreeNodeVisitor::RenderToOffscreenSurface(render_tree::Node* node) {
 }  // namespace renderer
 }  // namespace cobalt
 
-#endif  // #if SB_HAS(BLITTER)
+#endif  // SB_API_VERSION < 12 && SB_HAS(BLITTER)

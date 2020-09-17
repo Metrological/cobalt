@@ -6,32 +6,7 @@
 # Skia build.
 {
   'include_dirs': [
-    '<(DEPTH)/third_party/skia/include/c',
-    '<(DEPTH)/third_party/skia/include/codec',
-    '<(DEPTH)/third_party/skia/include/core',
-    '<(DEPTH)/third_party/skia/include/effects',
-    '<(DEPTH)/third_party/skia/include/encode',
-    '<(DEPTH)/third_party/skia/include/gpu',
-    '<(DEPTH)/third_party/skia/include/images',
-    '<(DEPTH)/third_party/skia/include/lazy',
-    '<(DEPTH)/third_party/skia/include/pathops',
-    '<(DEPTH)/third_party/skia/include/pipe',
-    '<(DEPTH)/third_party/skia/include/ports',
-    '<(DEPTH)/third_party/skia/include/private',
-    '<(DEPTH)/third_party/skia/include/record',
-    '<(DEPTH)/third_party/skia/include/utils',
-    '<(DEPTH)/third_party/skia/src/codec',
-    '<(DEPTH)/third_party/skia/src/core',
-    '<(DEPTH)/third_party/skia/src/gpu',
-    '<(DEPTH)/third_party/skia/src/opts',
-    '<(DEPTH)/third_party/skia/src/image',
-    '<(DEPTH)/third_party/skia/src/ports',
-    '<(DEPTH)/third_party/skia/src/sfnt',
-    '<(DEPTH)/third_party/skia/src/sksl',
-    '<(DEPTH)/third_party/skia/src/shaders',
-    '<(DEPTH)/third_party/skia/src/utils',
-    '<(DEPTH)/third_party/skia/src/lazy',
-    '<(DEPTH)/third_party/skia/third_party/gif',
+    '<(DEPTH)/third_party/skia',
     'config',
   ],
 
@@ -42,10 +17,15 @@
     # These two set the paths so we can include skia/gyp/core.gypi
     'skia_src_path': '<(DEPTH)/third_party/skia/src',
     'skia_include_path': '<(DEPTH)/third_party/skia/include',
+    'skia_modules_path': '<(DEPTH)/third_party/skia/modules',
 
     # This list will contain all defines that also need to be exported to
     # dependent components.
-    'skia_export_defines': [],
+    'skia_export_defines': [
+      'SK_DISABLE_EFFECT_DESERIALIZATION=1',
+      'SK_SUPPORT_GPU=1',
+      'SK_USER_CONFIG_HEADER="<(DEPTH)/renderer/rasterizer/skia/skia/config/SkUserConfig.h"',
+    ],
 
     # The |default_font_cache_limit| specifies the max size of the glyph cache,
     # which contains path and metrics information for glyphs, before it will
@@ -53,23 +33,10 @@
     # Android.
     'default_font_cache_limit%': '(1*1024*1024)',
   },
+  'dependencies': [
+    '<(DEPTH)/starboard/starboard_headers_only.gyp:starboard_headers_only',
+  ],
   'conditions': [
-    ['gl_type != "none"', {
-      'variables': {
-        'skia_export_defines': [
-          'SK_SUPPORT_GPU=1',
-        ],
-      },
-      'dependencies': [
-        '<(DEPTH)/starboard/starboard_headers_only.gyp:starboard_headers_only',
-      ],
-    }, {
-      'variables': {
-        'skia_export_defines': [
-          'SK_SUPPORT_GPU=0',
-        ],
-      },
-    }],
     ['target_arch == "win"', {
       'variables': {
         'skia_export_defines': [
@@ -99,6 +66,10 @@
     'SK_IGNORE_ETC1_SUPPORT',
 
     'SK_DEFAULT_FONT_CACHE_LIMIT=<(default_font_cache_limit)',
+
+    # Use scalar portable implementations instead of Clang/GCC vector extensions
+    # in SkVx.h, as this causes an internal compiler error for raspi-2.
+    'SKNX_NO_SIMD',
   ],
 
   'direct_dependent_settings': {

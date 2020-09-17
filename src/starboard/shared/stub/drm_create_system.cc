@@ -14,8 +14,6 @@
 
 #include "starboard/drm.h"
 
-#if SB_API_VERSION >= 10
-
 SbDrmSystem SbDrmCreateSystem(
     const char* key_system,
     void* context,
@@ -24,48 +22,5 @@ SbDrmSystem SbDrmCreateSystem(
     SbDrmSessionKeyStatusesChangedFunc key_statuses_changed_callback,
     SbDrmServerCertificateUpdatedFunc server_certificate_updated_callback,
     SbDrmSessionClosedFunc session_closed_callback) {
-  SB_UNREFERENCED_PARAMETER(context);
-  SB_UNREFERENCED_PARAMETER(key_system);
-  SB_UNREFERENCED_PARAMETER(update_request_callback);
-  SB_UNREFERENCED_PARAMETER(session_updated_callback);
-  SB_UNREFERENCED_PARAMETER(key_statuses_changed_callback);
-  SB_UNREFERENCED_PARAMETER(server_certificate_updated_callback);
-  SB_UNREFERENCED_PARAMETER(session_closed_callback);
   return kSbDrmSystemInvalid;
 }
-
-#elif SB_HAS(DRM_SESSION_CLOSED)
-
-SbDrmSystem SbDrmCreateSystem(
-    const char* key_system,
-    void* context,
-    SbDrmSessionUpdateRequestFunc update_request_callback,
-    SbDrmSessionUpdatedFunc session_updated_callback,
-    SbDrmSessionKeyStatusesChangedFunc key_statuses_changed_callback,
-    SbDrmSessionClosedFunc session_closed_callback) {
-  SB_UNREFERENCED_PARAMETER(context);
-  SB_UNREFERENCED_PARAMETER(key_system);
-  SB_UNREFERENCED_PARAMETER(update_request_callback);
-  SB_UNREFERENCED_PARAMETER(session_updated_callback);
-  SB_UNREFERENCED_PARAMETER(key_statuses_changed_callback);
-  SB_UNREFERENCED_PARAMETER(session_closed_callback);
-  return kSbDrmSystemInvalid;
-}
-
-#else  // SB_HAS(DRM_SESSION_CLOSED)
-
-SbDrmSystem SbDrmCreateSystem(
-    const char* key_system,
-    void* context,
-    SbDrmSessionUpdateRequestFunc update_request_callback,
-    SbDrmSessionUpdatedFunc session_updated_callback,
-    SbDrmSessionKeyStatusesChangedFunc key_statuses_changed_callback) {
-  SB_UNREFERENCED_PARAMETER(context);
-  SB_UNREFERENCED_PARAMETER(key_system);
-  SB_UNREFERENCED_PARAMETER(update_request_callback);
-  SB_UNREFERENCED_PARAMETER(session_updated_callback);
-  SB_UNREFERENCED_PARAMETER(key_statuses_changed_callback);
-  return kSbDrmSystemInvalid;
-}
-
-#endif  // SB_HAS(DRM_SESSION_CLOSED)

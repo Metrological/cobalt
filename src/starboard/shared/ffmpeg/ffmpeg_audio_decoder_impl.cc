@@ -18,9 +18,6 @@
 #include "starboard/shared/ffmpeg/ffmpeg_audio_decoder_impl.h"
 
 #include "starboard/audio_sink.h"
-#if SB_API_VERSION >= 11
-#include "starboard/format_string.h"
-#endif  // SB_API_VERSION >= 11
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
 #include "starboard/memory.h"
@@ -43,12 +40,13 @@ AVCodecID GetFfmpegCodecIdByMediaCodec(SbMediaAudioCodec audio_codec) {
   switch (audio_codec) {
     case kSbMediaAudioCodecAac:
       return AV_CODEC_ID_AAC;
-#if SB_HAS(AC3_AUDIO)
+#if SB_API_VERSION >= 12 || SB_HAS(AC3_AUDIO)
     case kSbMediaAudioCodecAc3:
-      return AV_CODEC_ID_AC3;
+      return kSbHasAc3Audio ? AV_CODEC_ID_AC3 : AV_CODEC_ID_NONE;
     case kSbMediaAudioCodecEac3:
-      return AV_CODEC_ID_EAC3;
-#endif  // SB_HAS(AC3_AUDIO)
+      return kSbHasAc3Audio ? AV_CODEC_ID_EAC3 : AV_CODEC_ID_NONE;
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(AC3_AUDIO)
     case kSbMediaAudioCodecOpus:
       return AV_CODEC_ID_OPUS;
     default:
@@ -125,11 +123,9 @@ void AudioDecoderImpl<FFMPEG>::Decode(
   packet.data = const_cast<uint8_t*>(input_buffer->data());
   packet.size = input_buffer->size();
 
-#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
-  ffmpeg_->av_frame_unref(av_frame_);
-#else   // LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#if LIBAVUTIL_VERSION_INT < LIBAVUTIL_VERSION_52_8
   ffmpeg_->avcodec_get_frame_defaults(av_frame_);
-#endif  // LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#endif  // LIBAVUTIL_VERSION_INT < LIBAVUTIL_VERSION_52_8
   int frame_decoded = 0;
   int result = ffmpeg_->avcodec_decode_audio4(codec_context_, av_frame_,
                                               &frame_decoded, &packet);
@@ -138,13 +134,9 @@ void AudioDecoderImpl<FFMPEG>::Decode(
     SB_DLOG(WARNING) << "avcodec_decode_audio4() failed with result: " << result
                      << " with input buffer size: " << input_buffer->size()
                      << " and frame decoded: " << frame_decoded;
-#if SB_HAS(PLAYER_ERROR_MESSAGE)
     error_cb_(
         kSbPlayerErrorDecode,
         FormatString("avcodec_decode_audio4() failed with result %d.", result));
-#else   // SB_HAS(PLAYER_ERROR_MESSAGE)
-    error_cb_();
-#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
     return;
   }
 
@@ -200,7 +192,7 @@ void AudioDecoderImpl<FFMPEG>::WriteEndOfStream() {
 }
 
 scoped_refptr<AudioDecoderImpl<FFMPEG>::DecodedAudio>
-AudioDecoderImpl<FFMPEG>::Read() {
+AudioDecoderImpl<FFMPEG>::Read(int* samples_per_second) {
   SB_DCHECK(BelongsToCurrentThread());
   SB_DCHECK(output_cb_);
   SB_DCHECK(!decoded_audios_.empty());
@@ -210,6 +202,7 @@ AudioDecoderImpl<FFMPEG>::Read() {
     result = decoded_audios_.front();
     decoded_audios_.pop();
   }
+  *samples_per_second = audio_sample_info_.samples_per_second;
   return result;
 }
 
@@ -258,10 +251,6 @@ SbMediaAudioFrameStorageType AudioDecoderImpl<FFMPEG>::GetStorageType() const {
 
   SB_NOTREACHED();
   return kSbMediaAudioFrameStorageTypeInterleaved;
-}
-
-int AudioDecoderImpl<FFMPEG>::GetSamplesPerSecond() const {
-  return audio_sample_info_.samples_per_second;
 }
 
 void AudioDecoderImpl<FFMPEG>::InitializeCodec() {
@@ -318,11 +307,11 @@ void AudioDecoderImpl<FFMPEG>::InitializeCodec() {
     return;
   }
 
-#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#if LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
   av_frame_ = ffmpeg_->av_frame_alloc();
-#else   // LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#else   // LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
   av_frame_ = ffmpeg_->avcodec_alloc_frame();
-#endif  // LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 8, 0)
+#endif  // LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
   if (av_frame_ == NULL) {
     SB_LOG(ERROR) << "Unable to allocate audio frame";
     TeardownCodec();
@@ -332,12 +321,9 @@ void AudioDecoderImpl<FFMPEG>::InitializeCodec() {
 void AudioDecoderImpl<FFMPEG>::TeardownCodec() {
   if (codec_context_) {
     ffmpeg_->CloseCodec(codec_context_);
-    if (codec_context_->extradata_size) {
-      ffmpeg_->av_freep(&codec_context_->extradata);
-    }
-    ffmpeg_->av_freep(&codec_context_);
+    ffmpeg_->FreeContext(&codec_context_);
   }
-  ffmpeg_->av_freep(&av_frame_);
+  ffmpeg_->FreeFrame(&av_frame_);
 }
 
 }  // namespace ffmpeg

@@ -17,6 +17,7 @@
 #include "cobalt/script/v8c/v8c_array_buffer.h"
 
 #include "cobalt/base/polymorphic_downcast.h"
+#include "starboard/memory.h"
 
 namespace cobalt {
 namespace script {
@@ -32,6 +33,11 @@ PreallocatedArrayBufferData::~PreallocatedArrayBufferData() {
     data_ = nullptr;
     byte_length_ = 0;
   }
+}
+
+void PreallocatedArrayBufferData::Resize(size_t new_byte_length) {
+  data_ = SbMemoryReallocate(data_, new_byte_length);
+  byte_length_ = new_byte_length;
 }
 
 // static
@@ -57,10 +63,15 @@ Handle<ArrayBuffer> ArrayBuffer::New(
           global_environment);
   v8::Isolate* isolate = v8c_global_environment->isolate();
   v8c::EntryScope entry_scope(isolate);
-  v8::Local<v8::ArrayBuffer> array_buffer =
-      v8::ArrayBuffer::New(isolate, data->data(), data->byte_length(),
-                           v8::ArrayBufferCreationMode::kInternalized);
-  data->Release();
+
+  void* buffer;
+  size_t byte_length;
+
+  data->Detach(&buffer, &byte_length);
+
+  v8::Local<v8::ArrayBuffer> array_buffer = v8::ArrayBuffer::New(
+      isolate, buffer, byte_length, v8::ArrayBufferCreationMode::kInternalized);
+
   return Handle<ArrayBuffer>(
       new v8c::V8cUserObjectHolder<v8c::V8cArrayBuffer>(isolate, array_buffer));
 }

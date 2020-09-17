@@ -31,20 +31,6 @@ extern "C" {
 
 // --- Types -----------------------------------------------------------------
 
-#if SB_API_VERSION < 10
-// Time represented in 90KHz ticks.
-typedef int64_t SbMediaTime;
-
-#define SB_MEDIA_TIME_TO_SB_TIME(media) \
-  (((media == SB_PLAYER_NO_DURATION)    \
-        ? SB_PLAYER_NO_DURATION         \
-        : ((media == kSbInt64Max) ? kSbInt64Max : (media * 100 / 9))))
-#define SB_TIME_TO_SB_MEDIA_TIME(time) \
-  (((time == SB_PLAYER_NO_DURATION)    \
-        ? SB_PLAYER_NO_DURATION        \
-        : ((time == kSbInt64Max) ? kSbInt64Max : (time * 9 / 100))))
-#endif  // SB_API_VERSION < 10
-
 // Types of media component streams.
 typedef enum SbMediaType {
   // Value used for audio streams.
@@ -77,10 +63,8 @@ typedef enum SbMediaAudioCodec {
   kSbMediaAudioCodecNone,
 
   kSbMediaAudioCodecAac,
-#if SB_HAS(AC3_AUDIO)
   kSbMediaAudioCodecAc3,
   kSbMediaAudioCodecEac3,
-#endif  // SB_HAS(AC3_AUDIO)
   kSbMediaAudioCodecOpus,
   kSbMediaAudioCodecVorbis,
 } SbMediaAudioCodec;
@@ -408,6 +392,26 @@ typedef struct SbMediaVideoSampleInfo {
   // The video codec of this sample.
   SbMediaVideoCodec codec;
 #endif  // SB_API_VERSION >= 11
+
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+  // The mime of the video stream when |codec| isn't kSbMediaVideoCodecNone.  It
+  // may point to an empty string if the mime is not available, and it can only
+  // be set to NULL when |codec| is kSbMediaVideoCodecNone.
+  const char* mime;
+
+  // Indicates the max video capabilities required. The web app will not provide
+  // a video stream exceeding the maximums described by this parameter. Allows
+  // the platform to optimize playback pipeline for low quality video streams if
+  // it knows that it will never adapt to higher quality streams. The string
+  // uses the same format as the string passed in to
+  // SbMediaCanPlayMimeAndKeySystem(), for example, when it is set to
+  // "width=1920; height=1080; framerate=15;", the video will never adapt to
+  // resolution higher than 1920x1080 or frame per second higher than 15 fps.
+  // When the maximums are unknown, this will be set to an empty string.  It can
+  // only be set to NULL when |codec| is kSbMediaVideoCodecNone.
+  const char* max_video_capabilities;
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
   // Indicates whether the associated sample is a key frame (I-frame).
   // Video key frames must always start with SPS and PPS NAL units.
   bool is_key_frame;
@@ -470,9 +474,17 @@ typedef struct SbMediaAudioConfiguration {
 // http://msdn.microsoft.com/en-us/library/dd390970(v=vs.85).aspx
 typedef struct SbMediaAudioSampleInfo {
 #if SB_API_VERSION >= 11
-  // The video codec of this sample.
+  // The audio codec of this sample.
   SbMediaAudioCodec codec;
 #endif  // SB_API_VERSION >= 11
+
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+  // The mime of the audio stream when |codec| isn't kSbMediaAudioCodecNone.  It
+  // may point to an empty string if the mime is not available, and it can only
+  // be set to NULL when |codec| is kSbMediaAudioCodecNone.
+  const char* mime;
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
   // The waveform-audio format type code.
   uint16_t format_tag;
 
@@ -504,14 +516,6 @@ typedef struct SbMediaAudioSampleInfo {
 // version.
 typedef SbMediaAudioSampleInfo SbMediaAudioHeader;
 #endif  // SB_API_VERSION < 11
-
-#if SB_API_VERSION < 10
-// --- Constants -------------------------------------------------------------
-
-// TODO: remove entirely.
-// One second in SbMediaTime (90KHz ticks).
-#define kSbMediaTimeSecond ((SbMediaTime)(90000))
-#endif  // SB_API_VERSION < 10
 
 // --- Functions -------------------------------------------------------------
 
@@ -567,9 +571,12 @@ SB_EXPORT bool SbMediaGetAudioConfiguration(
     int output_index,
     SbMediaAudioConfiguration* out_configuration);
 
+#if SB_API_VERSION < 12
 // Indicates whether output copy protection is currently enabled on all capable
 // outputs. If |true|, then non-protection-capable outputs are expected to be
 // blanked.
+//
+// presubmit: allow sb_export mismatch
 SB_EXPORT bool SbMediaIsOutputProtected();
 
 // Enables or disables output copy protection on all capable outputs. If
@@ -581,9 +588,11 @@ SB_EXPORT bool SbMediaIsOutputProtected();
 //
 // |enabled|: Indicates whether output protection is enabled (|true|) or
 //   disabled.
+//
+// presubmit: allow sb_export mismatch
 SB_EXPORT bool SbMediaSetOutputProtection(bool enabled);
+#endif  // SB_API_VERSION < 12
 
-#if SB_API_VERSION >= 10
 // Value used when a video's resolution is not known.
 #define kSbMediaVideoResolutionDimensionInvalid 0
 // Value used when a video's bits per pixel is not known.
@@ -706,7 +715,6 @@ SB_EXPORT int SbMediaGetVideoBufferBudget(SbMediaVideoCodec codec,
                                           int resolution_width,
                                           int resolution_height,
                                           int bits_per_pixel);
-#endif  // SB_API_VERSION >= 10
 
 #if SB_API_VERSION >= 11
 // Communicate to the platform how far past |current_playback_position| the app

@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "starboard/configuration.h"
+#if SB_API_VERSION >= 12 || SB_HAS(GLES2)
+
 #include <memory>
 
 #include "cobalt/renderer/backend/egl/graphics_system.h"
@@ -21,12 +24,8 @@
 #include "base/trace_event/trace_event.h"
 #endif
 #include "starboard/common/optional.h"
-#if defined(GLES3_SUPPORTED)
-#include "cobalt/renderer/backend/egl/texture_data_pbo.h"
-#else
-#include "cobalt/renderer/backend/egl/texture_data_cpu.h"
-#endif
 
+#include "cobalt/configuration/configuration.h"
 #include "cobalt/renderer/backend/egl/display.h"
 #include "cobalt/renderer/backend/egl/graphics_context.h"
 #include "cobalt/renderer/backend/egl/texture.h"
@@ -36,6 +35,15 @@
 #endif
 
 #include "cobalt/renderer/egl_and_gles.h"
+
+#if defined(GLES3_SUPPORTED)
+#if SB_API_VERSION >= 12
+#error "Support for gles3 features has been deprecated."
+#endif
+#include "cobalt/renderer/backend/egl/texture_data_pbo.h"
+#else
+#include "cobalt/renderer/backend/egl/texture_data_cpu.h"
+#endif
 
 namespace cobalt {
 namespace renderer {
@@ -148,13 +156,13 @@ GraphicsSystemEGL::GraphicsSystemEGL(
 
   // Setup our configuration to support RGBA and compatibility with PBuffer
   // objects (for offscreen rendering).
+  EGLint egl_bit =
+      configuration::Configuration::GetInstance()->CobaltRenderDirtyRegionOnly()
+          ? EGL_WINDOW_BIT | EGL_PBUFFER_BIT | EGL_SWAP_BEHAVIOR_PRESERVED_BIT
+          : EGL_WINDOW_BIT | EGL_PBUFFER_BIT;
   EGLint attribute_list[] = {
     EGL_SURFACE_TYPE,  // this must be first
-    EGL_WINDOW_BIT | EGL_PBUFFER_BIT
-#if defined(COBALT_RENDER_DIRTY_REGION_ONLY)
-        | EGL_SWAP_BEHAVIOR_PRESERVED_BIT
-#endif  // #if defined(COBALT_RENDER_DIRTY_REGION_ONLY)
-    ,
+    egl_bit,
     EGL_RED_SIZE,
     8,
     EGL_GREEN_SIZE,
@@ -164,32 +172,34 @@ GraphicsSystemEGL::GraphicsSystemEGL(
     EGL_ALPHA_SIZE,
     8,
     EGL_RENDERABLE_TYPE,
-#if defined(GLES3_SUPPORTED)
+#if SB_API_VERSION < 12 && defined(GLES3_SUPPORTED)
     EGL_OPENGL_ES3_BIT,
 #else
     EGL_OPENGL_ES2_BIT,
-#endif  // #if defined(GLES3_SUPPORTED)
+#endif  // #if SB_API_VERSION < 12 &&
+        // defined(GLES3_SUPPORTED)
     EGL_NONE
   };
 
   base::Optional<ChooseConfigResult> choose_config_results =
       ChooseConfig(display_, attribute_list, system_window);
 
-#if defined(COBALT_RENDER_DIRTY_REGION_ONLY)
-  // Try to allow preservation of the frame contents between swap calls --
-  // this will allow rendering of only parts of the frame that have changed.
-  DCHECK_EQ(EGL_SURFACE_TYPE, attribute_list[0]);
-  EGLint& surface_type_value = attribute_list[1];
+  if (configuration::Configuration::GetInstance()
+          ->CobaltRenderDirtyRegionOnly()) {
+    // Try to allow preservation of the frame contents between swap calls --
+    // this will allow rendering of only parts of the frame that have changed.
+    DCHECK_EQ(EGL_SURFACE_TYPE, attribute_list[0]);
+    EGLint& surface_type_value = attribute_list[1];
 
-  // Swap buffer preservation may not be supported. If we failed to find a
-  // config with the EGL_SWAP_BEHAVIOR_PRESERVED_BIT attribute, try again
-  // without it.
-  if (!choose_config_results) {
-    surface_type_value &= ~EGL_SWAP_BEHAVIOR_PRESERVED_BIT;
-    choose_config_results =
-        ChooseConfig(display_, attribute_list, system_window);
+    // Swap buffer preservation may not be supported. If we failed to find a
+    // config with the EGL_SWAP_BEHAVIOR_PRESERVED_BIT attribute, try again
+    // without it.
+    if (!choose_config_results) {
+      surface_type_value &= ~EGL_SWAP_BEHAVIOR_PRESERVED_BIT;
+      choose_config_results =
+          ChooseConfig(display_, attribute_list, system_window);
+    }
   }
-#endif  // #if defined(COBALT_RENDER_DIRTY_REGION_ONLY)
 
   DCHECK(choose_config_results);
 
@@ -197,7 +207,7 @@ GraphicsSystemEGL::GraphicsSystemEGL(
   system_window_ = system_window;
   window_surface_ = choose_config_results->window_surface;
 
-#if defined(GLES3_SUPPORTED)
+#if SB_API_VERSION < 12 && defined(GLES3_SUPPORTED)
   resource_context_.emplace(display_, config_);
 #endif
 }
@@ -236,7 +246,7 @@ std::unique_ptr<GraphicsContext> GraphicsSystemEGL::CreateGraphicsContext() {
 // that data from graphics contexts created through this method, we must
 // enable sharing between them and the resource context, which is why we
 // must pass it in here.
-#if defined(GLES3_SUPPORTED)
+#if SB_API_VERSION < 12 && defined(GLES3_SUPPORTED)
   ResourceContext* resource_context = &(resource_context_.value());
 #else
   ResourceContext* resource_context = NULL;
@@ -247,7 +257,7 @@ std::unique_ptr<GraphicsContext> GraphicsSystemEGL::CreateGraphicsContext() {
 
 std::unique_ptr<TextureDataEGL> GraphicsSystemEGL::AllocateTextureData(
     const math::Size& size, GLenum format) {
-#if defined(GLES3_SUPPORTED)
+#if SB_API_VERSION < 12 && defined(GLES3_SUPPORTED)
   std::unique_ptr<TextureDataEGL> texture_data(
       new TextureDataPBO(&(resource_context_.value()), size, format));
 #else
@@ -264,7 +274,7 @@ std::unique_ptr<TextureDataEGL> GraphicsSystemEGL::AllocateTextureData(
 std::unique_ptr<RawTextureMemoryEGL>
 GraphicsSystemEGL::AllocateRawTextureMemory(size_t size_in_bytes,
                                             size_t alignment) {
-#if defined(GLES3_SUPPORTED)
+#if SB_API_VERSION < 12 && defined(GLES3_SUPPORTED)
   return std::unique_ptr<RawTextureMemoryEGL>(new RawTextureMemoryPBO(
       &(resource_context_.value()), size_in_bytes, alignment));
 #else
@@ -276,3 +286,5 @@ GraphicsSystemEGL::AllocateRawTextureMemory(size_t size_in_bytes,
 }  // namespace backend
 }  // namespace renderer
 }  // namespace cobalt
+
+#endif  // SB_API_VERSION >= 12 || SB_HAS(GLES2)

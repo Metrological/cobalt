@@ -45,9 +45,7 @@ Callback BindToLoop(const Callback& callback, base::MessageLoop* message_loop) {
   return base::Bind(&PostCallbackToMessageLoop, callback, message_loop);
 }
 
-void OnError(const GURL& /* url */, const std::string& error) {
-  LOG(ERROR) << error;
-}
+void OnError(const GURL& url, const std::string& error) { LOG(ERROR) << error; }
 
 }  // namespace
 
@@ -107,8 +105,8 @@ SplashScreen::SplashScreen(
       base::Bind(&OnError), on_window_close,
       base::Closure(),  // window_minimize_callback
       NULL /* can_play_type_handler */, NULL /* web_media_player_factory */,
-      network_module, window_dimensions, 1.f /*video_pixel_ratio*/,
-      resource_provider, layout_refresh_rate, web_module_options));
+      network_module, window_dimensions, resource_provider, layout_refresh_rate,
+      web_module_options));
 }
 
 SplashScreen::~SplashScreen() {

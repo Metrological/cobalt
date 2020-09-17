@@ -23,16 +23,15 @@
 #include "starboard/decode_target.h"
 #include "starboard/image.h"
 
-#if SB_HAS(GRAPHICS)
-
 namespace cobalt {
 namespace loader {
 namespace image {
 
 ImageDecoderStarboard::ImageDecoderStarboard(
-    render_tree::ResourceProvider* resource_provider, const char* mime_type,
+    render_tree::ResourceProvider* resource_provider,
+    const base::DebuggerHooks& debugger_hooks, const char* mime_type,
     SbDecodeTargetFormat format)
-    : ImageDataDecoder(resource_provider),
+    : ImageDataDecoder(resource_provider, debugger_hooks),
       mime_type_(mime_type),
       format_(format),
       provider_(resource_provider->GetSbDecodeTargetGraphicsContextProvider()),
@@ -73,6 +72,4 @@ scoped_refptr<Image> ImageDecoderStarboard::FinishInternal() {
 }  // namespace loader
 }  // namespace cobalt
 
-#endif  // SB_HAS(GRAPHICS)
-
-#endif  // #if defined(STARBOARD)
+#endif  // defined(STARBOARD)

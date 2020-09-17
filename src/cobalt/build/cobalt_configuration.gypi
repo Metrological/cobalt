@@ -34,7 +34,7 @@
     'variables': {
       'cobalt_webapi_extension_source_idl_files%': [],
       'cobalt_webapi_extension_generated_header_idl_files%': [],
-      'cobalt_v8_buildtime_snapshot%': "true",
+      'cobalt_v8_enable_embedded_builtins%': 1,
     },
 
     # Whether Cobalt is being built.
@@ -46,8 +46,18 @@
 
     # Enable support for the map to mesh filter, which is primarily used to
     # implement spherical video playback.
-    'enable_map_to_mesh%': 0,
+    # This setting is deprecated in favor of the cobalt graphics extension
+    # (CobaltGraphicsExtensionApi) function `IsMapToMeshEnabled()`.
+    # If the CobaltGraphicsExtensionApi is not implemented, then Cobalt will
+    # fall back onto a default. For starboard API versions 12 and later, the
+    # default is true (i.e. Cobalt will assume map to mesh is supported).
+    # For earlier starboard API versions, if this gyp variable is redefined to
+    # a value other than -1, it will use the new value as the default. If it is
+    # not redefined, the default is false.
+    'enable_map_to_mesh%': -1,
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltUserOnExitStrategy instead.
     # This variable defines what Cobalt's preferred strategy should be for
     # handling internally triggered application exit requests (e.g. the user
     # chooses to back out of the application).
@@ -57,7 +67,7 @@
     #                exit, resulting in the application being "minimized".
     #   'noexit'  -- The application should never allow the user to trigger an
     #                exit, this will be managed by the system.
-    'cobalt_user_on_exit_strategy%': 'stop',
+    'cobalt_user_on_exit_strategy%': '',
 
     # Contains the current font package selection.  This can be used to trade
     # font quality, coverage, and latency for different font package sizes.
@@ -120,8 +130,10 @@
     # Build version number.
     'cobalt_version%': '<(BUILD_NUMBER)',
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltRasterizerType instead.
     # Defines what kind of rasterizer will be used.  This can be adjusted to
-    # force a stub graphics implementation or software graphics implementation.
+    # force a stub graphics implementation.
     # It can be one of the following options:
     #   'direct-gles' -- Uses a light wrapper over OpenGL ES to handle most
     #                    draw elements. This will fall back to the skia hardware
@@ -131,13 +143,12 @@
     #   'hardware'    -- As much hardware acceleration of graphics commands as
     #                    possible. This uses skia to wrap OpenGL ES commands.
     #                    Required for 360 rendering.
-    #   'software'    -- Perform most rasterization using the CPU and only
-    #                    interact with the GPU to send the final image to the
-    #                    output window.
     #   'stub'        -- Stub graphics rasterization.  A rasterizer object will
     #                    still be available and valid, but it will do nothing.
-    'rasterizer_type%': 'direct-gles',
+    'rasterizer_type%': '',
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltRenderDirtyRegionOnly instead.
     # If set to 1, will enable support for rendering only the regions of the
     # display that are modified due to animations, instead of re-rendering the
     # entire scene each frame.  This feature can reduce startup time where
@@ -151,12 +162,15 @@
     # support this feature, and many have been noticed to not properly support
     # this functionality (but they report that they do), and for these reasons
     # this value is defaulted to 0.
-    'render_dirty_region_only%': 0,
+    'render_dirty_region_only%': -1,
 
     # Override this value to adjust the default rasterizer setting for your
     # platform.
     'default_renderer_options_dependency%': '<(DEPTH)/cobalt/renderer/default_options_starboard.gyp:default_options',
 
+    # NOTE: Web Extension support is deprecated. Please use Platform Services
+    # (cobalt/doc/platform_services.md) instead.
+    #
     # Override this to inject a custom interface into Cobalt's JavaScript
     # `window` global object.  This implies that you will have to provide your
     # own IDL files to describe that interface and all interfaces that it
@@ -182,12 +196,16 @@
     # milliseconds and can be a floating point number. Keep in mind that
     # swapping frames may take some additional processing time, so it may be
     # better to specify a lower delay. For example, '33' instead of '33.33'
-    # for 30 Hz refresh.
-    'cobalt_minimum_frame_time_in_milliseconds%': '16.0',
+    # for 30 Hz refresh. This value is deprecated in favor of the usage of
+    # CobaltExtensionGraphicsApi::GetMinimumFrameIntervalInMilliseconds API.
+    # The default value has been moved into cobalt/renderer/pipeline.cc.
+    'cobalt_minimum_frame_time_in_milliseconds%': '-1',
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltEglSwapInterval instead.
     # Cobalt will call eglSwapInterval() and specify this value before calling
     # eglSwapBuffers() each frame.
-    'cobalt_egl_swap_interval%': 1,
+    'cobalt_egl_swap_interval%': -1,
 
     # Set to 1 to build with DIAL support.
     'in_app_dial%': 0,
@@ -199,13 +217,10 @@
     'enable_account_manager%': 0,
 
     # Set to 1 to enable H5vccCrashLog.
-    'enable_crash_log%': 0,
+    'enable_crash_log%': 1,
 
     # Set to 1 to enable H5vccSSO (Single Sign On).
     'enable_sso%': 0,
-
-    # Set to 1 to compile with SPDY support.
-    'enable_spdy%': 1,
 
     # Set to 1 to enable filtering of HTTP headers before sending.
     'enable_xhr_header_filtering%': 0,
@@ -216,23 +231,27 @@
     # List of platform-specific targets that get compiled into cobalt.
     'cobalt_platform_dependencies%': [],
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltFallbackSplashScreenUrl instead.
     # The URL of default build time splash screen - see
     #   cobalt/doc/splash_screen.md for information about this.
-    'fallback_splash_screen_url%': 'none',
+    'fallback_splash_screen_url%': '',
     # The path to a splash screen to copy into content/data/web which can be
     # accessed via a file URL starting with
     # "file:///cobalt/browser/splash_screen/". If '', no file is copied.
     'cobalt_splash_screen_file%': '',
 
-    # Some platforms have difficulty linking snapshot_app_stats
-    'build_snapshot_app_stats%': 1,
+    # Some compiler can not compile with raw assembly(.S files) and v8
+    # converts asm to inline assembly for these platforms.
+    'cobalt_v8_emit_builtins_as_inline_asm%': 1,
 
-    # Set to "true" to enable v8 snapshot generation at Cobalt build time.
-    'cobalt_v8_buildtime_snapshot%': '<(cobalt_v8_buildtime_snapshot)',
-
-    'cobalt_enable_quic': 1,
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltEnableQuic instead.
+    'cobalt_enable_quic%': -1,
 
     # Cache parameters
+    # Deprecated. These can now be configured by implementing
+    # the corresponding function in the CobaltExtensionConfigurationApi.
 
     # The following set of parameters define how much memory is reserved for
     # different Cobalt caches.  These caches affect CPU *and* GPU memory usage.
@@ -241,7 +260,6 @@
     # texture memory usage (though it doesn't consider video textures and
     # display color buffers):
     #   - skia_cache_size_in_bytes (GLES2 rasterizer only)
-    #   - scratch_surface_cache_size_in_bytes
     #   - image_cache_size_in_bytes
     #   - skia_glyph_atlas_width * skia_glyph_atlas_height
     #
@@ -253,14 +271,10 @@
     # frames can be cached into surfaces.  This setting is only relevant when
     # using the hardware-accelerated Skia rasterizer (e.g. as opposed to the
     # Blitter API).
-    'skia_cache_size_in_bytes%': 4 * 1024 * 1024,
+    'skia_cache_size_in_bytes%': -1,
 
-    # Determines the capacity of the scratch surface cache.  The scratch
-    # surface cache facilitates the reuse of temporary offscreen surfaces
-    # within a single frame.  This setting is only relevant when using the
-    # hardware-accelerated Skia rasterizer.
-    'scratch_surface_cache_size_in_bytes%': 0,
-
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltOffscreenTargetCacheSizeInBytes instead.
     # Determines the amount of GPU memory the offscreen target atlases will
     # use. This is specific to the direct-GLES rasterizer and caches any render
     # tree nodes which require skia for rendering. Two atlases will be allocated
@@ -269,6 +283,8 @@
     # atlases about a quarter of the frame size.
     'offscreen_target_cache_size_in_bytes%': -1,
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltEncodedImageCacheSizeInBytes instead.
     # Determines the capacity of the encoded image cache, which manages encoded
     # images downloaded from a web page. These images are cached within CPU
     # memory.  This not only reduces network traffic to download the encoded
@@ -286,8 +302,10 @@
     # smaller value. This allows the app to cache significant more images.
     #
     # Set this to 0 can disable the cache completely.
-    'encoded_image_cache_size_in_bytes%': 1024 * 1024,
+    'encoded_image_cache_size_in_bytes%': -1,
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltImageCacheSizeInBytes instead.
     # Determines the capacity of the image cache, which manages image surfaces
     # downloaded from a web page.  While it depends on the platform, often (and
     # ideally) these images are cached within GPU memory.
@@ -296,6 +314,8 @@
     # SbSystemGetTotalGPUMemory().
     'image_cache_size_in_bytes%': -1,
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltLocalTypeFaceCacheSizeInBytes instead.
     # Determines the capacity of the local font cache, which manages all fonts
     # loaded from local files. Newly encountered sections of font files are
     # lazily loaded into the cache, enabling subsequent requests to the same
@@ -303,25 +323,33 @@
     # reached, further requests are handled via file stream.
     # Setting the value to 0 disables memory caching and causes all font file
     # accesses to be done using file streams.
-    'local_font_cache_size_in_bytes%': 16 * 1024 * 1024,
+    'local_font_cache_size_in_bytes%': -1,
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltRemoteTypefaceCacheSizeInBytes instead.
     # Determines the capacity of the remote font cache, which manages all
     # fonts downloaded from a web page.
-    'remote_font_cache_size_in_bytes%': 4 * 1024 * 1024,
+    'remote_font_cache_size_in_bytes%': -1,
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltMeshCacheSizeInBytes instead.
     # Determines the capacity of the mesh cache. Each mesh is held compressed
     # in main memory, to be inflated into a GPU buffer when needed for
     # projection. When set to 'auto', will be adjusted according to whether
     # the enable_map_to_mesh is true or not.  If enable_map_to_mesh is false,
     # then the mesh cache size will be set to 0.
-    'mesh_cache_size_in_bytes%': 'auto',
+    'mesh_cache_size_in_bytes%': -1,
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltSoftwareSurfaceCacheSizeInBytes instead.
     # Only relevant if you are using the Blitter API.
     # Determines the capacity of the software surface cache, which is used to
     # cache all surfaces that are rendered via a software rasterizer to avoid
     # re-rendering them.
-    'software_surface_cache_size_in_bytes%': 8 * 1024 * 1024,
+    'software_surface_cache_size_in_bytes%': -1,
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltImageCacheCapactityMultiplierWhenPlayingVideo.
     # Modifying this value to be non-1.0f will result in the image cache
     # capacity being cleared and then temporarily reduced for the duration that
     # a video is playing.  This can be useful for some platforms if they are
@@ -329,8 +357,10 @@
     # playing a video, the image cache is reduced to:
     # image_cache_size_in_bytes *
     #     image_cache_capacity_multiplier_when_playing_video.
-    'image_cache_capacity_multiplier_when_playing_video%': '1.0f',
+    'image_cache_capacity_multiplier_when_playing_video%': '',
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi functions
+    # CobaltSkiaGlyphAtlasWidth and CobaltSkiaGlyphAtlasHeight, respectively.
     # Determines the size in pixels of the glyph atlas where rendered glyphs are
     # cached. The resulting memory usage is 2 bytes of GPU memory per pixel.
     # When a value is used that is too small, thrashing may occur that will
@@ -342,26 +372,30 @@
     'skia_glyph_atlas_width%': '-1',
     'skia_glyph_atlas_height%': '-1',
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltJsGarbageCollectionThresholdInBytes instead.
     # Determines the size of garbage collection threshold. After this many
     # bytes have been allocated, the SpiderMonkey garbage collector will run.
     # Lowering this has been found to reduce performance and decrease
     # JavaScript memory usage. For example, we have measured on at least one
     # platform that performance becomes 7% worse on average in certain cases
     # when adjusting this number from 8MB to 1MB.
-    'mozjs_garbage_collection_threshold_in_bytes%': 8 * 1024 * 1024,
+    'mozjs_garbage_collection_threshold_in_bytes%': -1,
 
     # Max Cobalt CPU usage specifies that the cobalt program should
-    # keep it's size below the specified size. A value of -1 causes this
-    # value to be assumed from the starboard API function:
-    # SbSystemGetTotalCPUMemory().
+    # keep it's size below the specified size.
+    # This setting is deprecated. Implement starboard API function
+    # SbSystemGetTotalCPUMemory() instead.
     'max_cobalt_cpu_usage%': -1,
 
     # Max Cobalt GPU usage specifies that the cobalt program should
-    # keep it's size below the specified size. A value of -1 causes this
-    # value to be assumed from the starboard API function:
-    # SbSystemGetTotalGPUMemory().
+    # keep it's size below the specified size.
+    # This setting is deprecated. Implement starboard API function
+    # SbSystemGetTotalGPUMemory() instead.
     'max_cobalt_gpu_usage%': -1,
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltReduceCpuMemoryBy instead.
     # When specified this value will reduce the cpu memory consumption by
     # the specified amount. -1 disables the value.
     # When this value is specified then max_cobalt_cpu_usage will not be
@@ -369,6 +403,8 @@
     # a warning if the engine consumes more memory than this value specifies.
     'reduce_cpu_memory_by%': -1,
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltReduceGpuMemoryBy instead.
     # When specified this value will reduce the gpu memory consumption by
     # the specified amount. -1 disables the value.
     # When this value is specified then max_cobalt_gpu_usage will not be
@@ -376,17 +412,27 @@
     # a warning if the engine consumes more memory than this value specifies.
     'reduce_gpu_memory_by%': -1,
 
-    # Note: Ideally, |javascript_engine| and |cobalt_enable_jit| would live
-    # here, however due to weird gyp variable usage in bindings gyp files
-    # (that if we removed, would result in large code duplication), we have to
-    # define them in the python gyp platform files instead.  See
-    # "starboard/build/platform_configuration.py" for their documentation.
+    # Note: Ideally, |javascript_engine| would live here, however due to weird
+    # gyp variable usage in bindings gyp files (that if we removed, would
+    # result in large code duplication), we have to define it in the python gyp
+    # platform files instead.  See "starboard/build/platform_configuration.py"
+    # for its documentation.
 
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltEnableJit instead.
+    'cobalt_enable_jit%': -1,
+
+    # Deprecated. Implement the CobaltExtensionConfigurationApi function
+    # CobaltGcZeal instead.
     # Can be set to enable zealous garbage collection, if |javascript_engine|
     # supports it.  Zealous garbage collection will cause garbage collection
     # to occur much more frequently than normal, for the purpose of finding or
     # reproducing bugs.
-    'cobalt_gc_zeal%': 0,
+    'cobalt_gc_zeal%': -1,
+
+    # The cobalt_media_* variables defined below are deprecated. Their
+    # corresponding Starboard functions should be defined instead of setting
+    # their values through GYP.
 
     # This can be set to "memory" or "file".  When it is set to "memory", the
     # media buffers will be stored in main memory allocated by SbMemory
@@ -395,7 +441,7 @@
     # SbSystemGetPath() with "kSbSystemPathCacheDirectory".  Note that when its
     # value is "file" the media stack will still allocate memory to cache the
     # the buffers in use.
-    'cobalt_media_buffer_storage_type%': 'memory',
+    'cobalt_media_buffer_storage_type%': '',
     # When either |cobalt_media_buffer_initial_capacity| or
     # |cobalt_media_buffer_allocation_unit| isn't zero, media buffers will be
     # allocated using a memory pool.  Set the following variable to 1 to
@@ -405,20 +451,20 @@
     # |cobalt_media_buffer_initial_capacity| bytes for media buffer on startup
     # and will not release any media buffer memory back to the system even if
     # there is no media buffers allocated.
-    'cobalt_media_buffer_pool_allocate_on_demand%': 1,
+    'cobalt_media_buffer_pool_allocate_on_demand%': -1,
     # The amount of memory that will be used to store media buffers allocated
     # during system startup.  To allocate a large chunk at startup helps with
     # reducing fragmentation and can avoid failures to allocate incrementally.
     # This can be set to 0.
-    'cobalt_media_buffer_initial_capacity%': 21 * 1024 * 1024,
+    'cobalt_media_buffer_initial_capacity%': -1,
     # The maximum amount of memory that will be used to store media buffers when
     # video resolution is no larger than 1080p. This must be larger than sum of
     # 1080p video budget and non-video budget.
-    'cobalt_media_buffer_max_capacity_1080p%': 50 * 1024 * 1024,
+    'cobalt_media_buffer_max_capacity_1080p%': -1,
     # The maximum amount of memory that will be used to store media buffers when
     # video resolution is 4k. If 0, then memory can grow without bound. This
     # must be larger than sum of 4k video budget and non-video budget.
-    'cobalt_media_buffer_max_capacity_4k%': 140 * 1024 * 1024,
+    'cobalt_media_buffer_max_capacity_4k%': -1,
 
     # When the media stack needs more memory to store media buffers, it will
     # allocate extra memory in units of |cobalt_media_buffer_allocation_unit|.
@@ -426,22 +472,22 @@
     # memory on demand.  When |cobalt_media_buffer_initial_capacity| and this
     # value are both set to 0, the media stack will allocate individual buffers
     # directly using SbMemory functions.
-    'cobalt_media_buffer_allocation_unit%': 1 * 1024 * 1024,
+    'cobalt_media_buffer_allocation_unit%': -1,
 
     # The media buffer will be allocated using the following alignment.  Set
     # this to a larger value may increase the memory consumption of media
     # buffers.
-    'cobalt_media_buffer_alignment%': 1,
+    'cobalt_media_buffer_alignment%': -1,
     # Extra bytes allocated at the end of a media buffer to ensure that the
     # buffer can be use optimally by specific instructions like SIMD.  Set to 0
     # to remove any padding.
-    'cobalt_media_buffer_padding%': 0,
+    'cobalt_media_buffer_padding%': -1,
 
     # The memory used when playing mp4 videos that is not in DASH format.  The
     # resolution of such videos shouldn't go beyond 1080p.  Its value should be
     # less than the sum of 'cobalt_media_buffer_non_video_budget' and
     # 'cobalt_media_buffer_video_budget_1080p' but not less than 8 MB.
-    'cobalt_media_buffer_progressive_budget%': 12 * 1024 * 1024,
+    'cobalt_media_buffer_progressive_budget%': -1,
 
     # Specifies the maximum amount of memory used by audio or text buffers of
     # media source before triggering a garbage collection.  A large value will
@@ -449,7 +495,7 @@
     # JavaScript app less likely to re-download audio data.  Note that the
     # JavaScript app may experience significant difficulty if this value is too
     # low.
-    'cobalt_media_buffer_non_video_budget%': 5 * 1024 * 1024,
+    'cobalt_media_buffer_non_video_budget%': -1,
 
     # Specifies the maximum amount of memory used by video buffers of media
     # source before triggering a garbage collection when the video resolution is
@@ -457,14 +503,14 @@
     # used by video buffers but will also make JavaScript app less likely to
     # re-download video data.  Note that the JavaScript app may experience
     # significant difficulty if this value is too low.
-    'cobalt_media_buffer_video_budget_1080p%': 30 * 1024 * 1024,
+    'cobalt_media_buffer_video_budget_1080p%': -1,
     # Specifies the maximum amount of memory used by video buffers of media
     # source before triggering a garbage collection when the video resolution is
     # lower than 4k (3840x2160).  A large value will cause more memory being
     # used by video buffers but will also make JavaScript app less likely to
     # re-download video data.  Note that the JavaScript app may experience
     # significant difficulty if this value is too low.
-    'cobalt_media_buffer_video_budget_4k%': 100 * 1024 * 1024,
+    'cobalt_media_buffer_video_budget_4k%': -1,
 
     # Specifies the duration threshold of media source garbage collection.  When
     # the accumulated duration in a source buffer exceeds this value, the media
@@ -475,7 +521,7 @@
     # system heap.
     # This should be set to 170 for most of the platforms.  But it can be
     # further reduced on systems with extremely low memory.
-    'cobalt_media_source_garbage_collection_duration_threshold_in_seconds%': 170,
+    'cobalt_media_source_garbage_collection_duration_threshold_in_seconds%': -1,
 
     'compiler_flags_host': [
       '-D__LB_HOST__',  # TODO: Is this still needed?
@@ -542,33 +588,89 @@
   'target_defaults': {
     'defines': [
       'COBALT',
-      'COBALT_MEDIA_BUFFER_POOL_ALLOCATE_ON_DEMAND=<(cobalt_media_buffer_pool_allocate_on_demand)',
-      'COBALT_MEDIA_BUFFER_INITIAL_CAPACITY=<(cobalt_media_buffer_initial_capacity)',
-      'COBALT_MEDIA_BUFFER_MAX_CAPACITY_1080P=<(cobalt_media_buffer_max_capacity_1080p)',
-      'COBALT_MEDIA_BUFFER_MAX_CAPACITY_4K=<(cobalt_media_buffer_max_capacity_4k)',
-      'COBALT_MEDIA_BUFFER_ALLOCATION_UNIT=<(cobalt_media_buffer_allocation_unit)',
-      'COBALT_MEDIA_BUFFER_ALIGNMENT=<(cobalt_media_buffer_alignment)',
-      'COBALT_MEDIA_BUFFER_PADDING=<(cobalt_media_buffer_padding)',
-      'COBALT_MEDIA_BUFFER_PROGRESSIVE_BUDGET=<(cobalt_media_buffer_progressive_budget)',
-      'COBALT_MEDIA_BUFFER_NON_VIDEO_BUDGET=<(cobalt_media_buffer_non_video_budget)',
-      'COBALT_MEDIA_BUFFER_VIDEO_BUDGET_1080P=<(cobalt_media_buffer_video_budget_1080p)',
-      'COBALT_MEDIA_BUFFER_VIDEO_BUDGET_4K=<(cobalt_media_buffer_video_budget_4k)',
-      'COBALT_MEDIA_SOURCE_GARBAGE_COLLECTION_DURATION_THRESHOLD_IN_SECONDS=<(cobalt_media_source_garbage_collection_duration_threshold_in_seconds)',
     ],
     'conditions': [
+      ['cobalt_media_buffer_pool_allocate_on_demand != -1', {
+        'defines': [
+          'COBALT_MEDIA_BUFFER_POOL_ALLOCATE_ON_DEMAND=<(cobalt_media_buffer_pool_allocate_on_demand)',
+        ],
+      }],
+      ['cobalt_media_buffer_initial_capacity != -1', {
+        'defines': [
+          'COBALT_MEDIA_BUFFER_INITIAL_CAPACITY=<(cobalt_media_buffer_initial_capacity)',
+        ],
+      }],
+      ['cobalt_media_buffer_max_capacity_1080p != -1', {
+        'defines': [
+          'COBALT_MEDIA_BUFFER_MAX_CAPACITY_1080P=<(cobalt_media_buffer_max_capacity_1080p)',
+        ],
+      }],
+      ['cobalt_media_buffer_max_capacity_4k != -1', {
+        'defines': [
+          'COBALT_MEDIA_BUFFER_MAX_CAPACITY_4K=<(cobalt_media_buffer_max_capacity_4k)',
+        ],
+      }],
+      ['cobalt_media_buffer_max_capacity_4k != -1', {
+        'defines': [
+          'COBALT_MEDIA_BUFFER_MAX_CAPACITY_4K=<(cobalt_media_buffer_max_capacity_4k)',
+        ],
+      }],
+      ['cobalt_media_buffer_max_capacity_4k != -1', {
+        'defines': [
+          'COBALT_MEDIA_BUFFER_MAX_CAPACITY_4K=<(cobalt_media_buffer_max_capacity_4k)',
+        ],
+      }],
+      ['cobalt_media_buffer_allocation_unit != -1', {
+        'defines': [
+          'COBALT_MEDIA_BUFFER_ALLOCATION_UNIT=<(cobalt_media_buffer_allocation_unit)',
+        ],
+      }],
+      ['cobalt_media_buffer_alignment != -1', {
+        'defines': [
+          'COBALT_MEDIA_BUFFER_ALIGNMENT=<(cobalt_media_buffer_alignment)',
+        ],
+      }],
+      ['cobalt_media_buffer_padding != -1', {
+        'defines': [
+          'COBALT_MEDIA_BUFFER_PADDING=<(cobalt_media_buffer_padding)',
+        ],
+      }],
+      ['cobalt_media_buffer_progressive_budget != -1', {
+        'defines': [
+          'COBALT_MEDIA_BUFFER_PROGRESSIVE_BUDGET=<(cobalt_media_buffer_progressive_budget)',
+        ],
+      }],
+      ['cobalt_media_buffer_non_video_budget != -1', {
+        'defines': [
+          'COBALT_MEDIA_BUFFER_NON_VIDEO_BUDGET=<(cobalt_media_buffer_non_video_budget)',
+        ],
+      }],
+      ['cobalt_media_buffer_video_budget_1080p != -1', {
+        'defines': [
+          'COBALT_MEDIA_BUFFER_VIDEO_BUDGET_1080P=<(cobalt_media_buffer_video_budget_1080p)',
+        ],
+      }],
+      ['cobalt_media_buffer_video_budget_4k != -1', {
+        'defines': [
+          'COBALT_MEDIA_BUFFER_VIDEO_BUDGET_4K=<(cobalt_media_buffer_video_budget_4k)',
+        ],
+      }],
+      ['cobalt_media_source_garbage_collection_duration_threshold_in_seconds != -1', {
+        'defines': [
+          'COBALT_MEDIA_SOURCE_GARBAGE_COLLECTION_DURATION_THRESHOLD_IN_SECONDS=<(cobalt_media_source_garbage_collection_duration_threshold_in_seconds)',
+        ],
+      }],
       ['cobalt_media_buffer_storage_type == "memory"', {
         'defines': [
           'COBALT_MEDIA_BUFFER_STORAGE_TYPE_MEMORY=1',
         ],
       }, {
-        'defines': [
-          'COBALT_MEDIA_BUFFER_STORAGE_TYPE_FILE=1',
-        ],
-      }],
-      ['cobalt_gc_zeal == 1', {
-        'defines': [
-          'COBALT_GC_ZEAL=1',
-          'JS_GC_ZEAL=1',
+        'conditions': [
+          ['cobalt_media_buffer_storage_type != ""', {
+            'defines': [
+              'COBALT_MEDIA_BUFFER_STORAGE_TYPE_FILE=1',
+            ],
+          }],
         ],
       }],
       ['in_app_dial == 1', {
@@ -576,26 +678,18 @@
           'DIAL_SERVER',
         ],
       }],
-      ['enable_spdy == 0', {
-        'defines': [
-          'COBALT_DISABLE_SPDY',
-        ],
-      }],
       ['enable_debugger == 1', {
         'defines': [
           'ENABLE_DEBUGGER',
         ],
       }],
-      ['cobalt_v8_buildtime_snapshot == "true"', {
-        'defines': [
-          'COBALT_V8_BUILDTIME_SNAPSHOT=1',
+      ['host_os=="win"', {
+        # A few flags to mute MSVC compiler errors that does not appear on Linux.
+        'compiler_flags_host': [
+          '/wd4267',  # Possible loss of precision from size_t to a smaller type.
+          '/wd4715',  # Not all control paths return value.
         ],
       }],
-      ['cobalt_enable_quic == 1', {
-        'defines': [
-          'COBALT_ENABLE_QUIC',
-        ],
-      }]
     ],
   }, # end of target_defaults
 

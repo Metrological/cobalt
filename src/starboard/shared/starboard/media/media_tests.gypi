@@ -17,8 +17,11 @@
     # This will be included by 'starboard_platform_tests.gyp' so full path names
     # have to be used here.
     'media_tests_sources': [
+      '<(DEPTH)/starboard/shared/starboard/media/avc_util_test.cc',
       '<(DEPTH)/starboard/shared/starboard/media/codec_util_test.cc',
       '<(DEPTH)/starboard/shared/starboard/media/mime_type_test.cc',
+      '<(DEPTH)/starboard/shared/starboard/media/video_capabilities_test.cc',
+      '<(DEPTH)/starboard/shared/starboard/media/vp9_util_test.cc',
     ],
   },
 }

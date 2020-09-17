@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
-
 #include "cobalt/dom/html_element.h"
+
+#include <memory>
 
 #include "base/basictypes.h"
 #include "base/message_loop/message_loop.h"
@@ -30,8 +30,9 @@
 #include "cobalt/dom/html_body_element.h"
 #include "cobalt/dom/html_div_element.h"
 #include "cobalt/dom/html_element_context.h"
-#include "cobalt/dom/layout_boxes.h"
 #include "cobalt/dom/named_node_map.h"
+#include "cobalt/dom/testing/mock_layout_boxes.h"
+#include "cobalt/dom/testing/stub_environment_settings.h"
 #include "cobalt/dom/testing/stub_window.h"
 #include "cobalt/dom/window.h"
 #include "cobalt/media_session/media_session.h"
@@ -40,8 +41,9 @@
 #include "testing/gtest/include/gtest/gtest.h"
 
 using cobalt::cssom::ViewportSize;
-using testing::Return;
+using cobalt::dom::testing::MockLayoutBoxes;
 using testing::_;
+using testing::Return;
 
 namespace cobalt {
 namespace dom {
@@ -52,65 +54,15 @@ ViewportSize kViewSize(320, 240);
 
 // Useful for using base::Bind() along with GMock actions.
 ACTION_P(InvokeCallback0, callback) {
-  SB_UNREFERENCED_PARAMETER(args);
-  SB_UNREFERENCED_PARAMETER(arg0);
-  SB_UNREFERENCED_PARAMETER(arg1);
-  SB_UNREFERENCED_PARAMETER(arg2);
-  SB_UNREFERENCED_PARAMETER(arg3);
-  SB_UNREFERENCED_PARAMETER(arg4);
-  SB_UNREFERENCED_PARAMETER(arg5);
-  SB_UNREFERENCED_PARAMETER(arg6);
-  SB_UNREFERENCED_PARAMETER(arg7);
-  SB_UNREFERENCED_PARAMETER(arg8);
-  SB_UNREFERENCED_PARAMETER(arg9);
   callback.Run();
 }
 
 const char kFooBarDeclarationString[] = "foo: bar;";
 const char kDisplayInlineDeclarationString[] = "display: inline;";
 const char* kHtmlElementTagNames[] = {
-  // "audio", "script", and "video" are excluded since they need more setup.
-  "a", "body", "br", "div", "head", "h1", "html", "img", "link",
-  "meta", "p", "span", "style", "title"
-};
-
-class MockLayoutBoxes : public LayoutBoxes {
- public:
-  MOCK_CONST_METHOD0(type, Type());
-  MOCK_CONST_METHOD0(GetClientRects, scoped_refptr<DOMRectList>());
-
-  MOCK_CONST_METHOD0(IsInline, bool());
-
-  MOCK_CONST_METHOD0(GetBorderEdgeLeft, float());
-  MOCK_CONST_METHOD0(GetBorderEdgeTop, float());
-  MOCK_CONST_METHOD0(GetBorderEdgeWidth, float());
-  MOCK_CONST_METHOD0(GetBorderEdgeHeight, float());
-  MOCK_CONST_METHOD0(GetBorderEdgeOffsetFromContainingBlock, math::Vector2dF());
-
-  MOCK_CONST_METHOD0(GetBorderLeftWidth, float());
-  MOCK_CONST_METHOD0(GetBorderTopWidth, float());
-
-  MOCK_CONST_METHOD0(GetMarginEdgeWidth, float());
-  MOCK_CONST_METHOD0(GetMarginEdgeHeight, float());
-
-  MOCK_CONST_METHOD0(GetPaddingEdgeOffset, math::Vector2dF());
-  MOCK_CONST_METHOD0(GetPaddingEdgeWidth, float());
-  MOCK_CONST_METHOD0(GetPaddingEdgeHeight, float());
-  MOCK_CONST_METHOD0(GetPaddingEdgeOffsetFromContainingBlock,
-                     math::Vector2dF());
-
-  MOCK_CONST_METHOD0(GetContentEdgeOffset, math::Vector2dF());
-  MOCK_CONST_METHOD0(GetContentEdgeWidth, float());
-  MOCK_CONST_METHOD0(GetContentEdgeHeight, float());
-  MOCK_CONST_METHOD0(GetContentEdgeOffsetFromContainingBlock,
-                     math::Vector2dF());
-
-  MOCK_CONST_METHOD1(GetScrollArea, math::RectF(dom::Directionality));
-
-  MOCK_METHOD0(InvalidateSizes, void());
-  MOCK_METHOD0(InvalidateCrossReferences, void());
-  MOCK_METHOD0(InvalidateRenderTreeNodes, void());
-};
+    // "audio", "script", and "video" are excluded since they need more setup.
+    "a",   "body", "br",   "div", "head", "h1",    "html",
+    "img", "link", "meta", "p",   "span", "style", "title"};
 
 // Takes the fist child of the given element repeatedly to the given depth.
 scoped_refptr<HTMLElement> GetFirstChildAtDepth(
@@ -132,10 +84,10 @@ class HTMLElementTest : public ::testing::Test {
  protected:
   HTMLElementTest()
       : dom_stat_tracker_(new DomStatTracker("HTMLElementTest")),
-        html_element_context_(NULL, NULL, &css_parser_, NULL, NULL, NULL, NULL,
+        html_element_context_(&environment_settings_, NULL, NULL, &css_parser_,
                               NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                              dom_stat_tracker_.get(), "",
-                              base::kApplicationStateStarted, NULL),
+                              NULL, NULL, NULL, NULL, dom_stat_tracker_.get(),
+                              "", base::kApplicationStateStarted, NULL),
         document_(new Document(&html_element_context_)) {}
   ~HTMLElementTest() override {}
 
@@ -147,6 +99,7 @@ class HTMLElementTest : public ::testing::Test {
   void SetElementStyle(const scoped_refptr<cssom::CSSDeclaredStyleData>& data,
                        HTMLElement* html_element);
 
+  testing::StubEnvironmentSettings environment_settings_;
   cssom::testing::MockCSSParser css_parser_;
   std::unique_ptr<DomStatTracker> dom_stat_tracker_;
   HTMLElementContext html_element_context_;
@@ -223,9 +176,8 @@ TEST_F(HTMLElementTest, Dir) {
     html_element->set_dir("rtl");
     EXPECT_EQ("rtl", html_element->dir());
 
-    // Value "auto" is not supported.
     html_element->set_dir("auto");
-    EXPECT_EQ("", html_element->dir());
+    EXPECT_EQ("auto", html_element->dir());
 
     html_element->SetAttribute("Dir", "rtl");
     EXPECT_EQ("rtl", html_element->dir());

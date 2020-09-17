@@ -26,6 +26,7 @@
 #include "cobalt/dom/error_event_init.h"
 #include "cobalt/dom/local_storage_database.h"
 #include "cobalt/dom/testing/gtest_workarounds.h"
+#include "cobalt/dom/testing/stub_environment_settings.h"
 #include "cobalt/dom/window.h"
 #include "cobalt/dom_parser/parser.h"
 #include "cobalt/loader/fetcher_factory.h"
@@ -59,13 +60,13 @@ class ErrorEventTest : public ::testing::Test {
  public:
   ErrorEventTest()
       : message_loop_(base::MessageLoop::TYPE_DEFAULT),
-        environment_settings_(new script::EnvironmentSettings),
+        environment_settings_(new testing::StubEnvironmentSettings),
         css_parser_(css_parser::Parser::Create()),
         dom_parser_(new dom_parser::Parser(mock_load_complete_callback_)),
         fetcher_factory_(new loader::FetcherFactory(NULL)),
-        loader_factory_(
-            new loader::LoaderFactory("Test", fetcher_factory_.get(), NULL, 0,
-                                      base::ThreadPriority::DEFAULT)),
+        loader_factory_(new loader::LoaderFactory(
+            "Test", fetcher_factory_.get(), NULL, null_debugger_hooks_, 0,
+            base::ThreadPriority::DEFAULT)),
         local_storage_database_(NULL),
         url_("about:blank") {
     engine_ = script::JavaScriptEngine::CreateEngine();
@@ -73,11 +74,12 @@ class ErrorEventTest : public ::testing::Test {
 
     ViewportSize view_size(1920, 1080);
     window_ = new Window(
-        view_size, 1.f, base::kApplicationStateStarted, css_parser_.get(),
-        dom_parser_.get(), fetcher_factory_.get(), loader_factory_.get(), NULL,
-        NULL, NULL, NULL, NULL, NULL, &local_storage_database_, NULL, NULL,
-        NULL, NULL, global_environment_->script_value_factory(), NULL, NULL,
-        url_, "", "en-US", "en", base::Callback<void(const GURL&)>(),
+        environment_settings_.get(), view_size, base::kApplicationStateStarted,
+        css_parser_.get(), dom_parser_.get(), fetcher_factory_.get(),
+        loader_factory_.get(), NULL, NULL, NULL, NULL, NULL, NULL,
+        &local_storage_database_, NULL, NULL, NULL, NULL,
+        global_environment_->script_value_factory(), NULL, NULL, url_, "",
+        "en-US", "en", base::Callback<void(const GURL&)>(),
         base::Bind(&MockLoadCompleteCallback::Run,
                    base::Unretained(&mock_load_complete_callback_)),
         NULL, network_bridge::PostSender(), csp::kCSPRequired,
@@ -97,8 +99,9 @@ class ErrorEventTest : public ::testing::Test {
 
  private:
   base::MessageLoop message_loop_;
+  base::NullDebuggerHooks null_debugger_hooks_;
   std::unique_ptr<script::JavaScriptEngine> engine_;
-  const std::unique_ptr<script::EnvironmentSettings> environment_settings_;
+  const std::unique_ptr<testing::StubEnvironmentSettings> environment_settings_;
   scoped_refptr<script::GlobalEnvironment> global_environment_;
   MockLoadCompleteCallback mock_load_complete_callback_;
   std::unique_ptr<css_parser::Parser> css_parser_;

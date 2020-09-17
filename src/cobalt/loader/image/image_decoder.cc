@@ -19,9 +19,11 @@
 
 #include "base/command_line.h"
 #include "base/trace_event/trace_event.h"
+#include "cobalt/configuration/configuration.h"
 #include "cobalt/loader/image/dummy_gif_image_decoder.h"
 #include "cobalt/loader/image/image_decoder_starboard.h"
 #include "cobalt/loader/image/jpeg_image_decoder.h"
+#include "cobalt/loader/image/lottie_animation_decoder.h"
 #include "cobalt/loader/image/png_image_decoder.h"
 #include "cobalt/loader/image/stub_image_decoder.h"
 #include "cobalt/loader/image/webp_image_decoder.h"
@@ -29,6 +31,7 @@
 #include "net/base/mime_util.h"
 #include "net/http/http_status_code.h"
 #include "starboard/configuration.h"
+#include "starboard/gles.h"
 #include "starboard/image.h"
 
 namespace cobalt {
@@ -55,6 +58,10 @@ ImageDecoder::ImageType DetermineImageType(const uint8* header) {
     return ImageDecoder::kImageTypeJPEG;
   } else if (!memcmp(header, "GIF87a", 6) || !memcmp(header, "GIF89a", 6)) {
     return ImageDecoder::kImageTypeGIF;
+  } else if (!memcmp(header, "{", 1)) {
+    // TODO: Improve heuristics for determining whether the file contains valid
+    // Lottie JSON.
+    return ImageDecoder::kImageTypeJSON;
   } else if (!memcmp(header, "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A", 8)) {
     return ImageDecoder::kImageTypePNG;
   } else if (!memcmp(header, "RIFF", 4) && !memcmp(header + 8, "WEBPVP", 6)) {
@@ -68,9 +75,11 @@ ImageDecoder::ImageType DetermineImageType(const uint8* header) {
 
 ImageDecoder::ImageDecoder(
     render_tree::ResourceProvider* resource_provider,
+    const base::DebuggerHooks& debugger_hooks,
     const ImageAvailableCallback& image_available_callback,
     const loader::Decoder::OnCompleteFunction& load_complete_callback)
     : resource_provider_(resource_provider),
+      debugger_hooks_(debugger_hooks),
       image_available_callback_(image_available_callback),
       image_type_(kImageTypeInvalid),
       load_complete_callback_(load_complete_callback),
@@ -81,10 +90,12 @@ ImageDecoder::ImageDecoder(
 
 ImageDecoder::ImageDecoder(
     render_tree::ResourceProvider* resource_provider,
+    const base::DebuggerHooks& debugger_hooks,
     const ImageAvailableCallback& image_available_callback,
     ImageType image_type,
     const loader::Decoder::OnCompleteFunction& load_complete_callback)
     : resource_provider_(resource_provider),
+      debugger_hooks_(debugger_hooks),
       image_available_callback_(image_available_callback),
       image_type_(image_type),
       load_complete_callback_(load_complete_callback),
@@ -95,7 +106,6 @@ ImageDecoder::ImageDecoder(
 
 LoadResponseType ImageDecoder::OnResponseStarted(
     Fetcher* fetcher, const scoped_refptr<net::HttpResponseHeaders>& headers) {
-  SB_UNREFERENCED_PARAMETER(fetcher);
   TRACE_EVENT0("cobalt::loader::image", "ImageDecoder::OnResponseStarted()");
 
   if (state_ == kSuspended) {
@@ -252,7 +262,7 @@ void ImageDecoder::DecodeChunkInternal(const uint8* input_bytes, size_t size) {
 }
 
 namespace {
-#if SB_HAS(GRAPHICS) && !SB_IS(EVERGREEN)
+
 const char* GetMimeTypeFromImageType(ImageDecoder::ImageType image_type) {
   switch (image_type) {
     case ImageDecoder::kImageTypeJPEG:
@@ -261,6 +271,8 @@ const char* GetMimeTypeFromImageType(ImageDecoder::ImageType image_type) {
       return "image/png";
     case ImageDecoder::kImageTypeGIF:
       return "image/gif";
+    case ImageDecoder::kImageTypeJSON:
+      return "application/json";
     case ImageDecoder::kImageTypeWebP:
       return "image/webp";
     case ImageDecoder::kImageTypeInvalid:
@@ -273,7 +285,8 @@ const char* GetMimeTypeFromImageType(ImageDecoder::ImageType image_type) {
 // If |mime_type| is empty, |image_type| will be used to deduce the mime type.
 std::unique_ptr<ImageDataDecoder> MaybeCreateStarboardDecoder(
     const std::string& mime_type, ImageDecoder::ImageType image_type,
-    render_tree::ResourceProvider* resource_provider) {
+    render_tree::ResourceProvider* resource_provider,
+    const base::DebuggerHooks& debugger_hooks) {
   // clang-format off
   const SbDecodeTargetFormat kPreferredFormats[] = {
       kSbDecodeTargetFormat1PlaneRGBA,
@@ -306,32 +319,36 @@ std::unique_ptr<ImageDataDecoder> MaybeCreateStarboardDecoder(
     if (SbDecodeTargetIsFormatValid(format) &&
         resource_provider->SupportsSbDecodeTarget()) {
       return std::unique_ptr<ImageDataDecoder>(new ImageDecoderStarboard(
-          resource_provider, mime_type_c_string, format));
+          resource_provider, debugger_hooks, mime_type_c_string, format));
     }
   }
   return std::unique_ptr<ImageDataDecoder>();
 }
-#endif  // SB_HAS(GRAPHICS) && !SB_IS(EVERGREEN)
 
 std::unique_ptr<ImageDataDecoder> CreateImageDecoderFromImageType(
     ImageDecoder::ImageType image_type,
-    render_tree::ResourceProvider* resource_provider) {
+    render_tree::ResourceProvider* resource_provider,
+    const base::DebuggerHooks& debugger_hooks) {
   // Call different types of decoders by matching the image signature.
   if (s_use_stub_image_decoder) {
     return std::unique_ptr<ImageDataDecoder>(
-        new StubImageDecoder(resource_provider));
+        new StubImageDecoder(resource_provider, debugger_hooks));
   } else if (image_type == ImageDecoder::kImageTypeJPEG) {
-    return std::unique_ptr<ImageDataDecoder>(new JPEGImageDecoder(
-        resource_provider, ImageDecoder::AllowDecodingToMultiPlane()));
+    return std::unique_ptr<ImageDataDecoder>(
+        new JPEGImageDecoder(resource_provider, debugger_hooks,
+                             ImageDecoder::AllowDecodingToMultiPlane()));
   } else if (image_type == ImageDecoder::kImageTypePNG) {
     return std::unique_ptr<ImageDataDecoder>(
-        new PNGImageDecoder(resource_provider));
+        new PNGImageDecoder(resource_provider, debugger_hooks));
   } else if (image_type == ImageDecoder::kImageTypeWebP) {
     return std::unique_ptr<ImageDataDecoder>(
-        new WEBPImageDecoder(resource_provider));
+        new WEBPImageDecoder(resource_provider, debugger_hooks));
   } else if (image_type == ImageDecoder::kImageTypeGIF) {
     return std::unique_ptr<ImageDataDecoder>(
-        new DummyGIFImageDecoder(resource_provider));
+        new DummyGIFImageDecoder(resource_provider, debugger_hooks));
+  } else if (image_type == ImageDecoder::kImageTypeJSON) {
+    return std::unique_ptr<ImageDataDecoder>(
+        new LottieAnimationDecoder(resource_provider, debugger_hooks));
   } else {
     return std::unique_ptr<ImageDataDecoder>();
   }
@@ -357,14 +374,12 @@ bool ImageDecoder::InitializeInternalDecoder(const uint8* input_bytes,
     image_type_ = DetermineImageType(signature_cache_.data);
   }
 
-// TODO: Remove the EVERGREEN check once the EGL wiring is ready.
-#if SB_HAS(GRAPHICS) && !SB_IS(EVERGREEN)
-  decoder_ =
-      MaybeCreateStarboardDecoder(mime_type_, image_type_, resource_provider_);
-#endif  // SB_HAS(GRAPHICS) && !SB_IS(EVERGREEN)
+  decoder_ = MaybeCreateStarboardDecoder(mime_type_, image_type_,
+                                         resource_provider_, debugger_hooks_);
 
   if (!decoder_) {
-    decoder_ = CreateImageDecoderFromImageType(image_type_, resource_provider_);
+    decoder_ = CreateImageDecoderFromImageType(image_type_, resource_provider_,
+                                               debugger_hooks_);
   }
 
   if (!decoder_) {
@@ -380,19 +395,24 @@ void ImageDecoder::UseStubImageDecoder() { s_use_stub_image_decoder = true; }
 
 // static
 bool ImageDecoder::AllowDecodingToMultiPlane() {
-#if SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
+#if SB_API_VERSION >= 12
   // Many image formats can produce native output in multi plane images in YUV
-  // 420.  Allow these images to be decoded into multi plane image not only
+  // 420. Allowing these images to be decoded into multi plane image not only
   // reduces the space to store the decoded image to 37.5%, but also improves
   // decoding performance by not converting the output from YUV to RGBA.
-  bool allow_image_decoding_to_multi_plane = true;
-#else   // SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
-  // Decoding to single plane by default because blitter platforms usually
-  // don't have the ability to perform hardware accelerated YUV-formatted
-  // image blitting.
+  //
+  // Blitter platforms usually don't have the ability to perform hardware
+  // accelerated YUV-formatted image blitting, so we decode to a single plane
+  // when we do not support gles.
   // This also applies to skia based "hardware" rasterizers as the rendering
   // of multi plane images in such cases are not optimized, but this may be
   // improved in future.
+  bool allow_image_decoding_to_multi_plane =
+      std::string(configuration::Configuration::GetInstance()
+                      ->CobaltRasterizerType()) == "direct-gles";
+#elif SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
+  bool allow_image_decoding_to_multi_plane = true;
+#else  // SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
   bool allow_image_decoding_to_multi_plane = false;
 #endif  // SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
 

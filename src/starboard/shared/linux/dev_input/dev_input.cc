@@ -21,19 +21,19 @@
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include <unordered_map>
-#include <vector>
 
 #include <algorithm>
 #include <cmath>
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
 #include "starboard/configuration.h"
+#include "starboard/configuration_constants.h"
 #include "starboard/directory.h"
 #include "starboard/input.h"
 #include "starboard/key.h"
@@ -769,7 +769,19 @@ std::vector<InputDeviceInfo> GetInputDevices() {
   }
 
   while (true) {
+#if SB_API_VERSION >= 12
+    std::vector<char> entry(kSbFileMaxName);
+
+    if (!SbDirectoryGetNext(directory, entry.data(), kSbFileMaxName)) {
+      break;
+    }
+
+    std::string path = kDevicePath;
+    path += "/";
+    path += entry.data();
+#else   // SB_API_VERSION >= 12
     SbDirectoryEntry entry;
+
     if (!SbDirectoryGetNext(directory, &entry)) {
       break;
     }
@@ -777,6 +789,7 @@ std::vector<InputDeviceInfo> GetInputDevices() {
     std::string path = kDevicePath;
     path += "/";
     path += entry.name;
+#endif  // SB_API_VERSION >= 12
 
     if (SbDirectoryCanOpen(path.c_str())) {
       // This is a subdirectory. Skip.
@@ -793,11 +806,6 @@ std::vector<InputDeviceInfo> GetInputDevices() {
 
     SB_DCHECK(info.fd != kInvalidFd);
     input_devices.push_back(info);
-  }
-
-  if (input_devices.empty()) {
-    SB_DLOG(ERROR) << __FUNCTION__ << ": No /dev/input support. "
-                   << "No keyboards or game controllers available.";
   }
 
   SbDirectoryClose(directory);
@@ -1043,9 +1051,7 @@ DevInput::Event* CreateAnalogButtonKeyEvent(SbWindow window,
 
   SbInputData* data = new SbInputData();
   SbMemorySet(data, 0, sizeof(*data));
-#if SB_API_VERSION >= 10
   data->timestamp = SbTimeGetMonotonicNow();
-#endif  // SB_API_VERSION >= 10
   data->window = window;
   data->type = type;
   data->device_type = kSbInputDeviceTypeGamepad;
@@ -1066,9 +1072,7 @@ DevInput::Event* CreateMoveEventWithKey(SbWindow window,
   SbInputData* data = new SbInputData();
   SbMemorySet(data, 0, sizeof(*data));
 
-#if SB_API_VERSION >= 10
   data->timestamp = SbTimeGetMonotonicNow();
-#endif  // SB_API_VERSION >= 10
   data->window = window;
   data->type = kSbInputEventTypeMove;
   data->device_type = kSbInputDeviceTypeGamepad;
@@ -1095,9 +1099,7 @@ DevInput::Event* CreateTouchPadEvent(SbWindow window,
   SbInputData* data = new SbInputData();
   SbMemorySet(data, 0, sizeof(*data));
 
-#if SB_API_VERSION >= 10
   data->timestamp = SbTimeGetMonotonicNow();
-#endif  // SB_API_VERSION >= 10
   data->window = window;
   data->type = type;
   data->device_type = kSbInputDeviceTypeTouchPad;
@@ -1287,9 +1289,7 @@ DevInput::Event* DevInputImpl::KeyInputToApplicationEvent(
 
   SbInputData* data = new SbInputData();
   SbMemorySet(data, 0, sizeof(*data));
-#if SB_API_VERSION >= 10
   data->timestamp = SbTimeGetMonotonicNow();
-#endif  // SB_API_VERSION >= 10
   data->window = window_;
   data->type =
       (event.value == 0 ? kSbInputEventTypeUnpress : kSbInputEventTypePress);

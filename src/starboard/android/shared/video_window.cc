@@ -41,6 +41,9 @@ jobject g_j_video_surface = NULL;
 ANativeWindow* g_native_video_window = NULL;
 // Global video surface pointer holder.
 VideoSurfaceHolder* g_video_surface_holder = NULL;
+// Global boolean to indicate if we need to reset SurfaceView after playing
+// vertical video.
+bool g_reset_surface_on_clear_window = false;
 
 }  // namespace
 
@@ -66,6 +69,22 @@ Java_dev_cobalt_media_VideoSurfaceView_nativeOnVideoSurfaceChanged(
     g_j_video_surface = env->NewGlobalRef(surface);
     g_native_video_window = ANativeWindow_fromSurface(env, surface);
   }
+}
+
+extern "C" SB_EXPORT_PLATFORM void
+Java_dev_cobalt_media_VideoSurfaceView_nativeSetNeedResetSurface(
+    JNIEnv* env,
+    jobject unused_this) {
+  g_reset_surface_on_clear_window = true;
+}
+
+// static
+bool VideoSurfaceHolder::IsVideoSurfaceAvailable() {
+  // We only consider video surface is available when there is a video
+  // surface and it is not held by any decoder, i.e.
+  // g_video_surface_holder is NULL.
+  ScopedLock lock(*GetViewSurfaceMutex());
+  return !g_video_surface_holder && g_j_video_surface;
 }
 
 jobject VideoSurfaceHolder::AcquireVideoSurface() {
@@ -103,6 +122,16 @@ void VideoSurfaceHolder::ClearVideoWindow() {
   // Lock *GetViewSurfaceMutex() here, to avoid releasing g_native_video_window
   // during painting.
   ScopedLock lock(*GetViewSurfaceMutex());
+
+  if (g_reset_surface_on_clear_window) {
+    int width = ANativeWindow_getWidth(g_native_video_window);
+    int height = ANativeWindow_getHeight(g_native_video_window);
+    if (width <= height) {
+      JniEnvExt::Get()->CallStarboardVoidMethodOrAbort("resetVideoSurface",
+                                                       "()V");
+      return;
+    }
+  }
 
   if (!g_native_video_window) {
     SB_LOG(INFO) << "Tried to clear video window when it was null.";

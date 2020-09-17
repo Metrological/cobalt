@@ -19,9 +19,11 @@
 namespace starboard {
 namespace nplb {
 
-#if SB_HAS(SPEECH_RECOGNIZER) && SB_API_VERSION >= 5
+#if SB_API_VERSION >= 12 || SB_HAS(SPEECH_RECOGNIZER) && SB_API_VERSION >= 5
 
 TEST_F(SpeechRecognizerTest, StopIsCalledMultipleTimes) {
+  if (SkipLocale())
+    return;
   SbSpeechRecognizer recognizer = SbSpeechRecognizerCreate(handler());
   EXPECT_TRUE(SbSpeechRecognizerIsValid(recognizer));
   SbSpeechConfiguration configuration = {true, true, 1};
@@ -37,7 +39,8 @@ TEST_F(SpeechRecognizerTest, StopIsCalledMultipleTimes) {
   SbSpeechRecognizerDestroy(recognizer);
 }
 
-#endif  // SB_HAS(SPEECH_RECOGNIZER) && SB_API_VERSION >= 5
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(SPEECH_RECOGNIZER) && SB_API_VERSION >= 5
 
 }  // namespace nplb
 }  // namespace starboard

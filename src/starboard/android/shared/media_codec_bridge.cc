@@ -14,6 +14,8 @@
 
 #include "starboard/android/shared/media_codec_bridge.h"
 
+#include "starboard/common/string.h"
+
 namespace starboard {
 namespace android {
 namespace shared {
@@ -177,9 +179,14 @@ scoped_ptr<MediaCodecBridge> MediaCodecBridge::CreateVideoMediaCodecBridge(
     Handler* handler,
     jobject j_surface,
     jobject j_media_crypto,
-    const SbMediaColorMetadata* color_metadata) {
+    const SbMediaColorMetadata* color_metadata,
+    bool require_software_codec,
+    std::string* error_message) {
+  SB_DCHECK(error_message);
+
   const char* mime = SupportedVideoCodecToMimeType(video_codec);
   if (!mime) {
+    *error_message = FormatString("Unsupported mime for codec %d", video_codec);
     return scoped_ptr<MediaCodecBridge>(NULL);
   }
   JniEnvExt* env = JniEnvExt::Get();
@@ -212,19 +219,34 @@ scoped_ptr<MediaCodecBridge> MediaCodecBridge::CreateVideoMediaCodecBridge(
     }
   }
 
+  ScopedLocalJavaRef<jobject> j_create_media_codec_bridge_result(
+      env->NewObjectOrAbort(
+          "dev/cobalt/media/MediaCodecBridge$CreateMediaCodecBridgeResult",
+          "()V"));
+
   scoped_ptr<MediaCodecBridge> native_media_codec_bridge(
       new MediaCodecBridge(handler));
-  jobject j_media_codec_bridge = env->CallStaticObjectMethodOrAbort(
+  env->CallStaticVoidMethodOrAbort(
       "dev/cobalt/media/MediaCodecBridge", "createVideoMediaCodecBridge",
       "(JLjava/lang/String;ZZIILandroid/view/Surface;"
       "Landroid/media/MediaCrypto;"
-      "Ldev/cobalt/media/MediaCodecBridge$ColorInfo;)"
-      "Ldev/cobalt/media/MediaCodecBridge;",
+      "Ldev/cobalt/media/MediaCodecBridge$ColorInfo;"
+      "Ldev/cobalt/media/MediaCodecBridge$CreateMediaCodecBridgeResult;)"
+      "V",
       reinterpret_cast<jlong>(native_media_codec_bridge.get()), j_mime.Get(),
-      !!j_media_crypto, false, width, height, j_surface, j_media_crypto,
-      j_color_info.Get());
+      !!j_media_crypto, require_software_codec, width, height, j_surface,
+      j_media_crypto, j_color_info.Get(),
+      j_create_media_codec_bridge_result.Get());
+
+  jobject j_media_codec_bridge = env->CallObjectMethodOrAbort(
+      j_create_media_codec_bridge_result.Get(), "mediaCodecBridge",
+      "()Ldev/cobalt/media/MediaCodecBridge;");
 
   if (!j_media_codec_bridge) {
+    ScopedLocalJavaRef<jstring> j_error_message(
+        env->CallObjectMethodOrAbort(j_create_media_codec_bridge_result.Get(),
+                                     "errorMessage", "()Ljava/lang/String;"));
+    *error_message = env->GetStringStandardUTFOrAbort(j_error_message.Get());
     return scoped_ptr<MediaCodecBridge>(NULL);
   }
 
@@ -393,7 +415,6 @@ void MediaCodecBridge::Initialize(jobject j_media_codec_bridge) {
 
   JniEnvExt* env = JniEnvExt::Get();
   SB_DCHECK(env->GetObjectRefType(j_media_codec_bridge_) == JNIGlobalRefType);
-
 
   j_reused_get_output_format_result_ = env->NewObjectOrAbort(
       "dev/cobalt/media/MediaCodecBridge$GetOutputFormatResult", "()V");

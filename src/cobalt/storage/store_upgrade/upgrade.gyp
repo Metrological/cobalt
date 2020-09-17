@@ -36,15 +36,6 @@
         '<(DEPTH)/sql/sql.gyp:sql',
         '<(DEPTH)/third_party/protobuf/protobuf.gyp:protobuf_lite',
       ],
-      'defines': [
-        'GOOGLE_PROTOBUF_NO_RTTI',
-        'GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER',
-        'HAVE_PTHREAD',
-      ],
-      'include_dirs': [
-        # Get protobuf headers from the chromium tree.
-        '<(DEPTH)/third_party/protobuf/src',
-      ],
     },
     {
       'target_name': 'storage_upgrade_test',
@@ -57,20 +48,11 @@
         'storage_upgrade',
         'storage_upgrade_copy_test_files',
         '<(DEPTH)/cobalt/base/base.gyp:base',
-        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
         '<(DEPTH)/third_party/protobuf/protobuf.gyp:protobuf_lite',
       ],
-      'defines': [
-        'GOOGLE_PROTOBUF_NO_RTTI',
-        'GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER',
-        'HAVE_PTHREAD',
-      ],
-      'include_dirs': [
-        # Get protobuf headers from the chromium tree.
-        '<(DEPTH)/third_party/protobuf/src',
-      ],
+      'includes': [ '<(DEPTH)/cobalt/test/test.gypi' ],
     },
     {
       'target_name': 'storage_upgrade_test_deploy',

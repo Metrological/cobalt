@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "starboard/configuration.h"
+#if SB_API_VERSION >= 12 || SB_HAS(GLES2)
+
 #include "cobalt/renderer/backend/egl/resource_context.h"
 
 #include "base/bind.h"
@@ -24,7 +27,7 @@ namespace renderer {
 namespace backend {
 
 ResourceContext::ResourceContext(EGLDisplay display, EGLConfig config)
-    : display_(display), config_(config), thread_("GL Texture Resource") {
+    : display_(display), config_(config), thread_("GLTextureResrc") {
   context_ = CreateGLES3Context(display, config, EGL_NO_CONTEXT);
 
   // Create a dummy EGLSurface object to be assigned as the target surface
@@ -91,3 +94,5 @@ void ResourceContext::ShutdownOnResourceThread() {
 }  // namespace backend
 }  // namespace renderer
 }  // namespace cobalt
+
+#endif  // SB_API_VERSION >= 12 || SB_HAS(GLES2)

@@ -16,10 +16,14 @@
 #include "starboard/media.h"
 #include "starboard/shared/starboard/media/media_support_internal.h"
 #include "third_party/starboard/wpe/shared/media/gst_media_utils.h"
+#include "starboard/configuration_constants.h"
 
 SB_EXPORT bool SbMediaIsAudioSupported(SbMediaAudioCodec audio_codec,
+#if SB_API_VERSION >= 12
+                                       const char* content_type,
+#endif  // SB_API_VERSION >= 12
                                        int64_t bitrate) {
-  return bitrate < SB_MEDIA_MAX_AUDIO_BITRATE_IN_BITS_PER_SECOND &&
+  return bitrate < kSbMediaMaxAudioBitrateInBitsPerSecond &&
          third_party::starboard::wpe::shared::media::
              GstRegistryHasElementForMediaType(audio_codec);
 }

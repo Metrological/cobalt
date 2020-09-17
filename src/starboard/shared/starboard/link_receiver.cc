@@ -23,6 +23,7 @@
 #include "starboard/common/semaphore.h"
 #include "starboard/common/socket.h"
 #include "starboard/common/string.h"
+#include "starboard/configuration_constants.h"
 #include "starboard/file.h"
 #include "starboard/shared/starboard/application.h"
 #include "starboard/socket_waiter.h"
@@ -136,7 +137,7 @@ bool GetBoundPort(Socket* socket, int* out_port) {
 }
 
 std::string GetTemporaryDirectory() {
-  const int kMaxPathLength = SB_FILE_MAX_PATH;
+  const int kMaxPathLength = kSbFileMaxPath;
   scoped_array<char> temp_path(new char[kMaxPathLength]);
   bool has_temp = SbSystemGetPath(kSbSystemPathTempDirectory, temp_path.get(),
                                   kMaxPathLength);
@@ -156,7 +157,7 @@ void CreateTemporaryFile(const char* name, const char* contents, int size) {
     return;
   }
 
-  path += SB_FILE_SEP_STRING;
+  path += kSbFileSepString;
   path += name;
   ScopedFile file(path.c_str(), kSbFileCreateAlways | kSbFileWrite);
   if (!file.IsValid()) {
@@ -423,8 +424,8 @@ void* LinkReceiver::Impl::RunThread(void* context) {
 }
 
 // static
-void LinkReceiver::Impl::HandleAccept(SbSocketWaiter /*waiter*/,
-                                      SbSocket /*socket*/,
+void LinkReceiver::Impl::HandleAccept(SbSocketWaiter waiter,
+                                      SbSocket socket,
                                       void* context,
                                       int ready_interests) {
   SB_DCHECK(context);
@@ -432,10 +433,10 @@ void LinkReceiver::Impl::HandleAccept(SbSocketWaiter /*waiter*/,
 }
 
 // static
-void LinkReceiver::Impl::HandleRead(SbSocketWaiter /*waiter*/,
+void LinkReceiver::Impl::HandleRead(SbSocketWaiter waiter,
                                     SbSocket socket,
                                     void* context,
-                                    int /*ready_interests*/) {
+                                    int ready_interests) {
   SB_DCHECK(context);
   reinterpret_cast<LinkReceiver::Impl*>(context)->OnReadReady(socket);
 }

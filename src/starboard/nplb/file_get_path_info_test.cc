@@ -16,6 +16,7 @@
 
 #include <string>
 
+#include "starboard/configuration_constants.h"
 #include "starboard/file.h"
 #include "starboard/nplb/file_helpers.h"
 #include "starboard/system.h"
@@ -88,20 +89,41 @@ TEST(SbFileGetPathInfoTest, WorksOnARegularFile) {
 }
 
 TEST(SbFileGetPathInfoTest, WorksOnADirectory) {
-  char path[SB_FILE_MAX_PATH] = {0};
+  std::vector<char> path(kSbFileMaxPath);
   bool result =
-      SbSystemGetPath(kSbSystemPathTempDirectory, path, SB_FILE_MAX_PATH);
+      SbSystemGetPath(kSbSystemPathTempDirectory, path.data(), kSbFileMaxPath);
   EXPECT_TRUE(result);
 
   {
     SbFileInfo info = {0};
-    bool result = SbFileGetPathInfo(path, &info);
+    bool result = SbFileGetPathInfo(path.data(), &info);
     EXPECT_LE(0, info.size);
     EXPECT_TRUE(info.is_directory);
     EXPECT_FALSE(info.is_symbolic_link);
     EXPECT_LE(0, info.last_modified);
     EXPECT_LE(0, info.last_accessed);
     EXPECT_LE(0, info.creation_time);
+  }
+}
+
+TEST(SbFileGetPathInfoTest, WorksOnStaticContentFiles) {
+  for (auto filename : GetFileTestsFilePaths()) {
+    SbFileInfo info = {0};
+    bool result = SbFileGetPathInfo(filename.c_str(), &info);
+    size_t content_length = GetTestFileExpectedContent(filename).length();
+    EXPECT_EQ(content_length, info.size);
+    EXPECT_FALSE(info.is_directory);
+    EXPECT_FALSE(info.is_symbolic_link);
+  }
+}
+
+TEST(SbFileGetPathInfoTest, WorksOnStaticContentDirectories) {
+  for (auto path : GetFileTestsDirectoryPaths()) {
+    SbFileInfo info = {0};
+    bool result = SbFileGetPathInfo(path.data(), &info);
+    EXPECT_LE(0, info.size);
+    EXPECT_TRUE(info.is_directory);
+    EXPECT_FALSE(info.is_symbolic_link);
   }
 }
 

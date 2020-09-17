@@ -45,9 +45,6 @@
 #include "cobalt/dom/source_buffer.h"
 
 #include <algorithm>
-#include <limits>
-#include <memory>
-#include <vector>
 
 #include "base/compiler_specific.h"
 #include "base/logging.h"
@@ -86,25 +83,19 @@ static base::TimeDelta DoubleToTimeDelta(double time) {
 
 }  // namespace
 
-SourceBuffer::SourceBuffer(const std::string& id, MediaSource* media_source,
+SourceBuffer::SourceBuffer(script::EnvironmentSettings* settings,
+                           const std::string& id, MediaSource* media_source,
                            media::ChunkDemuxer* chunk_demuxer,
                            EventQueue* event_queue)
-    : id_(id),
+    : EventTarget(settings),
+      id_(id),
       chunk_demuxer_(chunk_demuxer),
       media_source_(media_source),
-      track_defaults_(new TrackDefaultList(NULL)),
       event_queue_(event_queue),
-      mode_(kSourceBufferAppendModeSegments),
-      updating_(false),
-      timestamp_offset_(0),
-      audio_tracks_(new AudioTrackList(media_source->GetMediaElement())),
-      video_tracks_(new VideoTrackList(media_source->GetMediaElement())),
-      append_window_start_(0),
-      append_window_end_(std::numeric_limits<double>::infinity()),
-      first_initialization_segment_received_(false),
-      pending_append_data_offset_(0),
-      pending_remove_start_(-1),
-      pending_remove_end_(-1) {
+      audio_tracks_(
+          new AudioTrackList(settings, media_source->GetMediaElement())),
+      video_tracks_(
+          new VideoTrackList(settings, media_source->GetMediaElement())) {
   DCHECK(!id_.empty());
   DCHECK(media_source_);
   DCHECK(chunk_demuxer);
@@ -336,6 +327,9 @@ void SourceBuffer::OnRemovedFromMediaSource() {
   chunk_demuxer_ = NULL;
   media_source_ = NULL;
   event_queue_ = NULL;
+
+  pending_append_data_.reset();
+  pending_append_data_capacity_ = 0;
 }
 
 double SourceBuffer::GetHighestPresentationTimestamp() const {
@@ -355,8 +349,6 @@ void SourceBuffer::TraceMembers(script::Tracer* tracer) {
 }
 
 void SourceBuffer::InitSegmentReceived(std::unique_ptr<MediaTracks> tracks) {
-  SB_UNREFERENCED_PARAMETER(tracks);
-
   if (!first_initialization_segment_received_) {
     media_source_->SetSourceBufferActive(this, true);
     first_initialization_segment_received_ = true;
@@ -415,8 +407,15 @@ void SourceBuffer::AppendBufferInternal(
 
   DCHECK(data || size == 0);
   if (data) {
-    pending_append_data_.insert(pending_append_data_.end(), data, data + size);
+    DCHECK_EQ(pending_append_data_offset_, 0u);
+    if (pending_append_data_capacity_ < size) {
+      pending_append_data_.reset();
+      pending_append_data_.reset(new uint8_t[size]);
+      pending_append_data_capacity_ = size;
+    }
+    SbMemoryCopy(pending_append_data_.get(), data, size);
   }
+  pending_append_data_size_ = size;
   pending_append_data_offset_ = 0;
 
   updating_ = true;
@@ -432,15 +431,14 @@ void SourceBuffer::OnAppendTimer() {
 
   DCHECK(updating_);
 
-  DCHECK_GE(pending_append_data_.size(), pending_append_data_offset_);
-  size_t append_size =
-      pending_append_data_.size() - pending_append_data_offset_;
+  DCHECK_GE(pending_append_data_size_, pending_append_data_offset_);
+  size_t append_size = pending_append_data_size_ - pending_append_data_offset_;
   append_size = std::min(append_size, kMaxAppendSize);
 
-  uint8 dummy[1];
+  uint8_t dummy;
   const uint8* data_to_append =
-      append_size > 0 ? &pending_append_data_[0] + pending_append_data_offset_
-                      : dummy;
+      append_size > 0 ? pending_append_data_.get() + pending_append_data_offset_
+                      : &dummy;
 
   base::TimeDelta timestamp_offset = DoubleToTimeDelta(timestamp_offset_);
   bool success = chunk_demuxer_->AppendData(
@@ -452,20 +450,20 @@ void SourceBuffer::OnAppendTimer() {
   }
 
   if (!success) {
-    pending_append_data_.clear();
+    pending_append_data_size_ = 0;
     pending_append_data_offset_ = 0;
     AppendError();
   } else {
     pending_append_data_offset_ += append_size;
 
-    if (pending_append_data_offset_ < pending_append_data_.size()) {
+    if (pending_append_data_offset_ < pending_append_data_size_) {
       append_timer_.Start(FROM_HERE, base::TimeDelta(), this,
                           &SourceBuffer::OnAppendTimer);
       return;
     }
 
     updating_ = false;
-    pending_append_data_.clear();
+    pending_append_data_size_ = 0;
     pending_append_data_offset_ = 0;
 
     ScheduleEvent(base::Tokens::update());
@@ -520,7 +518,7 @@ void SourceBuffer::AbortIfUpdating() {
   DCHECK_EQ(pending_remove_start_, -1);
 
   append_timer_.Stop();
-  pending_append_data_.clear();
+  pending_append_data_size_ = 0;
   pending_append_data_offset_ = 0;
 
   updating_ = false;

@@ -16,7 +16,7 @@
 
 #include "base/logging.h"
 
-#if SB_HAS(BLITTER)
+#if SB_API_VERSION < 12 && SB_HAS(BLITTER)
 
 namespace cobalt {
 namespace renderer {
@@ -40,4 +40,4 @@ SbBlitterPixelDataFormat SkiaToBlitterPixelFormat(SkColorType skia_format) {
 }  // namespace renderer
 }  // namespace cobalt
 
-#endif  // #if SB_HAS(BLITTER)
+#endif  // SB_API_VERSION < 12 && SB_HAS(BLITTER)
