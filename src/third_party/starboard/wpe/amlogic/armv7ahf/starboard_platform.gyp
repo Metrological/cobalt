@@ -43,6 +43,7 @@
         '<(DEPTH)/third_party/starboard/wpe/amlogic/armv7ahf/media/media_get_audio_output_count.cc',
         '<@(sources)',
         'atomic_public.h',
+        'configuration_constants.cc',
         'audio_sink/gstreamer_audio_sink_type_lifecycle.cc',
         'thread_types_public.h',
       ],
