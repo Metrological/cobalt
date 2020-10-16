@@ -933,6 +933,7 @@ PlayerImpl::PlayerImpl(SbPlayer player,
   GstElement* playsink = (gst_bin_get_by_name(GST_BIN(pipeline_), "playsink"));
   if (playsink) {
     g_object_set(G_OBJECT(playsink), "send-event-mode", 0, nullptr);
+    g_object_unref(playsink);
   } else {
     GST_WARNING("No playsink ?!?!?");
   }
@@ -1734,6 +1735,8 @@ void PlayerImpl::GetInfo(SbPlayerInfo2* out_player_info) {
   } else {
     out_player_info->corrupted_video_frames = 0;
   }
+  if (vid_sink)
+    g_object_unref(vid_sink);
 
   GST_LOG("Frames dropped: %d, Frames corrupted: %d",
           out_player_info->dropped_video_frames,
@@ -1758,6 +1761,8 @@ void PlayerImpl::SetBounds(int zindex, int x, int y, int w, int h) {
     } else {
       pending_bounds_ = PendingBounds{x, y, w, h};
     }
+    if (vid_sink)
+      g_object_unref(vid_sink);
   }
 }
 
