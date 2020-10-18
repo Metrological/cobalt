@@ -230,6 +230,8 @@
 
 // --- Platform Specific Audits ----------------------------------------------
 
+#undef SB_HAS_NATIVE_AUDIO
+
 #define SB_NEEDS_VIDEO_OVERLAY_SURFACE 1
 
 #if !defined(__GNUC__)
