@@ -457,6 +457,12 @@ enum class MediaType {
 
 constexpr char kClearSamplesKey[] = "fake-key-magic";
 
+#if SB_HAS(NATIVE_AUDIO)
+static constexpr GstStreamVolumeFormat volumeFormat = GST_STREAM_VOLUME_FORMAT_LINEAR;
+#else
+static constexpr GstStreamVolumeFormat volumeFormat = GST_STREAM_VOLUME_FORMAT_CUBIC;
+#endif
+
 struct Task {
   virtual ~Task() {}
   virtual void Do() = 0;
@@ -1551,7 +1557,7 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
 void PlayerImpl::SetVolume(double volume) {
   GST_DEBUG_OBJECT(pipeline_, "volume %lf, TID %d", volume, SbThreadGetId());
   gst_stream_volume_set_volume(GST_STREAM_VOLUME(pipeline_),
-                               GST_STREAM_VOLUME_FORMAT_LINEAR, volume);
+                               volumeFormat, volume);
 }
 
 void PlayerImpl::Seek(SbTime seek_to_timestamp, int ticket) {
@@ -1710,7 +1716,7 @@ void PlayerImpl::GetInfo(SbPlayerInfo2* out_player_info) {
   out_player_info->frame_height = frame_height_;
   out_player_info->is_paused = GST_STATE(pipeline_) != GST_STATE_PLAYING;
   out_player_info->volume = gst_stream_volume_get_volume(
-      GST_STREAM_VOLUME(pipeline_), GST_STREAM_VOLUME_FORMAT_LINEAR);
+      GST_STREAM_VOLUME(pipeline_), volumeFormat);
   out_player_info->total_video_frames = total_video_frames_;
 
   GstElement* vid_sink = nullptr;
