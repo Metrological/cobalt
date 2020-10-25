@@ -5,6 +5,8 @@
 
 #include "starboard/player.h"
 
+struct _GstElement;
+
 namespace third_party {
 namespace starboard {
 namespace wpe {
@@ -23,6 +25,9 @@ struct SB_EXPORT Player {
   virtual bool SetRate(double rate) = 0;
   virtual void GetInfo(SbPlayerInfo2* info) = 0;
   virtual void SetBounds(int zindex, int x, int y, int w, int h) = 0;
+
+ protected:
+  bool PlatformNonFushingSetRate(_GstElement* pipeline, double rate);
 };
 
 }  // namespace player
