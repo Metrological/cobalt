@@ -78,7 +78,8 @@
       # libraries.
       '-L<(sysroot)/opt/vc/lib',
       '-Wl,-rpath=<(sysroot)/opt/vc/lib',
-
+      # Cleanup unused sections
+      '-Wl,-gc-sections',
       # We don't wrap these symbols, but this ensures that they aren't
       # linked in.
       '-Wl,--wrap=malloc',
@@ -109,9 +110,15 @@
     ],
     'compiler_flags_qa_size': [
       '-Os',
+      # Compile symbols in separate sections
+      '-ffunction-sections',
+      '-fdata-sections',
     ],
     'compiler_flags_qa_speed': [
       '-O2',
+      # Compile symbols in separate sections
+      '-ffunction-sections',
+      '-fdata-sections',
     ],
     'compiler_flags_cc_qa': [
       '-fno-rtti',
@@ -121,9 +128,15 @@
     ],
     'compiler_flags_gold_size': [
       '-Os',
+      # Compile symbols in separate sections
+      '-ffunction-sections',
+      '-fdata-sections',
     ],
     'compiler_flags_gold_speed': [
       '-O2',
+      # Compile symbols in separate sections
+      '-ffunction-sections',
+      '-fdata-sections',
     ],
     'compiler_flags_cc_gold': [
       '-fno-rtti',
