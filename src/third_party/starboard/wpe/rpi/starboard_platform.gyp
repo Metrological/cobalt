@@ -45,6 +45,7 @@
         'atomic_public.h',
         'configuration_constants.cc',
         'audio_sink/gstreamer_audio_sink_type_lifecycle.cc',
+        'player/player_internal_platform_set_rate.cc',
         'thread_types_public.h',
       ],
       'sources!': [
