@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// https://www.w3.org/TR/html5/dom.html#the-document-object
+// https://www.w3.org/TR/html50/dom.html#the-document-object
 
 [OverrideBuiltins]
 partial /*sealed*/ interface Document {
   [PutForwards=href, Unforgeable] readonly attribute Location? location;
+  attribute DOMString dir;
   // body attribute is changed, from the spec's:
   //   attribute HTMLElement? body;
   // This is because we don't support frameset element, body has to be an

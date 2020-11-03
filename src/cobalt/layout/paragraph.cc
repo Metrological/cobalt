@@ -32,12 +32,12 @@ int ConvertBaseDirectionToBidiLevel(BaseDirection base_direction) {
 
 Paragraph::Paragraph(
     const icu::Locale& locale, BaseDirection base_direction,
-    const DirectionalEmbeddingStack& directional_embedding_stack,
+    const DirectionalFormattingStack& directional_formatting_stack,
     icu::BreakIterator* line_break_iterator,
     icu::BreakIterator* character_break_iterator)
     : locale_(locale),
       base_direction_(base_direction),
-      directional_embedding_stack_(directional_embedding_stack),
+      directional_formatting_stack_(directional_formatting_stack),
       line_break_iterator_(line_break_iterator),
       character_break_iterator_(character_break_iterator),
       is_closed_(false),
@@ -48,15 +48,15 @@ Paragraph::Paragraph(
   level_runs_.push_back(
       BidiLevelRun(0, ConvertBaseDirectionToBidiLevel(base_direction)));
 
-  // Walk through the passed in directional embedding stack and add each
-  // embedding to the text. This allows a paragraph to continue the directional
+  // Walk through the passed in directional formatting stack and add each
+  // formatting to the text. This allows a paragraph to continue the directional
   // state of a prior paragraph.
   DCHECK(unicode_text_.isEmpty());
-  for (size_t i = 0; i < directional_embedding_stack_.size(); ++i) {
-    if (directional_embedding_stack_[i] == kRightToLeftDirectionalEmbedding) {
-      unicode_text_ += base::unicode::kRightToLeftEmbeddingCharacter;
+  for (size_t i = 0; i < directional_formatting_stack_.size(); ++i) {
+    if (directional_formatting_stack_[i] == kRightToLeftDirectionalIsolate) {
+      unicode_text_ += base::unicode::kRightToLeftIsolateCharacter;
     } else {
-      unicode_text_ += base::unicode::kLeftToRightEmbeddingCharacter;
+      unicode_text_ += base::unicode::kLeftToRightIsolateCharacter;
     }
   }
 }
@@ -83,22 +83,19 @@ int32 Paragraph::AppendUtf8String(const std::string& utf8_string,
 }
 
 int32 Paragraph::AppendCodePoint(CodePoint code_point) {
-  // TODO: Switch from appending directional embedding characters to
-  // using directional isolate characters as soon as we upgrade to the latest
-  // version of ICU. Our current version doesn't support them.
   int32 start_position = GetTextEndPosition();
   DCHECK(!is_closed_);
   if (!is_closed_) {
     switch (code_point) {
-      case kLeftToRightEmbedCodePoint:
-        // If this is a directional embedding that is being added, then add it
-        // to the directional embedding stack. This guarantees that a
-        // corresponding pop directional formatting will later be added to the
+      case kLeftToRightIsolateCodePoint:
+        // If this is a directional isolate that is being added, then add it
+        // to the directional formatting stack. This guarantees that a
+        // corresponding pop directional isolate will later be added to the
         // text and allows later paragraphs to copy the directional state.
-        // http://unicode.org/reports/tr9/#Explicit_Directional_Embeddings
-        directional_embedding_stack_.push_back(
-            kLeftToRightDirectionalEmbedding);
-        unicode_text_ += base::unicode::kLeftToRightEmbeddingCharacter;
+        // http://unicode.org/reports/tr9/#Explicit_Directional_Isolates
+        directional_formatting_stack_.push_back(
+            kLeftToRightDirectionalIsolate);
+        unicode_text_ += base::unicode::kLeftToRightIsolateCharacter;
         break;
       case kLineFeedCodePoint:
         unicode_text_ += base::unicode::kNewLineCharacter;
@@ -109,36 +106,41 @@ int32 Paragraph::AppendCodePoint(CodePoint code_point) {
       case kObjectReplacementCharacterCodePoint:
         unicode_text_ += base::unicode::kObjectReplacementCharacter;
         break;
-      case kPopDirectionalFormattingCharacterCodePoint:
-        directional_embedding_stack_.pop_back();
-        unicode_text_ += base::unicode::kPopDirectionalFormattingCharacter;
+      case kPopDirectionalIsolateCodePoint:
+        directional_formatting_stack_.pop_back();
+        unicode_text_ += base::unicode::kPopDirectionalIsolateCharacter;
         break;
-      case kRightToLeftEmbedCodePoint:
-        // If this is a directional embedding that is being added, then add it
-        // to the directional embedding stack. This guarantees that a
-        // corresponding pop directional formatting will later be added to the
-        // text and allows later paragraphs to to copy the directional state.
-        // http://unicode.org/reports/tr9/#Explicit_Directional_Embeddings
-        directional_embedding_stack_.push_back(
-            kRightToLeftDirectionalEmbedding);
-        unicode_text_ += base::unicode::kRightToLeftEmbeddingCharacter;
+      case kRightToLeftIsolateCodePoint:
+        // If this is a directional isolate that is being added, then add it
+        // to the directional formatting stack. This guarantees that a
+        // corresponding pop directional isolate will later be added to the
+        // text and allows later paragraphs to copy the directional state.
+        // http://unicode.org/reports/tr9/#Explicit_Directional_Isolates
+        directional_formatting_stack_.push_back(
+            kRightToLeftDirectionalIsolate);
+        unicode_text_ += base::unicode::kRightToLeftIsolateCharacter;
         break;
     }
   }
   return start_position;
 }
 
-bool Paragraph::FindBreakPosition(const scoped_refptr<dom::FontList>& used_font,
-                                  int32 start_position, int32 end_position,
-                                  LayoutUnit available_width,
-                                  bool should_collapse_trailing_white_space,
-                                  bool allow_overflow,
-                                  Paragraph::BreakPolicy break_policy,
-                                  int32* break_position,
-                                  LayoutUnit* break_width) {
+bool Paragraph::FindBreakPosition(
+    BaseDirection direction, bool should_attempt_to_wrap,
+    const scoped_refptr<dom::FontList>& used_font, int32 start_position,
+    int32 end_position, LayoutUnit available_width,
+    bool should_collapse_trailing_white_space, bool allow_overflow,
+    Paragraph::BreakPolicy break_policy, int32* break_position,
+    LayoutUnit* break_width) {
   DCHECK(is_closed_);
 
-  *break_position = start_position;
+  DCHECK(direction == base_direction_);
+  if (AreInlineAndScriptDirectionsTheSame(direction, start_position) ||
+      should_attempt_to_wrap) {
+    *break_position = start_position;
+  } else {
+    *break_position = end_position;
+  }
   *break_width = LayoutUnit();
 
   // If overflow isn't allowed and there is no available width, then there is
@@ -168,9 +170,10 @@ bool Paragraph::FindBreakPosition(const scoped_refptr<dom::FontList>& used_font,
     // |break_width| will be updated with the position of the last available
     // break position.
     FindIteratorBreakPosition(
-        used_font, line_break_iterator_, start_position, end_position,
-        available_width, should_collapse_trailing_white_space,
-        allow_normal_overflow, break_position, break_width);
+        direction, should_attempt_to_wrap, used_font, line_break_iterator_,
+        start_position, end_position, available_width,
+        should_collapse_trailing_white_space, allow_normal_overflow,
+        break_position, break_width);
   }
 
   // If break word is the break policy, attempt to break unbreakable "words" at
@@ -180,20 +183,39 @@ bool Paragraph::FindBreakPosition(const scoped_refptr<dom::FontList>& used_font,
   if (break_policy == kBreakPolicyBreakWord) {
     // Only continue allowing overflow if the break position has not moved from
     // start, meaning that no normal break positions were found.
-    allow_overflow = allow_overflow && (*break_position == start_position);
+    if (AreInlineAndScriptDirectionsTheSame(direction, start_position) ||
+        should_attempt_to_wrap) {
+      allow_overflow = allow_overflow && (*break_position == start_position);
+    } else {
+      allow_overflow = allow_overflow && (*break_position == end_position);
+    }
 
     // Find the last available break-word break position. |break_position| and
     // |break_width| will be updated with the position of the last available
     // break position. The search begins at the location of the last normal
     // break position that fit within the available width.
-    FindIteratorBreakPosition(
-        used_font, character_break_iterator_, *break_position, end_position,
-        available_width, false, allow_overflow, break_position, break_width);
+    if (AreInlineAndScriptDirectionsTheSame(direction, start_position) ||
+        should_attempt_to_wrap) {
+      FindIteratorBreakPosition(direction, should_attempt_to_wrap, used_font,
+                                character_break_iterator_, *break_position,
+                                end_position, available_width, false,
+                                allow_overflow, break_position, break_width);
+    } else {
+      FindIteratorBreakPosition(direction, should_attempt_to_wrap, used_font,
+                                character_break_iterator_, start_position,
+                                *break_position, available_width, false,
+                                allow_overflow, break_position, break_width);
+    }
   }
 
   // No usable break position was found if the break position has not moved
   // from the start position.
-  return *break_position > start_position;
+  if (AreInlineAndScriptDirectionsTheSame(direction, start_position) ||
+      should_attempt_to_wrap) {
+    return *break_position > start_position;
+  } else {
+    return *break_position < end_position;
+  }
 }
 
 int32 Paragraph::GetNextBreakPosition(int32 position,
@@ -249,11 +271,11 @@ const base::char16* Paragraph::GetTextBuffer() const {
 
 const icu::Locale& Paragraph::GetLocale() const { return locale_; }
 
-BaseDirection Paragraph::GetDirectionalEmbeddingStackDirection() const {
-  size_t stack_size = directional_embedding_stack_.size();
+BaseDirection Paragraph::GetDirectionalFormattingStackDirection() const {
+  size_t stack_size = directional_formatting_stack_.size();
   if (stack_size > 0) {
-    if (directional_embedding_stack_[stack_size - 1] ==
-        kRightToLeftDirectionalEmbedding) {
+    if (directional_formatting_stack_[stack_size - 1] ==
+        kRightToLeftDirectionalIsolate) {
       return kRightToLeftBaseDirection;
     } else {
       return kLeftToRightBaseDirection;
@@ -269,6 +291,12 @@ int Paragraph::GetBidiLevel(int32 position) const {
 
 bool Paragraph::IsRTL(int32 position) const {
   return (GetBidiLevel(position) % 2) == 1;
+}
+
+bool Paragraph::AreInlineAndScriptDirectionsTheSame(BaseDirection direction,
+                                                    int32 position) const {
+  return ((direction == kLeftToRightBaseDirection && !IsRTL(position)) ||
+          (direction == kRightToLeftBaseDirection && IsRTL(position)));
 }
 
 bool Paragraph::IsCollapsibleWhiteSpace(int32 position) const {
@@ -291,21 +319,21 @@ bool Paragraph::GetNextRunPosition(int32 position,
 
 int32 Paragraph::GetTextEndPosition() const { return unicode_text_.length(); }
 
-const Paragraph::DirectionalEmbeddingStack&
-Paragraph::GetDirectionalEmbeddingStack() const {
-  return directional_embedding_stack_;
+const Paragraph::DirectionalFormattingStack&
+Paragraph::GetDirectionalFormattingStack() const {
+  return directional_formatting_stack_;
 }
 
 void Paragraph::Close() {
   DCHECK(!is_closed_);
   if (!is_closed_) {
-    // Terminate all of the explicit directional embeddings that were previously
+    // Terminate all of the explicit directional isolates that were previously
     // added. However, do not clear the stack. A subsequent paragraph may need
     // to copy it.
-    // http://unicode.org/reports/tr9/#Terminating_Explicit_Directional_Embeddings_and_Overrides
-    for (size_t count = directional_embedding_stack_.size(); count > 0;
+    // http://unicode.org/reports/tr9/#Terminating_Explicit_Directional_Isolates
+    for (size_t count = directional_formatting_stack_.size(); count > 0;
          --count) {
-      unicode_text_ += base::unicode::kPopDirectionalFormattingCharacter;
+      unicode_text_ += base::unicode::kPopDirectionalIsolateCharacter;
     }
 
     is_closed_ = true;
@@ -341,6 +369,7 @@ icu::BreakIterator* Paragraph::GetBreakIterator(BreakPolicy break_policy) {
 }
 
 void Paragraph::FindIteratorBreakPosition(
+    BaseDirection direction, bool should_attempt_to_wrap,
     const scoped_refptr<dom::FontList>& used_font,
     icu::BreakIterator* const break_iterator, int32 start_position,
     int32 end_position, LayoutUnit available_width,
@@ -350,19 +379,37 @@ void Paragraph::FindIteratorBreakPosition(
   // position. Continue until TryIncludeSegmentWithinAvailableWidth() returns
   // false, indicating that no more segments can be included.
   break_iterator->setText(unicode_text_);
-  for (int32 segment_end = break_iterator->following(start_position);
-       segment_end != icu::BreakIterator::DONE && segment_end < end_position;
-       segment_end = break_iterator->next()) {
-    if (!TryIncludeSegmentWithinAvailableWidth(
-            used_font, *break_position, segment_end, available_width,
-            should_collapse_trailing_white_space, &allow_overflow,
-            break_position, break_width)) {
-      break;
+  if (AreInlineAndScriptDirectionsTheSame(direction, start_position) ||
+      should_attempt_to_wrap) {
+    for (int32 segment_end = break_iterator->following(start_position);
+         segment_end != icu::BreakIterator::DONE && segment_end < end_position;
+         segment_end = break_iterator->next()) {
+      if (!TryIncludeSegmentWithinAvailableWidth(
+              direction, should_attempt_to_wrap, used_font, *break_position,
+              segment_end, available_width,
+              should_collapse_trailing_white_space, &allow_overflow,
+              break_position, break_width)) {
+        break;
+      }
+    }
+  } else {
+    for (int32 segment_begin = break_iterator->preceding(end_position);
+         segment_begin != icu::BreakIterator::DONE &&
+         segment_begin > start_position;
+         segment_begin = break_iterator->previous()) {
+      if (!TryIncludeSegmentWithinAvailableWidth(
+              direction, should_attempt_to_wrap, used_font, segment_begin,
+              *break_position, available_width,
+              should_collapse_trailing_white_space, &allow_overflow,
+              break_position, break_width)) {
+        break;
+      }
     }
   }
 }
 
 bool Paragraph::TryIncludeSegmentWithinAvailableWidth(
+    BaseDirection direction, bool should_attempt_to_wrap,
     const scoped_refptr<dom::FontList>& used_font, int32 segment_start,
     int32 segment_end, LayoutUnit available_width,
     bool should_collapse_trailing_white_space, bool* allow_overflow,
@@ -391,7 +438,12 @@ bool Paragraph::TryIncludeSegmentWithinAvailableWidth(
     return false;
   }
 
-  *break_position = segment_end;
+  if (AreInlineAndScriptDirectionsTheSame(direction, segment_start) ||
+      should_attempt_to_wrap) {
+    *break_position = segment_end;
+  } else {
+    *break_position = segment_start;
+  }
   *break_width += segment_width;
 
   if (*allow_overflow) {

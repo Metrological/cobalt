@@ -22,9 +22,9 @@
 #include "starboard/shared/starboard/player/filter/filter_based_player_worker_handler.h"
 #include "starboard/shared/starboard/player/player_internal.h"
 #include "starboard/shared/starboard/player/player_worker.h"
-#if SB_PLAYER_ENABLE_VIDEO_DUMPER && SB_HAS(PLAYER_FILTER_TESTS)
+#if SB_PLAYER_ENABLE_VIDEO_DUMPER
 #include "starboard/shared/starboard/player/video_dmp_writer.h"
-#endif  // SB_PLAYER_ENABLE_VIDEO_DUMPER && SB_HAS(PLAYER_FILTER_TESTS)
+#endif  // SB_PLAYER_ENABLE_VIDEO_DUMPER
 
 using starboard::shared::media_session::
     UpdateActiveSessionPlatformPlaybackState;
@@ -33,12 +33,66 @@ using starboard::shared::starboard::player::filter::
     FilterBasedPlayerWorkerHandler;
 using starboard::shared::starboard::player::PlayerWorker;
 
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
+SbPlayer SbPlayerCreate(SbWindow window,
+                        const SbPlayerCreationParam* creation_param,
+                        SbPlayerDeallocateSampleFunc sample_deallocate_func,
+                        SbPlayerDecoderStatusFunc decoder_status_func,
+                        SbPlayerStatusFunc player_status_func,
+                        SbPlayerErrorFunc player_error_func,
+                        void* context,
+                        SbDecodeTargetGraphicsContextProvider* provider) {
+  if (!creation_param) {
+    SB_LOG(ERROR) << "CreationParam cannot be null.";
+    return kSbPlayerInvalid;
+  }
+
+  bool has_audio =
+      creation_param->audio_sample_info.codec != kSbMediaAudioCodecNone;
+  bool has_video =
+      creation_param->video_sample_info.codec != kSbMediaVideoCodecNone;
+
+  const char* audio_mime =
+      has_audio ? creation_param->audio_sample_info.mime : "";
+  const char* video_mime =
+      has_video ? creation_param->video_sample_info.mime : "";
+  const char* max_video_capabilities =
+      has_video ? creation_param->video_sample_info.max_video_capabilities : "";
+
+  if (!audio_mime) {
+    SB_LOG(ERROR) << "creation_param->audio_sample_info.mime cannot be null.";
+    return kSbPlayerInvalid;
+  }
+  if (!video_mime) {
+    SB_LOG(ERROR) << "creation_param->video_sample_info.mime cannot be null.";
+    return kSbPlayerInvalid;
+  }
+  if (!max_video_capabilities) {
+    SB_LOG(ERROR) << "creation_param->video_sample_info.max_video_capabilities"
+                  << " cannot be null.";
+    return kSbPlayerInvalid;
+  }
+
+  SB_LOG(INFO) << "SbPlayerCreate() called with audio mime \"" << audio_mime
+               << "\", video mime \"" << video_mime
+               << "\", and max video capabilities \"" << max_video_capabilities
+               << "\".";
+
+  SbMediaAudioCodec audio_codec = creation_param->audio_sample_info.codec;
+  SbMediaVideoCodec video_codec = creation_param->video_sample_info.codec;
+#if SB_PLAYER_ENABLE_VIDEO_DUMPER
+  SbDrmSystem drm_system = creation_param->drm_system;
+#endif  // SB_PLAYER_ENABLE_VIDEO_DUMPER
+  const SbMediaAudioSampleInfo* audio_sample_info =
+      &creation_param->audio_sample_info;
+  const auto output_mode = creation_param->output_mode;
+
+#else  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
 SbPlayer SbPlayerCreate(SbWindow window,
                         SbMediaVideoCodec video_codec,
                         SbMediaAudioCodec audio_codec,
-#if SB_API_VERSION < 10
-                        SbMediaTime duration_pts,
-#endif  // SB_API_VERSION < 10
                         SbDrmSystem drm_system,
                         const SbMediaAudioSampleInfo* audio_sample_info,
 #if SB_API_VERSION >= 11
@@ -47,19 +101,14 @@ SbPlayer SbPlayerCreate(SbWindow window,
                         SbPlayerDeallocateSampleFunc sample_deallocate_func,
                         SbPlayerDecoderStatusFunc decoder_status_func,
                         SbPlayerStatusFunc player_status_func,
-#if SB_HAS(PLAYER_ERROR_MESSAGE)
                         SbPlayerErrorFunc player_error_func,
-#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
                         void* context,
                         SbPlayerOutputMode output_mode,
                         SbDecodeTargetGraphicsContextProvider* provider) {
-  SB_UNREFERENCED_PARAMETER(window);
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
 #if SB_API_VERSION >= 11
-  SB_UNREFERENCED_PARAMETER(max_video_capabilities);
 #endif  // SB_API_VERSION >= 11
-#if SB_API_VERSION < 10
-  SB_UNREFERENCED_PARAMETER(duration_pts);
-#endif  // SB_API_VERSION < 10
 #if SB_API_VERSION >= 11
   if (audio_sample_info) {
     SB_DCHECK(audio_sample_info->codec == audio_codec);
@@ -67,16 +116,18 @@ SbPlayer SbPlayerCreate(SbWindow window,
 #endif  // SB_API_VERSION >= 11
 
   if (!sample_deallocate_func || !decoder_status_func || !player_status_func
-#if SB_HAS(PLAYER_ERROR_MESSAGE)
       || !player_error_func
-#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
       ) {
     return kSbPlayerInvalid;
   }
 
   const int64_t kDefaultBitRate = 0;
   if (audio_codec != kSbMediaAudioCodecNone &&
-      !SbMediaIsAudioSupported(audio_codec, kDefaultBitRate)) {
+      !SbMediaIsAudioSupported(audio_codec,
+#if SB_API_VERSION >= 12
+                               audio_mime,
+#endif  // SB_API_VERSION >= 12
+                               kDefaultBitRate)) {
     SB_LOG(ERROR) << "Unsupported audio codec " << audio_codec;
     return kSbPlayerInvalid;
   }
@@ -88,20 +139,19 @@ SbPlayer SbPlayerCreate(SbWindow window,
   const int kDefaultFrameHeight = 0;
   const int kDefaultFrameRate = 0;
   if (video_codec != kSbMediaVideoCodecNone &&
-      !SbMediaIsVideoSupported(video_codec,
+      !SbMediaIsVideoSupported(
+          video_codec,
+#if SB_API_VERSION >= 12
+          video_mime,
+#endif  // SB_API_VERSION >= 12
 #if SB_HAS(MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
-                               kDefaultProfile, kDefaultLevel,
-                               kDefaultColorDepth, kSbMediaPrimaryIdUnspecified,
-                               kSbMediaTransferIdUnspecified,
-                               kSbMediaMatrixIdUnspecified,
+          kDefaultProfile, kDefaultLevel, kDefaultColorDepth,
+          kSbMediaPrimaryIdUnspecified, kSbMediaTransferIdUnspecified,
+          kSbMediaMatrixIdUnspecified,
 #endif  // SB_HAS(MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
-                               kDefaultFrameWidth, kDefaultFrameHeight,
-                               kDefaultBitRate, kDefaultFrameRate
-#if SB_API_VERSION >= 10
-                               ,
-                               output_mode == kSbPlayerOutputModeDecodeToTexture
-#endif
-                               )) {
+          kDefaultFrameWidth, kDefaultFrameHeight, kDefaultBitRate,
+          kDefaultFrameRate,
+          output_mode == kSbPlayerOutputModeDecodeToTexture)) {
     SB_LOG(ERROR) << "Unsupported video codec " << video_codec;
     return kSbPlayerInvalid;
   }
@@ -120,31 +170,41 @@ SbPlayer SbPlayerCreate(SbWindow window,
     return kSbPlayerInvalid;
   }
 
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+  if (SbPlayerGetPreferredOutputMode(creation_param) != output_mode) {
+    SB_LOG(ERROR) << "Unsupported player output mode " << output_mode;
+    return kSbPlayerInvalid;
+  }
+#else   // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
   if (!SbPlayerOutputModeSupported(output_mode, video_codec, drm_system)) {
     SB_LOG(ERROR) << "Unsupported player output mode " << output_mode;
     return kSbPlayerInvalid;
   }
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
 
   UpdateActiveSessionPlatformPlaybackState(kPlaying);
 
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+  starboard::scoped_ptr<PlayerWorker::Handler> handler(
+      new FilterBasedPlayerWorkerHandler(creation_param, provider));
+#else   // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
   starboard::scoped_ptr<PlayerWorker::Handler> handler(
       new FilterBasedPlayerWorkerHandler(video_codec, audio_codec, drm_system,
                                          audio_sample_info, output_mode,
                                          provider));
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
 
   SbPlayer player = SbPlayerPrivate::CreateInstance(
       audio_codec, video_codec, audio_sample_info, sample_deallocate_func,
       decoder_status_func, player_status_func,
-#if SB_HAS(PLAYER_ERROR_MESSAGE)
       player_error_func,
-#endif  // SB_HAS(PLAYER_ERROR_MESSAGE)
       context, handler.Pass());
 
-#if SB_PLAYER_ENABLE_VIDEO_DUMPER && SB_HAS(PLAYER_FILTER_TESTS)
+#if SB_PLAYER_ENABLE_VIDEO_DUMPER
   using ::starboard::shared::starboard::player::video_dmp::VideoDmpWriter;
   VideoDmpWriter::OnPlayerCreate(player, audio_codec, video_codec, drm_system,
                                  audio_sample_info);
-#endif  // SB_PLAYER_ENABLE_VIDEO_DUMPER && SB_HAS(PLAYER_FILTER_TESTS)
+#endif  // SB_PLAYER_ENABLE_VIDEO_DUMPER
 
   return player;
 }

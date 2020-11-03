@@ -19,6 +19,7 @@
 #include "cobalt/render_tree/composition_node.h"
 #include "cobalt/render_tree/filter_node.h"
 #include "cobalt/render_tree/image_node.h"
+#include "cobalt/render_tree/lottie_node.h"
 #include "cobalt/render_tree/matrix_transform_3d_node.h"
 #include "cobalt/render_tree/matrix_transform_node.h"
 #include "cobalt/render_tree/node.h"
@@ -162,7 +163,6 @@ class ChildIterator<FilterNode> {
       FilterNode* filter,
       ChildIteratorDirection direction = kChildIteratorDirectionForwards)
       : filter_node_(filter), source_(filter->data().source.get()) {
-    SB_UNREFERENCED_PARAMETER(direction);
   }
 
   Node* GetCurrent() const { return source_; }
@@ -197,7 +197,6 @@ class ChildIterator<MatrixTransform3DNode> {
       ChildIteratorDirection direction = kChildIteratorDirectionForwards)
       : matrix_transform_3d_node_(matrix_transform_3d),
         source_(matrix_transform_3d->data().source.get()) {
-    SB_UNREFERENCED_PARAMETER(direction);
   }
 
   Node* GetCurrent() const { return source_; }
@@ -232,7 +231,6 @@ class ChildIterator<MatrixTransformNode> {
       ChildIteratorDirection direction = kChildIteratorDirectionForwards)
       : matrix_transform_node_(matrix_transform),
         source_(matrix_transform->data().source.get()) {
-    SB_UNREFERENCED_PARAMETER(direction);
   }
 
   Node* GetCurrent() const { return source_; }

@@ -24,7 +24,6 @@
 #include "starboard/once.h"
 #include "starboard/shared/starboard/application.h"
 
-#if SB_HAS(PLAYER_FILTER_TESTS)
 namespace starboard {
 namespace shared {
 namespace starboard {
@@ -89,7 +88,7 @@ VideoDmpWriter::VideoDmpWriter() : file_(kSbFileInvalid) {
   write_cb_ = std::bind(&VideoDmpWriter::WriteToFile, this, _1, _2);
 
   Write(write_cb_, kByteOrderMark);
-  Write(write_cb_, kSupportWriterVersion);
+  Write(write_cb_, kSupportedWriterVersion);
 }
 
 VideoDmpWriter::~VideoDmpWriter() {
@@ -104,7 +103,6 @@ void VideoDmpWriter::OnPlayerCreate(
     SbDrmSystem drm_system,
     const SbMediaAudioSampleInfo* audio_sample_info) {
   // TODO: Allow dump of drm initialization data
-  SB_UNREFERENCED_PARAMETER(drm_system);
 
   PlayerToWriterMap* map = GetOrCreatePlayerToWriterMap();
   if (!map->dump_video_data()) {
@@ -211,4 +209,3 @@ int VideoDmpWriter::WriteToFile(const void* buffer, int size) {
 }  // namespace starboard
 }  // namespace shared
 }  // namespace starboard
-#endif  // SB_HAS(PLAYER_FILTER_TESTS)

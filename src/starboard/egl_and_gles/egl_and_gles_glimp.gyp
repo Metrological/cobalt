@@ -26,14 +26,13 @@
       ],
       'direct_dependent_settings': {
         'defines': [
-          'GLES3_SUPPORTED',
           'GL_GLEXT_PROTOTYPES',
         ],
       },
       'conditions': [
         ['enable_vr==1', {
           'dependencies': [
-            '<(DEPTH)/glimp/ps4/glimp_platform.gyp:glimp_platform',
+            '<(DEPTH)/glimp/<(sb_target_platform)/glimp_platform.gyp:glimp_platform',
           ],
         }],
       ],

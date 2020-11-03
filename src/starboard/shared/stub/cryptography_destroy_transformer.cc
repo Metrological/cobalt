@@ -13,8 +13,12 @@
 // limitations under the License.
 
 #include "starboard/configuration.h"
+
+#if SB_API_VERSION < 12
+
 #include "starboard/cryptography.h"
 
 void SbCryptographyDestroyTransformer(SbCryptographyTransformer transformer) {
-  SB_UNREFERENCED_PARAMETER(transformer);
 }
+
+#endif  // SB_API_VERSION < 12

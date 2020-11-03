@@ -27,7 +27,8 @@
 #include "cobalt/audio/audio_node_output.h"
 #include "cobalt/dom/dom_exception.h"
 #include "cobalt/dom/event_target.h"
-#include "cobalt/media/base/shell_audio_bus.h"
+#include "cobalt/media/base/audio_bus.h"
+#include "cobalt/script/environment_settings.h"
 
 namespace cobalt {
 namespace audio {
@@ -48,10 +49,10 @@ class AudioContext;
 // (if it has any).
 //   https://www.w3.org/TR/webaudio/#AudioNode-section
 class AudioNode : public dom::EventTarget {
-  typedef media::ShellAudioBus ShellAudioBus;
+  typedef media::AudioBus AudioBus;
 
  public:
-  explicit AudioNode(AudioContext* context);
+  AudioNode(script::EnvironmentSettings* settings, AudioContext* context);
 
   // Web API: AudioNode
   //
@@ -74,7 +75,7 @@ class AudioNode : public dom::EventTarget {
   // any inputs to the node. The default value is 2 except for specific nodes
   // where its value is specially determined. This attributes has no effect for
   // nodes with no inputs.
-  uint32 channel_count(script::ExceptionState* /* unused */) const {
+  uint32 channel_count(script::ExceptionState* unused) const {
     return channel_count_;
   }
   void set_channel_count(uint32 channel_count,
@@ -107,7 +108,7 @@ class AudioNode : public dom::EventTarget {
   // Called when a new input node has been connected.
   virtual void OnInputNodeConnected() {}
 
-  virtual std::unique_ptr<ShellAudioBus> PassAudioBusFromSource(
+  virtual std::unique_ptr<AudioBus> PassAudioBusFromSource(
       int32 number_of_frames, SampleType sample_type, bool* finished) = 0;
 
   AudioLock* audio_lock() const { return audio_lock_.get(); }

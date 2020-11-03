@@ -32,8 +32,9 @@ const uint32 kMaxChannelCount = 2;
 
 // numberOfInputs  : 1
 // numberOfOutputs : 0
-AudioDestinationNode::AudioDestinationNode(AudioContext* context)
-    : AudioNode(context),
+AudioDestinationNode::AudioDestinationNode(
+    script::EnvironmentSettings* settings, AudioContext* context)
+    : AudioNode(settings, context),
       message_loop_(base::MessageLoop::current()),
       max_channel_count_(kMaxChannelCount) {
   AudioLock::AutoLock lock(audio_lock());
@@ -63,8 +64,7 @@ void AudioDestinationNode::OnInputNodeConnected() {
   audio_device_to_delete_ = NULL;
 }
 
-void AudioDestinationNode::FillAudioBus(bool all_consumed,
-                                        ShellAudioBus* audio_bus,
+void AudioDestinationNode::FillAudioBus(bool all_consumed, AudioBus* audio_bus,
                                         bool* silence) {
   // This is called on Audio thread.
   AudioLock::AutoLock lock(audio_lock());

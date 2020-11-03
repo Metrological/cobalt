@@ -29,6 +29,7 @@
 #include "cobalt/dom/html_br_element.h"
 #include "cobalt/dom/html_element.h"
 #include "cobalt/dom/html_video_element.h"
+#include "cobalt/dom/lottie_player.h"
 #include "cobalt/dom/text.h"
 #include "cobalt/layout/base_direction.h"
 #include "cobalt/layout/block_formatting_block_container_box.h"
@@ -41,6 +42,7 @@
 #include "cobalt/layout/text_box.h"
 #include "cobalt/layout/used_style.h"
 #include "cobalt/layout/white_space_processing.h"
+#include "cobalt/loader/image/lottie_animation.h"
 #include "cobalt/media/base/video_frame_provider.h"
 #include "cobalt/render_tree/image.h"
 #include "cobalt/web_animations/keyframe_effect_read_only.h"
@@ -59,16 +61,19 @@ scoped_refptr<render_tree::Image> GetVideoFrame(
   TRACE_EVENT0("cobalt::layout", "GetVideoFrame()");
   SbDecodeTarget decode_target = frame_provider->GetCurrentSbDecodeTarget();
   if (SbDecodeTargetIsValid(decode_target)) {
-#if SB_HAS(GRAPHICS)
     return resource_provider->CreateImageFromSbDecodeTarget(decode_target);
-#else   // SB_HAS(GRAPHICS)
-    SB_UNREFERENCED_PARAMETER(resource_provider);
-    return NULL;
-#endif  // SB_HAS(GRAPHICS)
   } else {
     DCHECK(frame_provider);
     return NULL;
   }
+}
+
+scoped_refptr<render_tree::Image> GetLottieAnimation(
+    scoped_refptr<loader::image::Image> lottie_animation) {
+  TRACE_EVENT0("cobalt::layout", "GetLottieAnimation()");
+  return base::polymorphic_downcast<loader::image::LottieAnimation*>(
+             lottie_animation.get())
+      ->animation();
 }
 
 }  // namespace
@@ -150,6 +155,13 @@ void BoxGenerator::Visit(dom::Element* element) {
     return;
   }
 
+  scoped_refptr<dom::LottiePlayer> lottie_player =
+      html_element->AsLottiePlayer();
+  if (lottie_player) {
+    VisitLottiePlayer(lottie_player);
+    return;
+  }
+
   VisitNonReplacedElement(html_element);
 }
 
@@ -157,18 +169,20 @@ namespace {
 
 class ReplacedBoxGenerator : public cssom::NotReachedPropertyValueVisitor {
  public:
-  ReplacedBoxGenerator(const scoped_refptr<cssom::CSSComputedStyleDeclaration>&
-                           css_computed_style_declaration,
-                       const ReplacedBox::ReplaceImageCB& replace_image_cb,
-                       const ReplacedBox::SetBoundsCB& set_bounds_cb,
-                       const scoped_refptr<Paragraph>& paragraph,
-                       int32 text_position,
-                       const base::Optional<LayoutUnit>& maybe_intrinsic_width,
-                       const base::Optional<LayoutUnit>& maybe_intrinsic_height,
-                       const base::Optional<float>& maybe_intrinsic_ratio,
-                       const BoxGenerator::Context* context,
-                       base::Optional<bool> is_video_punched_out,
-                       math::SizeF content_size)
+  ReplacedBoxGenerator(
+      const scoped_refptr<cssom::CSSComputedStyleDeclaration>&
+          css_computed_style_declaration,
+      const ReplacedBox::ReplaceImageCB& replace_image_cb,
+      const ReplacedBox::SetBoundsCB& set_bounds_cb,
+      const scoped_refptr<Paragraph>& paragraph, int32 text_position,
+      const base::Optional<LayoutUnit>& maybe_intrinsic_width,
+      const base::Optional<LayoutUnit>& maybe_intrinsic_height,
+      const base::Optional<float>& maybe_intrinsic_ratio,
+      const BoxGenerator::Context* context,
+      base::Optional<ReplacedBox::ReplacedBoxMode> replaced_box_mode,
+      math::SizeF content_size,
+      base::Optional<render_tree::LottieAnimation::LottieProperties>
+          lottie_properties)
       : css_computed_style_declaration_(css_computed_style_declaration),
         replace_image_cb_(replace_image_cb),
         set_bounds_cb_(set_bounds_cb),
@@ -178,8 +192,9 @@ class ReplacedBoxGenerator : public cssom::NotReachedPropertyValueVisitor {
         maybe_intrinsic_height_(maybe_intrinsic_height),
         maybe_intrinsic_ratio_(maybe_intrinsic_ratio),
         context_(context),
-        is_video_punched_out_(is_video_punched_out),
-        content_size_(content_size) {}
+        replaced_box_mode_(replaced_box_mode),
+        content_size_(content_size),
+        lottie_properties_(lottie_properties) {}
 
   void VisitKeyword(cssom::KeywordValue* keyword) override;
 
@@ -196,8 +211,10 @@ class ReplacedBoxGenerator : public cssom::NotReachedPropertyValueVisitor {
   const base::Optional<LayoutUnit> maybe_intrinsic_height_;
   const base::Optional<float> maybe_intrinsic_ratio_;
   const BoxGenerator::Context* context_;
-  base::Optional<bool> is_video_punched_out_;
+  base::Optional<ReplacedBox::ReplacedBoxMode> replaced_box_mode_;
   math::SizeF content_size_;
+  base::Optional<render_tree::LottieAnimation::LottieProperties>
+      lottie_properties_;
 
   scoped_refptr<ReplacedBox> replaced_box_;
 };
@@ -212,8 +229,8 @@ void ReplacedBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
           css_computed_style_declaration_, replace_image_cb_, set_bounds_cb_,
           paragraph_, text_position_, maybe_intrinsic_width_,
           maybe_intrinsic_height_, maybe_intrinsic_ratio_,
-          context_->used_style_provider, is_video_punched_out_, content_size_,
-          context_->layout_stat_tracker));
+          context_->used_style_provider, replaced_box_mode_, content_size_,
+          lottie_properties_, context_->layout_stat_tracker));
       break;
     // Generate an inline-level replaced box. There is no need to distinguish
     // between inline replaced elements and inline-block replaced elements
@@ -226,8 +243,8 @@ void ReplacedBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
           css_computed_style_declaration_, replace_image_cb_, set_bounds_cb_,
           paragraph_, text_position_, maybe_intrinsic_width_,
           maybe_intrinsic_height_, maybe_intrinsic_ratio_,
-          context_->used_style_provider, is_video_punched_out_, content_size_,
-          context_->layout_stat_tracker));
+          context_->used_style_provider, replaced_box_mode_, content_size_,
+          lottie_properties_, context_->layout_stat_tracker));
       break;
     // The element generates no boxes and has no effect on layout.
     case cssom::KeywordValue::kNone:
@@ -324,12 +341,15 @@ void BoxGenerator::VisitVideoElement(dom::HTMLVideoElement* video_element) {
 
   // If the optional is disengaged, then we don't know if punch out is enabled
   // or not.
-  base::Optional<bool> is_punch_out;
+  base::Optional<ReplacedBox::ReplacedBoxMode> replaced_box_mode;
   if (video_element->GetVideoFrameProvider()) {
     VideoFrameProvider::OutputMode output_mode =
         video_element->GetVideoFrameProvider()->GetOutputMode();
     if (output_mode != VideoFrameProvider::kOutputModeInvalid) {
-      is_punch_out = output_mode == VideoFrameProvider::kOutputModePunchOut;
+      replaced_box_mode =
+          (output_mode == VideoFrameProvider::kOutputModePunchOut)
+              ? ReplacedBox::ReplacedBoxMode::kPunchOutVideo
+              : ReplacedBox::ReplacedBoxMode::kVideo;
     }
   }
 
@@ -340,8 +360,8 @@ void BoxGenerator::VisitVideoElement(dom::HTMLVideoElement* video_element) {
                        resource_provider)
           : ReplacedBox::ReplaceImageCB(),
       video_element->GetSetBoundsCB(), *paragraph_, text_position,
-      base::nullopt, base::nullopt, base::nullopt, context_, is_punch_out,
-      video_element->GetVideoSize());
+      base::nullopt, base::nullopt, base::nullopt, context_, replaced_box_mode,
+      video_element->GetVideoSize(), base::nullopt);
   video_element->computed_style()->display()->Accept(&replaced_box_generator);
 
   scoped_refptr<ReplacedBox> replaced_box =
@@ -404,7 +424,53 @@ void BoxGenerator::VisitBrElement(dom::HTMLBRElement* br_element) {
   boxes_.push_back(br_text_box);
 }
 
+void BoxGenerator::VisitLottiePlayer(dom::LottiePlayer* lottie_player) {
+  int32 text_position =
+      (*paragraph_)
+          ->AppendCodePoint(Paragraph::kObjectReplacementCharacterCodePoint);
+
+  ReplacedBoxGenerator replaced_box_generator(
+      lottie_player->css_computed_style_declaration(),
+      lottie_player->cached_image() &&
+              lottie_player->cached_image()->TryGetResource()
+          ? base::Bind(GetLottieAnimation,
+                       lottie_player->cached_image()->TryGetResource())
+          : ReplacedBox::ReplaceImageCB(),
+      ReplacedBox::SetBoundsCB(), *paragraph_, text_position, base::nullopt,
+      base::nullopt, base::nullopt, context_,
+      ReplacedBox::ReplacedBoxMode::kLottie,
+      math::Size() /* only relevant to punch out video */,
+      lottie_player->GetProperties());
+  lottie_player->computed_style()->display()->Accept(&replaced_box_generator);
+
+  scoped_refptr<ReplacedBox> replaced_box =
+      replaced_box_generator.replaced_box();
+  if (replaced_box.get() == NULL) {
+    // The element with "display: none" generates no boxes and has no effect
+    // on layout. Descendant elements do not generate any boxes either.
+    // This behavior cannot be overridden by setting the "display" property on
+    // the descendants.
+    //   https://www.w3.org/TR/CSS21/visuren.html#display-prop
+
+    // A LottiePlayer element with "display: none" should potentially trigger
+    // a freeze event.
+    if (!lottie_player->GetProperties().onfreeze_callback.is_null()) {
+      lottie_player->GetProperties().onfreeze_callback.Run();
+    }
+    return;
+  }
+
+#ifdef COBALT_BOX_DUMP_ENABLED
+  replaced_box->SetGeneratingNode(lottie_player);
+#endif  // COBALT_BOX_DUMP_ENABLED
+
+  replaced_box->SetUiNavItem(lottie_player->GetUiNavItem());
+  boxes_.push_back(replaced_box);
+}
+
 namespace {
+
+typedef dom::HTMLElement::DirState DirState;
 
 class ContainerBoxGenerator : public cssom::NotReachedPropertyValueVisitor {
  public:
@@ -413,15 +479,15 @@ class ContainerBoxGenerator : public cssom::NotReachedPropertyValueVisitor {
     kCloseParagraph,
   };
 
-  ContainerBoxGenerator(dom::Directionality directionality,
+  ContainerBoxGenerator(DirState element_dir,
                         const scoped_refptr<cssom::CSSComputedStyleDeclaration>&
                             css_computed_style_declaration,
                         scoped_refptr<Paragraph>* paragraph,
                         const BoxGenerator::Context* context)
-      : directionality_(directionality),
+      : element_dir_(element_dir),
         css_computed_style_declaration_(css_computed_style_declaration),
         context_(context),
-        has_scoped_directional_embedding_(false),
+        has_scoped_directional_isolate_(false),
         paragraph_(paragraph),
         paragraph_scoped_(false) {}
   ~ContainerBoxGenerator();
@@ -433,15 +499,15 @@ class ContainerBoxGenerator : public cssom::NotReachedPropertyValueVisitor {
  private:
   void CreateScopedParagraph(CloseParagraph close_prior_paragraph);
 
-  const dom::Directionality directionality_;
+  const DirState element_dir_;
   const scoped_refptr<cssom::CSSComputedStyleDeclaration>
       css_computed_style_declaration_;
   const BoxGenerator::Context* context_;
 
-  // If a directional embedding was added to the paragraph by this container box
+  // If a directional isolate was added to the paragraph by this container box
   // and needs to be popped in the destructor:
-  // http://unicode.org/reports/tr9/#Explicit_Directional_Embeddings
-  bool has_scoped_directional_embedding_;
+  // http://unicode.org/reports/tr9/#Explicit_Directional_Isolates
+  bool has_scoped_directional_isolate_;
 
   scoped_refptr<Paragraph>* paragraph_;
   scoped_refptr<Paragraph> prior_paragraph_;
@@ -451,14 +517,14 @@ class ContainerBoxGenerator : public cssom::NotReachedPropertyValueVisitor {
 };
 
 ContainerBoxGenerator::~ContainerBoxGenerator() {
-  // If there's a scoped directional embedding, then it needs to popped from
+  // If there's a scoped directional isolate, then it needs to popped from
   // the paragraph so that this box does not impact the directionality of later
   // boxes in the paragraph.
-  // http://unicode.org/reports/tr9/#Terminating_Explicit_Directional_Embeddings_and_Overrides
-  if (has_scoped_directional_embedding_) {
+  // http://unicode.org/reports/tr9/#Terminating_Explicit_Directional_Isolates
+  if (has_scoped_directional_isolate_) {
     (*paragraph_)
         ->AppendCodePoint(
-            Paragraph::kPopDirectionalFormattingCharacterCodePoint);
+            Paragraph::kPopDirectionalIsolateCodePoint);
   }
 
   if (paragraph_scoped_) {
@@ -470,7 +536,7 @@ ContainerBoxGenerator::~ContainerBoxGenerator() {
     if (prior_paragraph_->IsClosed()) {
       *paragraph_ = new Paragraph(
           prior_paragraph_->GetLocale(), prior_paragraph_->base_direction(),
-          prior_paragraph_->GetDirectionalEmbeddingStack(),
+          prior_paragraph_->GetDirectionalFormattingStack(),
           context_->line_break_iterator, context_->character_break_iterator);
     } else {
       *paragraph_ = prior_paragraph_;
@@ -528,16 +594,17 @@ void ContainerBoxGenerator::VisitKeyword(cssom::KeywordValue* keyword) {
     // in the formatting context.
     case cssom::KeywordValue::kInline:
       // If the creating HTMLElement had an explicit directionality, then append
-      // a directional embedding to the paragraph. This will be popped from the
+      // a directional isolate to the paragraph. This will be popped from the
       // paragraph, when the ContainerBoxGenerator goes out of scope.
       // https://dev.w3.org/html5/spec-preview/global-attributes.html#the-directionality
-      // http://unicode.org/reports/tr9/#Explicit_Directional_Embeddings
-      if (directionality_ == dom::kLeftToRightDirectionality) {
-        has_scoped_directional_embedding_ = true;
-        (*paragraph_)->AppendCodePoint(Paragraph::kLeftToRightEmbedCodePoint);
-      } else if (directionality_ == dom::kRightToLeftDirectionality) {
-        has_scoped_directional_embedding_ = true;
-        (*paragraph_)->AppendCodePoint(Paragraph::kRightToLeftEmbedCodePoint);
+      // http://unicode.org/reports/tr9/#Explicit_Directional_Isolates
+      // http://unicode.org/reports/tr9/#Markup_And_Formatting
+      if (element_dir_ == DirState::kDirLeftToRight) {
+        has_scoped_directional_isolate_ = true;
+        (*paragraph_)->AppendCodePoint(Paragraph::kLeftToRightIsolateCodePoint);
+      } else if (element_dir_ == DirState::kDirRightToLeft) {
+        has_scoped_directional_isolate_ = true;
+        (*paragraph_)->AppendCodePoint(Paragraph::kRightToLeftIsolateCodePoint);
       }
 
       // If the paragraph has not started yet, then add a no-break space to it,
@@ -675,12 +742,12 @@ void ContainerBoxGenerator::CreateScopedParagraph(
   // it is inherited from the parent element.
   // https://dev.w3.org/html5/spec-preview/global-attributes.html#the-directionality
   BaseDirection base_direction;
-  if (directionality_ == dom::kLeftToRightDirectionality) {
+  if (element_dir_ == DirState::kDirLeftToRight) {
     base_direction = kLeftToRightBaseDirection;
-  } else if (directionality_ == dom::kRightToLeftDirectionality) {
+  } else if (element_dir_ == DirState::kDirRightToLeft) {
     base_direction = kRightToLeftBaseDirection;
   } else {
-    base_direction = prior_paragraph_->GetDirectionalEmbeddingStackDirection();
+    base_direction = prior_paragraph_->GetDirectionalFormattingStackDirection();
   }
 
   if (close_prior_paragraph == kCloseParagraph) {
@@ -688,7 +755,7 @@ void ContainerBoxGenerator::CreateScopedParagraph(
   }
 
   *paragraph_ = new Paragraph(prior_paragraph_->GetLocale(), base_direction,
-                              Paragraph::DirectionalEmbeddingStack(),
+                              Paragraph::DirectionalFormattingStack(),
                               context_->line_break_iterator,
                               context_->character_break_iterator);
 }
@@ -880,7 +947,7 @@ void BoxGenerator::AppendPseudoElementToLine(
   pseudo_element->reset_layout_boxes();
 
   ContainerBoxGenerator pseudo_element_box_generator(
-      dom::kNoExplicitDirectionality,
+      DirState::kDirNotDefined,
       pseudo_element->css_computed_style_declaration(), paragraph_, context_);
   pseudo_element->computed_style()->display()->Accept(
       &pseudo_element_box_generator);
@@ -966,7 +1033,7 @@ void BoxGenerator::VisitNonReplacedElement(dom::HTMLElement* html_element) {
       html_element->css_computed_style_declaration());
 
   ContainerBoxGenerator container_box_generator(
-      html_element->directionality(),
+      html_element->GetUsedDirState(),
       html_element == context_->ignore_background_element
           ? StripBackground(element_style)
           : element_style,
@@ -1017,13 +1084,13 @@ void BoxGenerator::VisitNonReplacedElement(dom::HTMLElement* html_element) {
   AppendPseudoElementToLine(html_element, dom::kAfterPseudoElementType);
 }
 
-void BoxGenerator::Visit(dom::CDATASection* /* cdata_section */) {}
+void BoxGenerator::Visit(dom::CDATASection* cdata_section) {}
 
-void BoxGenerator::Visit(dom::Comment* /*comment*/) {}
+void BoxGenerator::Visit(dom::Comment* comment) {}
 
-void BoxGenerator::Visit(dom::Document* /*document*/) { NOTREACHED(); }
+void BoxGenerator::Visit(dom::Document* document) { NOTREACHED(); }
 
-void BoxGenerator::Visit(dom::DocumentType* /*document_type*/) { NOTREACHED(); }
+void BoxGenerator::Visit(dom::DocumentType* document_type) { NOTREACHED(); }
 
 namespace {
 scoped_refptr<web_animations::AnimationSet> GetAnimationsForAnonymousBox(

@@ -18,6 +18,7 @@
 #include <string>
 
 #include "cobalt/base/polymorphic_downcast.h"
+#include "cobalt/configuration/configuration.h"
 #include "cobalt/network/job_factory_config.h"
 #include "cobalt/network/network_delegate.h"
 #include "cobalt/network/persistent_cookie_store.h"
@@ -39,6 +40,7 @@
 #include "net/proxy_resolution/proxy_resolution_service.h"
 #include "net/ssl/ssl_config_service.h"
 #include "net/ssl/ssl_config_service_defaults.h"
+#include "net/third_party/quic/platform/api/quic_flags.h"
 #include "net/url_request/data_protocol_handler.h"
 #include "net/url_request/url_request_job_factory_impl.h"
 
@@ -93,6 +95,10 @@ URLRequestContext::URLRequestContext(
               new ProxyConfigService(proxy_config)),
           net_log));
 
+  // ack decimation significantly increases download bandwidth on low-end
+  // android devices.
+  SetQuicFlag(&FLAGS_quic_reloadable_flag_quic_enable_ack_decimation, true);
+
   net::HostResolver::Options options;
   options.max_concurrent_resolves = net::HostResolver::kDefaultParallelism;
   options.max_retry_attempts = net::HostResolver::kDefaultRetryAttempts;
@@ -121,11 +127,12 @@ URLRequestContext::URLRequestContext(
       std::make_unique<net::HttpServerPropertiesImpl>());
 
   net::HttpNetworkSession::Params params;
-#if defined(COBALT_ENABLE_QUIC)
-  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
-  params.enable_quic = !command_line->HasSwitch(switches::kDisableQuic);
-  params.use_quic_for_unknown_origins = params.enable_quic;
-#endif
+
+  if (configuration::Configuration::GetInstance()->CobaltEnableQuic()) {
+    base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+    params.enable_quic = !command_line->HasSwitch(switches::kDisableQuic);
+    params.use_quic_for_unknown_origins = params.enable_quic;
+  }
 #if defined(ENABLE_IGNORE_CERTIFICATE_ERRORS)
   params.ignore_certificate_errors = ignore_certificate_errors;
   if (ignore_certificate_errors) {
@@ -152,7 +159,6 @@ URLRequestContext::URLRequestContext(
   context.net_log = net_log;
   set_net_log(net_log);
 #else
-  SB_UNREFERENCED_PARAMETER(net_log);
 #endif
   context.socket_performance_watcher_factory = NULL;
   context.network_quality_provider = NULL;
@@ -183,8 +189,13 @@ void URLRequestContext::SetProxy(const std::string& proxy_rules) {
       std::make_unique<ProxyConfigService>(proxy_config));
 }
 
+void URLRequestContext::SetEnableQuic(bool enable_quic) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  storage_.http_network_session()->SetEnableQuic(enable_quic);
+}
+
 #if defined(ENABLE_DEBUGGER)
-void URLRequestContext::OnQuicToggle(const std::string& /*message*/) {
+void URLRequestContext::OnQuicToggle(const std::string& message) {
   DCHECK(storage_.http_network_session());
   storage_.http_network_session()->ToggleQuic();
 }

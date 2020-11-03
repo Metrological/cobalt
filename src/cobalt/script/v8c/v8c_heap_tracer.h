@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/threading/thread_checker.h"
 #include "cobalt/script/v8c/isolate_fellowship.h"
 #include "cobalt/script/v8c/scoped_persistent.h"
 #include "cobalt/script/wrappable.h"
@@ -35,16 +36,25 @@ class V8cHeapTracer final : public v8::EmbedderHeapTracer,
  public:
   explicit V8cHeapTracer(v8::Isolate* isolate) : isolate_(isolate) {}
 
+  // V8 EmbedderHeapTracer API
   void RegisterV8References(
       const std::vector<std::pair<void*, void*>>& embedder_fields) override;
   void TracePrologue() override;
-  bool AdvanceTracing(double deadline_in_ms,
-                      AdvanceTracingActions actions) override;
+  bool AdvanceTracing(double deadline_in_ms) override;
+  bool IsTracingDone() override;
   void TraceEpilogue() override;
-  void EnterFinalPause() override;
-  void AbortTracing() override;
-  size_t NumberOfWrappersToTrace() override;
+  void EnterFinalPause(EmbedderStackState stack_state) override;
+  // IsRootForNonTracingGC provides an opportunity for us to get quickly
+  // perished reference deleted in scavenger GCs. But that requires the ability
+  // to determine whether a v8 object is reference by anything in Cobalt heap.
+  // Cobalt does have the reference_map_ that tracks all ScriptValues but Cobalt
+  // does not track referencers of all wrappables yet. So we don't have the
+  // ability to exploit this feature yet.
 
+  // bool IsRootForNonTracingGC(const v8::TracedGlobal<v8::Value>& handle)
+  // override
+
+  // Cobalt Tracer API
   void Trace(Traceable* traceable) override;
 
   void AddReferencedObject(Wrappable* owner,
@@ -55,6 +65,15 @@ class V8cHeapTracer final : public v8::EmbedderHeapTracer,
   void AddRoot(Traceable* traceable);
   void RemoveRoot(Traceable* traceable);
 
+  void AddRoot(v8::TracedGlobal<v8::Value>* traced_global);
+  void RemoveRoot(v8::TracedGlobal<v8::Value>* traced_global);
+
+  // Used during shutdown to ask V8cHeapTracer do nothing so that V8 can
+  // GC every embedder-created object.
+  void DisableForShutdown() {
+    disabled_ = true;
+  }
+
  private:
   void MaybeAddToFrontier(Traceable* traceable);
 
@@ -62,7 +81,11 @@ class V8cHeapTracer final : public v8::EmbedderHeapTracer,
   v8::Platform* const platform_ =
       IsolateFellowship::GetInstance()->platform.get();
 
+  THREAD_CHECKER(thread_checker_);
+
   std::vector<Traceable*> frontier_;
+  // Traceables from frontier_ are also considered global objects,
+  // globals_ are the ones that hold no member references.
   std::unordered_set<Traceable*> visited_;
   std::unordered_multimap<Wrappable*, ScopedPersistent<v8::Value>*>
       reference_map_;
@@ -70,6 +93,9 @@ class V8cHeapTracer final : public v8::EmbedderHeapTracer,
   // TODO: A "counted" multiset approach here would be a bit nicer than
   // std::multiset.
   std::unordered_multiset<Traceable*> roots_;
+  std::unordered_multiset<v8::TracedGlobal<v8::Value>*> globals_;
+
+  bool disabled_ = false;
 };
 
 }  // namespace v8c

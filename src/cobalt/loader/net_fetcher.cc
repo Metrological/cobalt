@@ -20,6 +20,7 @@
 #include "base/strings/stringprintf.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/loader/cors_preflight.h"
+#include "cobalt/loader/url_fetcher_string_writer.h"
 #include "cobalt/network/network_module.h"
 #include "net/url_request/url_fetcher.h"
 #if defined(OS_STARBOARD)
@@ -27,7 +28,7 @@
 #if SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
 #define HANDLE_CORE_DUMP
 #include "base/lazy_instance.h"
-#include "starboard/ps4/core_dump_handler.h"
+#include STARBOARD_CORE_DUMP_HANDLER_INCLUDE
 #endif  // SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
 #endif  // OS_STARBOARD
 
@@ -87,9 +88,9 @@ NetFetcher::NetFetcher(const GURL& url,
   url_fetcher_ = net::URLFetcher::Create(url, options.request_method, this);
   url_fetcher_->SetRequestContext(
       network_module->url_request_context_getter().get());
-  auto* download_data_writer = new CobaltURLFetcherStringWriter();
-  url_fetcher_->SaveResponseWithWriter(
-      std::unique_ptr<CobaltURLFetcherStringWriter>(download_data_writer));
+  std::unique_ptr<URLFetcherStringWriter> download_data_writer(
+      new URLFetcherStringWriter());
+  url_fetcher_->SaveResponseWithWriter(std::move(download_data_writer));
   if (request_mode != kNoCORSMode && !url.SchemeIs("data") &&
       origin != Origin(url)) {
     request_cross_origin_ = true;
@@ -169,13 +170,15 @@ void NetFetcher::OnURLFetchComplete(const net::URLFetcher* source) {
   const int response_code = source->GetResponseCode();
   if (status.is_success() && IsResponseCodeSuccess(response_code)) {
     auto* download_data_writer =
-        base::polymorphic_downcast<CobaltURLFetcherStringWriter*>(
+        base::polymorphic_downcast<URLFetcherStringWriter*>(
             source->GetResponseWriter());
-    std::unique_ptr<std::string> data = download_data_writer->data();
-    if (!data->empty()) {
+    std::string data;
+    download_data_writer->GetAndResetData(&data);
+    if (!data.empty()) {
       DLOG(INFO) << "in OnURLFetchComplete data still has bytes: "
-                 << data->size();
-      handler()->OnReceivedPassed(this, std::move(data));
+                 << data.size();
+      handler()->OnReceivedPassed(
+          this, std::unique_ptr<std::string>(new std::string(std::move(data))));
     }
     handler()->OnDone(this);
   } else {
@@ -201,22 +204,23 @@ void NetFetcher::OnURLFetchComplete(const net::URLFetcher* source) {
 }
 
 void NetFetcher::OnURLFetchDownloadProgress(const net::URLFetcher* source,
-                                            int64_t /*current*/,
-                                            int64_t /*total*/,
-                                            int64_t /*current_network_bytes*/) {
+                                            int64_t current, int64_t total,
+                                            int64_t current_network_bytes) {
   if (IsResponseCodeSuccess(source->GetResponseCode())) {
     auto* download_data_writer =
-        base::polymorphic_downcast<CobaltURLFetcherStringWriter*>(
+        base::polymorphic_downcast<URLFetcherStringWriter*>(
             source->GetResponseWriter());
-    std::unique_ptr<std::string> data = download_data_writer->data();
-    if (data->empty()) {
+    std::string data;
+    download_data_writer->GetAndResetData(&data);
+    if (data.empty()) {
       return;
     }
 #if defined(HANDLE_CORE_DUMP)
     net_fetcher_log.Get().IncrementFetchedBytes(
-        static_cast<int>(data->length()));
+        static_cast<int>(data.length()));
 #endif
-    handler()->OnReceivedPassed(this, std::move(data));
+    handler()->OnReceivedPassed(
+        this, std::unique_ptr<std::string>(new std::string(std::move(data))));
   }
 }
 

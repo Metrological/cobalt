@@ -69,6 +69,8 @@ namespace {
         return "WindowFocusGained";
       case ApplicationAndroid::AndroidCommand::kWindowFocusLost:
         return "WindowFocusLost";
+      case ApplicationAndroid::AndroidCommand::kDeepLink:
+        return "DeepLink";
       default:
         return "unknown";
     }
@@ -137,7 +139,6 @@ void ApplicationAndroid::Teardown() {
 }
 
 SbWindow ApplicationAndroid::CreateWindow(const SbWindowOptions* options) {
-  SB_UNREFERENCED_PARAMETER(options);
   if (SbWindowIsValid(window_)) {
     return kSbWindowInvalid;
   }
@@ -299,6 +300,21 @@ void ApplicationAndroid::ProcessAndroidCommand() {
     case AndroidCommand::kStop:
       sync_state = activity_state_ = cmd.type;
       break;
+    case AndroidCommand::kDeepLink:
+      char* deep_link = static_cast<char*>(cmd.data);
+      SB_LOG(INFO) << "AndroidCommand::kDeepLink: deep_link=" << deep_link
+                   << " state=" << state();
+      if (deep_link != NULL) {
+        if (state() == kStateUnstarted) {
+          SetStartLink(deep_link);
+          SB_LOG(INFO) << "ApplicationAndroid SetStartLink";
+          SbMemoryDeallocate(static_cast<void*>(deep_link));
+        } else {
+          SB_LOG(INFO) << "ApplicationAndroid Inject: kSbEventTypeLink";
+          Inject(new Event(kSbEventTypeLink, deep_link, SbMemoryDeallocate));
+        }
+      }
+      break;
   }
 
   // If there's a window, sync the app state to the Activity lifecycle, letting
@@ -338,7 +354,7 @@ void ApplicationAndroid::SendAndroidCommand(AndroidCommand::CommandType type,
     // Android main thread. This lets the MediaSession get released now without
     // having to wait to bounce between threads.
     JniEnvExt* env = JniEnvExt::Get();
-    env->CallStarboardVoidMethodOrAbort("beforeSuspend", "()V");
+    env->CallStarboardVoidMethod("beforeSuspend", "()V");
   }
   AndroidCommand cmd {type, data};
   ScopedLock lock(android_command_mutex_);
@@ -362,13 +378,17 @@ void ApplicationAndroid::SendAndroidCommand(AndroidCommand::CommandType type,
 }
 
 void ApplicationAndroid::ProcessAndroidInput() {
-  SB_DCHECK(input_events_generator_);
   AInputEvent* android_event = NULL;
   while (AInputQueue_getEvent(input_queue_, &android_event) >= 0) {
     SB_LOG(INFO) << "Android input: type="
                  << AInputEvent_getType(android_event);
     if (AInputQueue_preDispatchEvent(input_queue_, android_event)) {
         continue;
+    }
+    if (!input_events_generator_) {
+      SB_DLOG(WARNING) << "Android input event ignored without an SbWindow.";
+      AInputQueue_finishEvent(input_queue_, android_event, false);
+      continue;
     }
     InputEventsGenerator::Events app_events;
     bool handled = input_events_generator_->CreateInputEventsFromAndroidEvent(
@@ -385,7 +405,10 @@ void ApplicationAndroid::ProcessKeyboardInject() {
   int err = read(keyboard_inject_readfd_, &key, sizeof(key));
   SB_DCHECK(err >= 0) << "Keyboard inject read failed: errno=" << errno;
   SB_LOG(INFO) << "Keyboard inject: " << key;
-
+  if (!input_events_generator_) {
+    SB_DLOG(WARNING) << "Injected input event ignored without an SbWindow.";
+    return;
+  }
   InputEventsGenerator::Events app_events;
   input_events_generator_->CreateInputEventsFromSbKey(key, &app_events);
   for (int i = 0; i < app_events.size(); ++i) {
@@ -408,14 +431,16 @@ extern "C" SB_EXPORT_PLATFORM jboolean
 Java_dev_cobalt_coat_KeyboardInputConnection_nativeHasOnScreenKeyboard(
     JniEnvExt* env,
     jobject unused_this) {
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12
+  return SbWindowOnScreenKeyboardIsSupported() ? JNI_TRUE : JNI_FALSE;
+#elif SB_HAS(ON_SCREEN_KEYBOARD)
   return JNI_TRUE;
-#else   // SB_HAS(ON_SCREEN_KEYBOARD)
+#else
   return JNI_FALSE;
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif
 }
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
 
 void ApplicationAndroid::SbWindowShowOnScreenKeyboard(SbWindow window,
                                                       const char* input_text,
@@ -508,7 +533,8 @@ void ApplicationAndroid::SbWindowSendInputEvent(const char* input_text,
   return;
 }
 
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
 bool ApplicationAndroid::OnSearchRequested() {
   for (int i = 0; i < 2; i++) {
@@ -529,12 +555,14 @@ jboolean Java_dev_cobalt_coat_StarboardBridge_nativeOnSearchRequested(
 }
 
 void ApplicationAndroid::HandleDeepLink(const char* link_url) {
+  SB_LOG(INFO) << "ApplicationAndroid::HandleDeepLink link_url=" << link_url;
   if (link_url == NULL || link_url[0] == '\0') {
     return;
   }
   char* deep_link = SbStringDuplicate(link_url);
   SB_DCHECK(deep_link);
-  Inject(new Event(kSbEventTypeLink, deep_link, SbMemoryDeallocate));
+
+  SendAndroidCommand(AndroidCommand::kDeepLink, deep_link);
 }
 
 extern "C" SB_EXPORT_PLATFORM

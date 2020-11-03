@@ -46,7 +46,10 @@ GlobalStats::GlobalStats()
           "Count.DOM.ActiveJavaScriptEvents", 0,
           "Total number of currently active JavaScript events."),
       num_xhrs_("Count.XHR", 0, "Total number of currently active XHRs."),
-      xhr_memory_("Memory.XHR", 0, "Memory allocated by XHRs in bytes.") {}
+      xhr_memory_("Memory.XHR", 0, "Memory allocated by XHRs in bytes."),
+      total_font_request_time_(
+          "Time.MainWebModule.DOM.FontCache.TotalFontRequestTime", 0,
+          "The time it takes for all fonts requests to complete") {}
 
 GlobalStats::~GlobalStats() {}
 
@@ -59,37 +62,35 @@ bool GlobalStats::CheckNoLeaks() {
          xhr_memory_ == 0;
 }
 
-void GlobalStats::Add(Attr* /*object*/) { ++num_attrs_; }
+void GlobalStats::Add(Attr* object) { ++num_attrs_; }
 
-void GlobalStats::Add(DOMStringMap* /*object*/) { ++num_dom_string_maps_; }
+void GlobalStats::Add(DOMStringMap* object) { ++num_dom_string_maps_; }
 
-void GlobalStats::Add(DOMTokenList* /*object*/) { ++num_dom_token_lists_; }
+void GlobalStats::Add(DOMTokenList* object) { ++num_dom_token_lists_; }
 
-void GlobalStats::Add(HTMLCollection* /*object*/) { ++num_html_collections_; }
+void GlobalStats::Add(HTMLCollection* object) { ++num_html_collections_; }
 
-void GlobalStats::Add(NamedNodeMap* /*object*/) { ++num_named_node_maps_; }
+void GlobalStats::Add(NamedNodeMap* object) { ++num_named_node_maps_; }
 
-void GlobalStats::Add(Node* /*object*/) { ++num_nodes_; }
+void GlobalStats::Add(Node* object) { ++num_nodes_; }
 
-void GlobalStats::Add(NodeList* /*object*/) { ++num_node_lists_; }
+void GlobalStats::Add(NodeList* object) { ++num_node_lists_; }
 
 void GlobalStats::AddEventListener() { ++num_event_listeners_; }
 
-void GlobalStats::Remove(Attr* /*object*/) { --num_attrs_; }
+void GlobalStats::Remove(Attr* object) { --num_attrs_; }
 
-void GlobalStats::Remove(DOMStringMap* /*object*/) { --num_dom_string_maps_; }
+void GlobalStats::Remove(DOMStringMap* object) { --num_dom_string_maps_; }
 
-void GlobalStats::Remove(DOMTokenList* /*object*/) { --num_dom_token_lists_; }
+void GlobalStats::Remove(DOMTokenList* object) { --num_dom_token_lists_; }
 
-void GlobalStats::Remove(HTMLCollection* /*object*/) {
-  --num_html_collections_;
-}
+void GlobalStats::Remove(HTMLCollection* object) { --num_html_collections_; }
 
-void GlobalStats::Remove(NamedNodeMap* /*object*/) { --num_named_node_maps_; }
+void GlobalStats::Remove(NamedNodeMap* object) { --num_named_node_maps_; }
 
-void GlobalStats::Remove(Node* /*object*/) { --num_nodes_; }
+void GlobalStats::Remove(Node* object) { --num_nodes_; }
 
-void GlobalStats::Remove(NodeList* /*object*/) { --num_node_lists_; }
+void GlobalStats::Remove(NodeList* object) { --num_node_lists_; }
 
 void GlobalStats::RemoveEventListener() { --num_event_listeners_; }
 
@@ -97,15 +98,20 @@ void GlobalStats::StartJavaScriptEvent() { ++num_active_java_script_events_; }
 
 void GlobalStats::StopJavaScriptEvent() { --num_active_java_script_events_; }
 
-void GlobalStats::Add(xhr::XMLHttpRequest* /* object */) { ++num_xhrs_; }
+void GlobalStats::Add(xhr::XMLHttpRequest* object) { ++num_xhrs_; }
 
-void GlobalStats::Remove(xhr::XMLHttpRequest* /*object*/) { --num_xhrs_; }
+void GlobalStats::Remove(xhr::XMLHttpRequest* object) { --num_xhrs_; }
 
 void GlobalStats::IncreaseXHRMemoryUsage(size_t delta) { xhr_memory_ += delta; }
 
 void GlobalStats::DecreaseXHRMemoryUsage(size_t delta) {
   DCHECK_GE(xhr_memory_.value(), delta);
   xhr_memory_ -= delta;
+}
+
+void GlobalStats::OnFontRequestComplete(int64 start_time) {
+  total_font_request_time_ +=
+      base::TimeTicks::Now().ToInternalValue() - start_time;
 }
 
 }  // namespace dom

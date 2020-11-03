@@ -85,8 +85,10 @@ browser::WebModule::LayoutResults SnapshotURL(
   browser::WebModule::Options web_module_options;
   web_module_options.layout_trigger = layout::LayoutManager::kTestRunnerMode;
   web_module_options.image_cache_capacity = kImageCacheCapacity;
-
   web_module_options.provide_screenshot_function = screenshot_provider;
+  // We assume that we won't suspend/resume while running the tests, and so
+  // we take advantage of the convenience of inline script tags.
+  web_module_options.enable_inline_script_warnings = false;
 
   // Prepare a slot for our results to be placed when ready.
   base::Optional<browser::WebModule::LayoutResults> results;
@@ -101,7 +103,7 @@ browser::WebModule::LayoutResults SnapshotURL(
       browser::WebModule::CloseCallback() /* window_close_callback */,
       base::Closure() /* window_minimize_callback */,
       NULL /* can_play_type_handler */, NULL /* web_media_player_factory */,
-      &network_module, viewport_size, 1.f, resource_provider, 60.0f,
+      &network_module, viewport_size, resource_provider, 60.0f,
       web_module_options);
 
   run_loop.Run();

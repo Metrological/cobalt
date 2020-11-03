@@ -160,6 +160,23 @@ std::string GetVersionedLibraryName(const char* name, const int version) {
 }
 
 bool FFMPEGDispatchImpl::OpenLibraries() {
+  // Helper lambda to ensure all av libraries are closed and reset.
+  const auto reset_av_libraries = [this]() {
+    if (avformat_) {
+      dlclose(avformat_);
+      avformat_ = NULL;
+    }
+    if (avcodec_) {
+      dlclose(avcodec_);
+      avcodec_ = NULL;
+    }
+    if (avutil_) {
+      dlclose(avutil_);
+      avutil_ = NULL;
+    }
+    SB_DCHECK(!is_valid());
+  };
+
   for (auto version_iterator = versions_.rbegin();
        version_iterator != versions_.rend(); ++version_iterator) {
     LibraryMajorVersions& versions = version_iterator->second;
@@ -168,6 +185,7 @@ bool FFMPEGDispatchImpl::OpenLibraries() {
     avutil_ = dlopen(library_file.c_str(), RTLD_NOW | RTLD_GLOBAL);
     if (!avutil_) {
       SB_DLOG(WARNING) << "Unable to open shared library " << library_file;
+      reset_av_libraries();
       continue;
     }
 
@@ -176,8 +194,7 @@ bool FFMPEGDispatchImpl::OpenLibraries() {
     avcodec_ = dlopen(library_file.c_str(), RTLD_NOW | RTLD_GLOBAL);
     if (!avcodec_) {
       SB_DLOG(WARNING) << "Unable to open shared library " << library_file;
-      dlclose(avutil_);
-      avutil_ = NULL;
+      reset_av_libraries();
       continue;
     }
 
@@ -186,46 +203,48 @@ bool FFMPEGDispatchImpl::OpenLibraries() {
     avformat_ = dlopen(library_file.c_str(), RTLD_NOW | RTLD_GLOBAL);
     if (!avformat_) {
       SB_DLOG(WARNING) << "Unable to open shared library " << library_file;
-      dlclose(avcodec_);
-      avcodec_ = NULL;
-      dlclose(avutil_);
-      avutil_ = NULL;
+      reset_av_libraries();
       continue;
     }
     SB_DCHECK(is_valid());
     break;
   }
-  if (!is_valid()) {
-    // Attempt to load the libraries without a version number.
-    // This allows loading of the libraries on machines where a versioned and
-    // supported library is not available. Additionally, if this results in a
-    // library version being loaded that is not supported, then the decoder
-    // instantiation can output a more informative log message.
-    avutil_ = dlopen(kAVUtilLibraryName, RTLD_NOW | RTLD_GLOBAL);
-    if (!avutil_) {
-      SB_DLOG(WARNING) << "Unable to open shared library "
-                       << kAVUtilLibraryName;
-    }
 
-    avcodec_ = dlopen(kAVCodecLibraryName, RTLD_NOW | RTLD_GLOBAL);
-    if (!avcodec_) {
-      SB_DLOG(WARNING) << "Unable to open shared library "
-                       << kAVCodecLibraryName;
-      dlclose(avutil_);
-      avutil_ = NULL;
-    }
-
-    avformat_ = dlopen(kAVFormatLibraryName, RTLD_NOW | RTLD_GLOBAL);
-    if (!avformat_) {
-      SB_DLOG(WARNING) << "Unable to open shared library "
-                       << kAVFormatLibraryName;
-      dlclose(avcodec_);
-      avcodec_ = NULL;
-      dlclose(avutil_);
-      avutil_ = NULL;
-    }
+  if (is_valid()) {
+    return true;
   }
-  return is_valid();
+
+  SB_LOG(WARNING) << "Failed to load FFMPEG libs with specified versions. "
+                  << "Trying to load FFMPEG libs without version numbers.";
+  // Attempt to load the libraries without a version number.
+  // This allows loading of the libraries on machines where a versioned and
+  // supported library is not available. Additionally, if this results in a
+  // library version being loaded that is not supported, then the decoder
+  // instantiation can output a more informative log message.
+  avutil_ = dlopen(kAVUtilLibraryName, RTLD_NOW | RTLD_GLOBAL);
+  if (!avutil_) {
+    SB_DLOG(WARNING) << "Unable to open shared library " << kAVUtilLibraryName;
+    reset_av_libraries();
+    return false;
+  }
+
+  avcodec_ = dlopen(kAVCodecLibraryName, RTLD_NOW | RTLD_GLOBAL);
+  if (!avcodec_) {
+    SB_DLOG(WARNING) << "Unable to open shared library " << kAVCodecLibraryName;
+    reset_av_libraries();
+    return false;
+  }
+
+  avformat_ = dlopen(kAVFormatLibraryName, RTLD_NOW | RTLD_GLOBAL);
+  if (!avformat_) {
+    SB_DLOG(WARNING) << "Unable to open shared library "
+                     << kAVFormatLibraryName;
+    reset_av_libraries();
+    return false;
+  }
+
+  SB_DCHECK(is_valid());
+  return true;
 }
 
 void FFMPEGDispatchImpl::LoadSymbols() {
@@ -244,6 +263,9 @@ void FFMPEGDispatchImpl::LoadSymbols() {
   INITSYMBOL(avutil_, av_malloc);
   INITSYMBOL(avutil_, av_freep);
   INITSYMBOL(avutil_, av_frame_alloc);
+#if LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
+  INITSYMBOL(avutil_, av_frame_free);
+#endif  // LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
   INITSYMBOL(avutil_, av_frame_unref);
   INITSYMBOL(avutil_, av_samples_get_buffer_size);
   INITSYMBOL(avutil_, av_opt_set_int);
@@ -254,6 +276,9 @@ void FFMPEGDispatchImpl::LoadSymbols() {
   INITSYMBOL(avcodec_, avcodec_version);
   SB_DCHECK(ffmpeg_->avcodec_version);
   INITSYMBOL(avcodec_, avcodec_alloc_context3);
+#if LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
+  INITSYMBOL(avcodec_, avcodec_free_context);
+#endif  // LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
   INITSYMBOL(avcodec_, avcodec_find_decoder);
   INITSYMBOL(avcodec_, avcodec_close);
   INITSYMBOL(avcodec_, avcodec_open2);

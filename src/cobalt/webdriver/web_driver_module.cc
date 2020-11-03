@@ -148,19 +148,14 @@ ElementDriver* LookUpElementDriverOrReturnInvalidResponse(
 
 }  // namespace
 
-#if SB_HAS(IPV6)
-const char WebDriverModule::kDefaultListenIp[] = "::";
-#else
-const char WebDriverModule::kDefaultListenIp[] = "0.0.0.0";
-#endif
-
 WebDriverModule::WebDriverModule(
     int server_port, const std::string& listen_ip,
     const CreateSessionDriverCB& create_session_driver_cb,
     const GetScreenshotFunction& get_screenshot_function,
     const SetProxyFunction& set_proxy_function,
     const base::Closure& shutdown_cb)
-    : webdriver_thread_("WebDriver thread"),
+    : listen_ip_(listen_ip),
+      webdriver_thread_("WebDriverThread"),
       create_session_driver_cb_(create_session_driver_cb),
       get_screenshot_function_(get_screenshot_function),
       set_proxy_function_(set_proxy_function),
@@ -518,7 +513,7 @@ SessionDriver* WebDriverModule::GetSessionDriver(
   return NULL;
 }
 
-// https://code.google.com/p/selenium/wiki/JsonWireProtocol#/status
+// https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#status
 void WebDriverModule::GetServerStatus(
     const base::Value* parameters,
     const WebDriverDispatcher::PathVariableMap* path_variables,
@@ -528,7 +523,7 @@ void WebDriverModule::GetServerStatus(
                              protocol::ServerStatus::ToValue(status_));
 }
 
-// https://code.google.com/p/selenium/wiki/JsonWireProtocol#/sessions
+// https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#sessions
 void WebDriverModule::GetActiveSessions(
     const base::Value* parameters,
     const WebDriverDispatcher::PathVariableMap* path_variables,
@@ -542,7 +537,7 @@ void WebDriverModule::GetActiveSessions(
                              util::internal::ToValue(sessions));
 }
 
-// https://code.google.com/p/selenium/wiki/JsonWireProtocol#GET_/session/:sessionId
+// https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#get-sessionsessionid
 void WebDriverModule::CreateSession(
     const base::Value* parameters,
     const WebDriverDispatcher::PathVariableMap* path_variables,
@@ -568,7 +563,7 @@ void WebDriverModule::CreateSession(
                                  result_handler.get());
 }
 
-// https://code.google.com/p/selenium/wiki/JsonWireProtocol#DELETE_/session/:sessionId
+// https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#delete-sessionsessionid
 void WebDriverModule::DeleteSession(
     const base::Value* parameters,
     const WebDriverDispatcher::PathVariableMap* path_variables,
@@ -603,8 +598,7 @@ void WebDriverModule::StartScreencast(
 
     int port = 3003;
     screencast_driver_module_.reset(new screencast::ScreencastModule(
-        port, webdriver::WebDriverModule::kDefaultListenIp,
-        get_screenshot_function_));
+        port, listen_ip_, get_screenshot_function_));
 
     CommandResult result =
         util::CommandResult<std::string>(std::to_string(port));
@@ -632,7 +626,7 @@ void WebDriverModule::StopScreencast(
   }
 }
 
-// https://code.google.com/p/selenium/wiki/JsonWireProtocol#/session/:sessionId/screenshot
+// https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#sessionsessionidscreenshot
 void WebDriverModule::RequestScreenshot(
     const base::Value* parameters,
     const WebDriverDispatcher::PathVariableMap* path_variables,

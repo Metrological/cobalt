@@ -25,6 +25,7 @@
 #include "cobalt/render_tree/font_provider.h"
 #include "cobalt/render_tree/glyph_buffer.h"
 #include "cobalt/render_tree/image.h"
+#include "cobalt/render_tree/lottie_animation.h"
 #include "cobalt/render_tree/mesh.h"
 #include "cobalt/render_tree/node.h"
 #include "cobalt/render_tree/typeface.h"
@@ -78,7 +79,6 @@ class ResourceProvider {
   virtual scoped_refptr<Image> CreateImage(
       std::unique_ptr<ImageData> pixel_data) = 0;
 
-#if SB_HAS(GRAPHICS)
   // This function will consume an SbDecodeTarget object produced by
   // SbDecodeTargetCreate(), wrap it in a render_tree::Image that can be used
   // in a render tree, and return it to the caller.
@@ -93,7 +93,6 @@ class ResourceProvider {
   // supported.
   virtual SbDecodeTargetGraphicsContextProvider*
   GetSbDecodeTargetGraphicsContextProvider() = 0;
-#endif  // SB_HAS(GRAPHICS)
 
   // Returns a raw chunk of memory that can later be passed into a function like
   // CreateMultiPlaneImageFromRawMemory() in order to create a texture.
@@ -205,6 +204,12 @@ class ResourceProvider {
                              bool is_rtl,
                              render_tree::FontProvider* font_provider,
                              render_tree::FontVector* maybe_used_fonts) = 0;
+
+  // This function will wrap the given Lottie animation data into a
+  // LottieAnimation that can be used in a render tree, and return it to the
+  // caller.
+  virtual scoped_refptr<LottieAnimation> CreateLottieAnimation(
+      const char* data, size_t length) = 0;
 
   // Consumes a list of vertices and returns a Mesh instance.
   virtual scoped_refptr<Mesh> CreateMesh(

@@ -22,7 +22,8 @@
 #include "cobalt/audio/audio_device.h"
 #include "cobalt/audio/audio_helpers.h"
 #include "cobalt/audio/audio_node.h"
-#include "cobalt/media/base/shell_audio_bus.h"
+#include "cobalt/media/base/audio_bus.h"
+#include "cobalt/script/environment_settings.h"
 
 namespace cobalt {
 namespace audio {
@@ -36,10 +37,11 @@ namespace audio {
 //   https://www.w3.org/TR/webaudio/#AudioDestinationNode
 class AudioDestinationNode : public AudioNode,
                              public AudioDevice::RenderCallback {
-  typedef media::ShellAudioBus ShellAudioBus;
+  typedef media::AudioBus AudioBus;
 
  public:
-  explicit AudioDestinationNode(AudioContext* context);
+  AudioDestinationNode(script::EnvironmentSettings* settings,
+                       AudioContext* context);
 
   // Web API: AudioDestinationNode
   //
@@ -49,15 +51,15 @@ class AudioDestinationNode : public AudioNode,
 
   // From AudioNode.
   void OnInputNodeConnected() override;
-  std::unique_ptr<ShellAudioBus> PassAudioBusFromSource(
-      int32 /*number_of_frames*/, SampleType /*sample_type*/,
-      bool* /*finished*/) override {
+  std::unique_ptr<AudioBus> PassAudioBusFromSource(int32 number_of_frames,
+                                                   SampleType sample_type,
+                                                   bool* finished) override {
     NOTREACHED();
-    return std::unique_ptr<ShellAudioBus>();
+    return std::unique_ptr<AudioBus>();
   }
 
   // From AudioDevice::RenderCallback.
-  void FillAudioBus(bool all_consumed, ShellAudioBus* audio_bus,
+  void FillAudioBus(bool all_consumed, AudioBus* audio_bus,
                     bool* silence) override;
 
   DEFINE_WRAPPABLE_TYPE(AudioDestinationNode);

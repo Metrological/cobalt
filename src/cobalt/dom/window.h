@@ -103,7 +103,7 @@ class Storage;
 class WindowTimers;
 
 // The window object represents a window containing a DOM document.
-//   https://www.w3.org/TR/html5/browsers.html#the-window-object
+//   https://www.w3.org/TR/html50/browsers.html#the-window-object
 //
 // TODO: Properly handle viewport resolution change event.
 class Window : public EventTarget,
@@ -131,7 +131,8 @@ class Window : public EventTarget,
   };
 
   Window(
-      const cssom::ViewportSize& view_size, float device_pixel_ratio,
+      script::EnvironmentSettings* settings,
+      const cssom::ViewportSize& view_size,
       base::ApplicationState initial_application_state,
       cssom::CSSParser* css_parser, Parser* dom_parser,
       loader::FetcherFactory* fetcher_factory,
@@ -172,9 +173,10 @@ class Window : public EventTarget,
       const ScreenshotManager::ProvideScreenshotFunctionCallback&
           screenshot_function_callback,
       base::WaitableEvent* synchronous_loader_interrupt,
+      bool enable_inline_script_warnings = false,
       const scoped_refptr<ui_navigation::NavItem>& ui_nav_root = nullptr,
-      int csp_insecure_allowed_token = 0, int dom_max_element_depth = 0,
-      float video_playback_rate_multiplier = 1.f,
+      bool enable_map_to_mesh = true, int csp_insecure_allowed_token = 0,
+      int dom_max_element_depth = 0, float video_playback_rate_multiplier = 1.f,
       ClockType clock_type = kClockTypeSystemTime,
       const CacheCallback& splash_screen_cache_callback = CacheCallback(),
       const scoped_refptr<captions::SystemCaptionSettings>& captions = nullptr,
@@ -195,7 +197,7 @@ class Window : public EventTarget,
   scoped_refptr<Window> top() { return this; }
   scoped_refptr<Window> opener() { return this; }
   scoped_refptr<Window> parent() { return this; }
-  scoped_refptr<Window> AnonymousIndexedGetter(unsigned int /* index */) {
+  scoped_refptr<Window> AnonymousIndexedGetter(unsigned int index) {
     return NULL;
   }
 
@@ -264,7 +266,9 @@ class Window : public EventTarget,
   // The devicePixelRatio attribute returns the ratio of CSS pixels per device
   // pixel.
   //   https://www.w3.org/TR/2013/WD-cssom-view-20131217/#dom-window-devicepixelratio
-  float device_pixel_ratio() const { return device_pixel_ratio_; }
+  float device_pixel_ratio() const {
+    return viewport_size_.device_pixel_ratio();
+  }
 
   // Web API: GlobalCrypto (implements)
   //   https://www.w3.org/TR/WebCryptoAPI/#crypto-interface
@@ -278,7 +282,7 @@ class Window : public EventTarget,
                             script::ExceptionState* exception_state);
 
   // Web API: WindowTimers (implements)
-  //   https://www.w3.org/TR/html5/webappapis.html#timers
+  //   https://www.w3.org/TR/html50/webappapis.html#timers
   //
   int SetTimeout(const WindowTimers::TimerCallbackArg& handler) {
     return SetTimeout(handler, 0);
@@ -345,7 +349,7 @@ class Window : public EventTarget,
       const SynchronousLayoutAndProduceRenderTreeCallback&
           synchronous_layout_callback);
 
-  void SetSize(cssom::ViewportSize size, float device_pixel_ratio);
+  void SetSize(cssom::ViewportSize size);
 
   void SetCamera3D(const scoped_refptr<input::Camera3D>& camera_3d);
 
@@ -361,7 +365,7 @@ class Window : public EventTarget,
   void SetApplicationState(base::ApplicationState state);
 
   // Performs the steps specified for runtime script errors:
-  //   https://www.w3.org/TR/html5/webappapis.html#runtime-script-errors
+  //   https://www.w3.org/TR/html50/webappapis.html#runtime-script-errors
   // Returns whether or not the script was handled.
   bool ReportScriptError(const script::ErrorReport& error_report);
 
@@ -396,11 +400,11 @@ class Window : public EventTarget,
 
   void TraceMembers(script::Tracer* tracer) override;
 
-  void SetEnvironmentSettings(script::EnvironmentSettings* settings);
-
   const scoped_refptr<ui_navigation::NavItem>& GetUiNavRoot() const {
     return ui_nav_root_;
   }
+
+  bool enable_map_to_mesh() { return enable_map_to_mesh_; }
 
   DEFINE_WRAPPABLE_TYPE(Window);
 
@@ -422,8 +426,6 @@ class Window : public EventTarget,
   void FireHashChangeEvent();
 
   cssom::ViewportSize viewport_size_;
-
-  float device_pixel_ratio_;
 
   // A resize event can be pending if a resize occurs and the current visibility
   // state is not visible. In this case, the resize event will run when the
@@ -479,6 +481,8 @@ class Window : public EventTarget,
   // This UI navigation root container should contain all active UI navigation
   // items for this window.
   scoped_refptr<ui_navigation::NavItem> ui_nav_root_;
+
+  bool enable_map_to_mesh_;
 
   DISALLOW_COPY_AND_ASSIGN(Window);
 };

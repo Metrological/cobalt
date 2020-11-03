@@ -15,9 +15,6 @@
         'ENABLE_BUILT_IN_DNS',
         # To be removed in the future when want to enable HTTP cache.
         'HTTP_CACHE_DISABLED_FOR_STARBOARD',
-        # TODO[johnx]: find out how we can verify local cert issuer and
-        # re-enable this test. Consider adding a binary cert for local issuer
-        # for debug builds.
         'QUIC_TRACE_DISABLED',
         'COBALT_QUIC46',
         'COMMON_CERT_SET_DISABLED_FOR_STARBOARD',
@@ -433,8 +430,6 @@
         'cert/cert_net_fetcher.h',
         'cert/cert_verify_proc.cc',
         'cert/cert_verify_proc.h',
-        # TODO[johnx]: Investigate why net deprecated openssl verifier and
-        # if justified switch back to builtin verifier.
         'cert/cert_verify_proc_builtin.cc',
         'cert/cert_verify_proc_builtin.h',
         'cert/ct_log_response_parser.cc',
@@ -2183,6 +2178,7 @@
         'test/embedded_test_server/embedded_test_server_unittest.cc',
         'test/embedded_test_server/http_request_unittest.cc',
         'test/embedded_test_server/http_response_unittest.cc',
+        'test/run_all_unittests.cc',
         'test/tcp_socket_proxy_unittest.cc',
 
         'third_party/nist-pkits/pkits_testcases-inl.h',
@@ -2557,6 +2553,7 @@
         # To be removed in the future when want to enable HTTP cache.
         'HTTP_CACHE_DISABLED_FOR_STARBOARD',
         'GMOCK_NO_MOVE_MOCK',
+        'BASE_DONT_ENFORCE_THREAD_NAME_LENGTH',
       ],
       'cflags': [
         # Avoid compiler errors due to conversion from "0x00" to char on Android.
@@ -2599,6 +2596,7 @@
       'type': 'static_library',
       'defines': [
         'GMOCK_NO_MOVE_MOCK',
+        'BASE_DONT_ENFORCE_THREAD_NAME_LENGTH',
       ],
       'sources': [
         # 'disk_cache/disk_cache_test_base.cc',
@@ -2725,7 +2723,6 @@
         'test/net_test_suite.h',
         'test/quic_simple_test_server.cc',
         'test/quic_simple_test_server.h',
-        'test/run_all_unittests.cc',
         'test/scoped_disable_exit_on_dfatal.cc',
         'test/scoped_disable_exit_on_dfatal.h',
         'test/tcp_socket_proxy.cc',

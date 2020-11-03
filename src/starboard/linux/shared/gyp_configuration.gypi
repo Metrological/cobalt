@@ -17,21 +17,21 @@
 #
 {
   'variables': {
-    'target_arch%': 'x64',
+    # Override that omits the "data" subdirectory.
+    # TODO: Remove when omitted for all platforms in base_configuration.gypi.
+    'sb_static_contents_output_data_dir': '<(PRODUCT_DIR)/content',
+
     'target_os': 'linux',
     'yasm_exists': 1,
     'sb_widevine_platform' : 'linux',
+    'sb_disable_opus_sse': 1,
+    'sb_enable_benchmark': 1,
 
     'platform_libraries': [
       '-lasound',
       '-ldl',
       '-lpthread',
       '-lrt',
-    ],
-
-    'compiler_flags': [
-      # We'll pretend not to be Linux, but Starboard instead.
-      '-U__linux__',
     ],
 
     # Using an inner scope for 'variables' so that it can be made a default
@@ -41,14 +41,14 @@
       'use_dlmalloc_allocator%': 0,
     },
     'conditions': [
-        ['sb_evergreen != 1', {
-          # TODO: allow starboard_platform to use system libc/libc++ in the
-          # future. For now, if this flags is enabled, a warning emerge saying
-          # it's unused anyway.
-          'linker_flags': [
-            '-static-libstdc++',
-          ],
-        }],
+      ['sb_evergreen != 1', {
+        # TODO: allow starboard_platform to use system libc/libc++ in the
+        # future. For now, if this flags is enabled, a warning emerge saying
+        # it's unused anyway.
+        'linker_flags': [
+          '-static-libstdc++',
+        ],
+      }],
     ],
   },
 

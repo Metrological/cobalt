@@ -17,15 +17,23 @@
 #include <memory>
 #include <set>
 
+#include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/json/json_writer.h"
+#include "base/path_service.h"
 #include "base/values.h"
 #include "cobalt/base/c_val.h"
+#include "cobalt/base/cobalt_paths.h"
 #include "cobalt/debug/console/command_manager.h"
 #include "cobalt/debug/json_object.h"
 
 namespace cobalt {
 namespace debug {
 namespace console {
+
+namespace {
+constexpr char kContentDir[] = "debug_console";
+}  // namespace
 
 DebugHub::DebugHub(
     const GetHudModeCallback& get_hud_mode_callback,
@@ -37,7 +45,7 @@ DebugHub::DebugHub(
 
 DebugHub::~DebugHub() {}
 
-int DebugHub::GetDebugConsoleMode() const {
+debug::console::DebugConsoleMode DebugHub::GetDebugConsoleMode() const {
   return get_hud_mode_callback_.Run();
 }
 
@@ -60,6 +68,21 @@ void DebugHub::Detach(const AttachCallbackArg& callback) {
   debug_client_.reset();
   AttachCallbackArg::Reference callback_reference(this, callback);
   callback_reference.value().Run();
+}
+
+std::string DebugHub::ReadDebugContentText(const std::string& filename) {
+  std::string result;
+
+  base::FilePath file_path;
+  base::PathService::Get(paths::DIR_COBALT_WEB_ROOT, &file_path);
+  file_path = file_path.AppendASCII(kContentDir);
+  file_path = file_path.AppendASCII(filename);
+
+  std::string text;
+  if (!base::ReadFileToString(file_path, &text)) {
+    DLOG(WARNING) << "Cannot read file: " << file_path.value();
+  }
+  return text;
 }
 
 void DebugHub::SendCommand(const std::string& method,
@@ -125,7 +148,7 @@ void DebugHub::OnCommandResponse(
 }
 
 void DebugHub::OnDebugClientEvent(const std::string& method,
-                                  const base::Optional<std::string>& params) {
+                                  const std::string& params) {
   // Pass to the onEvent handler. The handler will notify the JavaScript
   // listener on the message loop the listener was registered on.
   on_event_->DispatchEvent(method, params);

@@ -45,8 +45,11 @@
         'font_provider.h',
         'glyph.h',
         'glyph_buffer.h',
+        'lottie_animation.h',
         'image_node.cc',
         'image_node.h',
+        'lottie_node.cc',
+        'lottie_node.h',
         'map_to_mesh_filter.h',
         'matrix_transform_3d_node.cc',
         'matrix_transform_3d_node.h',
@@ -104,12 +107,12 @@
         'node_visitor_test.cc',
       ],
       'dependencies': [
-        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
         'animations',
         'render_tree',
       ],
+      'includes': [ '<(DEPTH)/cobalt/test/test.gypi' ],
     },
 
     # Deploys the render tree library test on a console.

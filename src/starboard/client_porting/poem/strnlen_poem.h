@@ -13,10 +13,12 @@
 // limitations under the License.
 
 // A poem (POsix EMulation) implementation for strnlen. Usually declared in
-// <string.h>, but may be missing on some platforms (e.g. PS3).
+// <string.h>, but may be missing on some platforms.
 
 #ifndef STARBOARD_CLIENT_PORTING_POEM_STRNLEN_POEM_H_
 #define STARBOARD_CLIENT_PORTING_POEM_STRNLEN_POEM_H_
+
+#if defined(STARBOARD)
 
 #include "starboard/configuration.h"
 
@@ -30,5 +32,7 @@ static SB_C_INLINE size_t StringGetLengthFixed(const char* s, size_t maxlen) {
 
 #undef strnlen
 #define strnlen(s, maxlen) StringGetLengthFixed(s, maxlen)
+
+#endif  // STARBOARD
 
 #endif  // STARBOARD_CLIENT_PORTING_POEM_STRNLEN_POEM_H_

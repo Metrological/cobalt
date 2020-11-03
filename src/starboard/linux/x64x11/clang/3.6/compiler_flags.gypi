@@ -37,16 +37,19 @@
     ],
     'compiler_flags_gold': [
       '-fno-rtti',
-      '-O2',
       '-gline-tables-only',
+    ],
+    'compiler_flags_gold_size': [
+      '-Os',
+    ],
+    'compiler_flags_gold_speed': [
+      '-O2',
     ],
     'conditions': [
       ['clang==1', {
         'common_clang_flags': [
           '-Werror',
           '-fcolor-diagnostics',
-          # Point to a gcc toolchain that works with this compiler.
-          '--gcc-toolchain=<(GCC_TOOLCHAIN_FOLDER)',
           # Default visibility to hidden, to enable dead stripping.
           '-fvisibility=hidden',
           # Warn for implicit type conversions that may change a value.
@@ -100,6 +103,18 @@
           # Suppress "[type1] has C-linkage specified, but returns user-defined type [type2] which is incompatible with C"
           '-Wno-return-type-c-linkage',
           '-Wno-unused-parameter',
+          # Suppress warnings about unknown pragmas.
+          '-Wno-unknown-pragmas',
+          # Suppress warnings about equality checks within double parentheses.
+          '-Wno-parentheses-equality',
+          # Suppress warnings about unreachable code due to constexpr conditions
+          '-Wno-unreachable-code',
+          # Suppress warnings about values being written but not read before the next write.
+          '-Wno-unused-value',
+          # Suppress warnings related to unused compilation flags in clang.
+          '-Wno-unused-command-line-argument',
+          # Suppress warnings related to tautological comparisons.
+          '-Wno-tautological-compare',
         ],
       }],
       ['cobalt_fastbuild==0', {

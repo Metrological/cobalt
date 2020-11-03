@@ -19,6 +19,7 @@
 #if defined(STARBOARD)
 #include <sys/types.h>  // for ssize_t, maybe should add to starboard/types.h
 #include "starboard/configuration.h"
+#include "starboard/configuration_constants.h"
 #include "starboard/mutex.h"
 // Define STARBOARD_IMPLEMENTATION to allow inclusion of an internal Starboard
 // header. This is "okay" because dlmalloc is essentially an implementation
@@ -91,17 +92,17 @@
 #endif  // defined(STARBOARD)
 
 #if defined(STARBOARD)
-#define malloc_getpagesize SB_MEMORY_PAGE_SIZE
+#define malloc_getpagesize kSbMemoryPageSize
 #else
 #define malloc_getpagesize LB_PAGE_SIZE
 #endif
 
 // Adapt Starboard configuration to old LBShell-style configuration.
 #if defined(STARBOARD)
-#if SB_HAS(MMAP)
+#if SB_API_VERSION >= 12 || SB_HAS(MMAP)
 #define LB_HAS_MMAP
 #endif
-#if SB_HAS(VIRTUAL_REGIONS)
+#if SB_API_VERSION < 12 && SB_HAS(VIRTUAL_REGIONS)
 #define LB_HAS_VIRTUAL_REGIONS
 #endif
 #endif  // defined(STARBOARD)
@@ -128,11 +129,11 @@
 
 #if defined(STARBOARD)
 
-#if SB_HAS(MMAP)
-#define DEFAULT_MMAP_THRESHOLD SB_DEFAULT_MMAP_THRESHOLD
+#if SB_API_VERSION >= 12 || SB_HAS(MMAP)
+#define DEFAULT_MMAP_THRESHOLD kSbDefaultMmapThreshold
 #endif
 
-#define MALLOC_ALIGNMENT SB_MALLOC_ALIGNMENT
+#define MALLOC_ALIGNMENT kSbMallocAlignment
 #define FORCEINLINE SB_C_FORCE_INLINE
 #define NOINLINE SB_C_NOINLINE
 #define LACKS_UNISTD_H 1
@@ -169,7 +170,6 @@
 #define close SbFileClose
 
 void oom_fprintf(int ignored, const char *format, ...) {
-  SB_UNREFERENCED_PARAMETER(ignored);
   va_list arguments;
   va_start(arguments, format);
   SbLogRawFormat(format, arguments);

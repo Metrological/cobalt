@@ -22,6 +22,7 @@
 
 #include "starboard/atomic.h"
 #include "starboard/common/log.h"
+#include "starboard/configuration_constants.h"
 #include "starboard/memory.h"
 
 namespace {
@@ -30,17 +31,15 @@ int32_t s_tracked_page_count = 0;
 
 int32_t GetPageCount(size_t byte_count) {
   return static_cast<int32_t>(SbMemoryAlignToPageSize(byte_count) /
-                              SB_MEMORY_PAGE_SIZE);
+                              kSbMemoryPageSize);
 }
 
 int SbMemoryMapFlagsToMmapProtect(int sb_flags) {
   bool flag_set = false;
   int mmap_protect = 0;
-#if SB_API_VERSION >= 10
   if (sb_flags == kSbMemoryMapProtectReserved) {
     return PROT_NONE;
   }
-#endif
   if (sb_flags & kSbMemoryMapProtectRead) {
     mmap_protect |= PROT_READ;
     flag_set = true;
@@ -63,7 +62,7 @@ int SbMemoryMapFlagsToMmapProtect(int sb_flags) {
 
 }  // namespace
 
-void* SbPageMap(size_t size_bytes, int flags, const char* /*unused_name*/) {
+void* SbPageMap(size_t size_bytes, int flags, const char* unused_name) {
   void* ret = SbPageMapUntracked(size_bytes, flags, NULL);
   if (ret != SB_MEMORY_MAP_FAILED) {
     SbAtomicNoBarrier_Increment(&s_tracked_page_count,
@@ -74,8 +73,8 @@ void* SbPageMap(size_t size_bytes, int flags, const char* /*unused_name*/) {
 
 void* SbPageMapUntracked(size_t size_bytes,
                          int flags,
-                         const char* /*unused_name*/) {
-#if SB_CAN(MAP_EXECUTABLE_MEMORY) && SB_API_VERSION >= 10
+                         const char* unused_name) {
+#if SB_CAN(MAP_EXECUTABLE_MEMORY)
   if (flags & kSbMemoryMapProtectExec) {
     // Cobalt does not allow mapping executable memory directly.
     return SB_MEMORY_MAP_FAILED;
@@ -95,12 +94,10 @@ bool SbPageUnmapUntracked(void* ptr, size_t size_bytes) {
   return munmap(ptr, size_bytes) == 0;
 }
 
-#if SB_API_VERSION >= 10
 bool SbPageProtect(void* virtual_address, int64_t size_bytes, int flags) {
   int mmap_protect = SbMemoryMapFlagsToMmapProtect(flags);
   return mprotect(virtual_address, size_bytes, mmap_protect) == 0;
 }
-#endif
 
 size_t SbPageGetTotalPhysicalMemoryBytes() {
   // Limit ourselves to remain similar to more constrained platforms.
@@ -125,10 +122,10 @@ int64_t SbPageGetUnallocatedPhysicalMemoryBytes() {
 
   fscanf(f, "%zu %zu", &program_size, &resident);
   fclose(f);
-  return SbPageGetTotalPhysicalMemoryBytes() - resident * SB_MEMORY_PAGE_SIZE;
+  return SbPageGetTotalPhysicalMemoryBytes() - resident * kSbMemoryPageSize;
 }
 
 size_t SbPageGetMappedBytes() {
   return static_cast<size_t>(SbAtomicNoBarrier_Load(&s_tracked_page_count) *
-                             SB_MEMORY_PAGE_SIZE);
+                             kSbMemoryPageSize);
 }

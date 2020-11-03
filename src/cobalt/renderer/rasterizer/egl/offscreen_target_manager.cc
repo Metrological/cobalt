@@ -12,11 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "starboard/configuration.h"
+#if SB_API_VERSION >= 12 || SB_HAS(GLES2)
+
 #include "cobalt/renderer/rasterizer/egl/offscreen_target_manager.h"
 
 #include <algorithm>
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include "cobalt/renderer/rasterizer/egl/rect_allocator.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
@@ -91,6 +95,16 @@ void OffscreenTargetManager::Update(const math::Size& frame_size) {
 
   SelectAtlasCache(&offscreen_atlases_, &offscreen_cache_);
   SelectAtlasCache(&offscreen_atlases_1d_, &offscreen_cache_1d_);
+
+  // Delete skottie targets that were not used in the previous render frame.
+  for (size_t index = 0; index < skottie_targets_.size();) {
+    if (skottie_targets_[index]->allocations_used == 0) {
+      skottie_targets_.erase(skottie_targets_.begin() + index);
+    } else {
+      skottie_targets_[index]->allocations_used = 0;
+      ++index;
+    }
+  }
 
   // Delete uncached targets that were not used in the previous render frame.
   for (size_t index = 0; index < uncached_targets_.size();) {
@@ -211,6 +225,33 @@ bool OffscreenTargetManager::GetCachedTarget(
   return false;
 }
 
+bool OffscreenTargetManager::GetCachedTarget(
+    const skia::SkottieAnimation* skottie_animation, const math::SizeF& size,
+    TargetInfo* out_target_info) {
+  // Each SkottieAnimation uses its own render target cache. The cache is keyed
+  // off the SkottieAnimation's size and pointer value. Using the pointer can
+  // be risky as an object may be destroyed and a new one created with the same
+  // pointer value. However, since each SkottieAnimation is created assuming
+  // the render cache is dirty, it is safe to accidentally use the render cache
+  // of an old SkottieAnimation with a new one.
+  int64_t id = reinterpret_cast<int64_t>(skottie_animation);
+  math::RectF target_size(std::ceil(size.width()), std::ceil(size.height()));
+  for (size_t i = 0; i < skottie_targets_.size(); ++i) {
+    OffscreenAtlas* target = skottie_targets_[i].get();
+    auto iter = target->allocation_map.find(id);
+    if (iter != target->allocation_map.end() &&
+        iter->second.error_data == target_size) {
+      target->allocations_used += 1;
+      out_target_info->framebuffer = target->framebuffer.get();
+      out_target_info->skia_canvas = target->skia_surface->getCanvas();
+      out_target_info->region = iter->second.target_region;
+      return true;
+    }
+  }
+
+  return false;
+}
+
 void OffscreenTargetManager::AllocateCachedTarget(const render_tree::Node* node,
                                                   const math::SizeF& size,
                                                   const ErrorData& error_data,
@@ -321,6 +362,34 @@ void OffscreenTargetManager::AllocateCachedTarget(const render_tree::Node* node,
   }
 }
 
+void OffscreenTargetManager::AllocateCachedTarget(
+    const skia::SkottieAnimation* skottie_animation, const math::SizeF& size,
+    TargetInfo* out_target_info) {
+  // Each SkottieAnimation has its own offscreen atlas.
+  math::Size target_size(static_cast<int>(std::ceil(size.width())),
+                         static_cast<int>(std::ceil(size.height())));
+  OffscreenAtlas* atlas = CreateOffscreenAtlas(target_size, true).release();
+  if (!atlas) {
+    // If there was an error allocating the offscreen atlas, indicate by
+    // marking framebuffer and skia canvas as null and returning early.
+    out_target_info->framebuffer = nullptr;
+    out_target_info->skia_canvas = nullptr;
+    return;
+  }
+
+  int64_t id = reinterpret_cast<int64_t>(skottie_animation);
+  // |target_rect| must be calculated the same way as in GetCachedTarget().
+  math::RectF target_rect(std::ceil(size.width()), std::ceil(size.height()));
+  atlas->allocation_map.insert(AllocationMap::value_type(
+      id, AllocationMapValue(target_rect, target_rect)));
+  skottie_targets_.emplace_back(atlas);
+
+  atlas->allocations_used = 1;
+  out_target_info->framebuffer = atlas->framebuffer.get();
+  out_target_info->skia_canvas = atlas->skia_surface->getCanvas();
+  out_target_info->region = target_rect;
+}
+
 void OffscreenTargetManager::AllocateUncachedTarget(
     const math::SizeF& size, TargetInfo* out_target_info) {
   // Align up the requested target size to increase the chances that it can
@@ -373,8 +442,6 @@ void OffscreenTargetManager::AllocateUncachedTarget(
 }
 
 void OffscreenTargetManager::InitializeTargets(const math::Size& frame_size) {
-  DLOG(INFO) << "offscreen render target memory limit: " << memory_limit_;
-
   if (frame_size.width() >= 64 && frame_size.height() >= 64) {
     offscreen_target_size_mask_.SetSize(
         NextPowerOf2(frame_size.width() / 64) - 1,
@@ -427,8 +494,8 @@ void OffscreenTargetManager::InitializeTargets(const math::Size& frame_size) {
   } else if (num_atlases > kMaxAtlases) {
     DCHECK(atlas_size == max_size);
     num_atlases = kMaxAtlases;
-    DLOG(WARNING) << "More memory was allotted for offscreen render targets"
-                  << " than will be used.";
+    DLOG_ONCE(WARNING) << "More memory was allotted for offscreen render"
+                       << " targets than will be used.";
   }
   offscreen_cache_ = CreateOffscreenAtlas(atlas_size, true);
   CHECK(offscreen_cache_);
@@ -437,9 +504,6 @@ void OffscreenTargetManager::InitializeTargets(const math::Size& frame_size) {
         CreateOffscreenAtlas(atlas_size, true).release());
     CHECK(offscreen_atlases_.back());
   }
-
-  DLOG(INFO) << "Created " << num_atlases << " offscreen atlases of size "
-             << atlas_size.width() << " x " << atlas_size.height();
 
   // Create 1D texture atlases. These are just regular 2D textures that will
   // be used as 1D row textures. These atlases are not intended to be used by
@@ -453,9 +517,6 @@ void OffscreenTargetManager::InitializeTargets(const math::Size& frame_size) {
   CHECK(offscreen_atlases_1d_.back());
   offscreen_cache_1d_ = CreateOffscreenAtlas(atlas_size_1d, false);
   CHECK(offscreen_cache_1d_);
-  DLOG(INFO) << "Created " << offscreen_atlases_1d_.size() + 1
-             << " offscreen atlases of size " << atlas_size_1d.width() << " x "
-             << atlas_size_1d.height();
 }
 
 std::unique_ptr<OffscreenTargetManager::OffscreenAtlas>
@@ -483,3 +544,5 @@ OffscreenTargetManager::CreateOffscreenAtlas(const math::Size& size,
 }  // namespace rasterizer
 }  // namespace renderer
 }  // namespace cobalt
+
+#endif  // SB_API_VERSION >= 12 || SB_HAS(GLES2)

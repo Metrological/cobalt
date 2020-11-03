@@ -22,6 +22,7 @@
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/optional.h"
+#include "cobalt/base/debugger_hooks.h"
 #include "cobalt/base/token.h"
 #include "cobalt/dom/event_target.h"
 #include "cobalt/dom/mutation_observer.h"
@@ -37,6 +38,7 @@ class Document;
 class DocumentType;
 class Element;
 class HTMLCollection;
+class HTMLElementContext;
 class NodeList;
 class Text;
 
@@ -133,14 +135,13 @@ class Node : public EventTarget {
   virtual base::Optional<std::string> node_value() const {
     return base::nullopt;
   }
-  virtual void set_node_value(
-      const base::Optional<std::string>& /* node_value */) {}
+  virtual void set_node_value(const base::Optional<std::string>& node_value) {}
 
   virtual base::Optional<std::string> text_content() const {
     return base::nullopt;
   }
   virtual void set_text_content(
-      const base::Optional<std::string>& /* text_content */) {}
+      const base::Optional<std::string>& text_content) {}
 
   scoped_refptr<Node> CloneNode(bool deep) const;
 
@@ -214,6 +215,9 @@ class Node : public EventTarget {
   // The returned node generation will be never equal to kInvalidNodeGeneration.
   uint32_t node_generation() const { return node_generation_; }
 
+  // Returns the DebuggerHooks for the WebModule associated with this Node.
+  const base::DebuggerHooks& debugger_hooks() const;
+
   // Children classes implement this method to support type-safe visiting via
   // double dispatch.
   virtual void Accept(NodeVisitor* visitor) = 0;
@@ -235,9 +239,16 @@ class Node : public EventTarget {
   }
 
   DEFINE_WRAPPABLE_TYPE(Node);
+  JSObjectType GetJSObjectType() override { return JSObjectType::kNode; }
   void TraceMembers(script::Tracer* tracer) override;
 
  protected:
+  // Constructor only for Document, since its html_element_context is not yet
+  // initialized.
+  Node(HTMLElementContext* html_element_context, Document* document);
+
+  // Constructor for everything else since we can get html_element_context()
+  // from the document.
   explicit Node(Document* document);
   virtual ~Node();
 

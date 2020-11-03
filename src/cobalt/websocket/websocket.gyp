@@ -36,6 +36,7 @@
         '<(DEPTH)/cobalt/base/base.gyp:base',
         '<(DEPTH)/cobalt/browser/browser_bindings_gen.gyp:generated_types',
         '<(DEPTH)/cobalt/dom/dom.gyp:dom',
+        '<(DEPTH)/cobalt/network/network.gyp:network',
         '<(DEPTH)/net/net.gyp:net',
         '<(DEPTH)/url/url.gyp:url',
       ],
@@ -46,11 +47,12 @@
       'type': '<(gtest_target_type)',
       'sources': [
         'web_socket_test.cc',
+        'mock_websocket_channel.cc',
+        'web_socket_impl_test.cc',
       ],
       'dependencies': [
         'websocket',
         '<(DEPTH)/cobalt/dom/dom.gyp:dom',
-        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/url/url.gyp:url',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
@@ -59,6 +61,15 @@
         #       ScriptValueFactory has non-virtual method CreatePromise().
         '<(DEPTH)/cobalt/script/engine.gyp:engine',
       ],
+      'conditions': [
+        # The network gyp targets depends on 'debug' in unit test builds.
+        ['enable_debugger == 1', {
+          'dependencies': [
+            '<(DEPTH)/cobalt/debug/debug.gyp:debug',
+          ],
+        }],
+      ],
+      'includes': [ '<(DEPTH)/cobalt/test/test.gypi' ],
     },
 
     {

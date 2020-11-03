@@ -20,8 +20,8 @@
 #include <vector>
 
 #include "base/threading/thread.h"
-#include "cobalt/loader/cobalt_url_fetcher_string_writer.h"
-#include "cobalt/media/base/shell_audio_bus.h"
+#include "cobalt/loader/url_fetcher_string_writer.h"
+#include "cobalt/media/base/audio_bus.h"
 #include "cobalt/network/network_module.h"
 #include "cobalt/speech/audio_encoder_flac.h"
 #include "cobalt/speech/google_streaming_api.pb.h"
@@ -43,7 +43,7 @@ namespace speech {
 // manager.
 class GoogleSpeechService : public net::URLFetcherDelegate {
  public:
-  typedef media::ShellAudioBus ShellAudioBus;
+  typedef media::AudioBus AudioBus;
   typedef base::Callback<void(const scoped_refptr<dom::Event>&)> EventCallback;
   typedef SpeechRecognitionResultList::SpeechRecognitionResults
       SpeechRecognitionResults;
@@ -63,16 +63,15 @@ class GoogleSpeechService : public net::URLFetcherDelegate {
   // Stop speech recognizer.
   void Stop();
   // An encoded audio data is available and ready to be recognized.
-  void RecognizeAudio(std::unique_ptr<ShellAudioBus> audio_bus,
-                      bool is_last_chunk);
+  void RecognizeAudio(std::unique_ptr<AudioBus> audio_bus, bool is_last_chunk);
 
   // net::URLFetcherDelegate interface
   void OnURLFetchDownloadProgress(const net::URLFetcher* source,
                                   int64_t current, int64_t total,
-                                  int64_t /*current_network_bytes*/) override;
+                                  int64_t current_network_bytes) override;
   void OnURLFetchComplete(const net::URLFetcher* source) override;
-  void OnURLFetchUploadProgress(const net::URLFetcher* /*source*/,
-                                int64 /*current*/, int64 /*total*/) override {}
+  void OnURLFetchUploadProgress(const net::URLFetcher* source, int64 current,
+                                int64 total) override {}
 
   static base::Optional<std::string> GetSpeechAPIKey();
 
@@ -81,7 +80,7 @@ class GoogleSpeechService : public net::URLFetcherDelegate {
   void StopInternal();
   // This method handles wrappables and should run on the MainWebModule thread.
   void ClearFinalResults();
-  void UploadAudioDataInternal(std::unique_ptr<ShellAudioBus> audio_bus,
+  void UploadAudioDataInternal(std::unique_ptr<AudioBus> audio_bus,
                                bool is_last_chunk);
   // This method handles wrappables, and so it must run on the MainWebModule.
   void ProcessAndFireSuccessEvent(proto::SpeechRecognitionEvent event);
@@ -108,7 +107,7 @@ class GoogleSpeechService : public net::URLFetcherDelegate {
   // Speech recognizer is operating in its own thread.
   base::Thread thread_;
   // Stores fetched response.
-  CobaltURLFetcherStringWriter* download_data_writer_ = nullptr;
+  loader::URLFetcherStringWriter* download_data_writer_ = nullptr;
 
   // Use a task runner to deal with all wrappables.
   base::WeakPtrFactory<GoogleSpeechService> weak_ptr_factory_;

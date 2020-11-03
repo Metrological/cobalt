@@ -16,6 +16,7 @@
 
 #include "cobalt/renderer/get_default_rasterizer_for_platform.h"
 
+#include "cobalt/configuration/configuration.h"
 #include "cobalt/renderer/backend/graphics_context.h"
 #include "cobalt/renderer/rasterizer/blitter/hardware_rasterizer.h"
 #include "cobalt/renderer/rasterizer/blitter/software_rasterizer.h"
@@ -25,22 +26,21 @@
 #include "cobalt/renderer/rasterizer/stub/rasterizer.h"
 #include "cobalt/renderer/renderer_module.h"
 
+#include "starboard/gles.h"
+
 namespace cobalt {
 namespace renderer {
 
 namespace {
 
-#if COBALT_FORCE_STUB_RASTERIZER
 std::unique_ptr<rasterizer::Rasterizer> CreateStubRasterizer(
     backend::GraphicsContext* graphics_context,
     const RendererModule::Options& options) {
-  SB_UNREFERENCED_PARAMETER(graphics_context);
   return std::unique_ptr<rasterizer::Rasterizer>(
       new rasterizer::stub::Rasterizer());
 }
-#endif  // COBALT_FORCE_STUB_RASTERIZER
 
-#if SB_HAS(GLES2)
+#if SB_API_VERSION >= 12 || SB_HAS(GLES2)
 std::unique_ptr<rasterizer::Rasterizer> CreateGLESSoftwareRasterizer(
     backend::GraphicsContext* graphics_context,
     const RendererModule::Options& options) {
@@ -75,9 +75,10 @@ std::unique_ptr<rasterizer::Rasterizer> CreateSkiaHardwareRasterizer(
           options.purge_skia_font_caches_on_destruction,
           options.force_deterministic_rendering));
 }
-#endif  // #if SB_HAS(GLES2)
+#endif  // #if SB_API_VERSION >= 12 ||
+        // SB_HAS(GLES2)
 
-#if SB_HAS(BLITTER)
+#if SB_API_VERSION < 12 && SB_HAS(BLITTER)
 std::unique_ptr<rasterizer::Rasterizer> CreateBlitterSoftwareRasterizer(
     backend::GraphicsContext* graphics_context,
     const RendererModule::Options& options) {
@@ -97,33 +98,43 @@ std::unique_ptr<rasterizer::Rasterizer> CreateBlitterHardwareRasterizer(
           options.software_surface_cache_size_in_bytes,
           options.purge_skia_font_caches_on_destruction));
 }
-#endif  // SB_HAS(BLITTER)
+#endif  // SB_API_VERSION < 12 && SB_HAS(BLITTER)
 
 }  // namespace
 
 RasterizerInfo GetDefaultRasterizerForPlatform() {
-#if COBALT_FORCE_STUB_RASTERIZER
-  return {"stub", base::Bind(&CreateStubRasterizer)};
-#else
+  std::string rasterizer_type =
+      configuration::Configuration::GetInstance()->CobaltRasterizerType();
+  if (rasterizer_type == "stub") {
+    return {"stub", base::Bind(&CreateStubRasterizer)};
+  }
+#if SB_API_VERSION >= 12
+  if (SbGetGlesInterface()) {
+    if (rasterizer_type == "direct-gles") {
+      return {"gles", base::Bind(&CreateGLESHardwareRasterizer)};
+    } else {
+      return {"skia", base::Bind(&CreateSkiaHardwareRasterizer)};
+    }
+  } else {
+    SB_LOG(ERROR)
+        << "GLES2 must be available.";
+    SB_DCHECK(false);
+    return {};
+  }
+#else  // SB_API_VERSION >= 12
 #if SB_HAS(GLES2)
-#if COBALT_FORCE_SOFTWARE_RASTERIZER
-  return {"gles-software", base::Bind(&CreateGLESSoftwareRasterizer)};
-#elif defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
-  return {"gles", base::Bind(&CreateGLESHardwareRasterizer)};
-#else
-  return {"skia", base::Bind(&CreateSkiaHardwareRasterizer)};
-#endif  // COBALT_FORCE_SOFTWARE_RASTERIZER
-#elif SB_HAS(BLITTER)
-#if COBALT_FORCE_SOFTWARE_RASTERIZER
-  return {"blitter-software", base::Bind(&CreateBlitterSoftwareRasterizer)};
-#else
+  if (rasterizer_type == "direct-gles") {
+    return {"gles", base::Bind(&CreateGLESHardwareRasterizer)};
+  } else {
+    return {"skia", base::Bind(&CreateSkiaHardwareRasterizer)};
+  }
+#elif SB_API_VERSION < 12 && SB_HAS(BLITTER)
   return {"blitter", base::Bind(&CreateBlitterHardwareRasterizer)};
-#endif  // COBALT_FORCE_SOFTWARE_RASTERIZER
 #else
 #error "Either GLES2 or the Starboard Blitter API must be available."
   return {"", NULL};
 #endif
-#endif  // #if COBALT_FORCE_STUB_RASTERIZER
+#endif  // SB_API_VERSION >= 12
 }
 
 }  // namespace renderer

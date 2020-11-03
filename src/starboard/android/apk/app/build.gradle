@@ -17,6 +17,11 @@ apply plugin: 'com.android.application'
 final DEFAULT_COBALT_TARGET = 'cobalt'
 final String[] SUPPORTED_ABIS = [ 'x86', 'armeabi-v7a', 'arm64-v8a' ]
 
+// Parse the NDK_VERSION and CMAKE_VERSION defined in sdk_utils.py
+final SDK_UTILS = project.rootProject.file('../shared/sdk_utils.py')
+final NDK_VERSION = SDK_UTILS.find { it.startsWith('_NDK_VERSION =') }.split("'")[1]
+final CMAKE_VERSION = SDK_UTILS.find { it.startsWith('_CMAKE_VERSION =') }.split("'")[1]
+
 ext {
     // Provide defaults if these properties aren't specified on the command line.
     buildAbi = project.hasProperty('cobaltBuildAbi') ? cobaltBuildAbi : SUPPORTED_ABIS
@@ -25,6 +30,8 @@ ext {
             project.hasProperty('cobaltProductDir') ? new File(cobaltProductDir).canonicalPath : ''
     cobaltContentDir =
             project.hasProperty('cobaltContentDir') ? new File(cobaltContentDir).canonicalPath : ''
+    enableVulkan =
+            project.hasProperty('enableVulkan') ? enableVulkan : 0
 
     buildIdFile = rootProject.file('build.id')
     buildId = buildIdFile.exists() ? buildIdFile.text.trim() : '0'
@@ -33,8 +40,19 @@ ext {
 println "TARGET: ${cobaltTarget}"
 
 android {
-    compileSdkVersion 28
-    buildToolsVersion "28.0.3"
+    compileSdkVersion 'android-30'
+    buildToolsVersion '30.0.0'
+    ndkVersion NDK_VERSION
+
+    aaptOptions {
+        // The following pattern matches the default aapt pattern with the
+        // exception that it is missing the blanket ignore wildcard (!.*) that
+        // matches any "hidden" file, i.e. files with names beginning with |.|.
+        //
+        // For more information check out |gDefaultIgnoreAssets| in AOSP
+        // frameworks/base/tools/aapt/AaptAssets.cpp.
+        ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:<dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
 
     signingConfigs {
         // A signing config that matches what is implicitly used for the "debug" build type.
@@ -48,7 +66,7 @@ android {
     defaultConfig {
         applicationId "dev.cobalt.coat"
         minSdkVersion 21
-        targetSdkVersion 28
+        targetSdkVersion 29
         versionCode 1
         versionName "${buildId}"
         manifestPlaceholders = [applicationName: "CoAT: ${cobaltTarget}"]
@@ -58,6 +76,7 @@ android {
                 arguments "-DCOBALT_PRODUCT_DIR=${cobaltProductDir}"
                 arguments "-DCOBALT_CONTENT_DIR=${cobaltContentDir}"
                 arguments "-DCOBALT_PLATFORM_DEPLOY=${project.hasProperty('cobaltDeployApk')}"
+                arguments "-DENABLE_VULKAN=${enableVulkan}"
             }
         }
     }
@@ -129,11 +148,12 @@ android {
     }
     externalNativeBuild {
         cmake {
+            version CMAKE_VERSION
             path 'CMakeLists.txt'
-            if (project.hasProperty('cobaltGradleDir')) {
-                // Resolve relative to the current dir at config time by getting a canonical File.
-                buildStagingDirectory new File(cobaltGradleDir, 'externalNativeBuild').canonicalFile
-            }
+            // Move the staging directory to be a sibling of the build directory, which we moved
+            // in the top-level build.gradle to be in a common top-level 'build' directory. Get
+            // the canonical file at config time so that it's still right at build time.
+            buildStagingDirectory new File("${buildDir}.cxx").canonicalFile
         }
     }
 }
@@ -154,9 +174,9 @@ if (project.hasProperty('cobaltDeployApk')) {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation 'com.android.support:support-annotations:28.0.0'
-    implementation 'com.android.support:leanback-v17:28.0.0'
-    implementation 'com.android.support:support-v4:28.0.0'
-    implementation 'com.google.android.gms:play-services-auth:16.0.1'
+    implementation 'androidx.annotation:annotation:1.1.0'
+    implementation 'androidx.leanback:leanback:1.0.0'
+    implementation 'androidx.legacy:legacy-support-v4:1.0.0'
+    implementation 'com.google.android.gms:play-services-auth:18.0.0'
     implementation 'com.google.protobuf:protobuf-lite:3.0.1'
 }

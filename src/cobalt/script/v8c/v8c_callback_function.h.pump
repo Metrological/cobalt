@@ -95,8 +95,8 @@ class V8cCallbackFunction<R($for ARG , [[A$(ARG)]])>
   V8cCallbackFunction(v8::Isolate* isolate, v8::Local<v8::Value> handle)
       : ScopedPersistent(isolate, handle), isolate_(isolate) {}
 
-  CallbackResult<R> Run($for ARG , [[
-      typename CallbackParamTraits<A$(ARG)>::ForwardType a$(ARG)]])
+  CallbackResult<R> Run($for ARG ,
+      [[typename CallbackParamTraits<A$(ARG)>::ForwardType a$(ARG)]])
       const override {
     CallbackResult<R> callback_result;
     DCHECK(!this->IsEmpty());
@@ -134,7 +134,6 @@ $if ARITY > 0 [[
     v8::MaybeLocal<v8::Value> maybe_return_value = function_as_object->CallAsFunction(context, this_value, argc, argv);
     v8::Local<v8::Value> return_value;
     if (!maybe_return_value.ToLocal(&return_value)) {
-      NOTIMPLEMENTED();
       callback_result.exception = true;
     } else {
       callback_result = ConvertCallbackReturnValue<R>(isolate_, return_value);

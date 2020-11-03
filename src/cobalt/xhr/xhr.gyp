@@ -21,6 +21,8 @@
       'target_name': 'xhr',
       'type': 'static_library',
       'sources': [
+        'url_fetcher_buffer_writer.cc',
+        'url_fetcher_buffer_writer.h',
         'xhr_response_data.cc',
         'xhr_response_data.h',
         'xml_http_request.cc',
@@ -34,7 +36,7 @@
         '<(DEPTH)/net/net.gyp:net',
       ],
       'conditions': [
-        ['enable_xhr_header_filtering == 1', {
+        ['enable_xhr_header_filtering == 1 and sb_evergreen == 0', {
           'sources': [
             'xhr_modify_headers.h',
           ],
@@ -62,7 +64,6 @@
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
         '<(DEPTH)/cobalt/dom/dom.gyp:dom',
-        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
         'xhr',
@@ -71,6 +72,7 @@
         #       ScriptValueFactory has non-virtual method CreatePromise().
         '<(DEPTH)/cobalt/script/engine.gyp:engine',
       ],
+      'includes': [ '<(DEPTH)/cobalt/test/test.gypi' ],
     },
     {
       'target_name': 'xhr_test_deploy',

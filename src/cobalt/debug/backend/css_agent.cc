@@ -14,58 +14,23 @@
 
 #include "cobalt/debug/backend/css_agent.h"
 
+#include "cobalt/dom/document.h"
 #include "cobalt/dom/html_element.h"
 
 namespace cobalt {
 namespace debug {
 namespace backend {
 
-namespace {
-// Definitions from the set specified here:
-// https://chromedevtools.github.io/devtools-protocol/tot/DOM
-constexpr char kInspectorDomain[] = "CSS";
-
-// File to load JavaScript CSS debugging domain implementation from.
-constexpr char kScriptFile[] = "css_agent.js";
-}  // namespace
-
 CSSAgent::CSSAgent(DebugDispatcher* dispatcher)
-    : dispatcher_(dispatcher),
-      ALLOW_THIS_IN_INITIALIZER_LIST(commands_(this, kInspectorDomain)) {
-  DCHECK(dispatcher_);
-
-  commands_["disable"] = &CSSAgent::Disable;
-  commands_["enable"] = &CSSAgent::Enable;
-}
-
-void CSSAgent::Thaw(JSONObject agent_state) {
-  dispatcher_->AddDomain(kInspectorDomain, commands_.Bind());
-  script_loaded_ = dispatcher_->RunScriptFile(kScriptFile);
-  DLOG_IF(ERROR, !script_loaded_) << "Failed to load " << kScriptFile;
-}
-
-JSONObject CSSAgent::Freeze() {
-  dispatcher_->RemoveDomain(kInspectorDomain);
-  return JSONObject();
-}
-
-void CSSAgent::Enable(const Command& command) {
-  if (script_loaded_) {
-    command.SendResponse();
-  } else {
-    command.SendErrorResponse(Command::kInternalError,
-                              "Cannot create CSS inspector.");
-  }
-}
-
-void CSSAgent::Disable(const Command& command) { command.SendResponse(); }
+    : AgentBase("CSS", "css_agent.js", dispatcher) {}
 
 CSSAgent::CSSStyleRuleSequence CSSAgent::GetMatchingCSSRules(
     const scoped_refptr<dom::Element>& element) {
   CSSStyleRuleSequence css_rules;
   auto html_element = element->AsHTMLElement();
   if (html_element) {
-    html_element->UpdateMatchingRules();
+    html_element->node_document()->UpdateComputedStyleOnElementAndAncestor(
+        html_element.get());
     for (const auto& matching_rule : *html_element->matching_rules()) {
       css_rules.push_back(matching_rule.first);
     }

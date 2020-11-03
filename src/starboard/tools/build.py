@@ -21,7 +21,6 @@ import logging
 import os
 import subprocess
 import sys
-import starboard.tools.goma
 
 import _env  # pylint: disable=unused-import
 from starboard.tools import config
@@ -97,9 +96,10 @@ def GetDefaultConfigAndPlatform():
   raw_configuration = os.environ[_BUILD_CONFIGURATION_KEY]
   build_configuration = raw_configuration.lower()
   if '_' not in build_configuration:
-    logging.warning("Expected a '_' in '%s' and did not find one.  "
-                    "'%s' must be of the form <platform>_<config>.",
-                    _BUILD_CONFIGURATION_KEY, _BUILD_CONFIGURATION_KEY)
+    logging.warning(
+        "Expected a '_' in '%s' and did not find one.  "
+        "'%s' must be of the form <platform>_<config>.",
+        _BUILD_CONFIGURATION_KEY, _BUILD_CONFIGURATION_KEY)
     return default_config_name, default_platform_name
 
   platform_name, config_name = build_configuration.split('_', 1)
@@ -118,9 +118,8 @@ def GetDefaultConfigAndPlatform():
 def GetGyp():
   """Gets the GYP module, loading it, if necessary."""
   if 'gyp' not in sys.modules:
-    sys.path.insert(0,
-                    os.path.join(paths.REPOSITORY_ROOT, 'tools', 'gyp',
-                                 'pylib'))
+    sys.path.insert(
+        0, os.path.join(paths.REPOSITORY_ROOT, 'tools', 'gyp', 'pylib'))
     importlib.import_module('gyp')
   return sys.modules['gyp']
 
@@ -161,13 +160,8 @@ def _GetClangBasePath(clang_spec):
                       'x86_64-linux-gnu-clang-chromium-' + clang_spec.revision)
 
 
-def _GetClangInstallPath(clang_spec):
-  return os.path.join(
-      _GetClangBasePath(clang_spec), 'llvm-build', 'Release+Asserts')
-
-
 def _GetClangBinPath(clang_spec):
-  return os.path.join(_GetClangInstallPath(clang_spec), 'bin')
+  return os.path.join(_GetClangBasePath(clang_spec), 'bin')
 
 
 def EnsureClangAvailable(clang_spec):
@@ -180,7 +174,7 @@ def EnsureClangAvailable(clang_spec):
   base_dir = _GetClangBasePath(clang_spec)
   update_proc = subprocess.Popen([
       update_script, '--force-clang-revision', clang_spec.revision,
-      '--clang-version', clang_spec.version, '--force-base-dir', base_dir
+      '--verify-version', clang_spec.version, '--clang-dir', base_dir
   ])
   rc = update_proc.wait()
   if rc != 0:
@@ -192,30 +186,23 @@ def EnsureClangAvailable(clang_spec):
   if not os.path.exists(clang_bin):
     raise RuntimeError('Clang not found.')
 
-  return _GetClangInstallPath(clang_spec)
+  return _GetClangBasePath(clang_spec)
 
 
-def GetHostCompilerEnvironment(clang_spec, goma_supports_compiler):
+def GetHostCompilerEnvironment(clang_spec, build_accelerator):
   """Return the host compiler toolchain environment."""
-
   toolchain_dir = EnsureClangAvailable(clang_spec)
   toolchain_bin_dir = os.path.join(toolchain_dir, 'bin')
 
   cc_clang = os.path.join(toolchain_bin_dir, 'clang')
   cxx_clang = os.path.join(toolchain_bin_dir, 'clang++')
   host_clang_environment = {
-      'CC_host': cc_clang,
-      'CXX_host': cxx_clang,
+      'CC_host': build_accelerator + ' ' + cc_clang,
+      'CXX_host': build_accelerator + ' ' + cxx_clang,
       'LD_host': cxx_clang,
       'ARFLAGS_host': 'rcs',
       'ARTHINFLAGS_host': 'rcsT',
   }
-  # Check if goma is installed. Initialize if needed and use if possible.
-  if goma_supports_compiler and starboard.tools.goma.FindAndStartGoma():
-    host_clang_environment.update({
-        'CC_host': 'gomacc ' + cc_clang,
-        'CXX_host': 'gomacc ' + cxx_clang,
-    })
   return host_clang_environment
 
 
@@ -255,7 +242,7 @@ def _LoadPlatformConfig(platform_name):
     else:
       module_path = os.path.join('config', '%s.py' % platform_name)
       platform_module = importlib.import_module('config.%s' % platform_name)
-  except ImportError:
+  except (ImportError, IOError):
     logging.exception('Unable to import "%s".', module_path)
     return None
 

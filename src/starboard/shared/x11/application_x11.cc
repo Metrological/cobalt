@@ -41,6 +41,10 @@
 #include "starboard/shared/x11/window_internal.h"
 #include "starboard/time.h"
 
+namespace {
+const char kTouchscreenPointerSwitch[] = "touchscreen_pointer";
+}
+
 namespace starboard {
 namespace shared {
 namespace x11 {
@@ -662,6 +666,9 @@ void XSendAtom(Window window, Atom atom) {
   XCloseDisplay(display);
 }
 
+// Remain compatible with the older glibc found on previous Ubuntu distros.
+__asm__(".symver quick_exit,quick_exit@GLIBC_2.10");
+
 // X IO error handler. Called if we lose our connection to the X server.
 int IOErrorHandler(Display* display) {
   // Not much we can do here except immediately exit.
@@ -712,6 +719,7 @@ SbWindow ApplicationX11::CreateWindow(const SbWindowOptions* options) {
     // evdev input will be sent to the first created window only.
     dev_input_.reset(DevInput::Create(window, ConnectionNumber(display_)));
   }
+  touchscreen_pointer_ = GetCommandLine()->HasSwitch(kTouchscreenPointerSwitch);
   return window;
 }
 
@@ -840,7 +848,9 @@ void ApplicationX11::PlayerSetBounds(SbPlayer player,
     int z_index, int x, int y, int width, int height) {
   ScopedLock lock(frame_mutex_);
 
-  // The bounds should only take effect once the UI frame is submitted.
+  bool player_exists =
+      next_video_bounds_.find(player) != next_video_bounds_.end();
+
   FrameInfo& frame_info = next_video_bounds_[player];
   frame_info.player = player;
   frame_info.z_index = z_index;
@@ -848,6 +858,22 @@ void ApplicationX11::PlayerSetBounds(SbPlayer player,
   frame_info.y = y;
   frame_info.width = width;
   frame_info.height = height;
+
+  if (player_exists) {
+    return;
+  }
+
+  // The bounds should only take effect once the UI frame is submitted.  But we
+  // apply the bounds immediately if it is the first time the bounds for this
+  // player are set.
+  auto position = current_video_bounds_.begin();
+  while (position != current_video_bounds_.end()) {
+    if (frame_info.z_index < position->z_index) {
+      break;
+    }
+    ++position;
+  }
+  current_video_bounds_.insert(position, frame_info);
 }
 
 void ApplicationX11::Initialize() {
@@ -1123,9 +1149,7 @@ shared::starboard::Application::Event* ApplicationX11::GetPendingEvent() {
 
   scoped_ptr<SbInputData> data(new SbInputData());
   SbMemorySet(data.get(), 0, sizeof(*data));
-#if SB_API_VERSION >= 10
   data->timestamp = SbTimeGetMonotonicNow();
-#endif  // SB_API_VERSION >= 10
   data->window = windows_[0];
   SB_DCHECK(SbWindowIsValid(data->window));
   data->type = paste_buffer_key_release_pending_ ? kSbInputEventTypeUnpress
@@ -1191,9 +1215,7 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
 
       scoped_ptr<SbInputData> data(new SbInputData());
       SbMemorySet(data.get(), 0, sizeof(*data));
-#if SB_API_VERSION >= 10
       data->timestamp = SbTimeGetMonotonicNow();
-#endif  // SB_API_VERSION >= 10
       data->window = FindWindow(x_key_event->window);
       SB_DCHECK(SbWindowIsValid(data->window));
       data->type = x_event->type == KeyPress ? kSbInputEventTypePress
@@ -1219,15 +1241,14 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
       }
       scoped_ptr<SbInputData> data(new SbInputData());
       SbMemorySet(data.get(), 0, sizeof(*data));
-#if SB_API_VERSION >= 10
       data->timestamp = SbTimeGetMonotonicNow();
-#endif  // SB_API_VERSION >= 10
       data->window = FindWindow(x_button_event->window);
       SB_DCHECK(SbWindowIsValid(data->window));
       data->key = XButtonEventToSbKey(x_button_event);
       data->type =
           is_press_event ? kSbInputEventTypePress : kSbInputEventTypeUnpress;
-      data->device_type = kSbInputDeviceTypeMouse;
+      data->device_type = touchscreen_pointer_ ? kSbInputDeviceTypeTouchScreen
+                                               : kSbInputDeviceTypeMouse;
       if (is_wheel_event) {
         data->pressure = NAN;
         data->size = {NAN, NAN};
@@ -1246,20 +1267,24 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
       XMotionEvent* x_motion_event = reinterpret_cast<XMotionEvent*>(x_event);
       scoped_ptr<SbInputData> data(new SbInputData());
       SbMemorySet(data.get(), 0, sizeof(*data));
-#if SB_API_VERSION >= 10
       data->timestamp = SbTimeGetMonotonicNow();
-#endif  // SB_API_VERSION >= 10
       data->window = FindWindow(x_motion_event->window);
       SB_DCHECK(SbWindowIsValid(data->window));
       data->pressure = NAN;
       data->size = {NAN, NAN};
       data->tilt = {NAN, NAN};
       data->type = kSbInputEventTypeMove;
-      data->device_type = kSbInputDeviceTypeMouse;
+      data->device_type = touchscreen_pointer_ ? kSbInputDeviceTypeTouchScreen
+                                               : kSbInputDeviceTypeMouse;
       data->device_id = kMouseDeviceId;
       data->key_modifiers = XEventStateToSbKeyModifiers(x_motion_event->state);
       data->position.x = x_motion_event->x;
       data->position.y = x_motion_event->y;
+      if (touchscreen_pointer_ && !data->key_modifiers) {
+        // For touch screens, only report motion events when a button is
+        // pressed.
+        return NULL;
+      }
       return new Event(kSbEventTypeInput, data.release(),
                        &DeleteDestructor<SbInputData>);
     }

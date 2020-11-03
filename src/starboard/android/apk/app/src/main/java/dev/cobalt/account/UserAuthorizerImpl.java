@@ -27,19 +27,21 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
-import android.support.v4.app.ActivityCompat;
-import android.support.v4.content.ContextCompat;
 import android.text.TextUtils;
 import android.widget.Toast;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import com.google.android.gms.auth.GoogleAuthException;
 import com.google.android.gms.auth.GoogleAuthUtil;
 import com.google.android.gms.auth.UserRecoverableAuthException;
 import com.google.android.gms.common.AccountPicker;
+import com.google.android.gms.common.AccountPicker.AccountChooserOptions;
 import dev.cobalt.coat.R;
 import dev.cobalt.util.Holder;
 import dev.cobalt.util.Log;
 import dev.cobalt.util.UsedByNative;
 import java.io.IOException;
+import java.util.Arrays;
 
 /**
  * Java side implementation for starboard::android::shared::cobalt::AndroidUserAuthorizer.
@@ -408,9 +410,12 @@ public class UserAuthorizerImpl implements OnAccountsUpdateListener, UserAuthori
    * one account on the device. If there are no accounts on the device it shows the UI to add one.
    */
   private Intent newChooseAccountIntent(Account defaultAccount) {
-    String[] allowableAccountTypes = {GOOGLE_ACCOUNT_TYPE};
-    return AccountPicker.newChooseAccountIntent(
-        defaultAccount, null, allowableAccountTypes, true, null, null, null, null);
+    AccountChooserOptions chooserOptions = new AccountChooserOptions.Builder()
+        .setSelectedAccount(defaultAccount)
+        .setAllowableAccountsTypes(Arrays.asList(GOOGLE_ACCOUNT_TYPE))
+        .setAlwaysShowAccountPicker(true)
+        .build();
+    return AccountPicker.newChooseAccountIntent(chooserOptions);
   }
 
   /**

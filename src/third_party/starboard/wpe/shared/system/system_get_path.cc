@@ -27,8 +27,10 @@
 #include "starboard/directory.h"
 #include "starboard/user.h"
 
+#include "starboard/configuration_constants.h"
+
 namespace {
-const int kMaxPathSize = SB_FILE_MAX_PATH;
+const int kMaxPathSize = kSbFileMaxPath;
 
 // Gets the path to the cache directory, using the user's home directory.
 bool GetCacheDirectory(char* out_path, int path_size) {
@@ -132,7 +134,7 @@ bool SbSystemGetPath(SbSystemPathId path_id, char* out_path, int path_size) {
     return false;
   }
 
-  const int kPathSize = SB_FILE_MAX_PATH;
+  const int kPathSize = kSbFileMaxPath;
   char path[kPathSize];
   path[0] = '\0';
 

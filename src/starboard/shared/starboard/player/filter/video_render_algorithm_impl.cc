@@ -51,8 +51,9 @@ void VideoRenderAlgorithmImpl::Render(
   bool is_audio_playing;
   bool is_audio_eos_played;
   bool is_underflow;
+  double playback_rate;
   SbTime media_time = media_time_provider->GetCurrentMediaTime(
-      &is_audio_playing, &is_audio_eos_played, &is_underflow);
+      &is_audio_playing, &is_audio_eos_played, &is_underflow, &playback_rate);
 
   // Video frames are synced to the audio timestamp. However, the audio
   // timestamp is not queried at a consistent interval. For example, if the
@@ -114,7 +115,7 @@ void VideoRenderAlgorithmImpl::Render(
 
   if (is_audio_eos_played) {
     while (frames->size() > 1) {
-      frames->pop_back();
+      frames->pop_front();
     }
   }
 
@@ -134,7 +135,7 @@ void VideoRenderAlgorithmImpl::Render(
 #endif  // SB_PLAYER_FILTER_ENABLE_STATE_CHECK
 }
 
-void VideoRenderAlgorithmImpl::Reset() {
+void VideoRenderAlgorithmImpl::Seek(SbTime seek_to_time) {
   if (get_refresh_rate_fn_) {
     last_frame_timestamp_ = -1;
     current_frame_rendered_times_ = -1;
@@ -165,24 +166,28 @@ void VideoRenderAlgorithmImpl::RenderWithCadence(
   bool is_audio_playing;
   bool is_audio_eos_played;
   bool is_underflow;
+  double playback_rate;
   SbTime media_time = media_time_provider->GetCurrentMediaTime(
-      &is_audio_playing, &is_audio_eos_played, &is_underflow);
+      &is_audio_playing, &is_audio_eos_played, &is_underflow, &playback_rate);
 
   while (frames->size() > 1 && !frames->front()->is_end_of_stream() &&
          frames->front()->timestamp() < media_time) {
-    frame_rate_estimate_.Update(*frames);
-    auto frame_rate = frame_rate_estimate_.frame_rate();
-    SB_DCHECK(frame_rate != VideoFrameRateEstimator::kInvalidFrameRate);
-    cadence_pattern_generator_.UpdateRefreshRateAndMaybeReset(refresh_rate);
-    cadence_pattern_generator_.UpdateFrameRate(frame_rate);
-    SB_DCHECK(cadence_pattern_generator_.has_cadence());
-
     auto second_iter = frames->begin();
     ++second_iter;
 
     if ((*second_iter)->is_end_of_stream()) {
       break;
     }
+
+    frame_rate_estimate_.Update(*frames);
+    auto frame_rate = frame_rate_estimate_.frame_rate();
+    SB_DCHECK(frame_rate != VideoFrameRateEstimator::kInvalidFrameRate);
+    cadence_pattern_generator_.UpdateRefreshRateAndMaybeReset(refresh_rate);
+    if (playback_rate == 0) {
+      playback_rate = 1.0;
+    }
+    cadence_pattern_generator_.UpdateFrameRate(frame_rate * playback_rate);
+    SB_DCHECK(cadence_pattern_generator_.has_cadence());
 
     auto frame_duration =
         static_cast<SbTime>(kSbTimeSecond / refresh_rate);
@@ -211,8 +216,9 @@ void VideoRenderAlgorithmImpl::RenderWithCadence(
 
     if (frames->front()->timestamp() != last_frame_timestamp_) {
 #if SB_PLAYER_FILTER_ENABLE_STATE_CHECK
+      ++times_logged_;
       auto now = SbTimeGetMonotonicNow();
-      SB_LOG(WARNING)
+      SB_LOG_IF(WARNING, times_logged_ < kMaxLogPerPlaybackSession)
           << "Dropping frame @ " << frames->front()->timestamp()
           << " microseconds, the elasped media time/system time from"
           << " last Render() call are "
@@ -223,8 +229,9 @@ void VideoRenderAlgorithmImpl::RenderWithCadence(
       ++dropped_frames_;
     } else {
 #if SB_PLAYER_FILTER_ENABLE_STATE_CHECK
+      ++times_logged_;
       auto now = SbTimeGetMonotonicNow();
-      SB_LOG(WARNING)
+      SB_LOG_IF(WARNING, times_logged_ < kMaxLogPerPlaybackSession)
           << "Frame @ " << frames->front()->timestamp()
           << " microseconds should be displayed "
           << cadence_pattern_generator_.GetNumberOfTimesCurrentFrameDisplays()
@@ -233,7 +240,8 @@ void VideoRenderAlgorithmImpl::RenderWithCadence(
           << " call are " << media_time - media_time_of_last_render_call_ << "/"
           << now - system_time_of_last_render_call_ << " microseconds, the"
           << " video is at " << frame_rate_estimate_.frame_rate() << " fps,"
-          << " media time is " << media_time;
+          << " media time is " << media_time << ", backlog " << frames->size()
+          << " frames.";
 #endif  // SB_PLAYER_FILTER_ENABLE_STATE_CHECK
     }
     frames->pop_front();
@@ -242,7 +250,23 @@ void VideoRenderAlgorithmImpl::RenderWithCadence(
 
   if (is_audio_eos_played) {
     while (frames->size() > 1) {
-      frames->pop_back();
+      frames->pop_front();
+    }
+  }
+
+  if (frames->size() == 2) {
+    // When there are only two frames and the second one is end of stream, we
+    // want to advance to it explicitly if the current media time is later than
+    // the timestamp of the first frame, and the first frame has been displayed.
+    // This ensures that the video can be properly ended when there is no audio
+    // stream, where |is_audio_eos_played| will never be true.
+    auto second_iter = frames->begin();
+    ++second_iter;
+
+    if ((*second_iter)->is_end_of_stream() &&
+        media_time >= frames->front()->timestamp() &&
+        current_frame_rendered_times_ > 0) {
+      frames->pop_front();
     }
   }
 

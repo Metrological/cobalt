@@ -26,16 +26,18 @@ class LinuxX64WaylandConfiguration(shared_configuration.LinuxConfiguration):
   """Starboard Linux X64 Wayland platform configuration."""
 
   def __init__(self,
-               platform_name='linux-x64wl',
+               platform='linux-x64wl',
                asan_enabled_by_default=False,
-               goma_supports_compiler=True):
-    super(LinuxX64WaylandConfiguration, self).__init__(
-        platform_name, asan_enabled_by_default, goma_supports_compiler)
+               sabi_json_path='starboard/sabi/default/sabi.json'):
+    # pylint: disable=useless-super-delegation
+    super(LinuxX64WaylandConfiguration, self).__init__(platform,
+                                                       asan_enabled_by_default,
+                                                       sabi_json_path)
 
-  def GetTargetToolchain(self):
-    return self.GetHostToolchain()
+  def GetTargetToolchain(self, **kwargs):
+    return self.GetHostToolchain(**kwargs)
 
-  def GetHostToolchain(self):
+  def GetHostToolchain(self, **kwargs):
     environment_variables = self.GetEnvironmentVariables()
     cc_path = environment_variables['CC']
     cxx_path = environment_variables['CXX']

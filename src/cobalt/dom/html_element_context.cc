@@ -16,11 +16,18 @@
 
 #include "cobalt/dom/html_element_factory.h"
 
+#if !defined(COBALT_BUILD_TYPE_GOLD)
+#include "cobalt/dom/testing/stub_environment_settings.h"
+#endif  // !defined(COBALT_BUILD_TYPE_GOLD)
+
 namespace cobalt {
 namespace dom {
 
+#if !defined(COBALT_BUILD_TYPE_GOLD)
 HTMLElementContext::HTMLElementContext()
-    : fetcher_factory_(NULL),
+    : stub_environment_settings_(new testing::StubEnvironmentSettings),
+      environment_settings_(stub_environment_settings_.get()),
+      fetcher_factory_(NULL),
       loader_factory_(NULL),
       css_parser_(NULL),
       dom_parser_(NULL),
@@ -38,12 +45,14 @@ HTMLElementContext::HTMLElementContext()
       dom_stat_tracker_(NULL),
       page_visibility_state_weak_ptr_factory_(&page_visibility_state_),
       video_playback_rate_multiplier_(1.f),
-      sync_load_thread_("Synchronous Load"),
+      sync_load_thread_("SynchronousLoad"),
       html_element_factory_(new HTMLElementFactory()) {
   sync_load_thread_.Start();
 }
+#endif  // !defined(COBALT_BUILD_TYPE_GOLD)
 
 HTMLElementContext::HTMLElementContext(
+    script::EnvironmentSettings* environment_settings,
     loader::FetcherFactory* fetcher_factory,
     loader::LoaderFactory* loader_factory, cssom::CSSParser* css_parser,
     Parser* dom_parser, media::CanPlayTypeHandler* can_play_type_handler,
@@ -61,8 +70,9 @@ HTMLElementContext::HTMLElementContext(
     const std::string& font_language_script,
     base::ApplicationState initial_application_state,
     base::WaitableEvent* synchronous_loader_interrupt,
-    float video_playback_rate_multiplier)
-    : fetcher_factory_(fetcher_factory),
+    bool enable_inline_script_warnings, float video_playback_rate_multiplier)
+    : environment_settings_(environment_settings),
+      fetcher_factory_(fetcher_factory),
       loader_factory_(loader_factory),
       css_parser_(css_parser),
       dom_parser_(dom_parser),
@@ -84,7 +94,8 @@ HTMLElementContext::HTMLElementContext(
       page_visibility_state_weak_ptr_factory_(&page_visibility_state_),
       video_playback_rate_multiplier_(video_playback_rate_multiplier),
       synchronous_loader_interrupt_(synchronous_loader_interrupt),
-      sync_load_thread_("Synchronous Load"),
+      enable_inline_script_warnings_(enable_inline_script_warnings),
+      sync_load_thread_("SynchronousLoad"),
       html_element_factory_(new HTMLElementFactory()) {
   sync_load_thread_.Start();
 }

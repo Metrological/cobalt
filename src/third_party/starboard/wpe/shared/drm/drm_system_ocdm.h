@@ -69,6 +69,7 @@ class DrmSystemOcdm : public SbDrmSystemPrivate {
   void UpdateServerCertificate(int ticket,
                                const void* certificate,
                                int certificate_size) override;
+  const void* GetMetrics(int* size) override { return NULL; }
 
   void AddObserver(Observer* obs);
   void RemoveObserver(Observer* obs);

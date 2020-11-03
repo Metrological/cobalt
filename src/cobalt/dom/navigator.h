@@ -18,6 +18,7 @@
 #include <string>
 
 #include "base/memory/ref_counted.h"
+#include "base/optional.h"
 #include "cobalt/dom/captions/system_caption_settings.h"
 #include "cobalt/dom/eme/media_key_system_configuration.h"
 #include "cobalt/dom/mime_type_array.h"
@@ -26,6 +27,7 @@
 #include "cobalt/media_session/media_session.h"
 #include "cobalt/script/promise.h"
 #include "cobalt/script/script_value_factory.h"
+#include "cobalt/script/sequence.h"
 #include "cobalt/script/wrappable.h"
 
 namespace cobalt {
@@ -34,11 +36,12 @@ namespace dom {
 // The Navigator object represents the identity and state of the user agent (the
 // client), and allows Web pages to register themselves as potential protocol
 // and content handlers.
-// https://www.w3.org/TR/html5/webappapis.html#navigator
+// https://www.w3.org/TR/html50/webappapis.html#navigator
 class Navigator : public script::Wrappable {
  public:
   Navigator(
-      const std::string& user_agent, const std::string& language,
+      script::EnvironmentSettings* settings, const std::string& user_agent,
+      const std::string& language,
       scoped_refptr<cobalt::media_session::MediaSession> media_session,
       scoped_refptr<cobalt::dom::captions::SystemCaptionSettings> captions,
       script::ScriptValueFactory* script_value_factory);
@@ -80,12 +83,35 @@ class Navigator : public script::Wrappable {
   DEFINE_WRAPPABLE_TYPE(Navigator);
   void TraceMembers(script::Tracer* tracer) override;
 
-  void SetEnvironmentSettings(script::EnvironmentSettings* settings) {
-    media_devices_->SetEnvironmentSettings(settings);
-  }
-
  private:
   ~Navigator() override {}
+
+  base::Optional<script::Sequence<MediaKeySystemMediaCapability>>
+  TryGetSupportedCapabilities(
+      const media::CanPlayTypeHandler& can_play_type_handler,
+      const std::string& key_system,
+      const script::Sequence<MediaKeySystemMediaCapability>&
+          requested_media_capabilities);
+
+  base::Optional<eme::MediaKeySystemConfiguration> TryGetSupportedConfiguration(
+      const media::CanPlayTypeHandler& can_play_type_handler,
+      const std::string& key_system,
+      const eme::MediaKeySystemConfiguration& candidate_configuration);
+
+  bool CanPlayWithCapability(
+      const media::CanPlayTypeHandler& can_play_type_handler,
+      const std::string& key_system,
+      const MediaKeySystemMediaCapability& media_capability);
+
+  bool CanPlayWithoutAttributes(
+      const media::CanPlayTypeHandler& can_play_type_handler,
+      const std::string& content_type, const std::string& key_system,
+      const std::string& encryption_scheme);
+
+  bool CanPlayWithAttributes(
+      const media::CanPlayTypeHandler& can_play_type_handler,
+      const std::string& content_type, const std::string& key_system,
+      const std::string& encryption_scheme);
 
   std::string user_agent_;
   std::string language_;
@@ -96,6 +122,7 @@ class Navigator : public script::Wrappable {
   scoped_refptr<cobalt::dom::captions::SystemCaptionSettings>
       system_caption_settings_;
   script::ScriptValueFactory* script_value_factory_;
+  base::Optional<bool> key_system_with_attributes_supported_;
 
   DISALLOW_COPY_AND_ASSIGN(Navigator);
 };

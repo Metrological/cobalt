@@ -16,11 +16,13 @@ package dev.cobalt.media;
 
 import static dev.cobalt.media.Log.TAG;
 
-import android.annotation.TargetApi;
 import android.content.Context;
 import android.media.AudioDeviceInfo;
+import android.media.AudioFormat;
 import android.media.AudioManager;
+import android.media.AudioTrack;
 import android.os.Build;
+import androidx.annotation.RequiresApi;
 import dev.cobalt.util.Log;
 import dev.cobalt.util.UsedByNative;
 import java.util.ArrayList;
@@ -85,7 +87,7 @@ public class AudioOutputManager implements CobaltMediaSession.UpdateVolumeListen
   }
 
   /** Returns the maximum number of HDMI channels for API 23 and above. */
-  @TargetApi(23)
+  @RequiresApi(23)
   private int getMaxChannelsV23() {
     AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
     AudioDeviceInfo[] deviceInfos = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
@@ -104,5 +106,26 @@ public class AudioOutputManager implements CobaltMediaSession.UpdateVolumeListen
       }
     }
     return maxChannels;
+  }
+
+  /** Returns the minimum buffer size of AudioTrack. */
+  @SuppressWarnings("unused")
+  @UsedByNative
+  int getMinBufferSize(int sampleType, int sampleRate, int channelCount) {
+    int channelConfig;
+    switch (channelCount) {
+      case 1:
+        channelConfig = AudioFormat.CHANNEL_OUT_MONO;
+        break;
+      case 2:
+        channelConfig = AudioFormat.CHANNEL_OUT_STEREO;
+        break;
+      case 6:
+        channelConfig = AudioFormat.CHANNEL_OUT_5POINT1;
+        break;
+      default:
+        throw new RuntimeException("Unsupported channel count: " + channelCount);
+    }
+    return AudioTrack.getMinBufferSize(sampleRate, channelConfig, sampleType);
   }
 }

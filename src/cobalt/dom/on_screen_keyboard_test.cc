@@ -22,8 +22,10 @@
 #include "cobalt/bindings/testing/utils.h"
 #include "cobalt/css_parser/parser.h"
 #include "cobalt/cssom/viewport_size.h"
+#include "cobalt/dom/global_stats.h"
 #include "cobalt/dom/local_storage_database.h"
 #include "cobalt/dom/testing/gtest_workarounds.h"
+#include "cobalt/dom/testing/stub_environment_settings.h"
 #include "cobalt/dom/window.h"
 #include "cobalt/dom_parser/parser.h"
 #include "cobalt/loader/fetcher_factory.h"
@@ -110,8 +112,6 @@ class OnScreenKeyboardMockBridge : public OnScreenKeyboardBridge {
 
   void UpdateSuggestions(const script::Sequence<std::string>& suggestions,
                          int ticket) override {
-    SB_UNREFERENCED_PARAMETER(suggestions);
-    SB_UNREFERENCED_PARAMETER(ticket);
     // TODO: implement and test this.
     SB_NOTIMPLEMENTED();
   }
@@ -192,24 +192,25 @@ namespace {
 class OnScreenKeyboardTest : public ::testing::Test {
  public:
   OnScreenKeyboardTest()
-      : environment_settings_(new script::EnvironmentSettings),
+      : environment_settings_(new testing::StubEnvironmentSettings),
         message_loop_(base::MessageLoop::TYPE_DEFAULT),
         css_parser_(css_parser::Parser::Create()),
         dom_parser_(new dom_parser::Parser(mock_error_callback_)),
         fetcher_factory_(new loader::FetcherFactory(NULL)),
-        loader_factory_(
-            new loader::LoaderFactory("Test", fetcher_factory_.get(), NULL, 0,
-                                      base::ThreadPriority::DEFAULT)),
+        loader_factory_(new loader::LoaderFactory(
+            "Test", fetcher_factory_.get(), NULL, null_debugger_hooks_, 0,
+            base::ThreadPriority::DEFAULT)),
         local_storage_database_(NULL),
         url_("about:blank"),
         engine_(script::JavaScriptEngine::CreateEngine()),
         global_environment_(engine_->CreateGlobalEnvironment()),
         on_screen_keyboard_bridge_(new OnScreenKeyboardMockBridge()),
         window_(new Window(
-            ViewportSize(1920, 1080), 1.f, base::kApplicationStateStarted,
-            css_parser_.get(), dom_parser_.get(), fetcher_factory_.get(),
-            loader_factory_.get(), NULL, NULL, NULL, NULL, NULL, NULL,
-            &local_storage_database_, NULL, NULL, NULL, NULL,
+            environment_settings_.get(), ViewportSize(1920, 1080),
+            base::kApplicationStateStarted, css_parser_.get(),
+            dom_parser_.get(), fetcher_factory_.get(), loader_factory_.get(),
+            NULL, NULL, NULL, NULL, NULL, NULL, &local_storage_database_, NULL,
+            NULL, NULL, NULL,
             global_environment_
                 ->script_value_factory() /* script_value_factory */,
             NULL, NULL, url_, "", "en-US", "en",
@@ -245,6 +246,7 @@ class OnScreenKeyboardTest : public ::testing::Test {
     on_screen_keyboard_bridge_.reset();
     window_ = nullptr;
     global_environment_ = nullptr;
+    EXPECT_TRUE(GlobalStats::GetInstance()->CheckNoLeaks());
   }
 
   bool EvaluateScript(const std::string& js_code, std::string* result);
@@ -260,7 +262,8 @@ class OnScreenKeyboardTest : public ::testing::Test {
   Window* window() const { return window_.get(); }
 
  private:
-  const std::unique_ptr<script::EnvironmentSettings> environment_settings_;
+  const std::unique_ptr<testing::StubEnvironmentSettings> environment_settings_;
+  base::NullDebuggerHooks null_debugger_hooks_;
   base::MessageLoop message_loop_;
   MockErrorCallback mock_error_callback_;
   std::unique_ptr<css_parser::Parser> css_parser_;
@@ -292,8 +295,23 @@ bool OnScreenKeyboardTest::EvaluateScript(const std::string& js_code,
 
 }  // namespace
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
+
+bool SkipLocale() {
+#if SB_API_VERSION >= 12
+  bool skipTests = !SbWindowOnScreenKeyboardIsSupported();
+  if (skipTests) {
+    SB_LOG(INFO) << "On screen keyboard not supported. Test skipped.";
+  }
+  return skipTests;
+#else
+  return false;
+#endif
+}
+
 TEST_F(OnScreenKeyboardTest, ObjectExists) {
+  if (SkipLocale()) return;
+
   std::string result;
   EXPECT_TRUE(EvaluateScript("window.onScreenKeyboard;", &result));
 
@@ -330,6 +348,8 @@ TEST_F(OnScreenKeyboardTest, ObjectExists) {
 }
 
 TEST_F(OnScreenKeyboardTest, ShowAndHide) {
+  if (SkipLocale()) return;
+
   // Not shown.
   std::string result;
   EXPECT_TRUE(EvaluateScript("window.onScreenKeyboard.shown;", &result));
@@ -360,6 +380,8 @@ TEST_F(OnScreenKeyboardTest, ShowAndHide) {
 }
 
 TEST_F(OnScreenKeyboardTest, ShowAndHideMultipleTimes) {
+  if (SkipLocale()) return;
+
   std::string result;
   {
     InSequence seq;
@@ -393,6 +415,8 @@ TEST_F(OnScreenKeyboardTest, ShowAndHideMultipleTimes) {
 }
 
 TEST_F(OnScreenKeyboardTest, Data) {
+  if (SkipLocale()) return;
+
   std::string result = "(empty)";
   EXPECT_TRUE(EvaluateScript("window.onScreenKeyboard.data;", &result));
   EXPECT_EQ("", result);
@@ -406,6 +430,8 @@ TEST_F(OnScreenKeyboardTest, Data) {
 }
 
 TEST_F(OnScreenKeyboardTest, FocusAndBlur) {
+  if (SkipLocale()) return;
+
   std::string result;
 
   {
@@ -423,6 +449,8 @@ TEST_F(OnScreenKeyboardTest, FocusAndBlur) {
       bindings::testing::IsAcceptablePrototypeString("Promise", result));
 }
 TEST_F(OnScreenKeyboardTest, FocusAndBlurMultipleTimes) {
+  if (SkipLocale()) return;
+
   std::string result;
   {
     InSequence seq;
@@ -451,6 +479,8 @@ TEST_F(OnScreenKeyboardTest, FocusAndBlurMultipleTimes) {
 }
 
 TEST_F(OnScreenKeyboardTest, ShowEventAttribute) {
+  if (SkipLocale()) return;
+
   EXPECT_CALL(*(on_screen_keyboard_bridge()),
               ShowMock(window()->on_screen_keyboard()->data()))
       .Times(3);
@@ -475,6 +505,8 @@ TEST_F(OnScreenKeyboardTest, ShowEventAttribute) {
 }
 
 TEST_F(OnScreenKeyboardTest, ShowEventListeners) {
+  if (SkipLocale()) return;
+
   std::string result;
   EXPECT_CALL(*(on_screen_keyboard_bridge()),
               ShowMock(window()->on_screen_keyboard()->data()));
@@ -499,6 +531,8 @@ TEST_F(OnScreenKeyboardTest, ShowEventListeners) {
 }
 
 TEST_F(OnScreenKeyboardTest, HideEventAttribute) {
+  if (SkipLocale()) return;
+
   EXPECT_CALL(*(on_screen_keyboard_bridge()), HideMock()).Times(3);
   const char let_script[] = R"(
     let promise;
@@ -521,6 +555,8 @@ TEST_F(OnScreenKeyboardTest, HideEventAttribute) {
 }
 
 TEST_F(OnScreenKeyboardTest, HideEventListeners) {
+  if (SkipLocale()) return;
+
   std::string result;
   EXPECT_CALL(*(on_screen_keyboard_bridge()), HideMock());
   const char script[] = R"(
@@ -544,6 +580,8 @@ TEST_F(OnScreenKeyboardTest, HideEventListeners) {
 }
 
 TEST_F(OnScreenKeyboardTest, FocusEventAttribute) {
+  if (SkipLocale()) return;
+
   EXPECT_CALL(*(on_screen_keyboard_bridge()), FocusMock()).Times(3);
   const char let_script[] = R"(
     let promise;
@@ -566,6 +604,8 @@ TEST_F(OnScreenKeyboardTest, FocusEventAttribute) {
 }
 
 TEST_F(OnScreenKeyboardTest, FocusEventListeners) {
+  if (SkipLocale()) return;
+
   std::string result;
   EXPECT_CALL(*(on_screen_keyboard_bridge()), FocusMock());
   const char script[] = R"(
@@ -589,6 +629,8 @@ TEST_F(OnScreenKeyboardTest, FocusEventListeners) {
 }
 
 TEST_F(OnScreenKeyboardTest, BlurEventAttribute) {
+  if (SkipLocale()) return;
+
   EXPECT_CALL(*(on_screen_keyboard_bridge()), BlurMock()).Times(3);
   const char let_script[] = R"(
     let promise;
@@ -611,6 +653,8 @@ TEST_F(OnScreenKeyboardTest, BlurEventAttribute) {
 }
 
 TEST_F(OnScreenKeyboardTest, BlurEventListeners) {
+  if (SkipLocale()) return;
+
   std::string result;
   EXPECT_CALL(*(on_screen_keyboard_bridge()), BlurMock());
   const char script[] = R"(
@@ -634,14 +678,18 @@ TEST_F(OnScreenKeyboardTest, BlurEventListeners) {
 }
 
 TEST_F(OnScreenKeyboardTest, BoundingRect) {
+  if (SkipLocale()) return;
+
   std::string result;
   EXPECT_CALL(*(on_screen_keyboard_bridge()), BoundingRectMock())
-      .WillOnce(testing::Return(nullptr));
+      .WillOnce(::testing::Return(nullptr));
   EXPECT_TRUE(EvaluateScript("window.onScreenKeyboard.boundingRect;", &result));
   EXPECT_EQ("null", result);
 }
 
 TEST_F(OnScreenKeyboardTest, KeepFocus) {
+  if (SkipLocale()) return;
+
   std::string result;
   {
     InSequence seq;
@@ -661,7 +709,7 @@ TEST_F(OnScreenKeyboardTest, KeepFocus) {
   )";
   EXPECT_TRUE(EvaluateScript(script, NULL));
 }
-#else   // SB_HAS(ON_SCREEN_KEYBOARD)
+#else   // SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
 TEST_F(OnScreenKeyboardTest, ObjectDoesntExist) {
   std::string result;
 
@@ -690,7 +738,7 @@ TEST_F(OnScreenKeyboardTest, ObjectDoesntExist) {
   EXPECT_TRUE(EvaluateScript(object_script, &result));
   EXPECT_EQ("true", result);
 }
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
 
 }  // namespace dom
 }  // namespace cobalt

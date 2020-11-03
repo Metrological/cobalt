@@ -27,6 +27,7 @@
 #include "cobalt/base/token.h"
 #include "cobalt/browser/lifecycle_observer.h"
 #include "cobalt/browser/web_module.h"
+#include "cobalt/debug/console/debug_console_mode.h"
 #include "cobalt/debug/console/debug_hub.h"
 #include "cobalt/dom/input_event_init.h"
 #include "cobalt/dom/keyboard_event_init.h"
@@ -68,27 +69,28 @@ class DebugConsole : public LifecycleObserver {
   // false if it was consumed within this function.
   bool FilterWheelEvent(base::Token type, const dom::WheelEventInit& event);
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
-  // Inject an on screen keyboard input event.
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
+  // Filters an on screen keyboard input event.
   // Returns true if the event should be passed on to other handlers,
   // false if it was consumed within this function.
-  bool InjectOnScreenKeyboardInputEvent(base::Token type,
+  bool FilterOnScreenKeyboardInputEvent(base::Token type,
                                         const dom::InputEventInit& event);
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
   const WebModule& web_module() const { return *web_module_; }
   WebModule& web_module() { return *web_module_; }
 
-  // Sets the debug console's visibility mode.
-  void SetMode(int mode);
   // Cycles through each different possible debug console visibility mode.
   void CycleMode();
-  // Returns the currently set debug console visibility mode.
-  int GetMode();
 
-  void SetSize(const cssom::ViewportSize& window_dimensions,
-               float video_pixel_ratio) {
-    web_module_->SetSize(window_dimensions, video_pixel_ratio);
+  // Returns true iff the console is in a mode that is visible.
+  bool IsVisible() {
+    return (GetMode() != debug::console::kDebugConsoleModeOff);
+  }
+
+  void SetSize(const cssom::ViewportSize& viewport_size) {
+    web_module_->SetSize(viewport_size);
   }
 
   // LifecycleObserver implementation.
@@ -106,9 +108,16 @@ class DebugConsole : public LifecycleObserver {
   void ReduceMemory() { web_module_->ReduceMemory(); }
 
  private:
-  void OnError(const GURL& /* url */, const std::string& error) {
+  void OnError(const GURL& url, const std::string& error) {
     LOG(ERROR) << error;
   }
+
+  // Returns the currently set debug console visibility mode.
+  debug::console::DebugConsoleMode GetMode();
+
+  // Returns true iff the debug console is in a state where it should route
+  // input events to its web module.
+  bool ShouldInjectInputEvents();
 
   // The current console visibility mode.  The mutex is required since the debug
   // console's visibility mode may be accessed from both the WebModule thread

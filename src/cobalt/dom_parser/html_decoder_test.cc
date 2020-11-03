@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
-
 #include "cobalt/dom_parser/html_decoder.h"
+
+#include <memory>
 
 #include "base/callback.h"
 #include "base/message_loop/message_loop.h"
@@ -28,6 +28,7 @@
 #include "cobalt/dom/html_element_context.h"
 #include "cobalt/dom/named_node_map.h"
 #include "cobalt/dom/testing/stub_css_parser.h"
+#include "cobalt/dom/testing/stub_environment_settings.h"
 #include "cobalt/dom/testing/stub_script_runner.h"
 #include "cobalt/dom/text.h"
 #include "cobalt/dom_parser/parser.h"
@@ -52,6 +53,8 @@ class HTMLDecoderTest : public ::testing::Test {
   HTMLDecoderTest();
   ~HTMLDecoderTest() override {}
 
+  dom::testing::StubEnvironmentSettings environment_settings_;
+  base::NullDebuggerHooks null_debugger_hooks_;
   loader::FetcherFactory fetcher_factory_;
   loader::LoaderFactory loader_factory_;
   std::unique_ptr<Parser> dom_parser_;
@@ -69,18 +72,19 @@ class HTMLDecoderTest : public ::testing::Test {
 
 HTMLDecoderTest::HTMLDecoderTest()
     : fetcher_factory_(NULL /* network_module */),
-      loader_factory_(
-          "Test" /* name */, &fetcher_factory_, NULL /* ResourceProvider */,
-          0 /* encoded_image_cache_capacity */, base::ThreadPriority::DEFAULT),
+      loader_factory_("Test" /* name */, &fetcher_factory_,
+                      NULL /* ResourceProvider */, null_debugger_hooks_,
+                      0 /* encoded_image_cache_capacity */,
+                      base::ThreadPriority::DEFAULT),
       dom_parser_(new Parser()),
       dom_stat_tracker_(new dom::DomStatTracker("HTMLDecoderTest")),
       html_element_context_(
-          &fetcher_factory_, &loader_factory_, &stub_css_parser_,
-          dom_parser_.get(), NULL /* can_play_type_handler */,
-          NULL /* web_media_player_factory */, &stub_script_runner_,
-          NULL /* script_value_factory */, NULL, NULL, NULL, NULL, NULL, NULL,
-          NULL, dom_stat_tracker_.get(), "", base::kApplicationStateStarted,
-          NULL),
+          &environment_settings_, &fetcher_factory_, &loader_factory_,
+          &stub_css_parser_, dom_parser_.get(),
+          NULL /* can_play_type_handler */, NULL /* web_media_player_factory */,
+          &stub_script_runner_, NULL /* script_value_factory */, NULL, NULL,
+          NULL, NULL, NULL, NULL, NULL, dom_stat_tracker_.get(), "",
+          base::kApplicationStateStarted, NULL),
       document_(new dom::Document(&html_element_context_)),
       root_(new dom::Element(document_, base::Token("element"))),
       source_location_(base::SourceLocation("[object HTMLDecoderTest]", 1, 1)) {
@@ -426,7 +430,7 @@ TEST_F(HTMLDecoderTest, CanParseUTF8SplitInChunks) {
 }
 
 // Misnested tags: <b><i></b></i>
-//   https://www.w3.org/TR/html5/syntax.html#misnested-tags:-b-i-/b-/i
+//   https://www.w3.org/TR/html50/syntax.html#misnested-tags:-b-i-/b-/i
 //
 // The current version DOES NOT handle the error as outlined in the link above.
 TEST_F(HTMLDecoderTest, CanParseMisnestedTags1) {
@@ -453,7 +457,7 @@ TEST_F(HTMLDecoderTest, CanParseMisnestedTags1) {
 }
 
 // Misnested tags: <b><p></b></p>
-//   https://www.w3.org/TR/html5/syntax.html#misnested-tags:-b-p-/b-/p
+//   https://www.w3.org/TR/html50/syntax.html#misnested-tags:-b-p-/b-/p
 //
 // The current version DOES NOT handle the error as outlined in the link above.
 TEST_F(HTMLDecoderTest, CanParseMisnestedTags2) {

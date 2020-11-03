@@ -16,6 +16,7 @@
 #define COBALT_SCRIPT_V8C_ISOLATE_FELLOWSHIP_H_
 
 #include "base/memory/singleton.h"
+#include "cobalt/configuration/configuration.h"
 #include "cobalt/script/v8c/cobalt_platform.h"
 #include "v8/include/libplatform/libplatform.h"
 #include "v8/include/v8-platform.h"
@@ -39,9 +40,6 @@ struct IsolateFellowship {
 
   std::unique_ptr<CobaltPlatform> platform;
   v8::ArrayBuffer::Allocator* array_buffer_allocator = nullptr;
-#if !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
-  v8::StartupData startup_data = {nullptr, 0};
-#endif  // !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
 
   friend struct base::StaticMemorySingletonTraits<IsolateFellowship>;
 
@@ -49,13 +47,6 @@ struct IsolateFellowship {
   IsolateFellowship();
   ~IsolateFellowship();
 
-#if !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
-  // Initialize |startup_data| by either reading it from a cache file or
-  // creating it.  If creating it for the first time, then when appropriate
-  // (i.e. the platform has a suitable directory) attempt to write it to a cache
-  // file.
-  void InitializeStartupData();
-#endif  // !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
 };
 
 }  // namespace v8c

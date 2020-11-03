@@ -19,6 +19,7 @@
 
 #include "base/files/file_path.h"
 #include "base/logging.h"
+#include "cobalt/media/media_module.h"
 #include "url/gurl.h"
 
 namespace cobalt {
@@ -30,14 +31,14 @@ namespace sandbox {
 // will be identified as progressive mp4.
 class FormatGuesstimator {
  public:
-  explicit FormatGuesstimator(const std::string& path_or_url);
+  FormatGuesstimator(const std::string& path_or_url, MediaModule* media_module);
 
   bool is_valid() const { return is_progressive() || is_adaptive(); }
   bool is_progressive() const { return progressive_url_.is_valid(); }
   bool is_adaptive() const { return !adaptive_path_.empty(); }
   bool is_audio() const {
     DCHECK(is_adaptive());
-    return mime_.find("audio/") == 0;
+    return mime_type_.find("audio/") == 0;
   }
 
   const GURL& progressive_url() const {
@@ -52,24 +53,19 @@ class FormatGuesstimator {
     return adaptive_path_.value();
   }
 
-  const std::string& mime() const {
+  const std::string& mime_type() const {
     DCHECK(is_valid());
-    return mime_;
-  }
-  const std::string& codecs() const {
-    DCHECK(is_valid());
-    return codecs_;
+    return mime_type_;
   }
 
  private:
   void InitializeAsProgressive(const GURL& url);
-  void InitializeAsMp4(const base::FilePath& path);
-  void InitializeAsWebM(const base::FilePath& path);
+  void InitializeAsAdaptive(const base::FilePath& path,
+                            MediaModule* media_module);
 
   GURL progressive_url_;
   base::FilePath adaptive_path_;
-  std::string mime_;
-  std::string codecs_;
+  std::string mime_type_;
 };
 
 }  // namespace sandbox

@@ -15,15 +15,16 @@
 #include "base/memory/ptr_util.h"
 #include "base/single_thread_task_runner.h"
 #include "base/threading/thread_task_runner_handle.h"
+#include "cobalt/math/rect.h"
+#include "cobalt/math/size.h"
 #include "cobalt/media/base/bind_to_current_loop.h"
 #include "cobalt/media/base/decoder_buffer.h"
+#include "cobalt/media/base/decrypt_config.h"
 #include "cobalt/media/base/media_util.h"
 #include "cobalt/media/base/test_helpers.h"
 #include "cobalt/media/base/timestamp_constants.h"
 #include "cobalt/media/base/video_frame.h"
 #include "starboard/types.h"
-#include "ui/gfx/rect.h"
-#include "ui/gfx/size.h"
 
 namespace cobalt {
 namespace media {
@@ -63,7 +64,7 @@ void FakeDemuxerStream::Initialize() {
   current_timestamp_ = base::TimeDelta::FromMilliseconds(kStartTimestampMs);
   duration_ = base::TimeDelta::FromMilliseconds(kDurationMs);
   splice_timestamp_ = kNoTimestamp;
-  next_coded_size_ = gfx::Size(kStartWidth, kStartHeight);
+  next_coded_size_ = math::Size(kStartWidth, kStartHeight);
   next_read_num_ = 0;
 }
 
@@ -158,7 +159,7 @@ void FakeDemuxerStream::SeekToEndOfStream() {
 }
 
 void FakeDemuxerStream::UpdateVideoDecoderConfig() {
-  const gfx::Rect kVisibleRect(kStartWidth, kStartHeight);
+  const math::Rect kVisibleRect(kStartWidth, kStartHeight);
   video_decoder_config_.Initialize(
       kCodecVP8, VIDEO_CODEC_PROFILE_UNKNOWN, PIXEL_FORMAT_YV12,
       COLOR_SPACE_UNSPECIFIED, next_coded_size_, kVisibleRect, next_coded_size_,
@@ -193,7 +194,7 @@ void FakeDemuxerStream::DoRead() {
 
   // TODO(xhwang): Output out-of-order buffers if needed.
   if (is_encrypted_) {
-    buffer->set_decrypt_config(base::MakeUnique<DecryptConfig>(
+    buffer->set_decrypt_config(DecryptConfig::CreateCencConfig(
         std::string(kKeyId, kKeyId + arraysize(kKeyId)),
         std::string(kIv, kIv + arraysize(kIv)), std::vector<SubsampleEntry>()));
   }

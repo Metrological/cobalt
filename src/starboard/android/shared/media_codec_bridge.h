@@ -106,7 +106,9 @@ class MediaCodecBridge {
       Handler* handler,
       jobject j_surface,
       jobject j_media_crypto,
-      const SbMediaColorMetadata* color_metadata);
+      const SbMediaColorMetadata* color_metadata,
+      bool require_software_codec,
+      std::string* error_message);
 
   ~MediaCodecBridge();
 
@@ -129,6 +131,7 @@ class MediaCodecBridge {
   void ReleaseOutputBuffer(jint index, jboolean render);
   void ReleaseOutputBufferAtTimestamp(jint index, jlong render_timestamp_ns);
 
+  void SetPlaybackRate(double playback_rate);
   jint Flush();
   SurfaceDimensions GetOutputDimensions();
   AudioOutputFormatResult GetAudioOutputFormat();

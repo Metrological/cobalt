@@ -25,7 +25,9 @@
          'defines': ["COBALT_ENABLE_VERSION_COMPATIBILITY_VALIDATIONS=1"],
       },
       'sources': [
-        'accessibility_changed_event.h',
+        'accessibility_caption_settings_changed_event.h',
+        'accessibility_settings_changed_event.h',
+        'accessibility_text_to_speech_settings_changed_event.h',
         'address_sanitizer.h',
         'camera_transform.h',
         'circular_buffer_shell.cc',
@@ -33,6 +35,7 @@
         'clock.h',
         'cobalt_paths.h',
         'compiler.h',
+        'console_log.h',
         'c_val.cc',
         'c_val.h',
         'c_val_collection_entry_stats.h',
@@ -65,6 +68,7 @@
         'polymorphic_downcast.h',
         'polymorphic_equatable.h',
         'ref_counted_lock.h',
+        'source_location.cc',
         'source_location.h',
         'startup_timer.cc',
         'startup_timer.h',
@@ -111,10 +115,10 @@
       ],
       'dependencies': [
         'base',
-        '<(DEPTH)/cobalt/test/test.gyp:run_all_unittests',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
       ],
+      'includes': [ '<(DEPTH)/cobalt/test/test.gypi' ],
     },
     {
       'target_name': 'base_test_deploy',

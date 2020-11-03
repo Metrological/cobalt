@@ -14,6 +14,7 @@
 
 #include <string>
 
+#include "starboard/configuration_constants.h"
 #include "starboard/directory.h"
 #include "starboard/file.h"
 #include "starboard/nplb/file_helpers.h"
@@ -39,6 +40,16 @@ TEST(SbDirectoryOpenTest, SunnyDay) {
   EXPECT_TRUE(SbDirectoryClose(directory));
 }
 
+TEST(SbDirectoryOpenTest, SunnyDayStaticContent) {
+  for (auto dir_path : GetFileTestsDirectoryPaths()) {
+    SbFileError error = kSbFileErrorMax;
+    SbDirectory directory = SbDirectoryOpen(dir_path.c_str(), &error);
+    EXPECT_TRUE(SbDirectoryIsValid(directory)) << dir_path;
+    EXPECT_EQ(kSbFileOk, error) << "Can't open: " << dir_path;
+    EXPECT_TRUE(SbDirectoryClose(directory));
+  }
+}
+
 TEST(SbDirectoryOpenTest, SunnyDayWithNullError) {
   std::string path = GetTempDir();
   EXPECT_FALSE(path.empty());
@@ -54,17 +65,17 @@ TEST(SbDirectoryOpenTest, ManySunnyDay) {
   EXPECT_FALSE(path.empty());
   EXPECT_FILE_EXISTS(path);
 
-  const int kMany = SB_FILE_MAX_OPEN;
-  SbDirectory directories[kMany] = {0};
+  const int kMany = kSbFileMaxOpen;
+  std::vector<SbDirectory> directories(kMany, 0);
 
-  for (int i = 0; i < SB_ARRAY_SIZE_INT(directories); ++i) {
+  for (int i = 0; i < directories.size(); ++i) {
     SbFileError error = kSbFileErrorMax;
     directories[i] = SbDirectoryOpen(path.c_str(), &error);
     EXPECT_TRUE(SbDirectoryIsValid(directories[i]));
     EXPECT_EQ(kSbFileOk, error);
   }
 
-  for (int i = 0; i < SB_ARRAY_SIZE_INT(directories); ++i) {
+  for (int i = 0; i < directories.size(); ++i) {
     EXPECT_TRUE(SbDirectoryClose(directories[i]));
   }
 }

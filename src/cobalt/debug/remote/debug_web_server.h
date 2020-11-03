@@ -38,13 +38,13 @@ namespace remote {
 class DebugWebServer : public net::HttpServer::Delegate,
                        public DebugClient::Delegate {
  public:
-  DebugWebServer(int port,
+  DebugWebServer(int port, const std::string& listen_ip,
                  const CreateDebugClientCallback& create_debug_client_callback);
   ~DebugWebServer();
 
  protected:
   // net::HttpServer::Delegate implementation.
-  void OnConnect(int /*connection_id*/) override {}
+  void OnConnect(int connection_id) override {}
   void OnHttpRequest(int connection_id,
                      const net::HttpServerRequestInfo& info) override;
 
@@ -53,22 +53,19 @@ class DebugWebServer : public net::HttpServer::Delegate,
 
   void OnWebSocketMessage(int connection_id, const std::string& json) override;
 
-  void OnClose(int /*connection_id*/) override {}
+  void OnClose(int connection_id) override;
 
   // Debugger command response handler.
   void OnDebuggerResponse(int id, const base::Optional<std::string>& response);
 
   // DebugClient::Delegate implementation.
-  void OnDebugClientEvent(
-      const std::string& method,
-      const base::Optional<std::string>& json_params) override;
+  void OnDebugClientEvent(const std::string& method,
+                          const std::string& json_params) override;
 
   void OnDebugClientDetach(const std::string& reason) override;
 
  private:
-  int GetLocalAddress(std::string* out) const;
-
-  void StartServer(int port);
+  void StartServer(int port, const std::string& listen_ip);
 
   void StopServer();
 

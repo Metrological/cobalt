@@ -90,11 +90,13 @@ bool CheckMapEquality(const MapA_Type& map_a, const MapB_Type& map_b) {
 }
 
 SbTimeMonotonic GetThreadTimeMonotonicNow() {
-#if SB_HAS(TIME_THREAD_NOW)
-  return SbTimeGetMonotonicThreadNow();
-#else
-  return SbTimeGetMonotonicNow();
+#if SB_API_VERSION >= 12 || SB_HAS(TIME_THREAD_NOW)
+#if SB_API_VERSION >= 12
+  if (SbTimeIsTimeThreadNowSupported())
 #endif
+    return SbTimeGetMonotonicThreadNow();
+#endif
+  return SbTimeGetMonotonicNow();
 }
 
 // Generic stringification of the input map type. This allows good error
@@ -584,7 +586,7 @@ SbTime PerfTestFind(const MapIntType& map,
   return delta_time;
 }
 
-TEST(FlatMap, PerformanceTestFind) {
+TEST(FlatMap, DISABLED_PerformanceTestFind) {
   std::vector<size_t> test_sizes;
   test_sizes.push_back(5);
   test_sizes.push_back(10);

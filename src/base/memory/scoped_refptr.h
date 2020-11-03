@@ -10,9 +10,9 @@
 #include <utility>
 
 #include "base/compiler_specific.h"
-#include "base/cpp14oncpp11.h"
 #include "base/logging.h"
 #include "base/macros.h"
+#include "nb/cpp14oncpp11.h"
 #include "starboard/types.h"
 
 template <class T>
@@ -210,7 +210,7 @@ class scoped_refptr {
 
   T* get() const { return ptr_; }
 #if defined(STARBOARD)
-  // TODO[johnx]: remove this implicit convertor and replace all occurances of
+  // TODO[Cobalt]: remove this implicit convertor and replace all occurances of
   // necessary implicit conversion with scoped_refptr.get().
   operator T*() const { return ptr_; }
 #endif

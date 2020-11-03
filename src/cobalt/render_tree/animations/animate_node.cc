@@ -75,6 +75,7 @@ class AnimateNode::TraverseListBuilder : public NodeVisitor {
   void Visit(CompositionNode* composition) override { VisitNode(composition); }
   void Visit(FilterNode* text) override { VisitNode(text); }
   void Visit(ImageNode* image) override { VisitNode(image); }
+  void Visit(LottieNode* lottie) override { VisitNode(lottie); }
   void Visit(MatrixTransform3DNode* transform) override {
     VisitNode(transform);
   }
@@ -239,7 +240,7 @@ class AnimateNode::BoundsVisitor : public NodeVisitor {
   BoundsVisitor(const TraverseList& traverse_list, base::TimeDelta time_offset,
                 base::TimeDelta since);
 
-  void Visit(animations::AnimateNode* /* animate */) override {
+  void Visit(animations::AnimateNode* animate) override {
     // An invariant of AnimateNodes is that they should never contain descendant
     // AnimateNodes.
     NOTREACHED();
@@ -249,6 +250,7 @@ class AnimateNode::BoundsVisitor : public NodeVisitor {
   void Visit(CompositionNode* composition) override { VisitNode(composition); }
   void Visit(FilterNode* text) override { VisitNode(text); }
   void Visit(ImageNode* image) override { VisitNode(image); }
+  void Visit(LottieNode* lottie) override { VisitNode(lottie); }
   void Visit(MatrixTransform3DNode* transform) override {
     VisitNode(transform);
   }
@@ -374,7 +376,6 @@ AnimateNode::TraverseListEntry AnimateNode::BoundsVisitor::AdvanceIterator(
 }
 
 void AnimateNode::BoundsVisitor::ApplyTransform(Node* node) {
-  SB_UNREFERENCED_PARAMETER(node);
 }
 
 void AnimateNode::BoundsVisitor::ApplyTransform(CompositionNode* node) {
@@ -394,7 +395,7 @@ class AnimateNode::ApplyVisitor : public NodeVisitor {
   ApplyVisitor(const TraverseList& traverse_list, base::TimeDelta time_offset,
                const base::Optional<base::TimeDelta>& snapshot_time);
 
-  void Visit(animations::AnimateNode* /* animate */) override {
+  void Visit(animations::AnimateNode* animate) override {
     // An invariant of AnimateNodes is that they should never contain descendant
     // AnimateNodes.
     NOTREACHED();
@@ -404,6 +405,7 @@ class AnimateNode::ApplyVisitor : public NodeVisitor {
   void Visit(CompositionNode* composition) override { VisitNode(composition); }
   void Visit(FilterNode* text) override { VisitNode(text); }
   void Visit(ImageNode* image) override { VisitNode(image); }
+  void Visit(LottieNode* lottie) override { VisitNode(lottie); }
   void Visit(MatrixTransform3DNode* transform) override {
     VisitNode(transform);
   }
@@ -646,7 +648,6 @@ math::RectF AnimateNode::GetAnimationBoundsSince(
 namespace {
 // Helper function to always return an empty bounding rectangle.
 math::RectF ReturnTrivialEmptyRectBound(base::TimeDelta since) {
-  SB_UNREFERENCED_PARAMETER(since);
   return math::RectF();
 }
 }  // namespace

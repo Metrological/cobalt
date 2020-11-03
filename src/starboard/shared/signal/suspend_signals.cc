@@ -25,6 +25,10 @@
 #include "starboard/shared/starboard/application.h"
 #include "starboard/system.h"
 
+#if SB_IS(EVERGREEN_COMPATIBLE)
+#include "starboard/loader_app/pending_restart.h"
+#endif
+
 namespace starboard {
 namespace shared {
 namespace signal {
@@ -54,15 +58,26 @@ void SetSignalHandler(int signal_id, SignalHandlerFunction handler) {
   ::sigaction(signal_id, &action, NULL);
 }
 
-void SuspendDone(void* /*context*/) {
-  // Stop all thread execution after fully transitioning into Suspended.
-  raise(SIGSTOP);
+#if SB_IS(EVERGREEN_COMPATIBLE)
+void RequestSuspendOrStop() {
+  if (loader_app::IsPendingRestart()) {
+    SbLogRawFormatF("\nPending update restart . Stopping.\n");
+    SbLogFlush();
+    SbSystemRequestStop(0);
+  } else {
+    SbSystemRequestSuspend();
+  }
 }
+#endif
 
 void Suspend(int signal_id) {
   SignalMask(kAllSignals, SIG_BLOCK);
   LogSignalCaught(signal_id);
-  starboard::Application::Get()->Suspend(NULL, &SuspendDone);
+#if SB_IS(EVERGREEN_COMPATIBLE)
+  RequestSuspendOrStop();
+#else
+  SbSystemRequestSuspend();
+#endif
   SignalMask(kAllSignals, SIG_UNBLOCK);
 }
 
@@ -99,7 +114,7 @@ void Ignore(int signal_id) {
 
 class SignalHandlerThread : public ::starboard::Thread {
  public:
-  SignalHandlerThread() : Thread("SignalHandlerThread") {}
+  SignalHandlerThread() : Thread("SignalHandlTh") {}
 
   void Run() override {
     SignalMask(kAllSignals, SIG_UNBLOCK);

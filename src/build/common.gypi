@@ -23,7 +23,7 @@
       'variables': {
         'variables': {
           'host_arch%':
-            '<!(uname -m | sed -e "s/i.86/ia32/;s/x86_64/x64/;s/amd64/x64/;s/arm.*/arm/;s/i86pc/ia32/")',
+            '<!(uname -m | sed -e "s/i.86/x86/;s/x86_64/x64/;s/amd64/x64/;s/arm.*/arm/;s/i86pc/x86/")',
         },
 
         # Copy conditionally-set variables out one scope.
@@ -141,6 +141,11 @@
     # whether warnings are treated as errors.
     'chromium_code%': 0,
 
+    # Crashpad relies on excluding files in GYP based on platform specific
+    # names, so it has its own set of filename_rules.gypi located under
+    # "third_party/mini_chromium/build/".
+    'crashpad_code%': 0,
+
     # TODO(thakis): Make this a blacklist instead, http://crbug.com/101600
     'enable_wexit_time_destructors%': 0,
 
@@ -164,7 +169,7 @@
             },
             'android_ndk_root%': '<(android_ndk_root)',
             'conditions': [
-              ['target_arch == "ia32"', {
+              ['target_arch == "x86"', {
                 'android_app_abi%': 'x86',
                 'android_ndk_sysroot%': '<(android_ndk_root)/platforms/android-9/arch-x86',
               }],
@@ -231,6 +236,10 @@
       # That's enough to make it available during target conditional
       # processing.
       'chromium_code%': '<(chromium_code)',
+
+      # The crashpad_code variable operates the same way as described above for
+      # the chromium_code variable.
+      'crashpad_code%': '<(crashpad_code)',
 
       # See http://msdn.microsoft.com/en-us/library/aa652360(VS.71).aspx
       'win_release_Optimization%': '2', # 2 = /Os
@@ -321,6 +330,14 @@
            # Rules for excluding e.g. foo_win.cc from the build on non-Windows.
           'filename_rules.gypi',
         ],
+      }],
+      ['crashpad_code!=0', {
+        'includes': [
+           # Rules for excluding e.g. foo_win.cc from the build on non-Windows.
+          '<(DEPTH)/third_party/mini_chromium/build/filename_rules.gypi',
+        ],
+      }],
+      ['chromium_code!=0 or crashpad_code!=0', {
         # In Chromium code, we define __STDC_foo_MACROS in order to get the
         # C99 macros on Mac and Linux.
         'defines': [
@@ -331,6 +348,7 @@
           ['(OS == "win" or target_arch=="xb1") and component=="shared_library"', {
             'msvs_disabled_warnings': [
               4251,  # class 'std::xx' needs to have dll-interface.
+              4715,  # Not all control paths return a value.
             ],
           }],
         ],

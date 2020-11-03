@@ -24,14 +24,15 @@
 #include "starboard/common/string.h"
 #include "starboard/shared/pthread/is_success.h"
 #include "starboard/shared/pthread/thread_create_priority.h"
+#include "starboard/shared/pthread/types_internal.h"
 
 namespace starboard {
 namespace shared {
 namespace pthread {
 
-#if !SB_HAS(THREAD_PRIORITY_SUPPORT)
+#if SB_API_VERSION < 12 && !SB_HAS(THREAD_PRIORITY_SUPPORT)
 // Default implementation without thread priority support
-void ThreadSetPriority(SbThreadPriority /* priority */) {}
+void ThreadSetPriority(SbThreadPriority priority) {}
 #endif
 
 void PreThreadRun() {}
@@ -138,7 +139,10 @@ SbThread SbThreadCreate(int64_t stack_size,
   params->priority = priority;
 
   SbThread thread = kSbThreadInvalid;
-  result = pthread_create(&thread, &attributes, ThreadFunc, params);
+  SB_COMPILE_ASSERT(sizeof(SbThread) >= sizeof(pthread_t),
+                    pthread_t_larger_than_sb_thread);
+  result = pthread_create(SB_PTHREAD_INTERNAL_THREAD_PTR(thread), &attributes,
+                          ThreadFunc, params);
 
   pthread_attr_destroy(&attributes);
   if (IsSuccess(result)) {

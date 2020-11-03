@@ -17,12 +17,22 @@ package dev.cobalt.util;
 import android.content.Context;
 import android.util.DisplayMetrics;
 import android.util.Size;
+import android.util.SizeF;
 import android.view.WindowManager;
 
 /** Utility functions for querying display attributes. */
 public class DisplayUtil {
 
   private DisplayUtil() {}
+
+  /**
+   * Returns the physical pixels per inch of the screen in the X and Y
+   * dimensions.
+   */
+  public static SizeF getDisplayDpi(Context context) {
+    DisplayMetrics metrics = getDisplayMetrics(context);
+    return new SizeF(metrics.xdpi, metrics.ydpi);
+  }
 
   /**
    * Returns the size of the physical display size in pixels.

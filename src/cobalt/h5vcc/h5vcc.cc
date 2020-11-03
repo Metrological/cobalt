@@ -19,23 +19,25 @@
 namespace cobalt {
 namespace h5vcc {
 
-H5vcc::H5vcc(const Settings& settings, const scoped_refptr<dom::Window>& window,
-             dom::MutationObserverTaskManager* mutation_observer_task_manager) {
-  accessibility_ = new H5vccAccessibility(settings.event_dispatcher, window,
-                                          mutation_observer_task_manager);
+H5vcc::H5vcc(const Settings& settings) {
+  accessibility_ = new H5vccAccessibility(settings.event_dispatcher);
   account_info_ = new H5vccAccountInfo(settings.account_manager);
   audio_config_array_ = new H5vccAudioConfigArray();
   c_val_ = new dom::CValView();
   crash_log_ = new H5vccCrashLog();
-  runtime_ =
-      new H5vccRuntime(settings.event_dispatcher, settings.initial_deep_link);
-  settings_ = new H5vccSettings(settings.media_module);
+  runtime_ = new H5vccRuntime(settings.event_dispatcher);
+  settings_ = new H5vccSettings(settings.media_module, settings.network_module);
 #if defined(COBALT_ENABLE_SSO)
   sso_ = new H5vccSso();
 #endif
   storage_ = new H5vccStorage(settings.network_module);
-  system_ = new H5vccSystem();
   trace_event_ = new H5vccTraceEvent();
+#if SB_IS(EVERGREEN)
+  updater_ = new H5vccUpdater(settings.updater_module);
+  system_ = new H5vccSystem(updater_);
+#else
+  system_ = new H5vccSystem();
+#endif
 }
 
 void H5vcc::TraceMembers(script::Tracer* tracer) {
@@ -50,6 +52,9 @@ void H5vcc::TraceMembers(script::Tracer* tracer) {
   tracer->Trace(storage_);
   tracer->Trace(system_);
   tracer->Trace(trace_event_);
+#if SB_IS(EVERGREEN)
+  tracer->Trace(updater_);
+#endif
 }
 
 }  // namespace h5vcc

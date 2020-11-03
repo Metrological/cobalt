@@ -20,10 +20,13 @@
     'target_os': 'android',
     'final_executable_type': 'shared_library',
     'gtest_target_type': 'shared_library',
-    'sb_widevine_platform' : 'android',
+    'sb_widevine_platform': 'android',
+    'sb_enable_benchmark': 1,
 
     'gl_type': 'system_gles2',
     'enable_remote_debugging': 0,
+
+    'enable_vulkan%': 0,
 
     'linker_flags': [
       # The NDK default "ld" is actually the gold linker for all architectures
@@ -153,4 +156,8 @@
       }],
     ],
   }, # end of target_defaults
+
+  'includes': [
+    '<(DEPTH)/starboard/sabi/sabi.gypi',
+  ],
 }

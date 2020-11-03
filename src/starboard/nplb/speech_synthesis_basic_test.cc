@@ -19,14 +19,21 @@ namespace starboard {
 namespace nplb {
 namespace {
 
-#if SB_HAS(SPEECH_SYNTHESIS)
+#if SB_API_VERSION >= 12 || SB_HAS(SPEECH_SYNTHESIS)
 
 TEST(SbSpeechSynthesisBasicTest, Basic) {
+#if SB_API_VERSION >= 12
+  if (!SbSpeechSynthesisIsSupported()) {
+    SB_LOG(INFO) << "Speech synthesis not supported. Test skipped.";
+    return;
+  }
+#endif
   SbSpeechSynthesisSpeak("Hello");
   SbSpeechSynthesisCancel();
 }
 
-#endif  // SB_HAS(SPEECH_SYNTHESIS)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(SPEECH_SYNTHESIS)
 
 }  // namespace
 }  // namespace nplb

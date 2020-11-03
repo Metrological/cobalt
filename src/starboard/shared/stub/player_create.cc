@@ -14,23 +14,40 @@
 
 #include "starboard/player.h"
 
-SbPlayer SbPlayerCreate(SbWindow /*window*/,
-                        SbMediaVideoCodec /*video_codec*/,
-                        SbMediaAudioCodec /*audio_codec*/,
-#if SB_API_VERSION < 10
-                        SbMediaTime /*duration_pts*/,
-#endif  // SB_API_VERSION < 10
-                        SbDrmSystem /*drm_system*/,
-                        const SbMediaAudioSampleInfo* /*audio_sample_info*/,
-#if SB_API_VERSION >= 11
-                        const char* /*max_video_capabilities*/,
-#endif  // SB_API_VERSION >= 11
-                        SbPlayerDeallocateSampleFunc /*sample_deallocate_func*/,
-                        SbPlayerDecoderStatusFunc /*decoder_status_func*/,
-                        SbPlayerStatusFunc /*player_status_func*/,
-                        SbPlayerErrorFunc /*player_error_func*/,
-                        void* /*context*/,
-                        SbPlayerOutputMode /*output_mode*/,
-                        SbDecodeTargetGraphicsContextProvider* /*provider*/) {
+#include "starboard/configuration.h"
+
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
+SbPlayer SbPlayerCreate(
+    SbWindow window,
+    const SbPlayerCreationParam* creation_param,
+    SbPlayerDeallocateSampleFunc sample_deallocate_func,
+    SbPlayerDecoderStatusFunc decoder_status_func,
+    SbPlayerStatusFunc player_status_func,
+    SbPlayerErrorFunc player_error_func,
+    void* context,
+    SbDecodeTargetGraphicsContextProvider* context_provider) {
   return kSbPlayerInvalid;
 }
+
+#else  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
+SbPlayer SbPlayerCreate(SbWindow window,
+                        SbMediaVideoCodec video_codec,
+                        SbMediaAudioCodec audio_codec,
+                        SbDrmSystem drm_system,
+                        const SbMediaAudioSampleInfo* audio_sample_info,
+#if SB_API_VERSION >= 11
+                        const char* max_video_capabilities,
+#endif  // SB_API_VERSION >= 11
+                        SbPlayerDeallocateSampleFunc sample_deallocate_func,
+                        SbPlayerDecoderStatusFunc decoder_status_func,
+                        SbPlayerStatusFunc player_status_func,
+                        SbPlayerErrorFunc player_error_func,
+                        void* context,
+                        SbPlayerOutputMode output_mode,
+                        SbDecodeTargetGraphicsContextProvider* provider) {
+  return kSbPlayerInvalid;
+}
+
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)

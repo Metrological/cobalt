@@ -161,10 +161,10 @@ void MediaRecorder::Stop(script::ExceptionState* exception_state) {
   StopRecording();
 }
 
-void MediaRecorder::OnData(const ShellAudioBus& audio_bus,
+void MediaRecorder::OnData(const AudioBus& audio_bus,
                            base::TimeTicks reference_time) {
   // The source is always int16 data from the microphone.
-  DCHECK_EQ(audio_bus.sample_type(), ShellAudioBus::kInt16);
+  DCHECK_EQ(audio_bus.sample_type(), AudioBus::kInt16);
   DCHECK_EQ(audio_bus.channels(), size_t(1));
   DCHECK(audio_encoder_);
   audio_encoder_->Encode(audio_bus, reference_time);
@@ -213,8 +213,10 @@ void MediaRecorder::OnReadyStateChanged(
   // Step 5.5 from start(), defined at:
   // https://www.w3.org/TR/mediastream-recording/#mediarecorder-methods
   if (new_state == media_stream::MediaStreamTrack::kReadyStateEnded) {
-    audio_encoder_->Finish(base::TimeTicks::Now());
-    audio_encoder_.reset();
+    if (audio_encoder_) {
+      audio_encoder_->Finish(base::TimeTicks::Now());
+      audio_encoder_.reset();
+    }
     StopRecording();
     stream_ = nullptr;
   }
@@ -225,7 +227,8 @@ MediaRecorder::MediaRecorder(
     const scoped_refptr<media_stream::MediaStream>& stream,
     const MediaRecorderOptions& options,
     script::ExceptionState* exception_state)
-    : settings_(settings),
+    : dom::EventTarget(settings),
+      settings_(settings),
       stream_(stream),
       javascript_message_loop_(base::MessageLoop::current()->task_runner()),
       ALLOW_THIS_IN_INITIALIZER_LIST(weak_ptr_factory_(this)),

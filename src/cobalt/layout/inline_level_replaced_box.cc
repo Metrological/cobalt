@@ -29,13 +29,16 @@ InlineLevelReplacedBox::InlineLevelReplacedBox(
     const base::Optional<LayoutUnit>& maybe_intrinsic_height,
     const base::Optional<float>& maybe_intrinsic_ratio,
     UsedStyleProvider* used_style_provider,
-    base::Optional<bool> is_video_punched_out, const math::SizeF& content_size,
+    base::Optional<ReplacedBox::ReplacedBoxMode> replaced_box_mode,
+    const math::SizeF& content_size,
+    base::Optional<render_tree::LottieAnimation::LottieProperties>
+        lottie_properties,
     LayoutStatTracker* layout_stat_tracker)
     : ReplacedBox(css_computed_style_declaration, replace_image_cb,
                   set_bounds_cb, paragraph, text_position,
                   maybe_intrinsic_width, maybe_intrinsic_height,
-                  maybe_intrinsic_ratio, used_style_provider,
-                  is_video_punched_out, content_size, layout_stat_tracker),
+                  maybe_intrinsic_ratio, used_style_provider, replaced_box_mode,
+                  content_size, lottie_properties, layout_stat_tracker),
       is_hidden_by_ellipsis_(false),
       was_hidden_by_ellipsis_(false) {}
 
@@ -64,11 +67,10 @@ bool InlineLevelReplacedBox::IsHiddenByEllipsis() const {
 }
 
 void InlineLevelReplacedBox::UpdateHorizontalMargins(
+    BaseDirection containing_block_direction,
     LayoutUnit containing_block_width, LayoutUnit border_box_width,
     const base::Optional<LayoutUnit>& maybe_margin_left,
     const base::Optional<LayoutUnit>& maybe_margin_right) {
-  SB_UNREFERENCED_PARAMETER(containing_block_width);
-  SB_UNREFERENCED_PARAMETER(border_box_width);
 
   // A computed value of "auto" for "margin-left" or "margin-right" becomes
   // a used value of "0".
@@ -86,7 +88,7 @@ void InlineLevelReplacedBox::DumpClassName(std::ostream* stream) const {
 #endif  // COBALT_BOX_DUMP_ENABLED
 
 void InlineLevelReplacedBox::DoPlaceEllipsisOrProcessPlacedEllipsis(
-    BaseDirection base_direction, LayoutUnit /*desired_offset*/,
+    BaseDirection base_direction, LayoutUnit desired_offset,
     bool* is_placement_requirement_met, bool* is_placed,
     LayoutUnit* placed_offset) {
   // If the ellipsis is already placed, then simply mark the box as hidden by

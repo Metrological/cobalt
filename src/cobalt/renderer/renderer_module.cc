@@ -13,12 +13,14 @@
 // limitations under the License.
 
 #include <memory>
+#include <string>
 
 #include "cobalt/renderer/renderer_module.h"
 
 #include "base/memory/ptr_util.h"
 #include "base/trace_event/trace_event.h"
 #include "cobalt/browser/memory_settings/calculations.h"
+#include "cobalt/configuration/configuration.h"
 #include "cobalt/renderer/backend/default_graphics_system.h"
 #include "cobalt/renderer/rasterizer/skia/hardware_rasterizer.h"
 #include "cobalt/renderer/rasterizer/skia/software_rasterizer.h"
@@ -37,18 +39,18 @@ RendererModule::Options::Options()
   skia_glyph_texture_atlas_dimensions.SetSize(2048, 2048);
   skia_cache_size_in_bytes = 4 * 1024 * 1024;
 
-#if SB_HAS(GLES2)
-#if defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
-  software_surface_cache_size_in_bytes = 0;
-  offscreen_target_cache_size_in_bytes = 4 * 1024 * 1024;
-#else
-  software_surface_cache_size_in_bytes = 0;
-  offscreen_target_cache_size_in_bytes = 0;
-#endif
-#else
-  software_surface_cache_size_in_bytes = 8 * 1024 * 1024;
-  offscreen_target_cache_size_in_bytes = 0;
-#endif
+  std::string rasterizer_type =
+      configuration::Configuration::GetInstance()->CobaltRasterizerType();
+  if (rasterizer_type == "direct-gles") {
+    software_surface_cache_size_in_bytes = 0;
+    offscreen_target_cache_size_in_bytes = 4 * 1024 * 1024;
+  } else if (rasterizer_type == "hardware") {
+    software_surface_cache_size_in_bytes = 0;
+    offscreen_target_cache_size_in_bytes = 0;
+  } else {
+    software_surface_cache_size_in_bytes = 8 * 1024 * 1024;
+    offscreen_target_cache_size_in_bytes = 0;
+  }
 
   // Call into platform-specific code for setting up render module options.
   SetPerPlatformDefaultOptions();
@@ -92,7 +94,14 @@ RendererModule::RendererModule(system_window::SystemWindow* system_window,
         base::Bind(options_.create_rasterizer_function, graphics_context_.get(),
                    options_),
         display_->GetRenderTarget(), graphics_context_.get(),
+#if SB_API_VERSION < 12
         options_.submit_even_if_render_tree_is_unchanged,
+#else
+        // SB_MUST_FREQUENTLY_FLIP_DISPLAY_BUFFER is deprecated in
+        // favor of the usage of 'CobaltExtensionGraphicsApi', use 'false' to
+        // deprecate the submit_even_if_render_tree_is_unchanged.
+        false,
+#endif
         renderer::Pipeline::kClearToBlack, pipeline_options));
   }
 }

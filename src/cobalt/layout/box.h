@@ -16,7 +16,7 @@
 #define COBALT_LAYOUT_BOX_H_
 
 #include <iosfwd>
-#include <iostream>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -62,7 +62,8 @@ struct LayoutParams {
   LayoutParams()
       : shrink_to_fit_width_forced(false),
         freeze_width(false),
-        freeze_height(false) {}
+        freeze_height(false),
+        containing_block_direction(kLeftToRightBaseDirection) {}
 
   // Normally the used values of "width", "margin-left", and "margin-right" are
   // calculated by choosing the 1 out of 10 algorithms based on the computed
@@ -91,12 +92,22 @@ struct LayoutParams {
   //   https://www.w3.org/TR/CSS21/visuren.html#containing-block
   SizeLayoutUnit containing_block_size;
 
+  // Margin calculations can depend on the direction property of the containing
+  // block.
+  //   https://www.w3.org/TR/CSS21/visudet.html#blockwidth
+  BaseDirection containing_block_direction;
+
   bool operator==(const LayoutParams& rhs) const {
     return shrink_to_fit_width_forced == rhs.shrink_to_fit_width_forced &&
            freeze_width == rhs.freeze_width &&
            freeze_height == rhs.freeze_height &&
-           containing_block_size == rhs.containing_block_size;
+           containing_block_size == rhs.containing_block_size &&
+           containing_block_direction == rhs.containing_block_direction;
   }
+
+  base::Optional<LayoutUnit> maybe_margin_top;
+  base::Optional<LayoutUnit> maybe_margin_bottom;
+  base::Optional<LayoutUnit> maybe_height;
 };
 
 inline std::ostream& operator<<(std::ostream& stream,
@@ -132,6 +143,12 @@ class Box : public base::RefCounted<Box> {
     // formatting context.
     //   https://www.w3.org/TR/CSS21/visuren.html#inline-boxes
     kInlineLevel,
+  };
+
+  enum MarginCollapsingStatus {
+    kCollapseMargins,
+    kIgnore,
+    kSeparateAdjoiningMargins,
   };
 
   enum RelationshipToBox {
@@ -215,6 +232,10 @@ class Box : public base::RefCounted<Box> {
   // Do not confuse with the formatting context that the element may establish.
   virtual Level GetLevel() const = 0;
 
+  virtual MarginCollapsingStatus GetMarginCollapsingStatus() const {
+    return Box::kCollapseMargins;
+  }
+
   // Returns true if the box is positioned (e.g. position is non-static or
   // transform is not None).  Intuitively, this is true if the element does
   // not follow standard layout flow rules for determining its position.
@@ -250,6 +271,8 @@ class Box : public base::RefCounted<Box> {
   // Returns the offset from the containing block (which can be either the
   // containing block's content box or padding box) to its content box.
   Vector2dLayoutUnit GetContainingBlockOffsetFromItsContentBox(
+      const ContainerBox* containing_block) const;
+  InsetsLayoutUnit GetContainingBlockInsetFromItsContentBox(
       const ContainerBox* containing_block) const;
 
   // Returns boxes relative to the root or containing block, that take into
@@ -293,6 +316,15 @@ class Box : public base::RefCounted<Box> {
   void SetStaticPositionLeftFromContainingBlockToParent(LayoutUnit left);
   LayoutUnit GetStaticPositionLeft() const;
 
+  // The static position for 'right' is the distance from the right edge of the
+  // containing block to the right margin edge of the same hypothetical box as
+  // above. The value is positive if the hypothetical box is to the left of the
+  // containing block's edge.
+  //   https://www.w3.org/TR/CSS21/visudet.html#abs-non-replaced-width
+  void SetStaticPositionRightFromParent(LayoutUnit right);
+  void SetStaticPositionRightFromContainingBlockToParent(LayoutUnit right);
+  LayoutUnit GetStaticPositionRight() const;
+
   // For the purposes of this section and the next, the term "static position"
   // (of an element) refers, roughly, to the position an element would have had
   // in the normal flow. More precisely, the static position for 'top' is the
@@ -319,6 +351,21 @@ class Box : public base::RefCounted<Box> {
   LayoutUnit GetMarginBoxWidth() const;
   LayoutUnit GetMarginBoxHeight() const;
 
+  // Used values of "margin" properties are set by overriders
+  // of |UpdateContentSizeAndMargins| method.
+  void set_margin_left(LayoutUnit margin_left) {
+    margin_insets_.set_left(margin_left);
+  }
+  void set_margin_top(LayoutUnit margin_top) {
+    margin_insets_.set_top(margin_top);
+  }
+  void set_margin_right(LayoutUnit margin_right) {
+    margin_insets_.set_right(margin_right);
+  }
+  void set_margin_bottom(LayoutUnit margin_bottom) {
+    margin_insets_.set_bottom(margin_bottom);
+  }
+
   math::Matrix3F GetMarginBoxTransformFromContainingBlock(
       const ContainerBox* containing_block) const;
 
@@ -335,6 +382,11 @@ class Box : public base::RefCounted<Box> {
       BaseDirection base_direction) const;
 
   // Border box.
+  LayoutUnit border_left_width() const { return border_insets_.left(); }
+  LayoutUnit border_top_width() const { return border_insets_.top(); }
+  LayoutUnit border_right_width() const { return border_insets_.right(); }
+  LayoutUnit border_bottom_width() const { return border_insets_.bottom(); }
+
   RectLayoutUnit GetBorderBoxFromRoot(bool transform_forms_root) const;
 
   LayoutUnit GetBorderBoxWidth() const;
@@ -347,6 +399,10 @@ class Box : public base::RefCounted<Box> {
   Vector2dLayoutUnit GetBorderBoxOffsetFromMarginBox() const;
 
   // Padding box.
+  LayoutUnit padding_left() const { return padding_insets_.left(); }
+  LayoutUnit padding_top() const { return padding_insets_.top(); }
+  LayoutUnit padding_right() const { return padding_insets_.right(); }
+  LayoutUnit padding_bottom() const { return padding_insets_.bottom(); }
   LayoutUnit GetPaddingBoxWidth() const;
   LayoutUnit GetPaddingBoxHeight() const;
   SizeLayoutUnit GetClampedPaddingBoxSize() const;
@@ -373,7 +429,11 @@ class Box : public base::RefCounted<Box> {
   LayoutUnit GetContentBoxTopEdgeOffsetFromMarginBox() const;
   Vector2dLayoutUnit GetContentBoxOffsetFromContainingBlockContentBox(
       const ContainerBox* containing_block) const;
+  InsetsLayoutUnit GetContentBoxInsetFromContainingBlockContentBox(
+      const ContainerBox* containing_block) const;
   Vector2dLayoutUnit GetContentBoxOffsetFromContainingBlock() const;
+  InsetsLayoutUnit GetContentBoxInsetFromContainingBlock(
+      const ContainerBox* containing_block) const;
   LayoutUnit GetContentBoxLeftEdgeOffsetFromContainingBlock() const;
   LayoutUnit GetContentBoxTopEdgeOffsetFromContainingBlock() const;
   LayoutUnit GetContentBoxStartEdgeOffsetFromContainingBlock(
@@ -657,6 +717,10 @@ class Box : public base::RefCounted<Box> {
       const scoped_refptr<IntersectionObserverRoot>& intersection_observer_root)
       const;
 
+  base::Optional<LayoutUnit> collapsed_margin_top_;
+  base::Optional<LayoutUnit> collapsed_margin_bottom_;
+  base::Optional<LayoutUnit> collapsed_empty_margin_;
+
  protected:
   UsedStyleProvider* used_style_provider() const {
     return used_style_provider_;
@@ -673,35 +737,6 @@ class Box : public base::RefCounted<Box> {
   // boxes, based on https://www.w3.org/TR/CSS21/visudet.html#min-max-widths.
   virtual void UpdateContentSizeAndMargins(
       const LayoutParams& layout_params) = 0;
-
-  // Margin box accessors.
-  //
-  // Used values of "margin" properties are set by overriders
-  // of |UpdateContentSizeAndMargins| method.
-  void set_margin_left(LayoutUnit margin_left) {
-    margin_insets_.set_left(margin_left);
-  }
-  void set_margin_top(LayoutUnit margin_top) {
-    margin_insets_.set_top(margin_top);
-  }
-  void set_margin_right(LayoutUnit margin_right) {
-    margin_insets_.set_right(margin_right);
-  }
-  void set_margin_bottom(LayoutUnit margin_bottom) {
-    margin_insets_.set_bottom(margin_bottom);
-  }
-
-  // Border box read-only accessors.
-  LayoutUnit border_left_width() const { return border_insets_.left(); }
-  LayoutUnit border_top_width() const { return border_insets_.top(); }
-  LayoutUnit border_right_width() const { return border_insets_.right(); }
-  LayoutUnit border_bottom_width() const { return border_insets_.bottom(); }
-
-  // Padding box read-only accessors.
-  LayoutUnit padding_left() const { return padding_insets_.left(); }
-  LayoutUnit padding_top() const { return padding_insets_.top(); }
-  LayoutUnit padding_right() const { return padding_insets_.right(); }
-  LayoutUnit padding_bottom() const { return padding_insets_.bottom(); }
 
   // Content box setters.
   //
@@ -759,6 +794,7 @@ class Box : public base::RefCounted<Box> {
   // https://www.w3.org/TR/CSS21/visudet.html#blockwidth and
   // https://www.w3.org/TR/CSS21/visudet.html#block-replaced-width.
   void UpdateHorizontalMarginsAssumingBlockLevelInFlowBox(
+      BaseDirection containing_block_direction,
       LayoutUnit containing_block_width, LayoutUnit border_box_width,
       const base::Optional<LayoutUnit>& possibly_overconstrained_margin_left,
       const base::Optional<LayoutUnit>& possibly_overconstrained_margin_right);
@@ -791,9 +827,9 @@ class Box : public base::RefCounted<Box> {
   // ellipsis-related state of the box, such as whether or not it should be
   // fully or partially hidden.
   virtual void DoPlaceEllipsisOrProcessPlacedEllipsis(
-      BaseDirection /*base_direction*/, LayoutUnit /*desired_offset*/,
-      bool* /*is_placement_requirement_met*/, bool* /*is_placed*/,
-      LayoutUnit* /*placed_offset*/) {}
+      BaseDirection base_direction, LayoutUnit desired_offset,
+      bool* is_placement_requirement_met, bool* is_placed,
+      LayoutUnit* placed_offset) {}
 
   // Get the rectangle for which gives the region that background-color
   // and background-image would populate.
@@ -898,6 +934,11 @@ class Box : public base::RefCounted<Box> {
   // 'static' and 'float' had been 'none'. The value is negative if the
   // hypothetical box is to the left of the containing block.
   //   https://www.w3.org/TR/CSS21/visudet.html#abs-non-replaced-width
+  // The static position for 'right' is the distance from the right edge of the
+  // containing block to the right margin edge of the same hypothetical box as
+  // above. The value is positive if the hypothetical box is to the left of the
+  // containing block's edge.
+  //   https://www.w3.org/TR/CSS21/visudet.html#abs-non-replaced-width
   // For the purposes of this section and the next, the term "static position"
   // (of an element) refers, roughly, to the position an element would have had
   // in the normal flow. More precisely, the static position for 'top' is the
@@ -905,8 +946,8 @@ class Box : public base::RefCounted<Box> {
   // of a hypothetical box that would have been the first box of the element if
   // its specified 'position' value had been 'static'.
   //   https://www.w3.org/TR/CSS21/visudet.html#abs-non-replaced-height
-  Vector2dLayoutUnit static_position_offset_from_parent_;
-  Vector2dLayoutUnit static_position_offset_from_containing_block_to_parent_;
+  InsetsLayoutUnit static_position_offset_from_parent_;
+  InsetsLayoutUnit static_position_offset_from_containing_block_to_parent_;
 
   // Used values of "margin-left", "margin-top", "margin-right",
   // and "margin-bottom".

@@ -38,13 +38,13 @@ void Decode(
     decode_finish_callback.Run(reader->sample_rate(),
                                reader->ResetAndReturnAudioBus());
   } else {
-    decode_finish_callback.Run(0.f, std::unique_ptr<ShellAudioBus>());
+    decode_finish_callback.Run(0.f, std::unique_ptr<AudioBus>());
   }
 }
 
 }  // namespace
 
-AsyncAudioDecoder::AsyncAudioDecoder() : thread_("AsyncAudioDecoder") {
+AsyncAudioDecoder::AsyncAudioDecoder() : thread_("AsyncAudioDec") {
   thread_.Start();
 }
 

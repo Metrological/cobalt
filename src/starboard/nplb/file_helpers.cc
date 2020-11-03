@@ -16,7 +16,9 @@
 
 #include <sstream>
 #include <string>
+#include <vector>
 
+#include "starboard/configuration_constants.h"
 #include "starboard/file.h"
 #include "starboard/system.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -26,18 +28,74 @@ namespace nplb {
 
 namespace {
 // Size of appropriate path buffer.
-const size_t kPathSize = SB_FILE_MAX_PATH + 1;
+const size_t kPathSize = kSbFileMaxPath + 1;
 }  // namespace
 
 std::string GetTempDir() {
   // It seems there's absolutely no way to get to std::string without a copy.
-  char path[kPathSize] = {0};
-  if (!SbSystemGetPath(kSbSystemPathTempDirectory, path,
-                       SB_ARRAY_SIZE_INT(path))) {
+  std::vector<char> path(kPathSize, 0);
+  if (!SbSystemGetPath(kSbSystemPathTempDirectory, path.data(), path.size())) {
     return "";
   }
 
-  return path;
+  return path.data();
+}
+
+std::string GetFileTestsDataDir() {
+  std::vector<char> content_path(kPathSize);
+  EXPECT_TRUE(SbSystemGetPath(kSbSystemPathContentDirectory,
+                              content_path.data(), kPathSize));
+  std::string directory_path =
+      std::string(content_path.data()) + kSbFileSepChar + "test" +
+      kSbFileSepChar + "starboard" + kSbFileSepChar + "nplb" +
+      kSbFileSepChar + "file_tests";
+  SB_CHECK(SbDirectoryCanOpen(directory_path.c_str()));
+  return directory_path;
+}
+
+// Make a vector of absolute paths in our test data from a null-terminated array
+// of C-strings with the relative paths. Slashes are converted to the platform's
+// delimiter.
+std::vector<std::string> MakePathsVector(const char* files[]) {
+  std::string directory_path = GetFileTestsDataDir();
+  std::vector<std::string> paths;
+  for (int i = 0; files[i] != nullptr; i++) {
+    std::string file_path = directory_path + kSbFileSepChar + files[i];
+    std::replace(file_path.begin(), file_path.end(), '/', kSbFileSepChar);
+    paths.push_back(file_path);
+  }
+  return paths;
+}
+
+std::vector<std::string> GetFileTestsFilePaths() {
+  const char* kFiles[] = {
+    // This long file MUST be first -- SbFileSeekTest depends on it!
+    "file_with_long_name_and_contents_for_seek_testing_1234567890",
+    "file01",
+    "dir_with_files/file11",
+    "dir_with_files/file12",
+    "dir_with_only_subdir/dir_with_files/file21",
+    "dir_with_only_subdir/dir_with_files/file22",
+    nullptr
+  };
+  return MakePathsVector(kFiles);
+}
+
+std::vector<std::string> GetFileTestsDirectoryPaths() {
+  const char* kDirs[] = {
+    "dir_with_files",
+    "dir_with_only_subdir",
+    "dir_with_only_subdir/dir_with_files",
+    nullptr
+  };
+  return MakePathsVector(kDirs);
+}
+
+std::string GetTestFileExpectedContent(const std::string& path) {
+  // The test file content matches the basename of the file + a newline.
+  std::string content(path, path.find_last_of(kSbFileSepChar) + 1);
+  content += '\n';
+  return content;
 }
 
 // static
@@ -67,7 +125,7 @@ std::string ScopedRandomFile::MakeRandomFilePath() {
     return "";
   }
 
-  filename_stream << SB_FILE_SEP_CHAR << MakeRandomFilename();
+  filename_stream << kSbFileSepChar << MakeRandomFilename();
   return filename_stream.str();
 }
 
@@ -89,7 +147,7 @@ std::string ScopedRandomFile::MakeRandomFile(int length) {
     data[i] = static_cast<char>(i & 0xFF);
   }
 
-  int bytes = SbFileWrite(file, data, length);
+  int bytes = SbFileWriteAll(file, data, length);
   EXPECT_EQ(bytes, length) << "Failed to write " << length << " bytes to "
                            << filename;
 

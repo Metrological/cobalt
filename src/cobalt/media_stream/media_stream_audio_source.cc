@@ -60,7 +60,7 @@ MediaTrackSettings MediaStreamAudioSource::GetMediaTrackSettings() const {
 }
 
 void MediaStreamAudioSource::DeliverDataToTracks(
-    const MediaStreamAudioTrack::ShellAudioBus& audio_bus,
+    const MediaStreamAudioTrack::AudioBus& audio_bus,
     base::TimeTicks reference_time) {
   deliverer_.OnData(audio_bus, reference_time);
 }
@@ -80,8 +80,11 @@ MediaStreamAudioSource::MediaStreamAudioSource()
 
 void MediaStreamAudioSource::DoStopSource() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  EnsureSourceIsStopped();
   is_stopped_ = true;
+
+  // This function might result in the destruction of this object, so be
+  // careful not to reference members after this call.
+  EnsureSourceIsStopped();
 }
 
 void MediaStreamAudioSource::StopAudioDeliveryTo(MediaStreamAudioTrack* track) {

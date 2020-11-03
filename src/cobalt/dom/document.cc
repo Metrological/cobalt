@@ -72,7 +72,7 @@ namespace dom {
 
 Document::Document(HTMLElementContext* html_element_context,
                    const Options& options)
-    : ALLOW_THIS_IN_INITIALIZER_LIST(Node(this)),
+    : ALLOW_THIS_IN_INITIALIZER_LIST(Node(html_element_context, this)),
       html_element_context_(html_element_context),
       page_visibility_state_(html_element_context_->page_visibility_state()),
       window_(options.window),
@@ -218,7 +218,6 @@ scoped_refptr<Element> Document::CreateElementNS(
     const std::string& namespace_uri, const std::string& local_name) {
   // TODO: Implement namespaces, if we actually need this.
   NOTIMPLEMENTED();
-  SB_UNREFERENCED_PARAMETER(namespace_uri);
   return CreateElement(local_name);
 }
 
@@ -286,13 +285,40 @@ scoped_refptr<Element> Document::GetElementById(const std::string& id) const {
 
 const scoped_refptr<Location>& Document::location() const { return location_; }
 
+// Algorithm for dir:
+//   https://html.spec.whatwg.org/commit-snapshots/ebcac971c2add28a911283899da84ec509876c44/#dom-dir
+std::string Document::dir() const {
+  // The dir IDL attribute on Document objects must reflect the dir content
+  // attribute of the html element, if any, limited to only known values. If
+  // there is no such element, then the attribute must return the empty string
+  // and do nothing on setting.
+  HTMLHtmlElement* html_element = html();
+  if (!html_element) {
+    return "";
+  }
+  return html_element->dir();
+}
+
+// Algorithm for dir:
+//   https://html.spec.whatwg.org/commit-snapshots/ebcac971c2add28a911283899da84ec509876c44/#dom-dir
+void Document::set_dir(const std::string& value) {
+  // The dir IDL attribute on Document objects must reflect the dir content
+  // attribute of the html element, if any, limited to only known values. If
+  // there is no such element, then the attribute must return the empty string
+  // and do nothing on setting.
+  HTMLHtmlElement* html_element = html();
+  if (html_element) {
+    html_element->set_dir(value);
+  }
+}
+
 // Algorithm for body:
-//   https://www.w3.org/TR/html5/dom.html#dom-document-body
+//   https://www.w3.org/TR/html50/dom.html#dom-document-body
 scoped_refptr<HTMLBodyElement> Document::body() const {
   // The body element of a document is the first child of the html element that
   // is either a body element or a frameset element. If there is no such
   // element, it is null.
-  //   https://www.w3.org/TR/html5/dom.html#the-body-element-0
+  //   https://www.w3.org/TR/html50/dom.html#the-body-element-0
   HTMLHtmlElement* html_element = html().get();
   if (!html_element) {
     return NULL;
@@ -311,7 +337,7 @@ scoped_refptr<HTMLBodyElement> Document::body() const {
 }
 
 // Algorithm for set_body:
-//   https://www.w3.org/TR/html5/dom.html#dom-document-body
+//   https://www.w3.org/TR/html50/dom.html#dom-document-body
 void Document::set_body(const scoped_refptr<HTMLBodyElement>& body) {
   // 1. If the new value is not a body or frameset element, then throw a
   //    HierarchyRequestError exception and abort these steps.
@@ -343,11 +369,11 @@ void Document::set_body(const scoped_refptr<HTMLBodyElement>& body) {
 }
 
 // Algorithm for head:
-//   https://www.w3.org/TR/html5/dom.html#dom-document-head
+//   https://www.w3.org/TR/html50/dom.html#dom-document-head
 scoped_refptr<HTMLHeadElement> Document::head() const {
   // The head element of a document is the first head element that is a child of
   // the html element, if there is one, or null otherwise.
-  //   https://www.w3.org/TR/html5/dom.html#the-head-element-0
+  //   https://www.w3.org/TR/html50/dom.html#the-head-element-0
   HTMLHtmlElement* html_element = html().get();
   if (!html_element) {
     return NULL;
@@ -369,7 +395,7 @@ bool Document::HasFocus() const {
   return page_visibility_state()->HasWindowFocus();
 }
 
-// https://www.w3.org/TR/html5/editing.html#dom-document-activeelement
+// https://www.w3.org/TR/html50/editing.html#dom-document-activeelement
 scoped_refptr<Element> Document::active_element() const {
   // The activeElement attribute on Document objects must return the element in
   // the document that is focused. If no element in the Document is focused,
@@ -488,7 +514,7 @@ scoped_refptr<Node> Document::Duplicate() const {
 scoped_refptr<HTMLHtmlElement> Document::html() const {
   // The html element of a document is the document's root element, if there is
   // one and it's an html element, or null otherwise.
-  //   https://www.w3.org/TR/html5/dom.html#the-html-element-0
+  //   https://www.w3.org/TR/html50/dom.html#the-html-element-0
   Element* root = document_element().get();
   if (!root) {
     return NULL;
@@ -840,8 +866,6 @@ void Document::SampleTimelineTime() { default_timeline_->Sample(); }
 #if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
 void Document::SetPartialLayout(bool enabled) {
   partial_layout_is_enabled_ = enabled;
-  DLOG(INFO) << "Partial Layout is "
-             << (partial_layout_is_enabled_ ? "on" : "off");
 }
 #endif  // defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
 
@@ -965,13 +989,11 @@ void Document::DisableJit() {
 }
 
 void Document::OnWindowFocusChanged(bool has_focus) {
-  SB_UNREFERENCED_PARAMETER(has_focus);
   // Ignored by this class.
 }
 
 void Document::OnVisibilityStateChanged(
     page_visibility::VisibilityState visibility_state) {
-  SB_UNREFERENCED_PARAMETER(visibility_state);
   DispatchEvent(new Event(base::Tokens::visibilitychange(), Event::kBubbles,
                           Event::kNotCancelable));
 }

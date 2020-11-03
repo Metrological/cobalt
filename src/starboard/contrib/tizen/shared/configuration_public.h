@@ -37,9 +37,6 @@
 // Whether the current platform provides the standard header inttypes.h.
 #define SB_HAS_INTTYPES_H 1
 
-// Whether the current platform provides the standard header wchar.h.
-#define SB_HAS_WCHAR_H 1
-
 // Whether the current platform provides the standard header limits.h.
 #define SB_HAS_LIMITS_H 1
 
@@ -55,12 +52,10 @@
 #define SB_IS_WCHAR_T_UTF16 1
 #endif
 
-// Chrome only defines these two if ARMEL or MIPSEL are defined.
+// Chrome only defines this for ARMEL.
 #if defined(__ARMEL__)
 // Chrome has an exclusion for iOS here, we should too when we support iOS.
 #define SB_IS_WCHAR_T_UNSIGNED 1
-#elif defined(__MIPSEL__)
-#define SB_IS_WCHAR_T_SIGNED 1
 #endif
 
 // --- Architecture Configuration --------------------------------------------
@@ -183,7 +178,9 @@
 
 // Whether this platform has and should use an MMAP function to map physical
 // memory to the virtual address space.
+#if SB_API_VERSION < 12
 #define SB_HAS_MMAP 1
+#endif
 
 // Whether this platform can map executable memory. Implies SB_HAS_MMAP. This is
 // required for platforms that want to JIT.

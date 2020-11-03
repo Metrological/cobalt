@@ -24,6 +24,7 @@
 #include "cobalt/render_tree/font.h"
 #include "cobalt/render_tree/font_provider.h"
 #include "cobalt/render_tree/image.h"
+#include "cobalt/render_tree/lottie_animation.h"
 #include "cobalt/render_tree/mesh.h"
 #include "cobalt/render_tree/resource_provider.h"
 #include "third_party/ots/include/opentype-sanitiser.h"
@@ -161,12 +162,10 @@ class FontStub : public Font {
   }
 
   const math::RectF& GetGlyphBounds(GlyphIndex glyph) override {
-    SB_UNREFERENCED_PARAMETER(glyph);
     return glyph_bounds_;
   }
 
   float GetGlyphWidth(GlyphIndex glyph) override {
-    SB_UNREFERENCED_PARAMETER(glyph);
     return glyph_bounds_.width();
   }
 
@@ -182,7 +181,7 @@ class FontStub : public Font {
 // Roboto.
 class TypefaceStub : public Typeface {
  public:
-  explicit TypefaceStub(const void* data) { SB_UNREFERENCED_PARAMETER(data); }
+  explicit TypefaceStub(const void* data) {}
 
   TypefaceId GetId() const override { return Internal::kDefaultTypefaceId; }
 
@@ -195,7 +194,6 @@ class TypefaceStub : public Typeface {
   }
 
   GlyphIndex GetGlyphForCharacter(int32 utf32_character) override {
-    SB_UNREFERENCED_PARAMETER(utf32_character);
     return Internal::kDefaultGlyphIndex;
   }
 
@@ -260,12 +258,10 @@ class ResourceProviderStub : public ResourceProvider {
   void Finish() override {}
 
   bool PixelFormatSupported(PixelFormat pixel_format) override {
-    SB_UNREFERENCED_PARAMETER(pixel_format);
     return true;
   }
 
   bool AlphaFormatSupported(AlphaFormat alpha_format) override {
-    SB_UNREFERENCED_PARAMETER(alpha_format);
     return true;
   }
 
@@ -286,7 +282,6 @@ class ResourceProviderStub : public ResourceProvider {
     return base::WrapRefCounted(new ImageStub(std::move(skia_source_data)));
   }
 
-#if SB_HAS(GRAPHICS)
   scoped_refptr<Image> CreateImageFromSbDecodeTarget(
       SbDecodeTarget decode_target) override {
     NOTREACHED();
@@ -295,14 +290,11 @@ class ResourceProviderStub : public ResourceProvider {
   }
 
   bool SupportsSbDecodeTarget() override { return false; }
-#endif  // SB_HAS(GRAPHICS)
 
-#if SB_HAS(GRAPHICS)
   SbDecodeTargetGraphicsContextProvider*
   GetSbDecodeTargetGraphicsContextProvider() override {
     return NULL;
   }
-#endif  // SB_HAS(GRAPHICS)
 
   std::unique_ptr<RawImageMemory> AllocateRawImageMemory(
       size_t size_in_bytes, size_t alignment) override {
@@ -318,29 +310,22 @@ class ResourceProviderStub : public ResourceProvider {
   }
 
   bool HasLocalFontFamily(const char* font_family_name) const override {
-    SB_UNREFERENCED_PARAMETER(font_family_name);
     return true;
   }
 
   scoped_refptr<Typeface> GetLocalTypeface(const char* font_family_name,
                                            FontStyle font_style) override {
-    SB_UNREFERENCED_PARAMETER(font_family_name);
-    SB_UNREFERENCED_PARAMETER(font_style);
     return base::WrapRefCounted(new TypefaceStub(NULL));
   }
 
   scoped_refptr<render_tree::Typeface> GetLocalTypefaceByFaceNameIfAvailable(
       const char* font_face_name) override {
-    SB_UNREFERENCED_PARAMETER(font_face_name);
     return base::WrapRefCounted(new TypefaceStub(NULL));
   }
 
   scoped_refptr<Typeface> GetCharacterFallbackTypeface(
       int32 utf32_character, FontStyle font_style,
       const std::string& language) override {
-    SB_UNREFERENCED_PARAMETER(utf32_character);
-    SB_UNREFERENCED_PARAMETER(font_style);
-    SB_UNREFERENCED_PARAMETER(language);
     return base::WrapRefCounted(new TypefaceStub(NULL));
   }
 
@@ -367,9 +352,6 @@ class ResourceProviderStub : public ResourceProvider {
                      const std::string& language, bool is_rtl,
                      FontProvider* font_provider,
                      FontVector* maybe_used_fonts) override {
-    SB_UNREFERENCED_PARAMETER(text_buffer);
-    SB_UNREFERENCED_PARAMETER(language);
-    SB_UNREFERENCED_PARAMETER(is_rtl);
     render_tree::GlyphIndex glyph_index;
     const scoped_refptr<render_tree::Font>& font =
         font_provider->GetCharacterFont(Internal::kDefaultCharacter,
@@ -386,9 +368,6 @@ class ResourceProviderStub : public ResourceProvider {
       const base::char16* text_buffer, size_t text_length,
       const std::string& language, bool is_rtl,
       FontProvider* font_provider) override {
-    SB_UNREFERENCED_PARAMETER(text_buffer);
-    SB_UNREFERENCED_PARAMETER(language);
-    SB_UNREFERENCED_PARAMETER(is_rtl);
     render_tree::GlyphIndex glyph_index;
     const scoped_refptr<render_tree::Font>& font =
         font_provider->GetCharacterFont(Internal::kDefaultCharacter,
@@ -411,6 +390,11 @@ class ResourceProviderStub : public ResourceProvider {
         glyph_bounds.height())));
   }
 
+  scoped_refptr<LottieAnimation> CreateLottieAnimation(const char* data,
+                                                       size_t length) override {
+    return scoped_refptr<LottieAnimation>(NULL);
+  }
+
   // Create a mesh which can map replaced boxes to 3D shapes.
   scoped_refptr<render_tree::Mesh> CreateMesh(
       std::unique_ptr<std::vector<render_tree::Mesh::Vertex> > vertices,
@@ -420,7 +404,6 @@ class ResourceProviderStub : public ResourceProvider {
 
   scoped_refptr<Image> DrawOffscreenImage(
       const scoped_refptr<render_tree::Node>& root) override {
-    SB_UNREFERENCED_PARAMETER(root);
     return scoped_refptr<Image>(NULL);
   }
 

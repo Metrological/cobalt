@@ -909,6 +909,7 @@ PlayerImpl::PlayerImpl(SbPlayer player,
   GstElement* playsink = (gst_bin_get_by_name(GST_BIN(pipeline_), "playsink"));
   if (playsink) {
     g_object_set(G_OBJECT(playsink), "send-event-mode", 0, nullptr);
+    g_object_unref(playsink);
   } else {
     GST_WARNING("No playsink ?!?!?");
   }
@@ -932,10 +933,11 @@ PlayerImpl::~PlayerImpl() {
   GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline_));
   gst_bus_set_sync_handler(bus, nullptr, nullptr, nullptr);
   gst_object_unref(bus);
-  DispatchOnWorkerThread(
+  // Note: kSbPlayerDecoderStateDestroyed is not supported with new SB_API_VERSION
+  /* DispatchOnWorkerThread(
       new DecoderStatusTask(decoder_status_func_, player_, ticket_, context_,
                             kSbPlayerDecoderStateDestroyed,
-                            GetBothMediaTypeTakingCodecsIntoAccount()));
+                            GetBothMediaTypeTakingCodecsIntoAccount())); */
   DispatchOnWorkerThread(new PlayerDestroyedTask(
       player_status_func_, player_, ticket_, context_, main_loop_));
   SbThreadJoin(playback_thread_, nullptr);
@@ -1611,18 +1613,41 @@ bool PlayerImpl::SetRate(double rate) {
     } else {
       {
         ::starboard::ScopedLock lock(mutex_);
-        is_rate_being_changed_ = true;
+        // is_rate_being_changed_ = true;
         pending_rate_ = .0;
       }
 
-      GST_DEBUG("Calling seek (set rate)");
-      success =
-          gst_element_seek(pipeline_, rate, GST_FORMAT_TIME,
-                           static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH |
-                                                     GST_SEEK_FLAG_ACCURATE),
-                           GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE,
-                           GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
-      GST_DEBUG("Seek called (set rate)");
+      // This flushes and we have no way to ask for the already pumped data
+      // again. Buffering it OTOH is an overkill. Non flushing seeks may only be
+      // performed in PLAYING but even then they are not reable and freezes/deadlocks
+      // on some platforms. There's no other, reliable way to make this working.
+      // This is why "rate" property is required from sinks or a platform code
+      // is triggered to do the trick.
+      // success =
+      //    gst_element_seek(pipeline_, rate, GST_FORMAT_TIME,
+      //                     static_cast<GstSeekFlags>(GST_SEEK_FLAG_FLUSH |
+      //                                               GST_SEEK_FLAG_ACCURATE),
+      //                     GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE,
+      //                     GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
+
+      GstElement* vid_sink = nullptr;
+      GstElement* aud_sink = nullptr;
+      g_object_get(pipeline_, "video-sink", &vid_sink, nullptr);
+      g_object_get(pipeline_, "audio-sink", &aud_sink, nullptr);
+      if (vid_sink && aud_sink &&
+          g_object_class_find_property(G_OBJECT_GET_CLASS(vid_sink), "rate") &&
+          g_object_class_find_property(G_OBJECT_GET_CLASS(aud_sink), "rate")) {
+        g_object_set(vid_sink, "rate", rate, nullptr);
+        g_object_set(aud_sink, "rate", rate, nullptr);
+      } else {
+        // Last resort. Allow platform to do something:
+        success = PlatformNonFushingSetRate(pipeline_, rate);
+      }
+
+      if (vid_sink)
+        g_object_unref(vid_sink);
+      if (aud_sink)
+        g_object_unref(aud_sink);
     }
   }
 
@@ -1687,6 +1712,8 @@ void PlayerImpl::GetInfo(SbPlayerInfo2* out_player_info) {
   } else {
     out_player_info->corrupted_video_frames = 0;
   }
+  if (vid_sink)
+    g_object_unref(vid_sink);
 
   GST_LOG("Frames dropped: %d, Frames corrupted: %d",
           out_player_info->dropped_video_frames,
@@ -1711,6 +1738,8 @@ void PlayerImpl::SetBounds(int zindex, int x, int y, int w, int h) {
     } else {
       pending_bounds_ = PendingBounds{x, y, w, h};
     }
+    if (vid_sink)
+      g_object_unref(vid_sink);
   }
 }
 

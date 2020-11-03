@@ -27,6 +27,7 @@
 #include "base/threading/thread.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
+#include "starboard/file.h"
 #include "starboard/types.h"
 
 namespace base {
@@ -130,6 +131,20 @@ void DeleteTmpFile(const FilePath& tmp_file_path,
 
 }  // namespace
 
+#if defined(OS_STARBOARD)
+// static
+bool ImportantFileWriter::WriteFileAtomically(const FilePath& path,
+                                              StringPiece data,
+                                              StringPiece histogram_suffix) {
+#if SB_API_VERSION >= 12
+  return SbFileAtomicReplace(path.value().c_str(), data.data(), data.size());
+#else
+  SB_NOTREACHED()
+      << "SbFileAtomicReplace is not available before starboard version 12";
+  return false;
+#endif
+}
+#else
 // static
 bool ImportantFileWriter::WriteFileAtomically(const FilePath& path,
                                               StringPiece data,
@@ -210,6 +225,7 @@ bool ImportantFileWriter::WriteFileAtomically(const FilePath& path,
 
   return true;
 }
+#endif
 
 ImportantFileWriter::ImportantFileWriter(
     const FilePath& path,

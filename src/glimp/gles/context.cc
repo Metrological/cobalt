@@ -62,6 +62,7 @@ Context::Context(nb::scoped_ptr<ContextImpl> context_impl,
       unpack_alignment_(4),
       unpack_row_length_(0),
       error_(GL_NO_ERROR) {
+  SbAtomicNoBarrier_Store(&has_swapped_buffers_, 0);
   if (share_context != NULL) {
     resource_manager_ = share_context->resource_manager_;
   } else {
@@ -695,6 +696,22 @@ void Context::GenBuffers(GLsizei n, GLuint* buffers) {
     nb::scoped_refptr<Buffer> buffer(new Buffer(buffer_impl.Pass()));
 
     buffers[i] = resource_manager_->RegisterBuffer(buffer);
+  }
+}
+
+void Context::GenBuffersForVideoFrame(GLsizei n, GLuint* buffers) {
+  GLIMP_TRACE_EVENT0(__FUNCTION__);
+  if (n < 0) {
+    SetError(GL_INVALID_VALUE);
+    return;
+  }
+
+  for (GLsizei i = 0; i < n; ++i) {
+    nb::scoped_ptr<BufferImpl> buffer_impl = impl_->CreateBufferForVideoFrame();
+    SB_DCHECK(buffer_impl);
+
+    buffers[i] = resource_manager_->RegisterBuffer(
+        nb::make_scoped_refptr(new Buffer(buffer_impl.Pass())));
   }
 }
 
@@ -1497,8 +1514,10 @@ void Context::TexImage2D(GLenum target,
         level, 0, 0, width, height, pitch_in_bytes, bound_pixel_unpack_buffer_,
         nb::AsInteger(pixels));
   } else if (pixels) {
-    texture_object->UpdateData(level, 0, 0, width, height, pitch_in_bytes,
-                               pixels);
+    if (!texture_object->UpdateData(level, 0, 0, width, height, pitch_in_bytes,
+                                    pixels)) {
+      SetError(GL_OUT_OF_MEMORY);
+    }
   }
 }
 
@@ -1576,8 +1595,10 @@ void Context::TexSubImage2D(GLenum target,
         level, xoffset, yoffset, width, height, pitch_in_bytes,
         bound_pixel_unpack_buffer_, nb::AsInteger(pixels));
   } else {
-    texture_object->UpdateData(level, xoffset, yoffset, width, height,
-                               pitch_in_bytes, pixels);
+    if (!texture_object->UpdateData(level, xoffset, yoffset, width, height,
+                                    pitch_in_bytes, pixels)) {
+      SetError(GL_OUT_OF_MEMORY);
+    }
   }
 }
 
@@ -2297,6 +2318,9 @@ void Context::SwapBuffers() {
   if (surface->impl()->IsWindowSurface()) {
     Flush();
     impl_->SwapBuffers(surface);
+    if (!has_swapped_buffers()) {
+      SbAtomicNoBarrier_Increment(&has_swapped_buffers_, 1);
+    }
   }
 }
 
@@ -2399,12 +2423,7 @@ void Context::CompressDrawStateForDrawCall() {
 
 void Context::MarkUsedProgramDirty() {
   GLIMP_TRACE_EVENT0(__FUNCTION__);
-  draw_state_dirty_flags_.used_program_dirty = true;
-  // Switching programs marks all uniforms, samplers and vertex attributes
-  // as being dirty as well, since they are all properties of the program.
-  draw_state_dirty_flags_.vertex_attributes_dirty = true;
-  draw_state_dirty_flags_.textures_dirty = true;
-  draw_state_dirty_flags_.uniforms_dirty.MarkAll();
+  draw_state_dirty_flags_.MarkUsedProgram();
 }
 
 void Context::SetBoundDrawFramebufferToDefault() {
@@ -2447,6 +2466,8 @@ int Context::GetPitchForTextureData(int width, PixelFormat pixel_format) const {
     return nb::AlignUp(s * n * len, a) / s;
   }
 }
+
+SbAtomic32 Context::has_swapped_buffers_ = 0;
 
 }  // namespace gles
 }  // namespace glimp

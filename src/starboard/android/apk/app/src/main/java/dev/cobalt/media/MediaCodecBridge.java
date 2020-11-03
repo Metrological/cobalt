@@ -69,7 +69,6 @@ class MediaCodecBridge {
   private static final String KEY_CROP_TOP = "crop-top";
 
   private static final int BITRATE_ADJUSTMENT_FPS = 30;
-  private static final int MAXIMUM_INITIAL_FPS = 30;
 
   private long mNativeMediaCodecBridge;
   private MediaCodec mMediaCodec;
@@ -78,6 +77,8 @@ class MediaCodecBridge {
   private long mLastPresentationTimeUs;
   private final String mMime;
   private boolean mAdaptivePlaybackSupported;
+  private double mPlaybackRate = 1.0;
+  private int mFps = 30;
 
   // Functions that require this will be called frequently in a tight loop.
   // Only create one of these and reuse it to avoid excessive allocations,
@@ -101,8 +102,48 @@ class MediaCodecBridge {
     public static final String VIDEO_H265 = "video/hevc";
     public static final String VIDEO_VP8 = "video/x-vnd.on2.vp8";
     public static final String VIDEO_VP9 = "video/x-vnd.on2.vp9";
+    public static final String VIDEO_AV1 = "video/av01";
   }
 
+  private class FrameRateEstimator {
+    private static final int INVALID_FRAME_RATE = -1;
+    private static final long INVALID_FRAME_TIMESTAMP = -1;
+    private static final int MINIMUN_REQUIRED_FRAMES = 4;
+    private long mLastFrameTimestampUs = INVALID_FRAME_TIMESTAMP;
+    private long mNumberOfFrames = 0;
+    private long mTotalDurationUs = 0;
+
+    public int getEstimatedFrameRate() {
+      if (mTotalDurationUs <= 0 || mNumberOfFrames < MINIMUN_REQUIRED_FRAMES) {
+        return INVALID_FRAME_RATE;
+      }
+      return Math.round((mNumberOfFrames - 1) * 1000000.0f / mTotalDurationUs);
+    }
+
+    public void reset() {
+      mLastFrameTimestampUs = INVALID_FRAME_TIMESTAMP;
+      mNumberOfFrames = 0;
+      mTotalDurationUs = 0;
+    }
+
+    public void onNewFrame(long presentationTimeUs) {
+      mNumberOfFrames++;
+
+      if (mLastFrameTimestampUs == INVALID_FRAME_TIMESTAMP) {
+        mLastFrameTimestampUs = presentationTimeUs;
+        return;
+      }
+      if (presentationTimeUs <= mLastFrameTimestampUs) {
+        Log.v(TAG, String.format("Invalid output presentation timestamp."));
+        return;
+      }
+
+      mTotalDurationUs += presentationTimeUs - mLastFrameTimestampUs;
+      mLastFrameTimestampUs = presentationTimeUs;
+    }
+  }
+
+  private FrameRateEstimator mFrameRateEstimator = null;
   private BitrateAdjustmentTypes mBitrateAdjustmentType = BitrateAdjustmentTypes.NO_ADJUSTMENT;
 
   @SuppressWarnings("unused")
@@ -326,7 +367,35 @@ class MediaCodecBridge {
       hdrStaticInfo.putShort((short) (minMasteringLuminance + 0.5f));
       hdrStaticInfo.putShort((short) DEFAULT_MAX_CLL);
       hdrStaticInfo.putShort((short) DEFAULT_MAX_FALL);
+      hdrStaticInfo.rewind();
       this.hdrStaticInfo = hdrStaticInfo;
+    }
+  }
+
+  @SuppressWarnings("unused")
+  @UsedByNative
+  private static class CreateMediaCodecBridgeResult {
+    private MediaCodecBridge mMediaCodecBridge;
+    // Contains the error message when mMediaCodecBridge is null.
+    private String mErrorMessage;
+
+    @SuppressWarnings("unused")
+    @UsedByNative
+    private CreateMediaCodecBridgeResult() {
+      mMediaCodecBridge = null;
+      mErrorMessage = "";
+    }
+
+    @SuppressWarnings("unused")
+    @UsedByNative
+    private MediaCodecBridge mediaCodecBridge() {
+      return mMediaCodecBridge;
+    }
+
+    @SuppressWarnings("unused")
+    @UsedByNative
+    private String errorMessage() {
+      return mErrorMessage;
     }
   }
 
@@ -386,6 +455,14 @@ class MediaCodecBridge {
                   info.offset,
                   info.presentationTimeUs,
                   info.size);
+              if (mFrameRateEstimator != null) {
+                mFrameRateEstimator.onNewFrame(info.presentationTimeUs);
+                int fps = mFrameRateEstimator.getEstimatedFrameRate();
+                if (fps != FrameRateEstimator.INVALID_FRAME_RATE && mFps != fps) {
+                  mFps = fps;
+                  updateOperatingRate();
+                }
+              }
             }
           }
 
@@ -450,7 +527,7 @@ class MediaCodecBridge {
 
   @SuppressWarnings("unused")
   @UsedByNative
-  public static MediaCodecBridge createVideoMediaCodecBridge(
+  public static void createVideoMediaCodecBridge(
       long nativeMediaCodecBridge,
       String mime,
       boolean isSecure,
@@ -459,31 +536,40 @@ class MediaCodecBridge {
       int height,
       Surface surface,
       MediaCrypto crypto,
-      ColorInfo colorInfo) {
+      ColorInfo colorInfo,
+      CreateMediaCodecBridgeResult outCreateMediaCodecBridgeResult) {
     MediaCodec mediaCodec = null;
+    outCreateMediaCodecBridgeResult.mMediaCodecBridge = null;
 
     boolean findHDRDecoder = android.os.Build.VERSION.SDK_INT >= 24 && colorInfo != null;
     // On first pass, try to find a decoder with HDR if the color info is non-null.
     MediaCodecUtil.FindVideoDecoderResult findVideoDecoderResult =
-        MediaCodecUtil.findVideoDecoder(mime, isSecure, 0, 0, 0, 0, findHDRDecoder);
+        MediaCodecUtil.findVideoDecoder(
+            mime, isSecure, 0, 0, 0, 0, findHDRDecoder, requireSoftwareCodec);
     if (findVideoDecoderResult.name.equals("") && findHDRDecoder) {
       // On second pass, forget HDR.
-      findVideoDecoderResult = MediaCodecUtil.findVideoDecoder(mime, isSecure, 0, 0, 0, 0, false);
+      findVideoDecoderResult =
+          MediaCodecUtil.findVideoDecoder(mime, isSecure, 0, 0, 0, 0, false, requireSoftwareCodec);
     }
     try {
       String decoderName = findVideoDecoderResult.name;
       if (decoderName.equals("") || findVideoDecoderResult.videoCapabilities == null) {
         Log.e(TAG, String.format("Failed to find decoder: %s, isSecure: %s", mime, isSecure));
-        return null;
+        outCreateMediaCodecBridgeResult.mErrorMessage =
+            String.format("Failed to find decoder: %s, isSecure: %s", mime, isSecure);
+        return;
       }
       Log.i(TAG, String.format("Creating \"%s\" decoder.", decoderName));
       mediaCodec = MediaCodec.createByCodecName(decoderName);
     } catch (Exception e) {
       Log.e(TAG, String.format("Failed to create MediaCodec: %s, isSecure: %s", mime, isSecure), e);
-      return null;
+      outCreateMediaCodecBridgeResult.mErrorMessage =
+          String.format("Failed to create MediaCodec: %s, isSecure: %s", mime, isSecure);
+      return;
     }
     if (mediaCodec == null) {
-      return null;
+      outCreateMediaCodecBridgeResult.mErrorMessage = "mediaCodec is null";
+      return;
     }
     MediaCodecBridge bridge =
         new MediaCodecBridge(
@@ -494,7 +580,7 @@ class MediaCodecBridge {
     boolean shouldConfigureHdr =
         android.os.Build.VERSION.SDK_INT >= 24
             && colorInfo != null
-            && MediaCodecUtil.isHdrCapableVp9Decoder(findVideoDecoderResult);
+            && MediaCodecUtil.isHdrCapableVideoDecoder(mime, findVideoDecoderResult);
     if (shouldConfigureHdr) {
       Log.d(TAG, "Setting HDR info.");
       mediaFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER, colorInfo.colorTransfer);
@@ -508,18 +594,28 @@ class MediaCodecBridge {
 
     int maxWidth = findVideoDecoderResult.videoCapabilities.getSupportedWidths().getUpper();
     int maxHeight = findVideoDecoderResult.videoCapabilities.getSupportedHeights().getUpper();
-    if (!bridge.configureVideo(mediaFormat, surface, crypto, 0, true, maxWidth, maxHeight)) {
+    if (!bridge.configureVideo(
+        mediaFormat,
+        surface,
+        crypto,
+        0,
+        true,
+        maxWidth,
+        maxHeight,
+        outCreateMediaCodecBridgeResult)) {
       Log.e(TAG, "Failed to configure video codec.");
       bridge.release();
-      return null;
+      // outCreateMediaCodecBridgeResult.mErrorMessage is set inside configureVideo() on error.
+      return;
     }
     if (!bridge.start()) {
       Log.e(TAG, "Failed to start video codec.");
       bridge.release();
-      return null;
+      outCreateMediaCodecBridgeResult.mErrorMessage = "Failed to start video codec";
+      return;
     }
 
-    return bridge;
+    outCreateMediaCodecBridgeResult.mMediaCodecBridge = bridge;
   }
 
   @SuppressWarnings("unused")
@@ -551,6 +647,40 @@ class MediaCodecBridge {
 
   @SuppressWarnings("unused")
   @UsedByNative
+  private void setPlaybackRate(double playbackRate) {
+    if (mPlaybackRate == playbackRate) {
+      return;
+    }
+    mPlaybackRate = playbackRate;
+    if (mFrameRateEstimator != null) {
+      updateOperatingRate();
+    }
+  }
+
+  private void updateOperatingRate() {
+    // We needn't set operation rate if playback rate is 0 or less.
+    if (Double.compare(mPlaybackRate, 0.0) <= 0) {
+      return;
+    }
+    if (mFps == FrameRateEstimator.INVALID_FRAME_RATE) {
+      return;
+    }
+    if (mFps <= 0) {
+      Log.e(TAG, "Failed to set operating rate with invalid fps " + mFps);
+      return;
+    }
+    double operatingRate = mPlaybackRate * mFps;
+    Bundle b = new Bundle();
+    b.putFloat(MediaFormat.KEY_OPERATING_RATE, (float) operatingRate);
+    try {
+      mMediaCodec.setParameters(b);
+    } catch (IllegalStateException e) {
+      Log.e(TAG, "Failed to set MediaCodec operating rate", e);
+    }
+  }
+
+  @SuppressWarnings("unused")
+  @UsedByNative
   private int flush() {
     try {
       mFlushed = true;
@@ -565,7 +695,7 @@ class MediaCodecBridge {
   @SuppressWarnings("unused")
   @UsedByNative
   private void stop() {
-    synchronized (mCallback) {
+    synchronized (this) {
       mNativeMediaCodecBridge = 0;
     }
     try {
@@ -768,7 +898,8 @@ class MediaCodecBridge {
       int flags,
       boolean allowAdaptivePlayback,
       int maxSupportedWidth,
-      int maxSupportedHeight) {
+      int maxSupportedHeight,
+      CreateMediaCodecBridgeResult outCreateMediaCodecBridgeResult) {
     try {
       // If adaptive playback is turned off by request, then treat it as
       // not supported.  Note that configureVideo is only called once
@@ -781,26 +912,40 @@ class MediaCodecBridge {
       if (mAdaptivePlaybackSupported) {
         // Since we haven't passed the properties of the stream we're playing
         // down to this level, from our perspective, we could potentially
-        // adapt up to 4k at any point.  We thus request 4k buffers up front,
-        // unless the decoder claims to not be able to do 4k, in which case
-        // we're ok, since we would've rejected a 4k stream when canPlayType
+        // adapt up to 8k at any point. We thus request 8k buffers up front,
+        // unless the decoder claims to not be able to do 8k, in which case
+        // we're ok, since we would've rejected a 8k stream when canPlayType
         // was called, and then use those decoder values instead.
-        int maxWidth = Math.min(3840, maxSupportedWidth);
-        int maxHeight = Math.min(2160, maxSupportedHeight);
-        format.setInteger(MediaFormat.KEY_MAX_WIDTH, maxWidth);
-        format.setInteger(MediaFormat.KEY_MAX_HEIGHT, maxHeight);
+        if (Build.VERSION.SDK_INT > 22) {
+          format.setInteger(MediaFormat.KEY_MAX_WIDTH, Math.min(7680, maxSupportedWidth));
+          format.setInteger(MediaFormat.KEY_MAX_HEIGHT, Math.min(4320, maxSupportedHeight));
+        } else {
+          // Android 5.0/5.1 seems not support 8K. Fallback to 4K until we get a
+          // better way to get maximum supported resolution.
+          format.setInteger(MediaFormat.KEY_MAX_WIDTH, Math.min(3840, maxSupportedWidth));
+          format.setInteger(MediaFormat.KEY_MAX_HEIGHT, Math.min(2160, maxSupportedHeight));
+        }
       }
       maybeSetMaxInputSize(format);
       mMediaCodec.configure(format, surface, crypto, flags);
+      mFrameRateEstimator = new FrameRateEstimator();
       return true;
     } catch (IllegalArgumentException e) {
-      Log.e(TAG, "Cannot configure the video codec, wrong format or surface", e);
+      Log.e(TAG, "Cannot configure the video codec with IllegalArgumentException: ", e);
+      outCreateMediaCodecBridgeResult.mErrorMessage =
+          "Cannot configure the video codec with IllegalArgumentException: " + e.toString();
     } catch (IllegalStateException e) {
-      Log.e(TAG, "Cannot configure the video codec", e);
+      Log.e(TAG, "Cannot configure the video codec with IllegalStateException: ", e);
+      outCreateMediaCodecBridgeResult.mErrorMessage =
+          "Cannot configure the video codec with IllegalStateException: " + e.toString();
     } catch (MediaCodec.CryptoException e) {
-      Log.e(TAG, "Cannot configure the video codec: DRM error", e);
+      Log.e(TAG, "Cannot configure the video codec with CryptoException: ", e);
+      outCreateMediaCodecBridgeResult.mErrorMessage =
+          "Cannot configure the video codec with CryptoException: " + e.toString();
     } catch (Exception e) {
-      Log.e(TAG, "Cannot configure the video codec", e);
+      Log.e(TAG, "Cannot configure the video codec with Exception: ", e);
+      outCreateMediaCodecBridgeResult.mErrorMessage =
+          "Cannot configure the video codec with Exception: " + e.toString();
     }
     return false;
   }
@@ -858,6 +1003,7 @@ class MediaCodecBridge {
         break;
       case MimeTypes.VIDEO_H265:
       case MimeTypes.VIDEO_VP9:
+      case MimeTypes.VIDEO_AV1:
         maxPixels = maxWidth * maxHeight;
         minCompressionRatio = 4;
         break;

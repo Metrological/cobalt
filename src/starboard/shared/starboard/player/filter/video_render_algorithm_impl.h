@@ -46,7 +46,7 @@ class VideoRenderAlgorithmImpl : public VideoRenderAlgorithm {
   void Render(MediaTimeProvider* media_time_provider,
               std::list<scoped_refptr<VideoFrame>>* frames,
               VideoRendererSink::DrawFrameCB draw_frame_cb) override;
-  void Reset() override;
+  void Seek(SbTime seek_to_time) override;
   int GetDroppedFrames() override { return dropped_frames_; }
 
  private:
@@ -60,6 +60,9 @@ class VideoRenderAlgorithmImpl : public VideoRenderAlgorithm {
   VideoFrameRateEstimator frame_rate_estimate_;
 
 #if SB_PLAYER_FILTER_ENABLE_STATE_CHECK
+  static constexpr int kMaxLogPerPlaybackSession = 32;
+
+  int times_logged_ = 0;
   SbTime media_time_of_last_render_call_;
   SbTime system_time_of_last_render_call_;
 #endif  // SB_PLAYER_FILTER_ENABLE_STATE_CHECK

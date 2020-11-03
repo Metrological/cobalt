@@ -14,7 +14,13 @@
 
 {
   'variables': {
-    'target_arch': 'arm',
+    # Override that omits the "data" subdirectory.
+    # TODO: Remove when omitted for all platforms in base_configuration.gypi.
+    'sb_static_contents_output_data_dir': '<(PRODUCT_DIR)/content',
+
+    # The Raspberry Pi compiler does not have support for C++14.
+    'sb_disable_cpp14_audit': 1,
+
     'target_os': 'linux',
 
     'sysroot%': '/',
@@ -26,13 +32,15 @@
       '-O2',
     ],
     'compiler_flags': [
-      # We'll pretend not to be Linux, but Starboard instead.
-      '-U__linux__',
-
       # Force char to be signed.
       '-fsigned-char',
+
       # Disable strict aliasing.
       '-fno-strict-aliasing',
+
+      # Allow Skia's SkVx.h to convert between vectors of different element
+      # types or number of subparts.
+      '-flax-vector-conversions',
 
       # To support large files
       '-D_FILE_OFFSET_BITS=64',
@@ -52,6 +60,8 @@
       # matters: Wall implies Wunused-parameter and Wno-unused-parameter
       # has no effect if specified before Wall.
       '-Wno-unused-parameter',
+      # gcc 9.x throws #if macros definitions as error (warnings as errors)
+      '-Wno-expansion-to-defined',
 
       # Specify the sysroot with all your include dependencies.
       '--sysroot=<(sysroot)',
@@ -68,7 +78,8 @@
       # libraries.
       '-L<(sysroot)/opt/vc/lib',
       '-Wl,-rpath=<(sysroot)/opt/vc/lib',
-
+      # Cleanup unused sections
+      '-Wl,-gc-sections',
       # We don't wrap these symbols, but this ensures that they aren't
       # linked in.
       '-Wl,--wrap=malloc',
@@ -99,9 +110,15 @@
     ],
     'compiler_flags_qa_size': [
       '-Os',
+      # Compile symbols in separate sections
+      '-ffunction-sections',
+      '-fdata-sections',
     ],
     'compiler_flags_qa_speed': [
       '-O2',
+      # Compile symbols in separate sections
+      '-ffunction-sections',
+      '-fdata-sections',
     ],
     'compiler_flags_cc_qa': [
       '-fno-rtti',
@@ -111,9 +128,15 @@
     ],
     'compiler_flags_gold_size': [
       '-Os',
+      # Compile symbols in separate sections
+      '-ffunction-sections',
+      '-fdata-sections',
     ],
     'compiler_flags_gold_speed': [
       '-O2',
+      # Compile symbols in separate sections
+      '-ffunction-sections',
+      '-fdata-sections',
     ],
     'compiler_flags_cc_gold': [
       '-fno-rtti',
@@ -184,4 +207,8 @@
       }],
     ],
   }, # end of target_defaults
+
+  'includes': [
+    '<(DEPTH)/starboard/sabi/sabi.gypi',
+  ],
 }

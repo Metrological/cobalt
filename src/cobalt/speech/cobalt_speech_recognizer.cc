@@ -48,7 +48,6 @@ std::unique_ptr<Microphone> CreateMicrophone(int buffer_size_bytes) {
   return std::unique_ptr<Microphone>(
       new MicrophoneStarboard(kSampleRate, buffer_size_bytes));
 #else
-  SB_UNREFERENCED_PARAMETER(buffer_size_bytes);
   return std::unique_ptr<Microphone>();
 #endif  // defined(SB_USE_SB_MICROPHONE)
 }
@@ -63,7 +62,7 @@ std::unique_ptr<net::URLFetcher> CreateFakeURLFetcher(
 }
 
 std::unique_ptr<Microphone> CreateFakeMicrophone(
-    const Microphone::Options& options, int /*buffer_size_bytes*/) {
+    const Microphone::Options& options, int buffer_size_bytes) {
   return std::unique_ptr<Microphone>(new MicrophoneFake(options));
 }
 #endif  // defined(ENABLE_FAKE_MICROPHONE)
@@ -75,7 +74,6 @@ CobaltSpeechRecognizer::CobaltSpeechRecognizer(
     const Microphone::Options& microphone_options,
     const EventCallback& event_callback)
     : SpeechRecognizer(event_callback), endpointer_delegate_(kSampleRate) {
-  SB_UNREFERENCED_PARAMETER(microphone_options);
 
   GoogleSpeechService::URLFetcherCreator url_fetcher_creator =
       base::Bind(&CreateURLFetcher);
@@ -125,7 +123,7 @@ void CobaltSpeechRecognizer::Stop() {
 }
 
 void CobaltSpeechRecognizer::OnDataReceived(
-    std::unique_ptr<ShellAudioBus> audio_bus) {
+    std::unique_ptr<AudioBus> audio_bus) {
   if (endpointer_delegate_.IsFirstTimeSoundStarted(*audio_bus)) {
     RunEventCallback(new dom::Event(base::Tokens::soundstart()));
   }
@@ -137,8 +135,8 @@ void CobaltSpeechRecognizer::OnDataCompletion() {
   // silence at the end in case encoder had no data already.
   size_t dummy_frames =
       static_cast<size_t>(kSampleRate * kAudioPacketDurationInSeconds);
-  std::unique_ptr<ShellAudioBus> dummy_audio_bus(new ShellAudioBus(
-      1, dummy_frames, ShellAudioBus::kInt16, ShellAudioBus::kInterleaved));
+  std::unique_ptr<AudioBus> dummy_audio_bus(
+      new AudioBus(1, dummy_frames, AudioBus::kInt16, AudioBus::kInterleaved));
   dummy_audio_bus->ZeroAllFrames();
   service_->RecognizeAudio(std::move(dummy_audio_bus), true);
 }

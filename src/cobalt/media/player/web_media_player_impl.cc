@@ -18,13 +18,14 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/synchronization/waitable_event.h"
 #include "base/trace_event/trace_event.h"
+#include "cobalt/base/instance_counter.h"
 #include "cobalt/media/base/bind_to_current_loop.h"
 #include "cobalt/media/base/drm_system.h"
 #include "cobalt/media/base/limits.h"
 #include "cobalt/media/base/media_log.h"
 #include "cobalt/media/filters/chunk_demuxer.h"
-#include "cobalt/media/filters/shell_demuxer.h"
 #include "cobalt/media/player/web_media_player_proxy.h"
+#include "cobalt/media/progressive/progressive_demuxer.h"
 #include "starboard/double.h"
 #include "starboard/types.h"
 
@@ -65,6 +66,8 @@ const char* kMediaEme = "Media.EME.";
 // end of the stream. In this case, "near the end of stream" means "position
 // greater than or equal to duration() - kEndOfStreamEpsilonInSeconds".
 const double kEndOfStreamEpsilonInSeconds = 2.;
+
+DECLARE_INSTANCE_COUNTER(WebMediaPlayerImpl);
 
 bool IsNearTheEndOfStream(const WebMediaPlayerImpl* wmpi, double position) {
   float duration = wmpi->GetDuration();
@@ -130,6 +133,8 @@ WebMediaPlayerImpl::WebMediaPlayerImpl(
       drm_system_(NULL) {
   TRACE_EVENT0("cobalt::media", "WebMediaPlayerImpl::WebMediaPlayerImpl");
 
+  ON_INSTANCE_CREATED(WebMediaPlayerImpl);
+
   video_frame_provider_ = new VideoFrameProvider();
 
   DLOG_IF(ERROR, s_instance)
@@ -158,6 +163,8 @@ WebMediaPlayerImpl::~WebMediaPlayerImpl() {
   TRACE_EVENT0("cobalt::media", "WebMediaPlayerImpl::~WebMediaPlayerImpl");
 
   DCHECK(!main_loop_ || main_loop_ == base::MessageLoop::current());
+
+  ON_INSTANCE_RELEASED(WebMediaPlayerImpl);
 
   DLOG_IF(ERROR, s_instance != this)
       << "More than one WebMediaPlayerImpl has been created.";
@@ -285,8 +292,8 @@ void WebMediaPlayerImpl::LoadProgressive(
   is_local_source_ = !url.SchemeIs("http") && !url.SchemeIs("https");
 
   progressive_demuxer_.reset(
-      new ShellDemuxer(pipeline_thread_.task_runner(), buffer_allocator_,
-                       proxy_->data_source(), media_log_));
+      new ProgressiveDemuxer(pipeline_thread_.task_runner(), buffer_allocator_,
+                             proxy_->data_source(), media_log_));
 
   state_.is_progressive = true;
   StartPipeline(progressive_demuxer_.get());
@@ -426,10 +433,10 @@ bool WebMediaPlayerImpl::HasAudio() const {
   return pipeline_->HasAudio();
 }
 
-gfx::Size WebMediaPlayerImpl::GetNaturalSize() const {
+math::Size WebMediaPlayerImpl::GetNaturalSize() const {
   DCHECK_EQ(main_loop_, base::MessageLoop::current());
 
-  gfx::Size size;
+  math::Size size;
   pipeline_->GetNaturalVideoSize(&size);
   return size;
 }

@@ -58,10 +58,10 @@
 
 #include "base/base_export.h"
 #include "base/compiler_specific.h"
-#include "base/cpp14oncpp11.h"
 #include "base/logging.h"
 #include "base/numerics/safe_math.h"
 #include "build/build_config.h"
+#include "nb/cpp14oncpp11.h"
 
 #if defined(STARBOARD)
 #include "starboard/time.h"
@@ -997,7 +997,9 @@ class BASE_EXPORT ThreadTicks : public time_internal::TimeBase<ThreadTicks> {
   // Returns true if ThreadTicks::Now() is supported on this system.
   static bool IsSupported() WARN_UNUSED_RESULT {
 #if defined(STARBOARD)
-#if SB_HAS(TIME_THREAD_NOW)
+#if SB_API_VERSION >= 12
+    return SbTimeIsTimeThreadNowSupported();
+#elif SB_HAS(TIME_THREAD_NOW)
     return true;
 #else
     return false;

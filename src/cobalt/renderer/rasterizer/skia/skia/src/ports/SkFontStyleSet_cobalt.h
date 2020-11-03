@@ -20,7 +20,7 @@
 #include "SkFontMgr.h"
 #include "SkStream.h"
 #include "SkString.h"
-#include "SkTArray.h"
+#include "SkTHash.h"
 #include "SkTypeface.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkFontUtil_cobalt.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkStream_cobalt.h"
@@ -57,12 +57,11 @@ class SkFontStyleSet_Cobalt : public SkFontStyleSet {
           font_postscript_name(postscript_name),
           disable_synthetic_bolding(disable_synthetic_bolding),
           is_face_info_generated(false),
-          face_style(SkTypeface::kNormal),
           face_is_fixed_pitch(false) {}
 
     const SkString font_file_path;
     const int face_index;
-    const SkFontStyle font_style;
+    SkFontStyle font_style;
     const std::string full_font_name;
     const std::string font_postscript_name;
     const bool disable_synthetic_bolding;
@@ -70,16 +69,23 @@ class SkFontStyleSet_Cobalt : public SkFontStyleSet {
     // Face info is generated from the font file.
     bool is_face_info_generated;
     SkString face_name;
-    SkTypeface::Style face_style;
     bool face_is_fixed_pitch;
 
     sk_sp<SkTypeface> typeface;
   };
 
+  enum FontFormatSetting {
+    kTtf,
+    kWoff2,
+    kTtfPreferred,
+    kWoff2Preferred,
+  };
+
   SkFontStyleSet_Cobalt(
       const FontFamilyInfo& family_info, const char* base_path,
       SkFileMemoryChunkStreamManager* const local_typeface_stream_manager,
-      SkMutex* const manager_owned_mutex);
+      SkMutex* const manager_owned_mutex,
+      FontFormatSetting font_format_setting);
 
   // From SkFontStyleSet
   int count() override;

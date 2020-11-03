@@ -22,7 +22,6 @@
 #include "cobalt/math/size.h"
 #include "cobalt/render_tree/node.h"
 #include "cobalt/renderer/backend/graphics_context.h"
-#include "cobalt/renderer/backend/graphics_system.h"
 #include "cobalt/renderer/backend/render_target.h"
 #include "cobalt/renderer/rasterizer/rasterizer.h"
 
@@ -36,6 +35,10 @@ namespace renderer {
 // provided on each call to TestTree().
 class RenderTreePixelTester {
  public:
+  bool IsMapToMeshEnabled() {
+    return backend::GraphicsContext::IsMapToMeshEnabled(graphics_context_);
+  }
+
   struct Options {
     Options();
 
@@ -68,6 +71,7 @@ class RenderTreePixelTester {
   RenderTreePixelTester(const math::Size& test_surface_dimensions,
                         const base::FilePath& expected_results_directory,
                         const base::FilePath& output_directory,
+                        backend::GraphicsContext* graphics_context,
                         const Options& options);
   ~RenderTreePixelTester();
 
@@ -94,10 +98,9 @@ class RenderTreePixelTester {
   const math::Size& GetTargetSize() const { return test_surface_->GetSize(); }
 
  private:
-  std::unique_ptr<cobalt::renderer::backend::GraphicsSystem> graphics_system_;
-  std::unique_ptr<cobalt::renderer::backend::GraphicsContext> graphics_context_;
-  std::unique_ptr<cobalt::renderer::rasterizer::Rasterizer> rasterizer_;
-  scoped_refptr<cobalt::renderer::backend::RenderTarget> test_surface_;
+  backend::GraphicsContext* graphics_context_;
+  std::unique_ptr<rasterizer::Rasterizer> rasterizer_;
+  scoped_refptr<backend::RenderTarget> test_surface_;
 
   base::FilePath expected_results_directory_;
   base::FilePath output_directory_;

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "cobalt/browser/debug_console.h"
+
 #include "base/bind.h"
 #include "base/command_line.h"
 #include "base/files/file_util.h"
@@ -30,11 +31,13 @@ namespace browser {
 namespace {
 // Files for the debug console web page are bundled with the executable.
 const char kInitialDebugConsoleUrl[] =
-    "file:///cobalt/debug/console/debug_console.html";
+    "file:///debug_console/debug_console.html";
 
-const char kDebugConsoleOffString[] = "off";
-const char kDebugConsoleOnString[] = "on";
-const char kDebugConsoleHudString[] = "hud";
+const char kDebugConsoleModeOffString[] = "off";
+const char kDebugConsoleModeHudString[] = "hud";
+const char kDebugConsoleModeDebugString[] = "debug";
+const char kDebugConsoleModeDebugStringAlias[] = "on";  // Legacy name of mode.
+const char kDebugConsoleModeMediaString[] = "media";
 
 // Convert from a debug console visibility setting string to an integer
 // value specified by a constant defined in debug::console::DebugHub.
@@ -43,12 +46,16 @@ base::Optional<int> DebugConsoleModeStringToInt(
   // Static casting is necessary in order to get around what appears to be a
   // compiler error on Linux when implicitly constructing a base::Optional<int>
   // from a static const int.
-  if (mode_string == kDebugConsoleOffString) {
-    return static_cast<int>(debug::console::DebugHub::kDebugConsoleOff);
-  } else if (mode_string == kDebugConsoleHudString) {
-    return static_cast<int>(debug::console::DebugHub::kDebugConsoleHud);
-  } else if (mode_string == kDebugConsoleOnString) {
-    return static_cast<int>(debug::console::DebugHub::kDebugConsoleOn);
+  if (mode_string == kDebugConsoleModeOffString) {
+    return static_cast<int>(debug::console::kDebugConsoleModeOff);
+  } else if (mode_string == kDebugConsoleModeHudString) {
+    return static_cast<int>(debug::console::kDebugConsoleModeHud);
+  } else if (mode_string == kDebugConsoleModeDebugString) {
+    return static_cast<int>(debug::console::kDebugConsoleModeDebug);
+  } else if (mode_string == kDebugConsoleModeDebugStringAlias) {
+    return static_cast<int>(debug::console::kDebugConsoleModeDebug);
+  } else if (mode_string == kDebugConsoleModeMediaString) {
+    return static_cast<int>(debug::console::kDebugConsoleModeMedia);
   } else {
     DLOG(WARNING) << "Debug console mode \"" << mode_string
                   << "\" not recognized.";
@@ -81,7 +88,7 @@ int GetInitialMode() {
   }
 
   // By default the debug console is off.
-  return debug::console::DebugHub::kDebugConsoleOff;
+  return debug::console::kDebugConsoleModeOff;
 }
 
 // A function to create a DebugHub object, to be injected into WebModule.
@@ -89,11 +96,7 @@ scoped_refptr<script::Wrappable> CreateDebugHub(
     const debug::console::DebugHub::GetHudModeCallback& get_hud_mode_function,
     const debug::CreateDebugClientCallback& create_debug_client_callback,
     const scoped_refptr<dom::Window>& window,
-    dom::MutationObserverTaskManager* mutation_observer_task_manager,
     script::GlobalEnvironment* global_environment) {
-  SB_UNREFERENCED_PARAMETER(window);
-  SB_UNREFERENCED_PARAMETER(mutation_observer_task_manager);
-  SB_UNREFERENCED_PARAMETER(global_environment);
   return new debug::console::DebugHub(get_hud_mode_function,
                                       create_debug_client_callback);
 }
@@ -138,59 +141,69 @@ DebugConsole::DebugConsole(
       WebModule::CloseCallback(), /* window_close_callback */
       base::Closure(),            /* window_minimize_callback */
       NULL /* can_play_type_handler */, NULL /* web_media_player_factory */,
-      network_module, window_dimensions, 1.f /*video_pixel_ratio*/,
-      resource_provider, layout_refresh_rate, web_module_options));
+      network_module, window_dimensions, resource_provider, layout_refresh_rate,
+      web_module_options));
 }
 
 DebugConsole::~DebugConsole() {}
 
+bool DebugConsole::ShouldInjectInputEvents() {
+  switch (GetMode()) {
+    case debug::console::kDebugConsoleModeOff:
+    case debug::console::kDebugConsoleModeHud:
+      return false;
+    default:
+      return true;
+  }
+}
+
 bool DebugConsole::FilterKeyEvent(base::Token type,
                                   const dom::KeyboardEventInit& event) {
-  // Assume here the full debug console is visible - pass all events to its
-  // web module, and return false to indicate the event has been consumed.
+  // Return true to indicate the event should still be handled.
+  if (!ShouldInjectInputEvents()) return true;
+
   web_module_->InjectKeyboardEvent(type, event);
   return false;
 }
 
 bool DebugConsole::FilterWheelEvent(base::Token type,
                                     const dom::WheelEventInit& event) {
-  // Assume here the full debug console is visible - pass all events to its
-  // web module, and return false to indicate the event has been consumed.
+  // Return true to indicate the event should still be handled.
+  if (!ShouldInjectInputEvents()) return true;
+
   web_module_->InjectWheelEvent(type, event);
   return false;
 }
 
 bool DebugConsole::FilterPointerEvent(base::Token type,
                                       const dom::PointerEventInit& event) {
-  // Assume here the full debug console is visible - pass all events to its
-  // web module, and return false to indicate the event has been consumed.
+  // Return true to indicate the event should still be handled.
+  if (!ShouldInjectInputEvents()) return true;
+
   web_module_->InjectPointerEvent(type, event);
   return false;
 }
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
-bool DebugConsole::InjectOnScreenKeyboardInputEvent(
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
+bool DebugConsole::FilterOnScreenKeyboardInputEvent(
     base::Token type, const dom::InputEventInit& event) {
-  // Assume here the full debug console is visible - pass all events to its
-  // web module, and return false to indicate the event has been consumed.
+  // Return true to indicate the event should still be handled.
+  if (!ShouldInjectInputEvents()) return true;
+
   web_module_->InjectOnScreenKeyboardInputEvent(type, event);
   return false;
 }
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
-
-void DebugConsole::SetMode(int mode) {
-  base::AutoLock lock(mode_mutex_);
-  mode_ = mode;
-}
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
 void DebugConsole::CycleMode() {
   base::AutoLock lock(mode_mutex_);
-  mode_ = (mode_ + 1) % debug::console::DebugHub::kDebugConsoleNumModes;
+  mode_ = (mode_ + 1) % debug::console::kDebugConsoleModeCount;
 }
 
-int DebugConsole::GetMode() {
+debug::console::DebugConsoleMode DebugConsole::GetMode() {
   base::AutoLock lock(mode_mutex_);
-  return mode_;
+  return static_cast<debug::console::DebugConsoleMode>(mode_);
 }
 
 }  // namespace browser

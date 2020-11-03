@@ -25,6 +25,7 @@
 #include "base/command_line.h"
 #include "base/lazy_instance.h"
 #include "base/logging.h"
+#include "base/metrics/statistics_recorder.h"
 #include "base/optional.h"
 #include "base/path_service.h"
 #include "base/strings/string_number_conversions.h"
@@ -36,7 +37,7 @@
 #include "build/build_config.h"
 #include "cobalt/base/accessibility_caption_settings_changed_event.h"
 #include "cobalt/base/accessibility_settings_changed_event.h"
-#include "cobalt/base/application_event.h"
+#include "cobalt/base/accessibility_text_to_speech_settings_changed_event.h"
 #include "cobalt/base/cobalt_paths.h"
 #include "cobalt/base/deep_link_event.h"
 #include "cobalt/base/get_application_key.h"
@@ -56,7 +57,11 @@
 #include "cobalt/browser/device_authentication.h"
 #include "cobalt/browser/memory_settings/auto_mem_settings.h"
 #include "cobalt/browser/memory_tracker/tool.h"
+#include "cobalt/browser/storage_upgrade_handler.h"
 #include "cobalt/browser/switches.h"
+#include "cobalt/browser/user_agent_string.h"
+#include "cobalt/configuration/configuration.h"
+#include "cobalt/extension/installation_manager.h"
 #include "cobalt/loader/image/image_decoder.h"
 #include "cobalt/math/size.h"
 #include "cobalt/script/javascript_engine.h"
@@ -66,6 +71,7 @@
 #include "cobalt/system_window/input_event.h"
 #include "cobalt/trace_event/scoped_trace_to_file.h"
 #include "starboard/configuration.h"
+#include "starboard/system.h"
 #include "url/gurl.h"
 
 using cobalt::cssom::ViewportSize;
@@ -78,9 +84,43 @@ const int kStatUpdatePeriodMs = 1000;
 
 const char kDefaultURL[] = "https://www.youtube.com/tv";
 
+#if defined(ENABLE_ABOUT_SCHEME)
+const char kAboutBlankURL[] = "about:blank";
+#endif  // defined(ENABLE_ABOUT_SCHEME)
+
 bool IsStringNone(const std::string& str) {
   return !base::strcasecmp(str.c_str(), "none");
 }
+
+#if defined(ENABLE_WEBDRIVER) || defined(ENABLE_DEBUGGER)
+std::string GetDevServersListenIp() {
+  bool ip_v6;
+#if SB_API_VERSION >= 12
+  ip_v6 = SbSocketIsIpv6Supported();
+#elif SB_HAS(IPV6)
+  ip_v6 = true;
+#else
+  ip_v6 = false;
+#endif
+  // Default to INADDR_ANY
+  std::string listen_ip(ip_v6 ? "::" : "0.0.0.0");
+
+  // Desktop PCs default to loopback.
+  if (SbSystemGetDeviceType() == kSbSystemDeviceTypeDesktopPC) {
+    listen_ip = ip_v6 ? "::1" : "127.0.0.1";
+  }
+
+#if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+  if (command_line->HasSwitch(switches::kDevServersListenIp)) {
+    listen_ip =
+        command_line->GetSwitchValueASCII(switches::kDevServersListenIp);
+  }
+#endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
+
+  return listen_ip;
+}
+#endif  // defined(ENABLE_WEBDRIVER) || defined(ENABLE_DEBUGGER)
 
 #if defined(ENABLE_DEBUGGER)
 int GetRemoteDebuggingPort() {
@@ -141,11 +181,13 @@ int GetWebDriverPort() {
 std::string GetWebDriverListenIp() {
   // The default IP on which the webdriver server should listen for incoming
   // connections.
-  std::string webdriver_listen_ip =
-      webdriver::WebDriverModule::kDefaultListenIp;
+  std::string webdriver_listen_ip = GetDevServersListenIp();
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(switches::kWebDriverListenIp)) {
+    DLOG(WARNING) << "The \"--" << switches::kWebDriverListenIp
+                  << "\" switch is deprecated; please use \"--"
+                  << switches::kDevServersListenIp << "\" instead.";
     webdriver_listen_ip =
         command_line->GetSwitchValueASCII(switches::kWebDriverListenIp);
   }
@@ -154,35 +196,59 @@ std::string GetWebDriverListenIp() {
 }
 #endif  // ENABLE_WEBDRIVER
 
-GURL GetInitialURL() {
+GURL GetInitialURL(bool should_preload) {
   GURL initial_url = GURL(kDefaultURL);
   // Allow the user to override the default URL via a command line parameter.
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   if (command_line->HasSwitch(switches::kInitialURL)) {
-    GURL url = GURL(command_line->GetSwitchValueASCII(switches::kInitialURL));
+    std::string url_switch =
+        command_line->GetSwitchValueASCII(switches::kInitialURL);
+#if defined(ENABLE_ABOUT_SCHEME)
+    // Check the switch itself since some non-empty strings parse to empty URLs.
+    if (url_switch.empty()) {
+      LOG(ERROR) << "URL from parameter is empty, using " << kAboutBlankURL;
+      return GURL(kAboutBlankURL);
+    }
+#endif  // defined(ENABLE_ABOUT_SCHEME)
+    GURL url = GURL(url_switch);
     if (url.is_valid()) {
       initial_url = url;
     } else {
-      DLOG(ERROR) << "URL from parameter " << command_line
-                  << " is not valid, using default URL.";
+      LOG(ERROR) << "URL \"" << url_switch
+                 << "\" from parameter is not valid, using default URL "
+                 << initial_url;
     }
   }
 
-#if SB_API_VERSION >= 11
-  // Append the device authentication query parameters based on the platform's
-  // certification secret to the initial URL.
-  std::string query = initial_url.query();
-  std::string device_authentication_query_string =
-      GetDeviceAuthenticationSignedURLQueryString();
-  if (!query.empty() && !device_authentication_query_string.empty()) {
-    query += "&";
-  }
-  query += device_authentication_query_string;
-
-  if (!query.empty()) {
+  if (should_preload) {
+    std::string query = initial_url.query();
+    if (!query.empty()) {
+      query += "&";
+    }
+    query += "launch=preload";
     GURL::Replacements replacements;
     replacements.SetQueryStr(query);
     initial_url = initial_url.ReplaceComponents(replacements);
+  }
+
+#if SB_API_VERSION >= 11
+  if (!command_line->HasSwitch(
+          switches::kOmitDeviceAuthenticationQueryParameters)) {
+    // Append the device authentication query parameters based on the platform's
+    // certification secret to the initial URL.
+    std::string query = initial_url.query();
+    std::string device_authentication_query_string =
+        GetDeviceAuthenticationSignedURLQueryString();
+    if (!query.empty() && !device_authentication_query_string.empty()) {
+      query += "&";
+    }
+    query += device_authentication_query_string;
+
+    if (!query.empty()) {
+      GURL::Replacements replacements;
+      replacements.SetQueryStr(query);
+      initial_url = initial_url.ReplaceComponents(replacements);
+    }
   }
 #endif  // SB_API_VERSION >= 11
 
@@ -196,7 +262,8 @@ base::Optional<GURL> GetFallbackSplashScreenURL() {
     fallback_splash_screen_string =
         command_line->GetSwitchValueASCII(switches::kFallbackSplashScreenURL);
   } else {
-    fallback_splash_screen_string = COBALT_FALLBACK_SPLASH_SCREEN_URL;
+    fallback_splash_screen_string = configuration::Configuration::GetInstance()
+                                        ->CobaltFallbackSplashScreenUrl();
   }
   if (IsStringNone(fallback_splash_screen_string)) {
     return base::Optional<GURL>();
@@ -287,9 +354,9 @@ base::Optional<cssom::ViewportSize> GetRequestedViewportSize(
     // width. This calculates the height at 4:3 aspect ratio for smaller
     // viewport widths, and 16:9 for viewports 1280 pixels wide or larger.
     if (width >= 1280) {
-      return ViewportSize(width, 9 * width / 16, 0);
+      return ViewportSize(width, 9 * width / 16);
     }
-    return ViewportSize(width, 3 * width / 4, 0);
+    return ViewportSize(width, 3 * width / 4);
   }
 
   int height = 0;
@@ -302,13 +369,25 @@ base::Optional<cssom::ViewportSize> GetRequestedViewportSize(
     return ViewportSize(width, height);
   }
 
-  double screen_diagonal_inches = 0.0;
-  if (!base::StringToDouble(lengths[2], &screen_diagonal_inches)) {
-    DLOG(ERROR) << "Viewport " << switch_value
-                << " has invalid screen_diagonal_inches.";
-    return base::nullopt;
+  double screen_diagonal_inches = 0.0f;
+  if (lengths.size() >= 3) {
+    if (!base::StringToDouble(lengths[2], &screen_diagonal_inches)) {
+      DLOG(ERROR) << "Viewport " << switch_value
+                  << " has invalid screen_diagonal_inches.";
+      return base::nullopt;
+    }
   }
-  return ViewportSize(width, height,
+
+  double video_pixel_ratio = 1.0f;
+  if (lengths.size() >= 4) {
+    if (!base::StringToDouble(lengths[3], &video_pixel_ratio)) {
+      DLOG(ERROR) << "Viewport " << switch_value
+                  << " has invalid video_pixel_ratio.";
+      return base::nullopt;
+    }
+  }
+
+  return ViewportSize(width, height, static_cast<float>(video_pixel_ratio),
                       static_cast<float>(screen_diagonal_inches));
 }
 
@@ -397,6 +476,11 @@ const char kMemoryTrackerCommandLongHelp[] =
 
 }  // namespace
 
+// Helper stub to disable histogram tracking in StatisticsRecorder
+struct RecordCheckerStub : public base::RecordHistogramChecker {
+  bool ShouldRecord(uint64_t) const override { return false; }
+};
+
 // Static user logs
 ssize_t Application::available_memory_ = 0;
 int64 Application::lifetime_in_ms_ = 0;
@@ -452,7 +536,7 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
       base::Bind(&Application::UpdatePeriodicStats, base::Unretained(this)));
 
   // Get the initial URL.
-  GURL initial_url = GetInitialURL();
+  GURL initial_url = GetInitialURL(should_preload);
   DLOG(INFO) << "Initial URL: " << initial_url;
 
   // Get the fallback splash screen URL.
@@ -466,6 +550,11 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   std::string language = base::GetSystemLanguage();
   base::LocalizedStrings::GetInstance()->Initialize(language);
 
+  // Disable histogram tracking before TaskScheduler creates StatisticsRecorder
+  // instances.
+  auto record_checker = std::make_unique<RecordCheckerStub>();
+  base::StatisticsRecorder::SetRecordChecker(std::move(record_checker));
+
   // A one-per-process task scheduler is needed for usage of APIs in
   // base/post_task.h which will be used by some net APIs like
   // URLRequestContext;
@@ -475,12 +564,16 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   base::Optional<cssom::ViewportSize> requested_viewport_size =
       GetRequestedViewportSize(command_line);
 
+  unconsumed_deep_link_ = GetInitialDeepLink();
+  DLOG(INFO) << "Initial deep link: " << unconsumed_deep_link_;
+
   WebModule::Options web_options;
+  storage::StorageManager::Options storage_manager_options;
+  network::NetworkModule::Options network_module_options;
   // Create the main components of our browser.
   BrowserModule::Options options(web_options);
   options.web_module_options.name = "MainWebModule";
-  options.initial_deep_link = GetInitialDeepLink();
-  options.network_module_options.preferred_language = language;
+  network_module_options.preferred_language = language;
   options.command_line_auto_mem_settings =
       memory_settings::GetSettings(*command_line);
   options.build_auto_mem_settings = memory_settings::GetDefaultBuildSettings();
@@ -507,14 +600,15 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
 
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
   if (command_line->HasSwitch(browser::switches::kNullSavegame)) {
-    options.storage_manager_options.savegame_options.factory =
+    storage_manager_options.savegame_options.factory =
         &storage::SavegameFake::Create;
   }
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   if (command_line->HasSwitch(browser::switches::kDisableOnScreenKeyboard)) {
     options.enable_on_screen_keyboard = false;
   }
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
 #endif  // defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
 
@@ -542,14 +636,14 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   } else {
     partition_key = base::GetApplicationKey(initial_url);
   }
-  options.storage_manager_options.savegame_options.id = partition_key;
+  storage_manager_options.savegame_options.id = partition_key;
 
   base::Optional<std::string> default_key =
       base::GetApplicationKey(GURL(kDefaultURL));
   if (command_line->HasSwitch(
           browser::switches::kForceMigrationForStoragePartitioning) ||
       partition_key == default_key) {
-    options.storage_manager_options.savegame_options.fallback_to_default_id =
+    storage_manager_options.savegame_options.fallback_to_default_id =
         true;
   }
 
@@ -558,21 +652,21 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   SecurityFlags security_flags{csp::kCSPRequired, network::kHTTPSRequired};
   // Set callback to be notified when a navigation occurs that destroys the
   // underlying WebModule.
-  options.web_module_recreated_callback =
-      base::Bind(&Application::WebModuleRecreated, base::Unretained(this));
+  options.web_module_created_callback =
+      base::Bind(&Application::WebModuleCreated, base::Unretained(this));
 
   // The main web module's stat tracker tracks event stats.
   options.web_module_options.track_event_stats = true;
 
   if (command_line->HasSwitch(browser::switches::kProxy)) {
-    options.network_module_options.custom_proxy =
+    network_module_options.custom_proxy =
         command_line->GetSwitchValueASCII(browser::switches::kProxy);
   }
 
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
 #if defined(ENABLE_IGNORE_CERTIFICATE_ERRORS)
   if (command_line->HasSwitch(browser::switches::kIgnoreCertificateErrors)) {
-    options.network_module_options.ignore_certificate_errors = true;
+    network_module_options.ignore_certificate_errors = true;
   }
 #endif  // defined(ENABLE_IGNORE_CERTIFICATE_ERRORS)
 
@@ -627,34 +721,51 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   security_flags.csp_header_policy = csp::kCSPRequired;
 #endif  // defined(COBALT_FORCE_CSP)
 
-  options.network_module_options.https_requirement =
+  network_module_options.https_requirement =
       security_flags.https_requirement;
   options.web_module_options.require_csp = security_flags.csp_header_policy;
   options.web_module_options.csp_enforcement_mode = dom::kCspEnforcementEnable;
 
   options.requested_viewport_size = requested_viewport_size;
   account_manager_.reset(new account::AccountManager());
-  browser_module_.reset(
-      new BrowserModule(initial_url,
-                        (should_preload ? base::kApplicationStatePreloading
-                                        : base::kApplicationStateStarted),
-                        &event_dispatcher_, account_manager_.get(), options));
+
+  storage_manager_.reset(new storage::StorageManager(
+      std::unique_ptr<storage::StorageManager::UpgradeHandler>(
+          new StorageUpgradeHandler(initial_url)),
+      storage_manager_options));
+
+  network_module_.reset(new network::NetworkModule(
+      CreateUserAgentString(GetUserAgentPlatformInfoFromSystem()),
+      storage_manager_.get(), &event_dispatcher_,
+      network_module_options));
+
+#if SB_IS(EVERGREEN)
+  if (SbSystemGetExtension(kCobaltExtensionInstallationManagerName)) {
+    updater_module_.reset(new updater::UpdaterModule(network_module_.get()));
+  }
+#endif
+  browser_module_.reset(new BrowserModule(
+      initial_url,
+      (should_preload ? base::kApplicationStatePreloading
+                      : base::kApplicationStateStarted),
+      &event_dispatcher_, account_manager_.get(), network_module_.get(),
+#if SB_IS(EVERGREEN)
+      updater_module_.get(),
+#endif
+      options));
+
   UpdateUserAgent();
 
   app_status_ = (should_preload ? kPreloadingAppStatus : kRunningAppStatus);
 
   // Register event callbacks.
-  deep_link_event_callback_ =
-      base::Bind(&Application::OnDeepLinkEvent, base::Unretained(this));
-  event_dispatcher_.AddEventCallback(base::DeepLinkEvent::TypeId(),
-                                     deep_link_event_callback_);
 #if SB_API_VERSION >= 8
   window_size_change_event_callback_ = base::Bind(
       &Application::OnWindowSizeChangedEvent, base::Unretained(this));
   event_dispatcher_.AddEventCallback(base::WindowSizeChangedEvent::TypeId(),
                                      window_size_change_event_callback_);
 #endif  // SB_API_VERSION >= 8
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   on_screen_keyboard_shown_event_callback_ = base::Bind(
       &Application::OnOnScreenKeyboardShownEvent, base::Unretained(this));
   event_dispatcher_.AddEventCallback(base::OnScreenKeyboardShownEvent::TypeId(),
@@ -682,15 +793,16 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
       base::OnScreenKeyboardSuggestionsUpdatedEvent::TypeId(),
       on_screen_keyboard_suggestions_updated_event_callback_);
 #endif  // SB_API_VERSION >= 11
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
-#if SB_HAS(CAPTIONS)
+#if SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
   on_caption_settings_changed_event_callback_ = base::Bind(
       &Application::OnCaptionSettingsChangedEvent, base::Unretained(this));
   event_dispatcher_.AddEventCallback(
       base::AccessibilityCaptionSettingsChangedEvent::TypeId(),
       on_caption_settings_changed_event_callback_);
-#endif  // SB_HAS(CAPTIONS)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
 #if defined(ENABLE_WEBDRIVER)
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
   bool create_webdriver_module =
@@ -718,7 +830,7 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
                << switches::kRemoteDebuggingPort << " is 0.";
   } else {
     debug_web_server_.reset(new debug::remote::DebugWebServer(
-        remote_debugging_port,
+        remote_debugging_port, GetDevServersListenIp(),
         base::Bind(&BrowserModule::CreateDebugClient,
                    base::Unretained(browser_module_.get()))));
   }
@@ -750,13 +862,11 @@ Application::~Application() {
 #endif  // defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
 
   // Unregister event callbacks.
-  event_dispatcher_.RemoveEventCallback(base::DeepLinkEvent::TypeId(),
-                                        deep_link_event_callback_);
 #if SB_API_VERSION >= 8
   event_dispatcher_.RemoveEventCallback(base::WindowSizeChangedEvent::TypeId(),
                                         window_size_change_event_callback_);
 #endif  // SB_API_VERSION >= 8
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   event_dispatcher_.RemoveEventCallback(
       base::OnScreenKeyboardShownEvent::TypeId(),
       on_screen_keyboard_shown_event_callback_);
@@ -774,12 +884,13 @@ Application::~Application() {
       base::OnScreenKeyboardSuggestionsUpdatedEvent::TypeId(),
       on_screen_keyboard_suggestions_updated_event_callback_);
 #endif  // SB_API_VERSION >= 11
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
-#if SB_HAS(CAPTIONS)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
   event_dispatcher_.RemoveEventCallback(
       base::AccessibilityCaptionSettingsChangedEvent::TypeId(),
       on_caption_settings_changed_event_callback_);
-#endif  // SB_HAS(CAPTIONS)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
 
   app_status_ = kShutDownAppStatus;
 }
@@ -812,6 +923,7 @@ void Application::Quit() {
 
 void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
   DCHECK(starboard_event);
+  DCHECK_EQ(base::MessageLoop::current(), message_loop_);
 
   // Forward input events to |SystemWindow|.
   if (starboard_event->type == kSbEventTypeInput) {
@@ -837,7 +949,7 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
               ->size));
       break;
 #endif  // SB_API_VERSION >= 8
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
     case kSbEventTypeOnScreenKeyboardShown:
       DCHECK(starboard_event->data);
       DispatchEventInternal(new base::OnScreenKeyboardShownEvent(
@@ -862,21 +974,34 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
           *static_cast<int*>(starboard_event->data)));
       break;
 #endif  // SB_API_VERSION >= 11
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
     case kSbEventTypeLink: {
-      const char* link = static_cast<const char*>(starboard_event->data);
-      DispatchEventInternal(new base::DeepLinkEvent(link));
+      DispatchDeepLink(static_cast<const char*>(starboard_event->data));
       break;
     }
     case kSbEventTypeAccessiblitySettingsChanged:
       DispatchEventInternal(new base::AccessibilitySettingsChangedEvent());
+#if SB_API_VERSION < 12
+      // Also dispatch the newer text-to-speech settings changed event since
+      // the specific kSbEventTypeAccessiblityTextToSpeechSettingsChanged
+      // event is not available in this starboard version.
+      DispatchEventInternal(
+          new base::AccessibilityTextToSpeechSettingsChangedEvent());
+#endif
       break;
-#if SB_HAS(CAPTIONS)
+#if SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
     case kSbEventTypeAccessibilityCaptionSettingsChanged:
       DispatchEventInternal(
           new base::AccessibilityCaptionSettingsChangedEvent());
       break;
-#endif  // SB_HAS(CAPTIONS)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
+#if SB_API_VERSION >= 12
+    case kSbEventTypeAccessiblityTextToSpeechSettingsChanged:
+      DispatchEventInternal(
+          new base::AccessibilityTextToSpeechSettingsChangedEvent());
+      break;
+#endif
     // Explicitly list unhandled cases here so that the compiler can give a
     // warning when a value is added, but not handled.
     case kSbEventTypeInput:
@@ -937,16 +1062,20 @@ void Application::OnApplicationEvent(SbEventType event_type) {
       app_status_ = kSuspendedAppStatus;
       ++app_suspend_count_;
       browser_module_->Suspend();
+#if SB_IS(EVERGREEN)
+      if (updater_module_) updater_module_->Suspend();
+#endif
       DLOG(INFO) << "Finished suspending.";
       break;
     case kSbEventTypeResume:
-#if SB_API_VERSION >= 10
       DCHECK(SbSystemSupportsResume());
-#endif  // SB_API_VERSION >= 10
       DLOG(INFO) << "Got resume event.";
       app_status_ = kPausedAppStatus;
       ++app_resume_count_;
       browser_module_->Resume();
+#if SB_IS(EVERGREEN)
+      if (updater_module_) updater_module_->Resume();
+#endif
       DLOG(INFO) << "Finished resuming.";
       break;
     case kSbEventTypeLowMemory:
@@ -959,10 +1088,13 @@ void Application::OnApplicationEvent(SbEventType event_type) {
 #if SB_API_VERSION >= 8
     case kSbEventTypeWindowSizeChanged:
 #endif
-#if SB_HAS(CAPTIONS)
+#if SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
     case kSbEventTypeAccessibilityCaptionSettingsChanged:
-#endif  // SB_HAS(CAPTIONS)
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
+#if SB_API_VERSION >= 12
+    case kSbEventTypeAccessiblityTextToSpeechSettingsChanged:
+#endif  // SB_API_VERSION >= 12
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
     case kSbEventTypeOnScreenKeyboardBlurred:
     case kSbEventTypeOnScreenKeyboardFocused:
     case kSbEventTypeOnScreenKeyboardHidden:
@@ -970,7 +1102,8 @@ void Application::OnApplicationEvent(SbEventType event_type) {
 #if SB_API_VERSION >= 11
     case kSbEventTypeOnScreenKeyboardSuggestionsUpdated:
 #endif  // SB_API_VERSION >= 11
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
     case kSbEventTypeAccessiblitySettingsChanged:
     case kSbEventTypeInput:
     case kSbEventTypeLink:
@@ -989,16 +1122,6 @@ void Application::OnApplicationEvent(SbEventType event_type) {
   }
 }
 
-void Application::OnDeepLinkEvent(const base::Event* event) {
-  TRACE_EVENT0("cobalt::browser", "Application::OnDeepLinkEvent()");
-  const base::DeepLinkEvent* deep_link_event =
-      base::polymorphic_downcast<const base::DeepLinkEvent*>(event);
-  // TODO: Remove this when terminal application states are properly handled.
-  if (deep_link_event->IsH5vccLink()) {
-    browser_module_->Navigate(GURL(deep_link_event->link()));
-  }
-}
-
 #if SB_API_VERSION >= 8
 void Application::OnWindowSizeChangedEvent(const base::Event* event) {
   TRACE_EVENT0("cobalt::browser", "Application::OnWindowSizeChangedEvent()");
@@ -1012,12 +1135,18 @@ void Application::OnWindowSizeChangedEvent(const base::Event* event) {
   float diagonal = 0.0f;  // Special value meaning diagonal size is not known.
 #endif
 
-  cssom::ViewportSize viewport_size(size.width, size.height, diagonal);
-  browser_module_->OnWindowSizeChanged(viewport_size, size.video_pixel_ratio);
+  // A value of 0.0 for the video pixel ratio means that the ratio could not be
+  // determined. In that case it should be assumed to be the same as the
+  // graphics resolution, which corresponds to a device pixel ratio of 1.0.
+  float device_pixel_ratio =
+      (size.video_pixel_ratio == 0) ? 1.0f : size.video_pixel_ratio;
+  cssom::ViewportSize viewport_size(size.width, size.height, diagonal,
+                                    device_pixel_ratio);
+  browser_module_->OnWindowSizeChanged(viewport_size);
 }
 #endif  // SB_API_VERSION >= 8
 
-#if SB_HAS(ON_SCREEN_KEYBOARD)
+#if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
 void Application::OnOnScreenKeyboardShownEvent(const base::Event* event) {
   TRACE_EVENT0("cobalt::browser",
                "Application::OnOnScreenKeyboardShownEvent()");
@@ -1060,9 +1189,10 @@ void Application::OnOnScreenKeyboardSuggestionsUpdatedEvent(
           const base::OnScreenKeyboardSuggestionsUpdatedEvent*>(event));
 }
 #endif  // SB_API_VERSION >= 11
-#endif  // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 ||
+        // SB_HAS(ON_SCREEN_KEYBOARD)
 
-#if SB_HAS(CAPTIONS)
+#if SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
 void Application::OnCaptionSettingsChangedEvent(const base::Event* event) {
   TRACE_EVENT0("cobalt::browser",
                "Application::OnCaptionSettingsChangedEvent()");
@@ -1070,10 +1200,11 @@ void Application::OnCaptionSettingsChangedEvent(const base::Event* event) {
       base::polymorphic_downcast<
           const base::AccessibilityCaptionSettingsChangedEvent*>(event));
 }
-#endif  // SB_HAS(CAPTIONS)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
 
-void Application::WebModuleRecreated() {
-  TRACE_EVENT0("cobalt::browser", "Application::WebModuleRecreated()");
+void Application::WebModuleCreated() {
+  TRACE_EVENT0("cobalt::browser", "Application::WebModuleCreated()");
+  DispatchDeepLinkIfNotConsumed();
 #if defined(ENABLE_WEBDRIVER)
   if (web_driver_module_) {
     web_driver_module_->OnWindowRecreated();
@@ -1105,7 +1236,7 @@ Application::CValStats::CValStats()
 // to a new location on the heap.
 void Application::UpdateUserAgent() {
   non_trivial_static_fields.Get().user_agent = browser_module_->GetUserAgent();
-  DLOG(INFO) << "User Agent: " << non_trivial_static_fields.Get().user_agent;
+  LOG(INFO) << "User Agent: " << non_trivial_static_fields.Get().user_agent;
 }
 
 void Application::UpdatePeriodicStats() {
@@ -1156,5 +1287,59 @@ void Application::OnMemoryTrackerCommand(const std::string& message) {
 }
 #endif  // defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
 
+// Called to handle deep link consumed events.
+void Application::OnDeepLinkConsumedCallback(const std::string& link) {
+  LOG(INFO) << "Got deep link consumed callback: " << link;
+  base::AutoLock auto_lock(unconsumed_deep_link_lock_);
+  if (link == unconsumed_deep_link_) {
+    unconsumed_deep_link_.clear();
+  }
+}
+
+void Application::DispatchDeepLink(const char* link) {
+  if (!link || *link == 0) {
+    return;
+  }
+
+  std::string deep_link;
+  // This block exists to ensure that the lock is held while accessing
+  // unconsumed_deep_link_.
+  {
+    base::AutoLock auto_lock(unconsumed_deep_link_lock_);
+    // Stash the deep link so that if it is not consumed, it can be dispatched
+    // again after the next WebModule is created.
+    unconsumed_deep_link_ = link;
+    deep_link = unconsumed_deep_link_;
+  }
+
+  LOG(INFO) << "Dispatching deep link: " << deep_link;
+  DispatchEventInternal(new base::DeepLinkEvent(
+      deep_link, base::Bind(&Application::OnDeepLinkConsumedCallback,
+                            base::Unretained(this), deep_link)));
+}
+
+void Application::DispatchDeepLinkIfNotConsumed() {
+  std::string deep_link;
+  // This block exists to ensure that the lock is held while accessing
+  // unconsumed_deep_link_.
+  {
+    base::AutoLock auto_lock(unconsumed_deep_link_lock_);
+    deep_link = unconsumed_deep_link_;
+  }
+
+  if (!deep_link.empty()) {
+    LOG(INFO) << "Dispatching deep link: " << deep_link;
+    DispatchEventInternal(new base::DeepLinkEvent(
+        deep_link, base::Bind(&Application::OnDeepLinkConsumedCallback,
+                              base::Unretained(this), deep_link)));
+  }
+}
+
 }  // namespace browser
 }  // namespace cobalt
+
+const char* GetCobaltUserAgentString() {
+  static std::string ua = cobalt::browser::CreateUserAgentString(
+      cobalt::browser::GetUserAgentPlatformInfoFromSystem());
+  return ua.c_str();
+}

@@ -16,6 +16,7 @@
 #define COBALT_DEBUG_BACKEND_TRACING_AGENT_H_
 
 #include <string>
+#include <vector>
 
 #include "base/threading/thread_checker.h"
 #include "base/time/time.h"
@@ -28,6 +29,10 @@ namespace cobalt {
 namespace debug {
 namespace backend {
 
+// There aren't enable/disable commands in the Tracing domain, so the
+// TracingAgent doesn't use AgentBase.
+//
+// https://chromedevtools.github.io/devtools-protocol/tot/Tracing
 class TracingAgent : public script::ScriptDebugger::TraceDelegate  {
  public:
   explicit TracingAgent(DebugDispatcher* dispatcher,
@@ -41,8 +46,8 @@ class TracingAgent : public script::ScriptDebugger::TraceDelegate  {
   void FlushTraceEvents() override;
 
  private:
-  void End(const Command& command);
-  void Start(const Command& command);
+  void End(Command command);
+  void Start(Command command);
 
   void SendDataCollectedEvent();
 
@@ -52,11 +57,12 @@ class TracingAgent : public script::ScriptDebugger::TraceDelegate  {
   THREAD_CHECKER(thread_checker_);
 
   bool tracing_started_;
+  std::vector<std::string> categories_;
   size_t collected_size_;
   JSONList collected_events_;
 
   // Map of member functions implementing commands.
-  CommandMap<TracingAgent> commands_;
+  CommandMap commands_;
 };
 
 }  // namespace backend

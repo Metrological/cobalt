@@ -90,10 +90,7 @@ void PrintUsage(const char* executable_path_name) {
   SbLogRaw(ss.str().c_str());
 }
 
-std::string MakeCodecParameter(const std::string& string) { return string; }
-
 void OnInitSegmentReceived(std::unique_ptr<MediaTracks> tracks) {
-  SB_UNREFERENCED_PARAMETER(tracks);
 }
 
 class InitCobaltHelper {
@@ -114,8 +111,10 @@ class Application {
                        base::FilePath(FILE_PATH_LITERAL(
                            "media_source_sandbox_trace.json"))) {
     if (argc > 1) {
-      FormatGuesstimator guesstimator1(argv[argc - 1]);
-      FormatGuesstimator guesstimator2(argv[argc - 2]);
+      FormatGuesstimator guesstimator1(argv[argc - 1],
+                                       media_sandbox_.GetMediaModule());
+      FormatGuesstimator guesstimator2(argv[argc - 2],
+                                       media_sandbox_.GetMediaModule());
 
       if (!guesstimator1.is_valid()) {
         SB_LOG(ERROR) << "Invalid path or url: " << argv[argc - 1];
@@ -165,10 +164,10 @@ class Application {
       return;
     }
 
-    player_helper_.reset(
-        new WebMediaPlayerHelper(media_sandbox_.GetMediaModule(),
-                                 base::Bind(&Application::OnChunkDemuxerOpened,
-                                            base::Unretained(this))));
+    player_helper_.reset(new WebMediaPlayerHelper(
+        media_sandbox_.GetMediaModule(),
+        base::Bind(&Application::OnChunkDemuxerOpened, base::Unretained(this)),
+        media_sandbox_.GetViewportSize()));
 
     // |chunk_demuxer_| will be set inside OnChunkDemuxerOpened()
     // asynchronously during initialization of |player_helper_|.  Wait until
@@ -180,8 +179,7 @@ class Application {
     LOG(INFO) << "Playing " << guesstimator.adaptive_path();
 
     std::string id = guesstimator.is_audio() ? kAudioId : kVideoId;
-    auto codecs = MakeCodecParameter(guesstimator.codecs());
-    auto status = chunk_demuxer_->AddId(id, guesstimator.mime(), codecs);
+    auto status = chunk_demuxer_->AddId(id, guesstimator.mime_type());
     CHECK_EQ(status, ChunkDemuxer::kOk);
 
     chunk_demuxer_->SetTracksWatcher(id, base::Bind(OnInitSegmentReceived));
@@ -217,10 +215,10 @@ class Application {
       return;
     }
 
-    player_helper_.reset(
-        new WebMediaPlayerHelper(media_sandbox_.GetMediaModule(),
-                                 base::Bind(&Application::OnChunkDemuxerOpened,
-                                            base::Unretained(this))));
+    player_helper_.reset(new WebMediaPlayerHelper(
+        media_sandbox_.GetMediaModule(),
+        base::Bind(&Application::OnChunkDemuxerOpened, base::Unretained(this)),
+        media_sandbox_.GetViewportSize()));
 
     // |chunk_demuxer_| will be set inside OnChunkDemuxerOpened()
     // asynchronously during initialization of |player_helper_|.  Wait until
@@ -232,13 +230,11 @@ class Application {
     LOG(INFO) << "Playing " << audio_guesstimator.adaptive_path() << " and "
               << video_guesstimator.adaptive_path();
 
-    auto codecs = MakeCodecParameter(audio_guesstimator.codecs());
     auto status =
-        chunk_demuxer_->AddId(kAudioId, audio_guesstimator.mime(), codecs);
+        chunk_demuxer_->AddId(kAudioId, audio_guesstimator.mime_type());
     CHECK_EQ(status, ChunkDemuxer::kOk);
 
-    codecs = MakeCodecParameter(video_guesstimator.codecs());
-    status = chunk_demuxer_->AddId(kVideoId, video_guesstimator.mime(), codecs);
+    status = chunk_demuxer_->AddId(kVideoId, video_guesstimator.mime_type());
     CHECK_EQ(status, ChunkDemuxer::kOk);
 
     chunk_demuxer_->SetTracksWatcher(kAudioId,
@@ -261,7 +257,7 @@ class Application {
 
     player_helper_.reset(new WebMediaPlayerHelper(
         media_sandbox_.GetMediaModule(), media_sandbox_.GetFetcherFactory(),
-        guesstimator.progressive_url()));
+        guesstimator.progressive_url(), media_sandbox_.GetViewportSize()));
     player_ = player_helper_->player();
 
     media_sandbox_.RegisterFrameCB(
@@ -344,9 +340,6 @@ class Application {
   }
 
   scoped_refptr<Image> FrameCB(const base::TimeDelta& time) {
-    SB_UNREFERENCED_PARAMETER(time);
-
-#if SB_HAS(GRAPHICS)
     SbDecodeTarget decode_target = player_helper_->GetCurrentDecodeTarget();
 
     if (SbDecodeTargetIsValid(decode_target)) {
@@ -354,9 +347,6 @@ class Application {
           decode_target);
     }
     return NULL;
-#else   // SB_HAS(GRAPHICS)
-    return NULL;
-#endif  // SB_HAS(GRAPHICS)
   }
 
   const std::string kAudioId = "audio";

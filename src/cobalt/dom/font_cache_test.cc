@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
-
 #include "cobalt/dom/font_cache.h"
+
+#include <memory>
 
 #include "base/bind.h"
 #include "base/memory/ref_counted.h"
 #include "cobalt/csp/content_security_policy.h"
 #include "cobalt/dom/font_face.h"
+#include "cobalt/dom/global_stats.h"
 #include "cobalt/loader/font/remote_typeface_cache.h"
 #include "cobalt/loader/font/typeface_decoder.h"
 #include "cobalt/loader/loader.h"
@@ -58,11 +59,14 @@ std::unique_ptr<FontCache::FontFaceMap> CreateFontFaceMapHelper(
 class FontCacheTest : public ::testing::Test {
  public:
   FontCacheTest();
-  ~FontCacheTest() override {}
+  ~FontCacheTest() override {
+    EXPECT_TRUE(GlobalStats::GetInstance()->CheckNoLeaks());
+  }
 
   void DummyOnTypefaceLoadEvent() {}
 
  protected:
+  base::NullDebuggerHooks debugger_hooks_;
   ::testing::StrictMock<loader::MockLoaderFactory> loader_factory_;
   scoped_refptr<cobalt::render_tree::Typeface> sample_typeface_;
   ::testing::StrictMock<cobalt::render_tree::MockResourceProvider>
@@ -79,7 +83,7 @@ FontCacheTest::FontCacheTest()
       mrp(dynamic_cast<cobalt::render_tree::ResourceProvider*>(
           &mock_resource_provider_)),
       rtc(new loader::font::RemoteTypefaceCache(
-          "test_cache", 32 * 1024 /* 32 KB */,
+          "test_cache", debugger_hooks_, 32 * 1024 /* 32 KB */,
           true /*are_loading_retries_enabled*/,
           base::Bind(&loader::MockLoaderFactory::CreateTypefaceLoader,
                      base::Unretained(&loader_factory_)))),

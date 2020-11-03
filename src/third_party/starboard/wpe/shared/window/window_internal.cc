@@ -38,15 +38,6 @@ namespace {
 constexpr int kDefaultWidth = 1280;
 constexpr int kDefaultHeight = 720;
 
-// YouTube Technical Requirement 2018 (2016/11/1 - Initial draft)
-// 9.5 The device MUST dispatch the following key events, as appropriate:
-//  * Window.keydown
-//      * After a key is held down for 500ms, the Window.keydown event
-//        MUST repeat every 50ms until a user stops holding the key down.
-//  * Window.keyup
-constexpr SbTime kKeyHoldTime = 500 * kSbTimeMillisecond;
-constexpr SbTime kKeyRepeatTime = 50 * kSbTimeMillisecond;
-
 #define KEY_INFO_BUTTON 0xbc
 
 // Converts an input_event code into an SbKey.
@@ -373,8 +364,27 @@ std::string DisplayName() {
   return (name);
 }
 
+// YouTube Technical Requirement 2018 (2016/11/1 - Initial draft)
+// 9.5 The device MUST dispatch the following key events, as appropriate:
+//  * Window.keydown
+//      * After a key is held down for 500ms, the Window.keydown event
+//        MUST repeat every 50ms until a user stops holding the key down.
+//  * Window.keyup
 KeyboardHandler::KeyboardHandler()
-    : key_repeat_interval_(kKeyHoldTime), key_repeat_delay_(kKeyHoldTime) {}
+    : default_key_repeat_start_(500 * kSbTimeMillisecond)
+    , default_key_repeat_interval_(50 * kSbTimeMillisecond) {
+
+  auto* env_key_repeat_start = std::getenv("COBALT_KEY_REPEAT_START");
+  if (env_key_repeat_start) {
+    default_key_repeat_start_ = atoi(env_key_repeat_start) * kSbTimeMillisecond;
+  }
+  auto* env_key_repeat_interval = std::getenv("COBALT_KEY_REPEAT_INTERVAL");
+  if (env_key_repeat_interval) {
+    default_key_repeat_interval_ = atoi(env_key_repeat_interval) * kSbTimeMillisecond;
+  }
+  key_repeat_interval_ = default_key_repeat_start_;
+  key_repeat_start_ = default_key_repeat_start_;
+}
 
 void KeyboardHandler::Modifiers(uint32_t mods_depressed,
                                 uint32_t mods_latched,
@@ -401,8 +411,8 @@ void KeyboardHandler::Repeat(int32_t rate, int32_t delay) {
   if (rate == 0) {
     DeleteRepeatKey();
   } else {
-    key_repeat_interval_ = std::min(kKeyRepeatTime, static_cast<SbTime>(rate));
-    key_repeat_delay_ = std::min(key_repeat_delay_, kKeyHoldTime);
+    key_repeat_interval_ = std::min(default_key_repeat_interval_, static_cast<SbTime>(rate));
+    key_repeat_start_ = std::min(key_repeat_start_, default_key_repeat_start_);
   }
 }
 
@@ -452,7 +462,7 @@ void KeyboardHandler::CreateKey(int key, state action, bool is_repeat) {
         },
         this, key_repeat_interval_);
   } else {
-    key_repeat_interval_ = std::min(key_repeat_delay_, kKeyHoldTime);
+    key_repeat_interval_ = std::min(key_repeat_start_, default_key_repeat_start_);
   }
 }
 
@@ -461,7 +471,7 @@ void KeyboardHandler::CreateRepeatKey() {
     return;
   }
 
-  key_repeat_interval_ = std::min(kKeyRepeatTime, key_repeat_interval_);
+  key_repeat_interval_ = std::min(default_key_repeat_interval_, key_repeat_interval_);
 
   CreateKey(key_repeat_key_, key_repeat_state_, true);
 }

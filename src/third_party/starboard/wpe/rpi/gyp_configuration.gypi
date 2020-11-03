@@ -15,6 +15,7 @@
   'includes': [
     '../shared/libraries.gypi',
     'architecture.gypi',
+    '<(DEPTH)/starboard/sabi/sabi.gypi',
   ],
   'variables': {
     'target_arch': 'arm',
@@ -39,7 +40,7 @@
     ],
     'compiler_flags': [
       # We'll pretend not to be Linux, but Starboard instead.
-      '-U__linux__',
+      '-D__linux__',
 
       # Force char to be signed.
       '-fsigned-char',

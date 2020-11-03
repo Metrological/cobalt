@@ -14,54 +14,17 @@
 #ifndef COBALT_DEBUG_BACKEND_DOM_AGENT_H_
 #define COBALT_DEBUG_BACKEND_DOM_AGENT_H_
 
-#include <memory>
-#include <string>
-
-#include "base/memory/weak_ptr.h"
-#include "cobalt/debug/backend/command_map.h"
+#include "cobalt/debug/backend/agent_base.h"
 #include "cobalt/debug/backend/debug_dispatcher.h"
-#include "cobalt/debug/backend/render_layer.h"
-#include "cobalt/debug/command.h"
-#include "cobalt/debug/json_object.h"
-#include "cobalt/dom/dom_rect.h"
 
 namespace cobalt {
 namespace debug {
 namespace backend {
 
-class DOMAgent {
+// https://chromedevtools.github.io/devtools-protocol/tot/DOM
+class DOMAgent : public AgentBase {
  public:
-  DOMAgent(DebugDispatcher* dispatcher,
-           std::unique_ptr<RenderLayer> render_layer);
-
-  void Thaw(JSONObject agent_state);
-  JSONObject Freeze();
-
- private:
-  void Enable(const Command& command);
-  void Disable(const Command& command);
-
-  // Highlights a specified node according to highlight parameters.
-  void HighlightNode(const Command& command);
-
-  // Hides the node highlighting.
-  void HideHighlight(const Command& command);
-
-  // Renders a highlight to the overlay.
-  void RenderHighlight(const scoped_refptr<dom::DOMRect>& bounding_rect,
-                       const base::DictionaryValue* highlight_config_value);
-
-  // Helper object to connect to the debug dispatcher, etc.
-  DebugDispatcher* dispatcher_;
-
-  // Render layer owned by this object.
-  std::unique_ptr<RenderLayer> render_layer_;
-
-  // Map of member functions implementing commands.
-  CommandMap<DOMAgent> commands_;
-
-  // Whether we successfully loaded the agent's JavaScript implementation.
-  bool script_loaded_ = false;
+  explicit DOMAgent(DebugDispatcher* dispatcher);
 };
 
 }  // namespace backend

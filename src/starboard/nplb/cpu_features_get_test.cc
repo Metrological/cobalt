@@ -67,6 +67,9 @@ void ExpectX86Invalid(const SbCPUFeatures& features) {
   EXPECT_EQ(false, features.x86.has_sse2);
   EXPECT_EQ(false, features.x86.has_tsc);
   EXPECT_EQ(false, features.x86.has_sse3);
+#if SB_API_VERSION >= 12
+  EXPECT_EQ(false, features.x86.has_pclmulqdq);
+#endif  // SB_API_VERSION >= 12
   EXPECT_EQ(false, features.x86.has_ssse3);
   EXPECT_EQ(false, features.x86.has_sse41);
   EXPECT_EQ(false, features.x86.has_sse42);
@@ -113,30 +116,22 @@ TEST(SbCPUFeaturesGetTest, SunnyDay) {
     // If the architecture is unknown, SbCPUFeaturesGet() must return
     // false.
     EXPECT_NE(kSbCPUFeaturesArchitectureUnknown, features.architecture);
-#if SB_IS(ARCH_ARM)
+
+#if SB_IS(ARCH_ARM) || SB_IS(ARCH_ARM64)
     EXPECT_TRUE(features.architecture == kSbCPUFeaturesArchitectureArm ||
                 features.architecture == kSbCPUFeaturesArchitectureArm64);
-    ExpectMipsInvalid(features);
-    ExpectX86Invalid(features);
-#elif SB_IS(ARCH_MIPS)
-    EXPECT_TRUE(features.architecture == kSbCPUFeaturesArchitectureMips ||
-                features.architecture == kSbCPUFeaturesArchitectureMips64);
+#else   // !SB_IS(ARCH_ARM) && !SB_IS(ARCH_ARM64)
     ExpectArmInvalid(features);
-    ExpectX86Invalid(features);
-#elif SB_IS(ARCH_PPC)
-    EXPECT_TRUE(features.architecture == kSbCPUFeaturesArchitecturePpc ||
-                features.architecture == kSbCPUFeaturesArchitecturePpc64);
-    ExpectArmInvalid(features);
-    ExpectMipsInvalid(features);
-    ExpectX86Invalid(features);
-#elif SB_IS(ARCH_X86)
+#endif  // SB_IS(ARCH_ARM) || SB_IS(ARCH_ARM64)
+
+#if SB_IS(ARCH_X86) || SB_IS(ARCH_X64)
     EXPECT_TRUE(features.architecture == kSbCPUFeaturesArchitectureX86 ||
                 features.architecture == kSbCPUFeaturesArchitectureX86_64);
-    ExpectArmInvalid(features);
+#else   // !SB_IS(ARCH_X86) && !SB_IS(ARCH_X64)
+    ExpectX86Invalid(features);
+#endif  // SB_IS(ARCH_X86) || SB_IS(ARCH_X64)
+
     ExpectMipsInvalid(features);
-#else
-#error "Unexpected CPU architecture configuration is set."
-#endif
   }
 }
 

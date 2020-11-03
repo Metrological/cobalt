@@ -19,7 +19,7 @@
           'musl_arch': 'x86_64'
         }
     }],
-    ['target_arch == "x86" or target_arch == "ia32"', {
+    ['target_arch == "x86"', {
       'variables': {
          'musl_arch': 'i386'
        }
@@ -40,7 +40,6 @@
        }
     }],
     # Not yet supported:
-    # target_arch == ps3
     # target_arch == win
   ],
   'targets': [
@@ -55,9 +54,8 @@
         # no-unknown-pragmas  -w shift-op-parentheses
         '-nobuiltininc',
         '-isystem<(DEPTH)/third_party/musl/include',
-        '-isystem<(DEPTH)/third_party/musl/arch/x86_64',
+        '-isystem<(DEPTH)/third_party/musl/arch/<(musl_arch)',
         '-isystem<(DEPTH)/third_party/musl/arch/generic',
-        '-isystem<(DEPTH)/third_party/musl/generated/include',
         '-w',
       ],
       'direct_dependent_settings': {
@@ -156,6 +154,7 @@
             'src/errno/strerror.c',
             'src/exit/assert.c',
             'src/exit/atexit.c',
+            'src/exit/exit.c',
             'src/internal/floatscan.c',
             'src/internal/intscan.c',
             'src/internal/shgetc.c',
@@ -181,6 +180,7 @@
             'src/multibyte/wcsrtombs.c',
             'src/multibyte/wcstombs.c',
             'src/multibyte/wctob.c',
+            'src/prng/rand.c',
             'src/stdio/__toread.c',
             'src/stdio/__uflow.c',
             'src/stdio/fprintf.c',
@@ -190,8 +190,11 @@
             'src/stdio/sscanf.c',
             'src/stdio/swprintf.c',
             'src/stdio/vasprintf.c',
+            'src/stdio/vprintf.c',
             'src/stdio/vsprintf.c',
             'src/stdlib/abs.c',
+            'src/stdlib/atof.c',
+            'src/stdlib/atoi.c',
             'src/stdlib/labs.c',
             'src/stdlib/llabs.c',
             'src/stdlib/wcstod.c',
@@ -524,6 +527,17 @@
         'src/string/wmemmove.c',
         'src/string/wmemset.c',
       ]
+    },
+    {
+      'target_name': 'musl_unittests',
+      'type': '<(gtest_target_type)',
+      'sources': [
+        'test/type_size_test.cc',
+      ],
+      'dependencies': [
+        'c',
+        '<(DEPTH)/starboard/starboard_headers_only.gyp:starboard_headers_only',
+      ],
     }
   ]
 }

@@ -24,8 +24,10 @@
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
 #include "starboard/configuration.h"
+#include "starboard/configuration_constants.h"
 #include "starboard/memory.h"
 #include "starboard/time.h"
+#include "starboard/time_zone.h"
 
 namespace v8 {
 namespace base {
@@ -83,11 +85,14 @@ bool g_hard_abort = false;
 void OS::Initialize(bool hard_abort, const char* const gc_fake_mmap) {
   g_hard_abort = hard_abort;
   // This is only used on Posix, we don't need to use it for anything.
-  SB_UNREFERENCED_PARAMETER(gc_fake_mmap);
 }
 
 int OS::GetUserTime(uint32_t* secs, uint32_t* usecs) {
-#if SB_HAS(TIME_THREAD_NOW)
+#if SB_API_VERSION >= 12
+  if (!SbTimeIsTimeThreadNowSupported()) return -1;
+#endif
+
+#if SB_API_VERSION >= 12 || SB_HAS(TIME_THREAD_NOW)
   SbTimeMonotonic thread_now = SbTimeGetMonotonicThreadNow();
   *secs = thread_now / kSbTimeSecond;
   *usecs = thread_now % kSbTimeSecond;
@@ -121,10 +126,10 @@ int OS::ActivationFrameAlignment() {
 }
 
 // static
-size_t OS::AllocatePageSize() { return SB_MEMORY_PAGE_SIZE; }
+size_t OS::AllocatePageSize() { return kSbMemoryPageSize; }
 
 // static
-size_t OS::CommitPageSize() { return SB_MEMORY_PAGE_SIZE; }
+size_t OS::CommitPageSize() { return kSbMemoryPageSize; }
 
 // static
 void OS::SetRandomMmapSeed(int64_t seed) { SB_NOTIMPLEMENTED(); }
@@ -153,6 +158,37 @@ void* Allocate(void* address, size_t size, OS::MemoryPermission access) {
   return result;
 }
 
+// The following code was taken from old v8 to deal with rounding up pointers.
+namespace {
+// Compute the 0-relative offset of some absolute value x of type T.
+// This allows conversion of Addresses and integral types into
+// 0-relative int offsets.
+template <typename T>
+constexpr inline intptr_t OffsetFrom(T x) {
+  return x - static_cast<T>(0);
+}
+
+// Compute the absolute value of type T for some 0-relative offset x.
+// This allows conversion of 0-relative int offsets into Addresses and
+// integral types.
+template <typename T>
+constexpr inline T AddressFrom(intptr_t x) {
+  return static_cast<T>(static_cast<T>(0) + x);
+}
+
+template <typename T>
+inline T RoundDown(T x, intptr_t m) {
+  // m must be a power of two.
+  DCHECK(m != 0 && ((m & (m - 1)) == 0));
+  return AddressFrom<T>(OffsetFrom(x) & -m);
+}
+
+template <typename T>
+inline T RoundUpOld(T x, intptr_t m) {
+  return RoundDown<T>(static_cast<T>(x + m - 1), m);
+}
+}  // namespace
+
 // static
 void* OS::Allocate(void* address, size_t size, size_t alignment,
                    MemoryPermission access) {
@@ -168,7 +204,7 @@ void* OS::Allocate(void* address, size_t size, size_t alignment,
 
   // Unmap memory allocated before the aligned base address.
   uint8_t* base = static_cast<uint8_t*>(result);
-  uint8_t* aligned_base = RoundUp(base, alignment);
+  uint8_t* aligned_base = RoundUpOld(base, alignment);
   if (aligned_base != base) {
     DCHECK_LT(base, aligned_base);
     size_t prefix_size = static_cast<size_t>(aligned_base - base);
@@ -204,12 +240,18 @@ bool OS::SetPermissions(void* address, size_t size, MemoryPermission access) {
     case OS::MemoryPermission::kNoAccess:
       new_protection = SbMemoryMapFlags(0);
       break;
+    case OS::MemoryPermission::kRead:
+      new_protection = SbMemoryMapFlags(kSbMemoryMapProtectRead);
     case OS::MemoryPermission::kReadWrite:
       new_protection = SbMemoryMapFlags(kSbMemoryMapProtectReadWrite);
       break;
     case OS::MemoryPermission::kReadExecute:
+#if SB_CAN(MAP_EXECUTABLE_MEMORY)
       new_protection = SbMemoryMapFlags(kSbMemoryMapProtectRead |
                                         kSbMemoryMapProtectExec);
+#else
+      CHECK(false);
+#endif
       break;
     default:
       // All other types are not supported by Starboard.
@@ -244,7 +286,8 @@ class StarboardMemoryMappedFile final : public OS::MemoryMappedFile {
 };
 
 // static
-OS::MemoryMappedFile* OS::MemoryMappedFile::open(const char* name) {
+OS::MemoryMappedFile* OS::MemoryMappedFile::open(const char* name,
+                                                 FileMode mode) {
   SB_NOTIMPLEMENTED();
   return nullptr;
 }
@@ -265,10 +308,7 @@ int OS::GetCurrentProcessId() {
 
 int OS::GetCurrentThreadId() { return SbThreadGetId(); }
 
-int OS::GetLastError() {
-  SB_NOTIMPLEMENTED();
-  return 0;
-}
+int OS::GetLastError() { return SbSystemGetLastError(); }
 
 // ----------------------------------------------------------------------------
 // POSIX stdio support.
@@ -284,7 +324,7 @@ bool OS::Remove(const char* path) {
   return false;
 }
 
-char OS::DirectorySeparator() { return SB_FILE_SEP_CHAR; }
+char OS::DirectorySeparator() { return kSbFileSepChar; }
 
 bool OS::isDirectorySeparator(const char ch) {
   return ch == DirectorySeparator();
@@ -308,10 +348,15 @@ void OS::VPrint(const char* format, va_list args) {
   SbLogRawFormat(format, args);
 }
 
-void OS::FPrint(FILE* out, const char* format, ...) { SB_NOTIMPLEMENTED(); }
+void OS::FPrint(FILE* out, const char* format, ...) {
+  va_list args;
+  va_start(args, format);
+  VPrintError(format, args);
+  va_end(args);
+}
 
 void OS::VFPrint(FILE* out, const char* format, va_list args) {
-  SB_NOTIMPLEMENTED();
+  SbLogRawFormat(format, args);
 }
 
 void OS::PrintError(const char* format, ...) {
@@ -349,12 +394,7 @@ int OS::VSNPrintF(char* str, int length, const char* format, va_list args) {
 // POSIX string support.
 //
 
-char* OS::StrChr(char* str, int c) {
-  return const_cast<char*>(SbStringFindCharacter(str, c));
-}
-
 void OS::StrNCpy(char* dest, int length, const char* src, size_t n) {
-  SB_UNREFERENCED_PARAMETER(length);
   SbStringCopy(dest, src, n);
 }
 
@@ -429,7 +469,7 @@ void Thread::SetThreadLocal(LocalStorageKey key, void* value) {
 class StarboardTimezoneCache : public TimezoneCache {
  public:
   double DaylightSavingsOffset(double time_ms) override { return 0.0; }
-  void Clear() override {}
+  void Clear(TimeZoneDetection time_zone_detection) override {}
   ~StarboardTimezoneCache() override {}
 
  protected:
@@ -438,8 +478,12 @@ class StarboardTimezoneCache : public TimezoneCache {
 
 class StarboardDefaultTimezoneCache : public StarboardTimezoneCache {
  public:
-  const char* LocalTimezone(double time_ms) override { return nullptr; }
-  double LocalTimeOffset() override { return 0.0; }
+  const char* LocalTimezone(double time_ms) override {
+    return SbTimeZoneGetName();
+  }
+  double LocalTimeOffset(double time_ms, bool is_utc) override {
+    return SbTimeZoneGetCurrent() * 60000.0;
+  }
 
   ~StarboardDefaultTimezoneCache() override {}
 };
@@ -454,6 +498,13 @@ std::vector<OS::SharedLibraryAddress> OS::GetSharedLibraryAddresses() {
 }
 
 void OS::SignalCodeMovingGC() { SB_NOTIMPLEMENTED(); }
+
+void OS::AdjustSchedulingParams() {}
+
+bool OS::DiscardSystemPages(void* address, size_t size) {
+  // Starboard API does not support this function yet.
+  return true;
+}
 
 }  // namespace base
 }  // namespace v8

@@ -18,9 +18,6 @@
 #include "starboard/android/shared/jni_utils.h"
 #include "starboard/android/shared/media_common.h"
 #include "starboard/audio_sink.h"
-#if SB_API_VERSION >= 11
-#include "starboard/format_string.h"
-#endif  // SB_API_VERSION >= 11
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
 #include "starboard/shared/pthread/thread_create_priority.h"
@@ -108,7 +105,9 @@ MediaDecoder::MediaDecoder(Host* host,
                            int height,
                            jobject j_output_surface,
                            SbDrmSystem drm_system,
-                           const SbMediaColorMetadata* color_metadata)
+                           const SbMediaColorMetadata* color_metadata,
+                           bool require_software_codec,
+                           std::string* error_message)
     : media_type_(kSbMediaTypeVideo),
       host_(host),
       drm_system_(static_cast<DrmSystem*>(drm_system)),
@@ -117,9 +116,10 @@ MediaDecoder::MediaDecoder(Host* host,
   SB_DCHECK(!drm_system_ || j_media_crypto);
   media_codec_bridge_ = MediaCodecBridge::CreateVideoMediaCodecBridge(
       video_codec, width, height, this, j_output_surface, j_media_crypto,
-      color_metadata);
+      color_metadata, require_software_codec, error_message);
   if (!media_codec_bridge_) {
-    SB_LOG(ERROR) << "Failed to create video media codec bridge.";
+    SB_LOG(ERROR) << "Failed to create video media codec bridge with error: "
+                  << *error_message;
   }
 }
 
@@ -175,6 +175,12 @@ void MediaDecoder::WriteEndOfStream() {
   if (pending_tasks_.size() == 1) {
     condition_variable_.Signal();
   }
+}
+
+void MediaDecoder::SetPlaybackRate(double playback_rate) {
+  SB_DCHECK(media_type_ == kSbMediaTypeVideo);
+  SB_DCHECK(media_codec_bridge_);
+  media_codec_bridge_->SetPlaybackRate(playback_rate);
 }
 
 // static
@@ -345,7 +351,7 @@ bool MediaDecoder::ProcessOneInputBuffer(
     std::vector<int>* input_buffer_indices) {
   SB_DCHECK(media_codec_bridge_);
 
-  // During secure playback, and only secure playback, is is possible that our
+  // During secure playback, and only secure playback, it is possible that our
   // attempt to enqueue an input buffer will be rejected by MediaCodec because
   // we do not have a key yet.  In this case, we hold on to the input buffer
   // that we have already set up, and repeatedly attempt to enqueue it until

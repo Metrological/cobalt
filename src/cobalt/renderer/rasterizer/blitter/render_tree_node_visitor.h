@@ -26,6 +26,7 @@
 #include "cobalt/render_tree/composition_node.h"
 #include "cobalt/render_tree/filter_node.h"
 #include "cobalt/render_tree/image_node.h"
+#include "cobalt/render_tree/lottie_node.h"
 #include "cobalt/render_tree/matrix_transform_3d_node.h"
 #include "cobalt/render_tree/matrix_transform_node.h"
 #include "cobalt/render_tree/node_visitor.h"
@@ -41,7 +42,7 @@
 #include "starboard/blitter.h"
 #include "third_party/skia/include/core/SkImageInfo.h"
 
-#if SB_HAS(BLITTER)
+#if SB_API_VERSION < 12 && SB_HAS(BLITTER)
 
 namespace cobalt {
 
@@ -74,6 +75,7 @@ class RenderTreeNodeVisitor : public render_tree::NodeVisitor {
   void Visit(render_tree::CompositionNode* composition_node) override;
   void Visit(render_tree::FilterNode* filter_node) override;
   void Visit(render_tree::ImageNode* image_node) override;
+  void Visit(render_tree::LottieNode* lottie_node) override;
   void Visit(
       render_tree::MatrixTransform3DNode* matrix_transform_3d_node) override;
   void Visit(render_tree::MatrixTransformNode* matrix_transform_node) override;
@@ -126,6 +128,6 @@ class RenderTreeNodeVisitor : public render_tree::NodeVisitor {
 }  // namespace renderer
 }  // namespace cobalt
 
-#endif  // #if SB_HAS(BLITTER)
+#endif  // SB_API_VERSION < 12 && SB_HAS(BLITTER)
 
 #endif  // COBALT_RENDERER_RASTERIZER_BLITTER_RENDER_TREE_NODE_VISITOR_H_

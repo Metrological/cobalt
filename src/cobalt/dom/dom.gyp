@@ -124,6 +124,8 @@
         'event_queue.h',
         'event_target.cc',
         'event_target.h',
+        'event_target_listener_info.cc',
+        'event_target_listener_info.h',
         'focus_event.cc',
         'focus_event.h',
         'focus_event_init.h',
@@ -135,8 +137,6 @@
         'font_face_updater.h',
         'font_list.cc',
         'font_list.h',
-        'generic_event_handler_reference.cc',
-        'generic_event_handler_reference.h',
         'global_stats.cc',
         'global_stats.h',
         'history.cc',
@@ -210,6 +210,8 @@
         'local_storage_database.h',
         'location.cc',
         'location.h',
+        'lottie_player.cc',
+        'lottie_player.h',
         'media_query_list.cc',
         'media_query_list.h',
         'media_source.cc',
@@ -344,12 +346,8 @@
         '<(DEPTH)/cobalt/web_animations/web_animations.gyp:web_animations',
         '<(DEPTH)/nb/nb.gyp:nb',
         '<(DEPTH)/net/net.gyp:net',
+        '<(DEPTH)/third_party/icu/icu.gyp:icuuc',
         '<(DEPTH)/url/url.gyp:url',
-      ],
-      'conditions': [
-        ['enable_map_to_mesh == 1', {
-          'defines' : ['ENABLE_MAP_TO_MESH'],
-        }],
       ],
       # This target doesn't generate any headers, but it exposes generated
       # header files (for idl dictionaries) through this module's public header

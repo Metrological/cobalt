@@ -18,6 +18,7 @@ import os
 from starboard.build import clang
 from starboard.build import platform_configuration
 from starboard.tools import build
+from starboard.tools import paths
 from starboard.tools.testing import test_filter
 
 
@@ -27,9 +28,10 @@ class LinuxConfiguration(platform_configuration.PlatformConfiguration):
   def __init__(self,
                platform,
                asan_enabled_by_default=True,
-               goma_supports_compiler=True):
-    self.goma_supports_compiler = goma_supports_compiler
+               sabi_json_path='starboard/sabi/default/sabi.json'):
     super(LinuxConfiguration, self).__init__(platform, asan_enabled_by_default)
+
+    self.sabi_json_path = sabi_json_path
     self.AppendApplicationConfigurationPath(os.path.dirname(__file__))
 
   def GetBuildFormat(self):
@@ -43,8 +45,10 @@ class LinuxConfiguration(platform_configuration.PlatformConfiguration):
     variables = super(LinuxConfiguration, self).GetVariables(
         config_name, use_clang=1)
     variables.update({
-        'javascript_engine': 'v8',
-        'cobalt_enable_jit': 1,
+        'javascript_engine':
+            'v8',
+        'include_path_platform_deploy_gypi':
+            'starboard/linux/shared/platform_deploy.gypi',
     })
     return variables
 
@@ -60,14 +64,14 @@ class LinuxConfiguration(platform_configuration.PlatformConfiguration):
     return generator_variables
 
   def GetEnvironmentVariables(self):
-    if not hasattr(self, 'host_compiler_environment'):
-      self.host_compiler_environment = build.GetHostCompilerEnvironment(
-          clang.GetClangSpecification(), self.goma_supports_compiler)
+    if not hasattr(self, '_host_compiler_environment'):
+      self._host_compiler_environment = build.GetHostCompilerEnvironment(
+          clang.GetClangSpecification(), self.build_accelerator)
 
-    env_variables = self.host_compiler_environment
+    env_variables = self._host_compiler_environment
     env_variables.update({
-        'CC': self.host_compiler_environment['CC_host'],
-        'CXX': self.host_compiler_environment['CXX_host'],
+        'CC': self._host_compiler_environment['CC_host'],
+        'CXX': self._host_compiler_environment['CXX_host'],
     })
     return env_variables
 
@@ -85,10 +89,25 @@ class LinuxConfiguration(platform_configuration.PlatformConfiguration):
 
   def GetTestFilters(self):
     filters = super(LinuxConfiguration, self).GetTestFilters()
-    for target, tests in self.__FILTERED_TESTS.iteritems():
+
+    has_cdm = os.path.isfile(
+        os.path.join(paths.REPOSITORY_ROOT, 'third_party', 'ce_cdm', 'cdm',
+                     'include', 'cdm.h'))
+
+    if has_cdm:
+      return filters
+
+    # Filter the drm related tests, as ce_cdm is not present.
+    for target, tests in self.__DRM_RELATED_TESTS.iteritems():
       filters.extend(test_filter.TestFilter(target, test) for test in tests)
     return filters
 
-  __FILTERED_TESTS = {
-      'nplb': ['SbDrmTest.AnySupportedKeySystems',],
+  def GetPathToSabiJsonFile(self):
+    return self.sabi_json_path
+
+  __DRM_RELATED_TESTS = {  # pylint: disable=invalid-name
+      'nplb': [
+          'SbDrmTest.AnySupportedKeySystems',
+          'SbMediaCanPlayMimeAndKeySystem.AnySupportedKeySystems',
+      ],
   }

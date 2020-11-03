@@ -16,8 +16,12 @@
 
 #include "starboard/common/optional.h"
 #include "starboard/common/spin_lock.h"
+#include "starboard/configuration_constants.h"
+#include "starboard/nplb/player_creation_param_helpers.h"
+#include "starboard/nplb/player_test_util.h"
 #include "starboard/player.h"
 #include "starboard/shared/starboard/media/media_support_internal.h"
+#include "starboard/shared/starboard/media/media_util.h"
 #include "starboard/shared/starboard/player/video_dmp_reader.h"
 #include "starboard/testing/fake_graphics_context_provider.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -33,35 +37,6 @@ using ::testing::ValuesIn;
 
 const SbTime kDuration = kSbTimeSecond / 2;
 const SbTime kSmallWaitInterval = 10 * kSbTimeMillisecond;
-
-std::string GetTestInputDirectory() {
-  const size_t kPathSize = SB_FILE_MAX_PATH + 1;
-
-  char content_path[kPathSize];
-  SB_CHECK(
-      SbSystemGetPath(kSbSystemPathContentDirectory, content_path, kPathSize));
-  std::string directory_path =
-      std::string(content_path) + SB_FILE_SEP_CHAR + "test" + SB_FILE_SEP_CHAR +
-      "starboard" + SB_FILE_SEP_CHAR + "shared" + SB_FILE_SEP_CHAR +
-      "starboard" + SB_FILE_SEP_CHAR + "player" + SB_FILE_SEP_CHAR + "testdata";
-
-  SB_CHECK(SbDirectoryCanOpen(directory_path.c_str()))
-      << "Cannot open directory " << directory_path;
-  return directory_path;
-}
-
-static void DeallocateSampleFunc(SbPlayer player,
-                                 void* context,
-                                 const void* sample_buffer) {
-  SB_UNREFERENCED_PARAMETER(player);
-  SB_UNREFERENCED_PARAMETER(context);
-  SB_UNREFERENCED_PARAMETER(sample_buffer);
-}
-
-std::string ResolveTestFileName(const char* filename) {
-  auto ret = GetTestInputDirectory() + SB_FILE_SEP_CHAR + filename;
-  return ret;
-}
 
 class SbMediaSetAudioWriteDurationTest
     : public ::testing::TestWithParam<const char*> {
@@ -91,17 +66,15 @@ class SbMediaSetAudioWriteDurationTest
     }
 
     SbPlayerSampleInfo player_sample_info =
-        dmp_reader_.GetPlayerSampleInfo(kSbMediaTypeAudio, ++index_);
+        dmp_reader_.GetPlayerSampleInfo(kSbMediaTypeAudio, index_++);
 
     SbPlayerSampleInfo sample_info = {};
     sample_info.buffer = player_sample_info.buffer;
     sample_info.buffer_size = player_sample_info.buffer_size;
     sample_info.timestamp = player_sample_info.timestamp;
     sample_info.drm_info = NULL;
-#if SB_API_VERSION >= 11
     sample_info.type = kSbMediaTypeAudio;
     sample_info.audio_sample_info = dmp_reader_.audio_sample_info();
-#endif  // SB_API_VERSION >= 11
 
     SbPlayer player = pending_decoder_status_->player;
     SbMediaType type = pending_decoder_status_->type;
@@ -136,25 +109,40 @@ class SbMediaSetAudioWriteDurationTest
     SbMediaAudioCodec kAudioCodec = dmp_reader_.audio_codec();
     SbDrmSystem kDrmSystem = kSbDrmSystemInvalid;
 
+    last_input_timestamp_ =
+        dmp_reader_.GetPlayerSampleInfo(kSbMediaTypeAudio, 0).timestamp;
+    first_input_timestamp_ = last_input_timestamp_;
+
+#if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+    SbPlayerCreationParam creation_param = CreatePlayerCreationParam(
+        audio_sample_info.codec, kSbMediaVideoCodecNone);
+    creation_param.audio_sample_info = audio_sample_info;
+    creation_param.output_mode =
+        SbPlayerGetPreferredOutputMode(&creation_param);
+    EXPECT_NE(creation_param.output_mode, kSbPlayerOutputModeInvalid);
+
+    SbPlayer player = SbPlayerCreate(
+        fake_graphics_context_provider_.window(), &creation_param,
+        DummyDeallocateSampleFunc, DecoderStatusFunc, PlayerStatusFunc,
+        DummyErrorFunc, this /* context */,
+        fake_graphics_context_provider_.decoder_target_provider());
+#else   // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
     SbPlayerOutputMode output_mode = kSbPlayerOutputModeDecodeToTexture;
+
     if (!SbPlayerOutputModeSupported(output_mode, kSbMediaVideoCodecNone,
                                      kSbDrmSystemInvalid)) {
       output_mode = kSbPlayerOutputModePunchOut;
     }
 
-    last_input_timestamp_ =
-        dmp_reader_.GetPlayerSampleInfo(kSbMediaTypeAudio, 0).timestamp;
-    first_input_timestamp_ = last_input_timestamp_;
-
     SbPlayer player = SbPlayerCreate(
         fake_graphics_context_provider_.window(), kSbMediaVideoCodecNone,
         kAudioCodec, kSbDrmSystemInvalid, &audio_sample_info,
-#if SB_API_VERSION >= 11
         NULL /* max_video_capabilities */,
-#endif  // SB_API_VERSION >= 11
         DummyDeallocateSampleFunc, DecoderStatusFunc, PlayerStatusFunc,
         DummyErrorFunc, this /* context */, output_mode,
         fake_graphics_context_provider_.decoder_target_provider());
+#endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+
     EXPECT_TRUE(SbPlayerIsValid(player));
     return player;
   }
@@ -190,15 +178,6 @@ class SbMediaSetAudioWriteDurationTest
   optional<PendingDecoderStatus> pending_decoder_status_;
 
  private:
-  static void DummyDeallocateSampleFunc(SbPlayer player,
-                                        void* context,
-                                        const void* sample_buffer) {}
-
-  static void DummyErrorFunc(SbPlayer player,
-                             void* context,
-                             SbPlayerError error,
-                             const char* message) {}
-
   static void DecoderStatusFunc(SbPlayer player,
                                 void* context,
                                 SbMediaType type,
@@ -234,10 +213,18 @@ TEST_P(SbMediaSetAudioWriteDurationTest, WriteLimitedInput) {
 
   WaitForPlayerState(kSbPlayerStatePresenting);
 
-  // Check that the playback time is > 0.
-  SbPlayerInfo2 info;
-  SbPlayerGetInfo2(player, &info);
-  ASSERT_GT(info.current_media_timestamp, 0);
+  // Wait until the playback time is > 0.
+  const SbTime kMaxWaitTime = 5 * kSbTimeSecond;
+  SbTime start_of_wait = SbTimeGetMonotonicNow();
+  SbPlayerInfo2 info = {};
+
+  while (SbTimeGetMonotonicNow() - start_of_wait < kMaxWaitTime &&
+         info.current_media_timestamp == 0) {
+    SbThreadSleep(kSbTimeMillisecond * 500);
+    SbPlayerGetInfo2(player, &info);
+  }
+
+  EXPECT_GT(info.current_media_timestamp, 0);
 
   SbPlayerDestroy(player);
 }
@@ -277,8 +264,8 @@ TEST_P(SbMediaSetAudioWriteDurationTest, WriteContinuedLimitedInput) {
 }
 
 std::vector<const char*> GetSupportedTests() {
-  const char* kFilenames[] = {"beneath_the_canopy_140_aac.dmp",
-                              "beneath_the_canopy_249_opus.dmp"};
+  const char* kFilenames[] = {"beneath_the_canopy_aac_stereo.dmp",
+                              "beneath_the_canopy_opus_stereo.dmp"};
 
   static std::vector<const char*> test_params;
 
@@ -289,7 +276,13 @@ std::vector<const char*> GetSupportedTests() {
   for (auto filename : kFilenames) {
     VideoDmpReader dmp_reader(ResolveTestFileName(filename).c_str());
     SB_DCHECK(dmp_reader.number_of_audio_buffers() > 0);
+
+    const SbMediaAudioSampleInfo* audio_sample_info =
+        &dmp_reader.audio_sample_info();
     if (SbMediaIsAudioSupported(dmp_reader.audio_codec(),
+#if SB_API_VERSION >= 12
+                                "",  // content_type
+#endif // SB_API_VERSION >= 12
                                 dmp_reader.audio_bitrate())) {
       test_params.push_back(filename);
     }

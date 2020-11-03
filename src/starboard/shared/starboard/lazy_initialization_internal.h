@@ -22,8 +22,14 @@
 #include "starboard/thread.h"
 
 // INITIALIZED_STATE_UNINITIALIZED is defined in the header.
+
+#if SB_API_VERSION >= 12
+#define INITIALIZED_STATE_INITIALIZING 1
+#define INITIALIZED_STATE_INITIALIZED 2
+#else
 #define INITIALIZED_STATE_INITIALIZING 2
 #define INITIALIZED_STATE_INITIALIZED 3
+#endif
 
 namespace starboard {
 namespace shared {
@@ -52,7 +58,8 @@ static SB_C_INLINE bool EnsureInitialized(InitializedState* state) {
       SbThreadYield();
     } while (SbAtomicAcquire_Load(state) != INITIALIZED_STATE_INITIALIZED);
   } else {
-    SB_DCHECK(original == INITIALIZED_STATE_INITIALIZED);
+    SB_DCHECK(original == INITIALIZED_STATE_INITIALIZED)
+        << "Unexpected original=" << original;
   }
 
   return true;

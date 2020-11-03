@@ -30,6 +30,19 @@ TEST(SbDirectoryCanOpenTest, SunnyDay) {
   EXPECT_TRUE(SbDirectoryCanOpen(path.c_str()));
 }
 
+TEST(SbDirectoryCanOpenTest, SunnyDayStaticContent) {
+  for (auto dir_path : GetFileTestsDirectoryPaths()) {
+    EXPECT_TRUE(SbDirectoryCanOpen(dir_path.c_str()))
+        << "Can't open: " << dir_path;
+  }
+}
+
+TEST(SbDirectoryCanOpenTest, FailureMissingStaticContent) {
+  std::string directory_path = GetFileTestsDataDir();
+  std::string missing_dir = directory_path + kSbFileSepChar + "missing_dir";
+  EXPECT_FALSE(SbDirectoryCanOpen(missing_dir.c_str()));
+}
+
 TEST(SbDirectoryCanOpenTest, FailureNull) {
   EXPECT_FALSE(SbDirectoryCanOpen(NULL));
 }
@@ -41,6 +54,7 @@ TEST(SbDirectoryCanOpenTest, FailureEmpty) {
 TEST(SbDirectoryCanOpenTest, FailureRegularFile) {
   starboard::nplb::ScopedRandomFile file;
 
+  EXPECT_TRUE(SbFileExists(file.filename().c_str()));
   EXPECT_FALSE(SbDirectoryCanOpen(file.filename().c_str()));
 }
 

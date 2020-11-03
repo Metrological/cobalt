@@ -14,9 +14,6 @@
 
 #include <string>
 
-#if SB_API_VERSION >= 11
-#include "starboard/format_string.h"
-#endif  // SB_API_VERSION >= 11
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
 
@@ -88,7 +85,9 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
             std::to_string(SB_PLATFORM_MODEL_YEAR).c_str());
       }
     }
-#if SB_API_VERSION >= 11
+#if SB_API_VERSION >= 12
+    case kSbSystemPropertySystemIntegratorName:
+#elif SB_API_VERSION == 11
     case kSbSystemPropertyOriginalDesignManufacturerName:
 #else
     case kSbSystemPropertyNetworkOperatorName:
@@ -118,8 +117,22 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       return CopyStringAndTestIfSuccess(out_value, value_length, kPlatformName);
 
 #if SB_API_VERSION >= 11
-    case kSbSystemPropertyCertificationScope:
-    case kSbSystemPropertyBase64EncodedCertificationSecret:
+    case kSbSystemPropertyCertificationScope: {
+      auto* property_name = std::getenv("COBALT_CERTIFICATION_SCOPE");
+      if (property_name) {
+        return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
+      } else {
+        return (false);
+      }
+    }
+    case kSbSystemPropertyBase64EncodedCertificationSecret: {
+      auto* property_name = std::getenv("COBALT_CERTIFICATION_SECRET");
+      if (property_name) {
+        return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
+      } else {
+        return (false);
+      }
+    }
 #endif  // SB_API_VERSION >= 11
 
     default:

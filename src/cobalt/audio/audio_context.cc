@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
-
 #include "cobalt/audio/audio_context.h"
+
+#include <memory>
 
 #include "base/callback.h"
 #include "cobalt/base/polymorphic_downcast.h"
@@ -24,7 +24,8 @@ namespace cobalt {
 namespace audio {
 
 AudioContext::AudioContext(script::EnvironmentSettings* settings)
-    : global_environment_(
+    : dom::EventTarget(settings),
+      global_environment_(
           base::polymorphic_downcast<dom::DOMSettings*>(settings)
               ->global_environment()),
       ALLOW_THIS_IN_INITIALIZER_LIST(weak_ptr_factory_(this)),
@@ -36,7 +37,7 @@ AudioContext::AudioContext(script::EnvironmentSettings* settings)
       current_time_(0.0f),
       audio_lock_(new AudioLock()),
       ALLOW_THIS_IN_INITIALIZER_LIST(
-          destination_(new AudioDestinationNode(this))),
+          destination_(new AudioDestinationNode(settings, this))),
       next_callback_id_(0),
       main_message_loop_(base::MessageLoop::current()->task_runner()) {
   DCHECK(main_message_loop_);
@@ -63,15 +64,17 @@ scoped_refptr<AudioBuffer> AudioContext::CreateBuffer(uint32 num_of_channels,
   DCHECK(main_message_loop_->BelongsToCurrentThread());
 
   return scoped_refptr<AudioBuffer>(new AudioBuffer(
-      sample_rate, std::unique_ptr<ShellAudioBus>(new ShellAudioBus(
+      sample_rate, std::unique_ptr<AudioBus>(new AudioBus(
                        num_of_channels, length, GetPreferredOutputSampleType(),
                        kStorageTypeInterleaved))));
 }
 
-scoped_refptr<AudioBufferSourceNode> AudioContext::CreateBufferSource() {
+scoped_refptr<AudioBufferSourceNode> AudioContext::CreateBufferSource(
+    script::EnvironmentSettings* settings) {
   DCHECK(main_message_loop_->BelongsToCurrentThread());
 
-  return scoped_refptr<AudioBufferSourceNode>(new AudioBufferSourceNode(this));
+  return scoped_refptr<AudioBufferSourceNode>(
+      new AudioBufferSourceNode(settings, this));
 }
 
 void AudioContext::PreventGarbageCollection() {
@@ -148,7 +151,7 @@ void AudioContext::DecodeAudioDataInternal(
 // Success callback and error callback should be scheduled to run on the main
 // thread's event loop.
 void AudioContext::DecodeFinish(int callback_id, float sample_rate,
-                                std::unique_ptr<ShellAudioBus> audio_bus) {
+                                std::unique_ptr<AudioBus> audio_bus) {
   if (!main_message_loop_->BelongsToCurrentThread()) {
     main_message_loop_->PostTask(
         FROM_HERE,

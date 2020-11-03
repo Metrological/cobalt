@@ -27,7 +27,7 @@
 namespace cobalt {
 namespace audio {
 
-typedef media::ShellAudioBus ShellAudioBus;
+typedef media::AudioBus AudioBus;
 
 namespace {
 const int kRenderBufferSizeFrames = 1024;
@@ -43,11 +43,14 @@ class AudioDevice::Impl {
   static void UpdateSourceStatusFunc(int* frames_in_buffer,
                                      int* offset_in_frames, bool* is_playing,
                                      bool* is_eos_reached, void* context);
+
+#if SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
+  static void ConsumeFramesFunc(int frames_consumed, void* context);
+#else   // SB_API_VERSION >=  12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
   static void ConsumeFramesFunc(int frames_consumed,
-#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                 SbTime frames_consumed_at,
-#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                 void* context);
+#endif  // SB_API_VERSION >=  12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 
   void UpdateSourceStatus(int* frames_in_buffer, int* offset_in_frames,
                           bool* is_playing, bool* is_eos_reached);
@@ -66,7 +69,7 @@ class AudioDevice::Impl {
   // The |render_callback_| returns audio data in planar form.  So we read it
   // into |input_audio_bus_| and convert it into interleaved form and store in
   // |output_frame_buffer_|.
-  ShellAudioBus input_audio_bus_;
+  AudioBus input_audio_bus_;
 
   std::unique_ptr<uint8[]> output_frame_buffer_;
 
@@ -91,14 +94,15 @@ AudioDevice::Impl::Impl(int number_of_channels, RenderCallback* callback)
 #if SB_API_VERSION >= 11
       frames_per_channel_(std::max(SbAudioSinkGetMinBufferSizeInFrames(
                                        number_of_channels, output_sample_type_,
-                                       kStandardOutputSampleRate),
+                                       kStandardOutputSampleRate) +
+                                       kRenderBufferSizeFrames * 2,
                                    kDefaultFramesPerChannel)),
 #else  // SB_API_VERSION >= 11
       frames_per_channel_(kDefaultFramesPerChannel),
 #endif  // SB_API_VERSION >= 11
       input_audio_bus_(static_cast<size_t>(number_of_channels),
                        static_cast<size_t>(kRenderBufferSizeFrames),
-                       GetPreferredOutputSampleType(), ShellAudioBus::kPlanar),
+                       GetPreferredOutputSampleType(), AudioBus::kPlanar),
       output_frame_buffer_(
           new uint8[frames_per_channel_ * number_of_channels_ *
                     GetStarboardSampleTypeSize(output_sample_type_)]) {
@@ -143,16 +147,15 @@ void AudioDevice::Impl::UpdateSourceStatusFunc(int* frames_in_buffer,
                            is_eos_reached);
 }
 
+#if SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 // static
+void AudioDevice::Impl::ConsumeFramesFunc(int frames_consumed, void* context) {
+#else   // SB_API_VERSION >= 12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
 void AudioDevice::Impl::ConsumeFramesFunc(int frames_consumed,
-#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                           SbTime frames_consumed_at,
-#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                           void* context) {
-#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
   SB_UNREFERENCED_PARAMETER(frames_consumed_at);
-#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
-
+#endif  // SB_API_VERSION >=  12 || !SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
   AudioDevice::Impl* impl = reinterpret_cast<AudioDevice::Impl*>(context);
   DCHECK(impl);
 
@@ -174,7 +177,7 @@ void AudioDevice::Impl::UpdateSourceStatus(int* frames_in_buffer,
   DCHECK_GE(frames_rendered_, frames_consumed_);
   *frames_in_buffer = static_cast<int>(frames_rendered_ - frames_consumed_);
 
-  if ((frames_per_channel_ - *frames_in_buffer) >= kRenderBufferSizeFrames) {
+  while ((frames_per_channel_ - *frames_in_buffer) >= kRenderBufferSizeFrames) {
     // If there was silence last time we were called, then the buffer has
     // already been zeroed out and we don't need to do it again.
     if (!was_silence_last_update_) {
@@ -223,8 +226,8 @@ inline void AudioDevice::Impl::FillOutputAudioBusForType() {
     for (size_t channel = 0; channel < input_audio_bus_.channels(); ++channel) {
       *output_buffer = ConvertSample<InputType, OutputType>(
           input_audio_bus_
-              .GetSampleForType<InputType, media::ShellAudioBus::kPlanar>(
-                  channel, frame));
+              .GetSampleForType<InputType, media::AudioBus::kPlanar>(channel,
+                                                                     frame));
       ++output_buffer;
     }
   }
@@ -234,7 +237,7 @@ void AudioDevice::Impl::FillOutputAudioBus() {
   TRACE_EVENT0("cobalt::audio", "AudioDevice::Impl::FillOutputAudioBus()");
 
   const bool is_input_int16 =
-      input_audio_bus_.sample_type() == media::ShellAudioBus::kInt16;
+      input_audio_bus_.sample_type() == media::AudioBus::kInt16;
   const bool is_output_int16 =
       output_sample_type_ == kSbMediaAudioSampleTypeInt16Deprecated;
 

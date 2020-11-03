@@ -21,6 +21,7 @@
 #include "net/cert/pem_tokenizer.h"
 #include "net/cert/x509_certificate.h"
 #include "net/cert/x509_util.h"
+#include "starboard/configuration_constants.h"
 #include "starboard/directory.h"
 #include "starboard/file.h"
 #include "starboard/string.h"
@@ -75,8 +76,19 @@ std::unordered_set<std::string> GetCertNamesOnDisk() {
 #endif
     return std::unordered_set<std::string>();
   }
-  SbDirectoryEntry dir_entry;
   std::unordered_set<std::string> trusted_certs_on_disk;
+#if SB_API_VERSION >= 12
+  std::vector<char> dir_entry(kSbFileMaxName);
+
+  while (SbDirectoryGetNext(sb_certs_directory, dir_entry.data(),
+                            dir_entry.size())) {
+    if (SbStringGetLength(dir_entry.data()) != kCertFileNameLength) {
+      continue;
+    }
+    trusted_certs_on_disk.emplace(dir_entry.data());
+  }
+#else   // SB_API_VERSION >= 12
+  SbDirectoryEntry dir_entry;
 
   while (SbDirectoryGetNext(sb_certs_directory, &dir_entry)) {
     if (SbStringGetLength(dir_entry.name) != kCertFileNameLength) {
@@ -84,6 +96,8 @@ std::unordered_set<std::string> GetCertNamesOnDisk() {
     }
     trusted_certs_on_disk.emplace(dir_entry.name);
   }
+#endif  // SB_API_VERSION >= 12
+
   SbDirectoryClose(sb_certs_directory);
   return std::move(trusted_certs_on_disk);
 }

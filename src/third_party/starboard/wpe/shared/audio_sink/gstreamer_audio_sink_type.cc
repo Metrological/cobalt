@@ -59,7 +59,7 @@ class GStreamerAudioSink : public SbAudioSinkPrivate {
       SbAudioSinkFrameBuffers frame_buffers,
       int frame_buffers_size_in_frames,
       SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-      SbAudioSinkConsumeFramesFunc consume_frames_func,
+      ConsumeFramesFunc consume_frames_func,
       void* context);
   ~GStreamerAudioSink() override;
 
@@ -96,7 +96,7 @@ class GStreamerAudioSink : public SbAudioSinkPrivate {
   int sampling_frequency_hz_{0};
   SbMediaAudioSampleType audio_sample_type_{kSbMediaAudioSampleTypeInt16};
   SbAudioSinkUpdateSourceStatusFunc update_source_status_func_{nullptr};
-  SbAudioSinkConsumeFramesFunc consume_frame_func_{nullptr};
+  ConsumeFramesFunc consume_frame_func_{nullptr};
   SbAudioSinkFrameBuffers frame_buffers_{nullptr};
   int frame_buffers_size_in_frames_{0};
   SbThread audio_loop_thread_{kSbThreadInvalid};
@@ -123,7 +123,7 @@ GStreamerAudioSink::GStreamerAudioSink(
     SbAudioSinkFrameBuffers frame_buffers,
     int frame_buffers_size_in_frames,
     SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-    SbAudioSinkConsumeFramesFunc consume_frame_func,
+    ConsumeFramesFunc consume_frame_func,
     void* context)
     : type_(type),
       channels_(channels),
@@ -358,9 +358,7 @@ void GStreamerAudioSink::AppSrcNeedData(GstAppSrc* src,
                            frames_to_write, sink->total_frames_,
                            sink->total_frames_ * sink->GetBytesPerFrame());
           sink->consume_frame_func_(frames_to_write,
-#if SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                     SbTimeGetMonotonicNow(),
-#endif  // SB_HAS(ASYNC_AUDIO_FRAMES_REPORTING)
                                     sink->context_);
 
 #if defined(DUMP_PCM_TO_FILE)
@@ -429,7 +427,10 @@ SbAudioSink GStreamerAudioSinkType::Create(
     SbAudioSinkFrameBuffers frame_buffers,
     int frame_buffers_size_in_frames,
     SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-    SbAudioSinkConsumeFramesFunc consume_frames_func,
+    SbAudioSinkPrivate::ConsumeFramesFunc consume_frames_func,
+#if SB_API_VERSION >= 12
+    SbAudioSinkPrivate::ErrorFunc error_func,
+#endif  // SB_API_VERSION >= 12
     void* context) {
   return new GStreamerAudioSink(
       this, channels, sampling_frequency_hz, audio_sample_type,
