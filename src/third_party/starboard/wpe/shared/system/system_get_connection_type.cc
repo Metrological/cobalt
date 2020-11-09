@@ -16,6 +16,11 @@
 
 #include "starboard/common/log.h"
 
+#include <stdlib.h>
+#include <string.h>
+
 SbSystemConnectionType SbSystemGetConnectionType() {
-  return kSbSystemConnectionTypeWired;
+  // Check an environment variable for the current state.
+  const char* value = ::getenv("COBALT_CONNECTION_TYPE");
+  return ((value != nullptr) && (::strcmp(value, "wireless") == 0) ? kSbSystemConnectionTypeWireless : kSbSystemConnectionTypeWired);
 }
