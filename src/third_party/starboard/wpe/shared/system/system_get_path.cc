@@ -109,7 +109,7 @@ bool GetExecutableName(char* out_path, int path_size) {
 bool GetTemporaryDirectory(char* out_path, int path_size) {
   auto* temp = std::getenv("COBALT_TEMP");
   if (temp) {
-    out_path = temp;
+    SbStringCopy(out_path,temp, path_size);
     return true;
   }
 

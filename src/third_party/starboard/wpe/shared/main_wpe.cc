@@ -17,6 +17,7 @@
 #include "starboard/configuration.h"
 #include "starboard/shared/signal/crash_signals.h"
 #include "starboard/shared/signal/suspend_signals.h"
+#include "starboard/shared/starboard/link_receiver.h"
 
 #include "third_party/starboard/wpe/shared/application_wpe.h"
 
@@ -29,8 +30,13 @@ int main(int argc, char** argv) {
 
   starboard::shared::signal::InstallCrashSignalHandlers();
   starboard::shared::signal::InstallSuspendSignalHandlers();
+
   third_party::starboard::wpe::shared::Application application;
-  int result = application.Run(argc, argv);
+  int result = 0;
+  {
+    starboard::shared::starboard::LinkReceiver receiver(&application);
+    result = application.Run(argc, argv);
+  }
   starboard::shared::signal::UninstallCrashSignalHandlers();
   starboard::shared::signal::UninstallSuspendSignalHandlers();
   return result;

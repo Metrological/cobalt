@@ -45,6 +45,7 @@ class Application : public ::starboard::shared::starboard::QueueApplication {
   bool DestroyWindow(SbWindow window);
   void InjectInputEvent(SbInputData* data);
 
+  std::string GetStartDeepLink();
   void NavigateTo(const char* url);
   void Suspend();
   void Resume();

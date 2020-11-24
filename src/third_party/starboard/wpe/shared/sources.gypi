@@ -300,6 +300,8 @@
         '<(DEPTH)/starboard/shared/starboard/system_request_unpause.cc',
         '<(DEPTH)/starboard/shared/starboard/system_supports_resume.cc',
 
+        '<(DEPTH)/starboard/shared/starboard/link_receiver.cc',
+
         # STUB
         '<(DEPTH)/starboard/shared/stub/system_get_extensions.cc',
         '<(DEPTH)/starboard/shared/stub/system_get_total_gpu_memory.cc',

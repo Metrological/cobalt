@@ -41,6 +41,17 @@ void Application::Initialize() {
   g_finished_init_.notify_all();
 }
 
+std::string Application::GetStartDeepLink() {
+  auto command_line = ::starboard::shared::starboard::Application::GetCommandLine();
+  if (command_line->HasSwitch("link")) {
+    auto value = command_line->GetSwitchValue("link");
+    if (!value.empty())
+      return value;
+  }
+  return std::string();
+}
+
+
 void Application::Teardown() {
   SbAudioSinkPrivate::TearDown();
 }
@@ -103,7 +114,8 @@ void Application::NavigateTo(const char* url) {
 void Application::Suspend()
 {
   suspend_lock_.lock();
-  ::starboard::shared::starboard::Application::Suspend(this, 
+  ::starboard::shared::starboard::Application::Pause(this, nullptr);
+  ::starboard::shared::starboard::Application::Suspend(this,
     [](void* application) {
       reinterpret_cast<Application*>(application)->suspend_lock_.unlock();
     });
@@ -121,7 +133,16 @@ void Application::OnSuspend()
 void Application::Resume()
 {
   suspend_lock_.lock();
-  ::starboard::shared::starboard::Application::Resume(this, 
+
+  ::starboard::shared::starboard::Application::Unpause(this,
+    [](void* application) {
+      // Send OnDeepLink event
+      auto deep_link =  reinterpret_cast<Application*>(application)->GetStartDeepLink();
+      if (!deep_link.empty())
+        ::starboard::shared::starboard::Application::Get()->Link(deep_link.c_str());
+    });
+
+  ::starboard::shared::starboard::Application::Resume(this,
     [](void* application) {
       reinterpret_cast<Application*>(application)->suspend_lock_.unlock();
     });
