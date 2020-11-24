@@ -16,6 +16,17 @@
 
 #include "third_party/starboard/wpe/shared/player/player_internal.h"
 
+#include <stdlib.h>
+#include <string.h>
+
 bool SbPlayerSetPlaybackRate(SbPlayer player, double playback_rate) {
-  return player->player_->SetRate(playback_rate);
+  double rate = playback_rate;
+
+  // Check an environment variable for the supported playback rates
+  const char* value = ::getenv("COBALT_SUPPORT_PLAYBACK_RATES");
+  if ((value != nullptr) && (::strcmp(value, "false") == 0)) {
+    if ( rate != .0 )
+      rate = 1.;
+  }
+  return player->player_->SetRate(rate);
 }
