@@ -14,6 +14,7 @@
 {
   'variables': {
     'has_ocdm': '<!(echo $COBALT_HAS_OCDM)',
+    'has_provision': '<!(echo $COBALT_HAS_PROVISION)',
     'common_libs': [
       '-lpthread',
     ],
@@ -37,6 +38,11 @@
       ['<(has_ocdm)==1', {
         'pkg_libs': [
           'ocdm',
+        ],
+      }],
+      ['<(has_provision)==1', {
+        'pkg_libs': [
+          'provisionproxy',
         ],
       }],
     ],
