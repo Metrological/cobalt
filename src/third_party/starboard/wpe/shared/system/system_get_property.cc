@@ -17,6 +17,10 @@
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
 
+#ifdef HAS_PROVISION
+#include <provisionproxy/AccessProvision.h>
+#endif
+
 namespace {
 
 const char kPlatformName[] = "Linux";
@@ -118,20 +122,50 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
 
 #if SB_API_VERSION >= 11
     case kSbSystemPropertyCertificationScope: {
+
+#ifdef HAS_PROVISION
+      char property_name[1024];
+      int length;
+      if ( (length = GetDRMId("cobalt", sizeof(property_name), property_name)) > 0) {
+        std::string text (property_name, length);
+        // Find the ','
+        size_t index = text.find(',', 0);
+        if (index != std::string::npos) {
+            return CopyStringAndTestIfSuccess(out_value, value_length, text.substr(index+1).c_str());
+        }
+      }
+      return (false);
+#else
       auto* property_name = std::getenv("COBALT_CERTIFICATION_SCOPE");
+
       if (property_name) {
         return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
       } else {
         return (false);
       }
+#endif
     }
     case kSbSystemPropertyBase64EncodedCertificationSecret: {
+#ifdef HAS_PROVISION
+      char property_name[1024];
+      int length;
+      if ( (length = GetDRMId("cobalt", sizeof(property_name), property_name)) > 0) {
+        std::string text (property_name, length);
+        // Find the ','
+        size_t index = text.find(',', 0);
+        if (index != std::string::npos) {
+            return CopyStringAndTestIfSuccess(out_value, value_length, text.substr(0, index).c_str());
+        }
+      }
+      return (false);
+#else
       auto* property_name = std::getenv("COBALT_CERTIFICATION_SECRET");
       if (property_name) {
         return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
       } else {
         return (false);
       }
+#endif
     }
 #endif  // SB_API_VERSION >= 11
 
