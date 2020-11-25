@@ -23,7 +23,6 @@
       'WPEFrameworkDefinitions',
       'WPEFrameworkPlugins',
       'compositorclient',
-      'provisionproxy',
       'gstreamer-1.0',
       'gstreamer-app-1.0',
       'gstreamer-base-1.0',
