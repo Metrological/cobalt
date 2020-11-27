@@ -318,7 +318,13 @@ SbKey KeyCodeToSbKey(uint16_t code) {
       return kSbKeyChannelUp;
     case KEY_CHANNELDOWN:
       resturn	kSbKeyChannelDown;
-
+    case KEY_LAST:
+      return kSbKeyLast; 
+    case KEY_INFO:
+      return kSbKeyInfo;
+    case KEY_PROGRAM:
+      return kSbKeyGuide;
+        
     case KEY_INFO_BUTTON:
       return kSbKeyF1;
   }
