@@ -313,7 +313,11 @@ SbKey KeyCodeToSbKey(uint16_t code) {
     case KEY_FASTFORWARD:
       return kSbKeyMediaFastForward;
     case KEY_FASTREVERSE:
-      return kSbKeyMediaRewind ;
+      return kSbKeyMediaRewind;
+    case KEY_CHANNELUP:
+      return kSbKeyChannelUp;
+    case KEY_CHANNELDOWN:
+      resturn	kSbKeyChannelDown;
 
     case KEY_INFO_BUTTON:
       return kSbKeyF1;
