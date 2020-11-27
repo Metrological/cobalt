@@ -317,7 +317,7 @@ SbKey KeyCodeToSbKey(uint16_t code) {
     case KEY_CHANNELUP:
       return kSbKeyChannelUp;
     case KEY_CHANNELDOWN:
-      resturn	kSbKeyChannelDown;
+      return	kSbKeyChannelDown;
     case KEY_LAST:
       return kSbKeyLast; 
     case KEY_INFO:
