@@ -310,6 +310,10 @@ SbKey KeyCodeToSbKey(uint16_t code) {
       return kSbKeyBrightnessDown;
     case KEY_BRIGHTNESSUP:
       return kSbKeyBrightnessUp;
+    case KEY_FASTFORWARD:
+      return kSbKeyMediaFastForward;
+    case KEY_FASTREVERSE:
+      return kSbKeyMediaRewind ;
 
     case KEY_INFO_BUTTON:
       return kSbKeyF1;
