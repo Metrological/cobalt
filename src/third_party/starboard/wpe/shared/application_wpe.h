@@ -47,6 +47,7 @@ class Application : public ::starboard::shared::starboard::QueueApplication {
 
   std::string GetStartDeepLink();
   void NavigateTo(const char* url);
+  void DeepLink(const char* link_data);
   void Suspend();
   void Resume();
  protected:
@@ -74,6 +75,7 @@ protected:
   SbWindow window_{nullptr};
   ::starboard::Mutex window_lock_;
   bool display_released_{false};
+  std::string deep_link_{};
 };
 
 }  // namespace shared
