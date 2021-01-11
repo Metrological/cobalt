@@ -33,7 +33,7 @@ typedef enum SbKey {
   kSbKeyUnknown = 0,
   kSbKeyCancel = 0x03,
   kSbKeyBackspace = 0x08,
-  kSbKeyBack = 0x1B; //kSbKeyBackspace,  // You probably want kSbKeyEscape for a
+  kSbKeyBack = 0x1B, //kSbKeyBackspace,  You probably want kSbKeyEscape for a
                                  // semantic "back".
   kSbKeyTab = 0x09,
   kSbKeyBacktab = 0x0A,
