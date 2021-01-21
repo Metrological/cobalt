@@ -32,7 +32,7 @@ UniqueFeatureList GetFactoryForCaps(GList* elements,
   DCHECK(direction != GST_PAD_UNKNOWN);
   UniqueFeatureList candidates{
       gst_element_factory_list_filter(elements, caps.get(), direction, false)};
-  return std::move(candidates);
+  return (candidates);
 }
 
 template <typename C>

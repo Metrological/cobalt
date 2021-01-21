@@ -138,7 +138,7 @@ static void gst_cobalt_src_init(GstCobaltSrc* src) {
   src->priv->pad_number = 0;
   src->priv->async_start = FALSE;
   src->priv->async_done = FALSE;
-  g_object_set(GST_BIN(src), "message-forward", TRUE, NULL);
+  g_object_set(GST_BIN(src), "message-forward", TRUE, nullptr);
 }
 
 static void gst_cobalt_src_dispose(GObject* object) {
