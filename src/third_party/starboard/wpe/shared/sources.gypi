@@ -322,6 +322,7 @@
         '<(DEPTH)/third_party/starboard/wpe/shared/system/system_get_path.cc',
         '<(DEPTH)/third_party/starboard/wpe/shared/system/system_get_property.cc',
         '<(DEPTH)/third_party/starboard/wpe/shared/system/system_has_capability.cc',
+        '<(DEPTH)/third_party/starboard/wpe/shared/system/system_reset.cc',
     ],
 
     'time_sources': [
