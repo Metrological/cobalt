@@ -1,4 +1,4 @@
-// Copyright 2016 The Cobalt Authors. All Rights Reserved.
+// Copyright 2021 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,30 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef THIRD_PARTY_STARBOARD_WPE_SHARED_COBALT_API_WPE_H_
-#define THIRD_PARTY_STARBOARD_WPE_SHARED_COBALT_API_WPE_H_
+#ifndef THIRD_PARTY_STARBOARD_WPE_SHARED_SYSTEM_RESET_H_
+#define THIRD_PARTY_STARBOARD_WPE_SHARED_SYSTEM_RESET_H_
 
 namespace third_party {
 namespace starboard {
 namespace wpe {
 namespace shared {
+namespace system {
 
-enum class ResetType {
-  kFactory,
-  kCache,
-  kCredentials,
-  kRecordings
-};
-
-void SetURL(const char* link_data);
-void DeepLink(const char* link_data);
-void Resume();
-void Suspend();
-bool Reset(ResetType resetType);
-
+bool ResetFactory();
+bool ResetCache();
+bool ResetCredentials();
+}  // namespace system
 }  // namespace shared
 }  // namespace wpe
 }  // namespace starboard
 }  // namespace third_party
 
-#endif  // THIRD_PARTY_STARBOARD_WPE_SHARED_COBALT_API_WPE_H_
+#endif  // THIRD_PARTY_STARBOARD_WPE_SHARED_SYSTEM_RESET_H_
