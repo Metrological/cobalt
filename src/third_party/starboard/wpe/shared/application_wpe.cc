@@ -102,8 +102,12 @@ void Application::NavigateTo(const char* url) {
 
 void Application::DeepLink(const char* link_data) {
   if (link_data != nullptr) {
-      deep_link_ = std::string(link_data);
-    ::starboard::shared::starboard::Application::Link(link_data);
+    ::starboard::shared::starboard::Application::State state = ::starboard::shared::starboard::Application::state();
+    // Only fire the link event when it is started, other states will fire during suspended -> resume transition.
+    if (state == ::starboard::shared::starboard::Application::State::kStateStarted) {
+        ::starboard::shared::starboard::Application::Link(link_data);
+    }
+    deep_link_ = std::string(link_data);
   }
 }
 
