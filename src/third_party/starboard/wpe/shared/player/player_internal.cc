@@ -742,6 +742,13 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
     int h;
   };
 
+  struct VideoSinkProperties {
+    bool frames_dropped;
+    bool frames_corrupted;
+    bool rectangle;
+    bool rate;
+  };
+
   using PendingSamples = std::vector<PendingSample>;
   using SamplesPendingKey = std::map<std::string, PendingSamples>;
 
@@ -802,6 +809,8 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   GstElement* video_appsrc_{nullptr};
   GstElement* audio_appsrc_{nullptr};
   GstElement* pipeline_{nullptr};
+  GstElement* video_sink_{nullptr};
+  VideoSinkProperties video_sink_properties_{false,false,false,false};
   int source_setup_id_{-1};
   int bus_watch_id_{-1};
   SbThread playback_thread_;
@@ -893,7 +902,7 @@ PlayerImpl::PlayerImpl(SbPlayer player,
                nullptr);
   g_signal_connect(pipeline_, "source-setup",
                    G_CALLBACK(&PlayerImpl::SetupSource), this);
-  g_signal_connect(pipeline_, "element-added",
+  g_signal_connect(pipeline_, "element-setup",
                    G_CALLBACK(&PlayerImpl::ElementAdded), this);
   g_object_set(pipeline_, "uri", "cobalt://", nullptr);
 
@@ -1193,10 +1202,21 @@ void PlayerImpl::DispatchOnWorkerThread(Task* task) const {
 void PlayerImpl::ElementAdded(GstElement* pipeline,
                               GstElement* element,
                               PlayerImpl* self) {
-  if ((g_strrstr(GST_ELEMENT_NAME(element), "uridecodebin"))
-      || (g_strrstr(GST_ELEMENT_NAME(element), "decodebin"))) {
-    g_signal_connect(element, "element-added",
-        G_CALLBACK(&PlayerImpl::ElementAdded), self);
+
+  if (!self->video_sink_) {
+    GstElement* video_sink = nullptr;
+    g_object_get(pipeline, "video-sink", &video_sink, nullptr);
+    if (video_sink) {
+        self->video_sink_ = video_sink;
+        if (g_object_class_find_property(G_OBJECT_GET_CLASS(video_sink), "frames-dropped"))
+        self->video_sink_properties_.frames_dropped = true;
+        if (g_object_class_find_property(G_OBJECT_GET_CLASS(video_sink), "frames-corrupted"))
+        self->video_sink_properties_.frames_corrupted = true;
+        if (g_object_class_find_property(G_OBJECT_GET_CLASS(video_sink), "rectangle"))
+        self->video_sink_properties_.rectangle = true;
+        if (g_object_class_find_property(G_OBJECT_GET_CLASS(video_sink), "rate"))
+        self->video_sink_properties_.rate = true;
+    }
   }
 #if defined(BRCMVIDEOSINK)
   if (g_strrstr(GST_ELEMENT_NAME(element), "brcmvideodecoder")) {
@@ -1676,22 +1696,17 @@ bool PlayerImpl::SetRate(double rate) {
       //                     GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE,
       //                     GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
 
-      GstElement* vid_sink = nullptr;
       GstElement* aud_sink = nullptr;
-      g_object_get(pipeline_, "video-sink", &vid_sink, nullptr);
       g_object_get(pipeline_, "audio-sink", &aud_sink, nullptr);
-      if (vid_sink && aud_sink &&
-          g_object_class_find_property(G_OBJECT_GET_CLASS(vid_sink), "rate") &&
+      if (video_sink_ && video_sink_properties_.rate && aud_sink &&
           g_object_class_find_property(G_OBJECT_GET_CLASS(aud_sink), "rate")) {
-        g_object_set(vid_sink, "rate", rate, nullptr);
+        g_object_set(video_sink_, "rate", rate, nullptr);
         g_object_set(aud_sink, "rate", rate, nullptr);
       } else {
         // Last resort. Allow platform to do something:
         success = PlatformNonFushingSetRate(pipeline_, rate);
       }
 
-      if (vid_sink)
-        g_object_unref(vid_sink);
       if (aud_sink)
         g_object_unref(aud_sink);
     }
@@ -1736,30 +1751,24 @@ void PlayerImpl::GetInfo(SbPlayerInfo2* out_player_info) {
       GST_STREAM_VOLUME(pipeline_), GST_STREAM_VOLUME_FORMAT_LINEAR);
   out_player_info->total_video_frames = total_video_frames_;
 
-  GstElement* vid_sink = nullptr;
-  g_object_get(pipeline_, "video-sink", &vid_sink, nullptr);
-  if (vid_sink && g_object_class_find_property(G_OBJECT_GET_CLASS(vid_sink),
-                                               "frames-dropped")) {
+  if (video_sink_ && video_sink_properties_.frames_dropped) {
     GST_TRACE("Getting dropped frames count from the sink");
     guint64 frames_dropped = 0;
-    g_object_get(vid_sink, "frames-dropped", &frames_dropped, nullptr);
+    g_object_get(video_sink_, "frames-dropped", &frames_dropped, nullptr);
     out_player_info->dropped_video_frames = static_cast<int>(frames_dropped);
   } else {
     out_player_info->dropped_video_frames = 0;
   }
 
-  if (vid_sink && g_object_class_find_property(G_OBJECT_GET_CLASS(vid_sink),
-                                               "frames-corrupted")) {
+  if (video_sink_ && video_sink_properties_.frames_corrupted) {
     GST_TRACE("Getting corrupted frames count from the sink");
     guint64 frames_corrupted = 0;
-    g_object_get(vid_sink, "frames-corrupted", &frames_corrupted, nullptr);
+    g_object_get(video_sink_, "frames-corrupted", &frames_corrupted, nullptr);
     out_player_info->corrupted_video_frames =
         static_cast<int>(frames_corrupted);
   } else {
     out_player_info->corrupted_video_frames = 0;
   }
-  if (vid_sink)
-    g_object_unref(vid_sink);
 
   GST_LOG("Frames dropped: %d, Frames corrupted: %d",
           out_player_info->dropped_video_frames,
@@ -1774,18 +1783,18 @@ void PlayerImpl::SetBounds(int zindex, int x, int y, int w, int h) {
         GST_VIDEO_OVERLAY(gst_video_overlay_), x, y, w, h);
     gst_video_overlay_expose(GST_VIDEO_OVERLAY(gst_video_overlay_));
   } else {
-    GstElement* vid_sink = nullptr;
-    g_object_get(pipeline_, "video-sink", &vid_sink, nullptr);
-    if (vid_sink && g_object_class_find_property(G_OBJECT_GET_CLASS(vid_sink),
-                                                 "rectangle")) {
-      gchar* rect = g_strdup_printf("%d,%d,%d,%d", x, y, w, h);
-      g_object_set(vid_sink, "rectangle", rect, nullptr);
-      free(rect);
+    if (video_sink_) {
+      if (video_sink_properties_.rectangle) {
+        gchar* rect = g_strdup_printf("%d,%d,%d,%d", x, y, w, h);
+        g_object_set(video_sink_, "rectangle", rect, nullptr);
+        free(rect);
+      } else {
+        GST_LOG("rectangle property is not supported!");
+      }
     } else {
+      GST_TRACE("video sink is not ready, postpone SetBounds!");
       pending_bounds_ = PendingBounds{x, y, w, h};
     }
-    if (vid_sink)
-      g_object_unref(vid_sink);
   }
 }
 
@@ -1854,29 +1863,6 @@ gint64 PlayerImpl::GetPosition() const {
                 GST_TIME_ARGS(position), GST_TIME_ARGS(min_ts + kMarginNs));
     ChangePipelineState(GST_STATE_PAUSED);
     cached_position_ns_ = position;
-  }
-
-  constexpr int kPositionUpdateMinIntervalMs = 250 * kSbTimeMillisecond;
-  if (position_update_time_us_ - last_update <= kPositionUpdateMinIntervalMs &&
-      cached_position_ns_ != kSbTimeMax) {
-    if (rate == .0 || GST_STATE(pipeline_) == GST_STATE_PAUSED ||
-        (GST_STATE_PENDING(pipeline_) == GST_STATE_PAUSED &&
-         GST_STATE_NEXT(pipeline_) == GST_STATE_PAUSED &&
-         GST_STATE_TARGET(pipeline_) == GST_STATE_PAUSED)) {
-      GST_TRACE("Checking position after %" PRId64
-                " ms. Using cached %" GST_TIME_FORMAT " PAUSED.",
-                (position_update_time_us_ - last_update) / kSbTimeMillisecond,
-                GST_TIME_ARGS(cached_position_ns_));
-      return cached_position_ns_;
-    }
-    cached_position_ns_ =
-        cached_position_ns_ + (position_update_time_us_ - last_update) * rate *
-                                  kSbTimeNanosecondsPerMicrosecond;
-    GST_TRACE("Checking position after %" PRId64
-              " ms. Using cached %" GST_TIME_FORMAT,
-              (position_update_time_us_ - last_update) / kSbTimeMillisecond,
-              GST_TIME_ARGS(cached_position_ns_));
-    return cached_position_ns_;
   }
 
   cached_position_ns_ = position;
