@@ -1039,6 +1039,7 @@ gboolean PlayerImpl::BusMessageCallback(GstBus* bus,
           int ticket = 0;
           bool is_seek_pending = false;
           bool is_rate_pending = false;
+          bool is_bound_pending = false;
           double rate = 0.;
           SbTime pending_seek_pos = kSbTimeMax;
 
@@ -1047,6 +1048,7 @@ gboolean PlayerImpl::BusMessageCallback(GstBus* bus,
             ticket = self->ticket_;
             is_seek_pending = self->is_seek_pending_;
             is_rate_pending = self->pending_rate_ != .0;
+            is_bound_pending = !self->pending_bounds_.IsEmpty();
             pending_seek_pos = self->seek_position_;
             DCHECK(!is_seek_pending || self->seek_position_ != kSbTimeMax);
             rate = self->pending_rate_;
@@ -1063,6 +1065,13 @@ gboolean PlayerImpl::BusMessageCallback(GstBus* bus,
           } else if (is_seek_pending) {
             GST_INFO("Sending pending Seek(%" PRId64 ")", pending_seek_pos);
             self->Seek(pending_seek_pos, ticket);
+          }
+
+          if (is_bound_pending) {
+            GST_INFO("Sending pending bounds");
+            self->SetBounds(0, self->pending_bounds_.x, self->pending_bounds_.y,
+                    self->pending_bounds_.w, self->pending_bounds_.h);
+            self->pending_bounds_ = PendingBounds{};
           }
         }
       }
