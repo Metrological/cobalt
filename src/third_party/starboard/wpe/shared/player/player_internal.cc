@@ -961,6 +961,10 @@ PlayerImpl::~PlayerImpl() {
       g_source_remove(source_setup_id_);
     }
   }
+
+  if (video_sink_)
+    gst_object_unref(video_sink_);
+
   g_source_remove(bus_watch_id_);
   ChangePipelineState(GST_STATE_NULL);
   GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline_));
