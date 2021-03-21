@@ -1073,6 +1073,7 @@ gboolean PlayerImpl::BusMessageCallback(GstBus* bus,
 
           if (is_bound_pending) {
             GST_INFO("Sending pending bounds");
+            ::starboard::ScopedLock lock(self->mutex_);
             self->SetBounds(0, self->pending_bounds_.x, self->pending_bounds_.y,
                     self->pending_bounds_.w, self->pending_bounds_.h);
             self->pending_bounds_ = PendingBounds{};
@@ -1517,9 +1518,10 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
     }
     subsamples = gst_buffer_new_wrapped(subsamples_raw, subsamples_raw_size);
 
-    session_id = drm_system_->SessionIdByKeyId(
-        sample_infos[0].drm_info->identifier,
-        sample_infos[0].drm_info->identifier_size);
+    if (drm_system_)
+        session_id = drm_system_->SessionIdByKeyId(
+            sample_infos[0].drm_info->identifier,
+            sample_infos[0].drm_info->identifier_size);
     if (session_id.empty() || keep_samples) {
       GST_INFO("No session/pending flushing operation. Storing sample");
       GST_INFO("SampleType:%d %" GST_TIME_FORMAT " b:%p, s:%p, iv:%p, k:%p",
