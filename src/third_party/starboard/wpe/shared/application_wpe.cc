@@ -167,6 +167,16 @@ void Application::Inject(Event* e) {
   QueueApplication::Inject(e);
 }
 
+bool Application::IsStartImmediate()
+{
+  return false;
+}
+
+bool Application::IsPreloadImmediate()
+{
+  return true;
+}
+
 }  // namespace shared
 }  // namespace wpe
 }  // namespace starboard

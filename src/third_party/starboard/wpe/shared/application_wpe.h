@@ -57,6 +57,8 @@ class Application : public ::starboard::shared::starboard::QueueApplication {
   void OnSuspend() override;
   void OnResume() override;
   void Inject(Event* e) override;
+  bool IsStartImmediate() override;
+  bool IsPreloadImmediate() override;
 
   // --- QueueApplication overrides ---
   bool MayHaveSystemEvents() override;
