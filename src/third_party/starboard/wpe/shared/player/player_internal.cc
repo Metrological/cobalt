@@ -133,7 +133,8 @@ G_DEFINE_TYPE_WITH_CODE(GstCobaltSrc,
                                               gst_cobalt_src_uri_handler_init));
 
 static void gst_cobalt_src_init(GstCobaltSrc* src) {
-  GstCobaltSrcPrivate* priv = GST_COBALT_SRC_GET_PRIVATE(src);
+  GstCobaltSrcPrivate* priv = static_cast<GstCobaltSrcPrivate*>(gst_cobalt_src_get_instance_private(src));
+
   src->priv = priv;
   src->priv->pad_number = 0;
   src->priv->async_start = FALSE;

@@ -67,6 +67,11 @@
       # has no effect if specified before Wall.
       '-Wno-unused-parameter',
 
+      # gcc 9.x throws #if macros definitions and implicit-fallthrough
+      # as error (warnings as errors)
+      '-Wno-expansion-to-defined',
+      '-Wno-implicit-fallthrough',
+
       # For some reason Thumb build is broken
       '-marm',
 
@@ -155,6 +160,13 @@
     'cflags_cc': [
       '-std=gnu++11',
       '-Wno-literal-suffix',
+      # gcc 9.x throws errors for some of the warning due to some flags like,
+      # deprecated-copy, invalid-offsetof, ignored-qualifiers and pessimizing-move.
+      # So disabling these options to avoid errors
+      '-Wno-deprecated-copy',
+      '-Wno-invalid-offsetof',
+      '-Wno-ignored-qualifiers',
+      '-Wno-pessimizing-move',
     ],
     'default_configuration': 'wpe-rpi_qa',
     'configurations': {
