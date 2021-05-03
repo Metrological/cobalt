@@ -555,7 +555,10 @@ void SbWindowPrivate::CreateDisplay() {
 }
 
 SbWindowPrivate::~SbWindowPrivate() {
+  // Do not call DestroyDisplay() if it is already called in suspend
+  if (third_party::starboard::wpe::shared::window::DisplayIsReady()) {
     DestroyDisplay();
+  }
 }
 
 void SbWindowPrivate::DestroyDisplay() {
