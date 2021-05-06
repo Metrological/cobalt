@@ -21,6 +21,9 @@
 #include <provisionproxy/AccessProvision.h>
 #endif
 
+#include <cstring>
+#include <deviceinfo/deviceinfo.h>
+
 namespace {
 
 const char kPlatformName[] = "Linux";
@@ -54,8 +57,11 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       }
     }
     case kSbSystemPropertyChipsetModelNumber: {
-      auto* property_name = std::getenv("COBALT_CHIPSET_MODEL_NUMBER");
-      if (property_name) {
+      char property_name[128];
+      uint8_t property_length = sizeof(property_name);
+      std::memset(property_name, 0, property_length);
+      deviceinfo_chipset(property_name, &property_length);
+      if (property_length > 0) {
         return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
       } else {
         return CopyStringAndTestIfSuccess(out_value, value_length,
@@ -63,8 +69,11 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       }
     }
     case kSbSystemPropertyFirmwareVersion: {
-      auto* property_name = std::getenv("COBALT_FIRMWARE_VERSION");
-      if (property_name) {
+      char property_name[128];
+      uint8_t property_length = sizeof(property_name);
+      std::memset(property_name, 0, property_length);
+      deviceinfo_firmware_version(property_name, &property_length);
+      if (property_length > 0) {
         return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
       } else {
         return CopyStringAndTestIfSuccess(out_value, value_length,

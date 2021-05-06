@@ -23,6 +23,7 @@
       'WPEFrameworkDefinitions',
       'WPEFrameworkPlugins',
       'compositorclient',
+      'deviceinfo',
       'gstreamer-1.0',
       'gstreamer-app-1.0',
       'gstreamer-base-1.0',
