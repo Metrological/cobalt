@@ -231,7 +231,7 @@ std::vector<std::string> CodecToGstCaps(SbMediaAudioCodec codec,
       caps += IntToHex(static_cast<uint8_t>(0));                                         // padding
       caps += ",";
       caps += StringToHex("OpusTags");                                                   // Additional OpusTags, unused parameter
-      caps += ">";
+      caps += ">;";
       
       return {caps};
       

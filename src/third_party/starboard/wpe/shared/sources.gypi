@@ -24,11 +24,11 @@
         '<(DEPTH)/starboard/shared/starboard/audio_sink/audio_sink_is_valid.cc',
         '<(DEPTH)/starboard/shared/starboard/audio_sink/stub_audio_sink_type.cc',
         '<(DEPTH)/starboard/shared/starboard/audio_sink/audio_sink_is_audio_frame_storage_type_supported_interleaved_only.cc',
-        '<(DEPTH)/starboard/shared/starboard/audio_sink/audio_sink_get_max_channels_5_1.cc',
         '<(DEPTH)/starboard/shared/starboard/audio_sink/audio_sink_get_min_buffer_size_in_frames.cc',
         '<(DEPTH)/starboard/shared/starboard/audio_sink/audio_sink_get_nearest_supported_sample_frequency.cc',
 
         '<(DEPTH)/third_party/starboard/wpe/shared/audio_sink/gstreamer_audio_sink_type.cc',
+        '<(DEPTH)/third_party/starboard/wpe/shared/audio_sink/audio_sink_get_max_channels_5_1.cc',
         '<(DEPTH)/third_party/starboard/wpe/shared/audio_sink/audio_sink_is_audio_sample_type_supported.cc',
     ],
 
