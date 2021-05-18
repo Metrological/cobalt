@@ -6,6 +6,8 @@
 
 #include "base/logging.h"
 #include "third_party/starboard/wpe/shared/media/gst_media_utils.h"
+#include <sstream>
+#include <iomanip>
 
 namespace third_party {
 namespace starboard {
@@ -109,6 +111,41 @@ bool GstRegistryHasElementForCodec(C codec) {
   return false;
 }
 
+template <typename T>
+inline T SwapByteOrder(const T& val) {
+  int totalBytes = sizeof(val);
+  T swapped = static_cast<T>(0);
+  for (int i = 0; i < totalBytes; ++i) {
+    swapped |= (val >> (8 * (totalBytes - i - 1)) & 0xFF) << (8 * i);
+  }
+  return swapped;
+}
+
+template <typename T>
+inline std::string IntToHex(T val) {
+  std::ostringstream result;
+  size_t width = sizeof(T) * 2;
+
+  result << std::setfill('0') << std::setw(width) << std::hex;
+  if (width > 2) {
+    result << SwapByteOrder<T>(val | 0);
+  } else {
+    result << (val | 0);
+  }
+
+  return result.str();
+}
+
+inline std::string StringToHex(const std::string& string)
+{
+    std::ostringstream result;
+
+    for (std::string::size_type i = 0; i < string.length(); ++i)
+        result << std::hex << std::setfill('0') << static_cast<int>(string[i]);
+
+    return result.str();
+}
+
 }  // namespace
 
 bool GstRegistryHasElementForMediaType(SbMediaVideoCodec codec) {
@@ -181,11 +218,38 @@ std::vector<std::string> CodecToGstCaps(SbMediaAudioCodec codec,
     case kSbMediaAudioCodecEac3:
       return {{"audio/x-eac3"}};
 #endif  // SB_HAS(AC3_AUDIO)
-    case kSbMediaAudioCodecOpus:
-      return {{"audio/x-opus, channel-mapping-family=0"}};
+    case kSbMediaAudioCodecOpus:{ 
+      std::string caps = "audio/x-opus, streamheader=(buffer)<";
+      
+      caps += StringToHex("OpusHead");                                                   // OpusHeader
+      caps += IntToHex(static_cast<uint8_t>(1));                                         // version, always 1
+      caps += IntToHex(static_cast<uint8_t>(info ? info->number_of_channels : 1));       // channel count
+      caps += IntToHex(static_cast<uint16_t>(0));                                        // preskip
+      caps += IntToHex(static_cast<uint32_t>(info ? info->samples_per_second : 48000));  // inputSampleRate
+      caps += IntToHex(static_cast<uint16_t>(0));                                        // outputgain
+      caps += IntToHex(static_cast<uint8_t>(0));                                         // mappingFamily
+      caps += IntToHex(static_cast<uint8_t>(0));                                         // padding
+      caps += ",";
+      caps += StringToHex("OpusTags");                                                   // Additional OpusTags, unused parameter
+      caps += ">";
+      
+      return {caps};
+      
+    }
 
-    case kSbMediaAudioCodecVorbis:
-      return {{"audio/x-vorbis"}};
+    case kSbMediaAudioCodecVorbis:{
+      std::string caps = "audio/x-vorbis"; 
+      if (info) {
+        caps += ", channels=" + std::to_string(info->number_of_channels);
+        caps += ", rate=" + std::to_string(info->samples_per_second);
+        LOG(INFO) << "Adding audio caps data from sample info.";
+      }
+      else{
+        caps += ", channels=1";
+        caps += ", rate=48000";
+      }
+      return {caps};
+    }
   }
 }
 
