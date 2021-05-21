@@ -8,6 +8,7 @@
 #include "third_party/starboard/wpe/shared/media/gst_media_utils.h"
 #include <sstream>
 #include <iomanip>
+#include <cstring>
 
 namespace third_party {
 namespace starboard {
@@ -111,39 +112,58 @@ bool GstRegistryHasElementForCodec(C codec) {
   return false;
 }
 
-template <typename T>
-inline T SwapByteOrder(const T& val) {
-  int totalBytes = sizeof(val);
-  T swapped = static_cast<T>(0);
-  for (int i = 0; i < totalBytes; ++i) {
-    swapped |= (val >> (8 * (totalBytes - i - 1)) & 0xFF) << (8 * i);
-  }
-  return swapped;
+inline bool IsLittleEndian() {
+  uint8_t number = 0x1;
+  uint8_t* numPtr = static_cast<uint8_t*>(&number);
+
+  return numPtr[0] == 1;
 }
 
 template <typename T>
-inline std::string IntToHex(T val) {
-  std::ostringstream result;
-  size_t width = sizeof(T) * 2;
+inline T SwapByteOrder(T val) {
+  T result;
+  std::array<uint8_t, sizeof(T)> valArray;
 
-  result << std::setfill('0') << std::setw(width) << std::hex;
-  if (width > 2) {
-    result << SwapByteOrder<T>(val | 0);
+  std::memcpy(valArray.data(), &val, sizeof(T));
+  for (std::size_t i = 0; i < sizeof(T) / 2; ++i) {
+    std::swap(valArray[sizeof(T) - 1 - i], valArray[i]);
+  }
+  std::memcpy(&result, valArray.data(), sizeof(T));
+  return result;
+}
+
+template <typename T>
+inline std::string IntToHex(T val, bool asBigEndian = false) {
+  std::stringstream result;
+  std::size_t width = sizeof(T) * 2;
+
+  result << std::hex << std::setfill('0') << std::setw(width);
+
+  if (IsLittleEndian()) {
+    if (asBigEndian) {
+      result << SwapByteOrder<T>(val | 0);
+    } else {
+      result << (val | 0);
+    }
   } else {
-    result << (val | 0);
+    if (asBigEndian) {
+      result << (val | 0);
+    } else {
+      result << SwapByteOrder<T>(val | 0);
+    }
   }
 
   return result.str();
 }
 
-inline std::string StringToHex(const std::string& string)
-{
-    std::ostringstream result;
+std::string StringToHex(const std::string& string) {
+  std::ostringstream result;
 
-    for (std::string::size_type i = 0; i < string.length(); ++i)
-        result << std::hex << std::setfill('0') << static_cast<int>(string[i]);
+  for (std::size_t i = 0; i < string.length(); ++i) {
+    result << std::hex << std::setfill('0') << static_cast<int>(string[i]);
+  }
 
-    return result.str();
+  return result.str();
 }
 
 }  // namespace
@@ -219,18 +239,19 @@ std::vector<std::string> CodecToGstCaps(SbMediaAudioCodec codec,
       return {{"audio/x-eac3"}};
 #endif  // SB_HAS(AC3_AUDIO)
     case kSbMediaAudioCodecOpus:{ 
-      std::string caps = "audio/x-opus, streamheader=(buffer)<";
+      std::string caps = "audio/x-opus, channel-mapping-family=0, streamheader=(buffer)<";
       
-      caps += StringToHex("OpusHead");                                                   // OpusHeader
-      caps += IntToHex(static_cast<uint8_t>(1));                                         // version, always 1
-      caps += IntToHex(static_cast<uint8_t>(info ? info->number_of_channels : 1));       // channel count
-      caps += IntToHex(static_cast<uint16_t>(0));                                        // preskip
-      caps += IntToHex(static_cast<uint32_t>(info ? info->samples_per_second : 48000));  // inputSampleRate
-      caps += IntToHex(static_cast<uint16_t>(0));                                        // outputgain
-      caps += IntToHex(static_cast<uint8_t>(0));                                         // mappingFamily
-      caps += IntToHex(static_cast<uint8_t>(0));                                         // padding
+      //if value larger than 1 byte, use big endianess for proper reading from buffer on the gstreamer side
+      caps += StringToHex("OpusHead");                                                         // OpusHeader
+      caps += IntToHex(static_cast<uint8_t>(1));                                               // version, always 1
+      caps += IntToHex(static_cast<uint8_t>(info ? info->number_of_channels : 1));             // channel count
+      caps += IntToHex(static_cast<uint16_t>(0), true);                                        // preskip
+      caps += IntToHex(static_cast<uint32_t>(info ? info->samples_per_second : 48000), true);  // inputSampleRate
+      caps += IntToHex(static_cast<uint16_t>(0), true);                                        // outputgain
+      caps += IntToHex(static_cast<uint8_t>(0));                                               // mappingFamily
+      caps += IntToHex(static_cast<uint8_t>(0));                                               // padding
       caps += ",";
-      caps += StringToHex("OpusTags");                                                   // Additional OpusTags, unused parameter
+      caps += StringToHex("OpusTags");                                                         // Additional OpusTags, unused parameter
       caps += ">;";
       
       return {caps};
