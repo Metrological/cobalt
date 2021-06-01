@@ -6,6 +6,9 @@
 
 #include "base/logging.h"
 #include "third_party/starboard/wpe/shared/media/gst_media_utils.h"
+#include <sstream>
+#include <iomanip>
+#include <cstring>
 
 namespace third_party {
 namespace starboard {
@@ -109,6 +112,60 @@ bool GstRegistryHasElementForCodec(C codec) {
   return false;
 }
 
+inline bool IsLittleEndian() {
+  uint8_t number = 0x1;
+  uint8_t* numPtr = static_cast<uint8_t*>(&number);
+
+  return numPtr[0] == 1;
+}
+
+template <typename T>
+inline T SwapByteOrder(T val) {
+  T result;
+  std::array<uint8_t, sizeof(T)> valArray;
+
+  std::memcpy(valArray.data(), &val, sizeof(T));
+  for (std::size_t i = 0; i < sizeof(T) / 2; ++i) {
+    std::swap(valArray[sizeof(T) - 1 - i], valArray[i]);
+  }
+  std::memcpy(&result, valArray.data(), sizeof(T));
+  return result;
+}
+
+template <typename T>
+inline std::string IntToHex(T val, bool asBigEndian = false) {
+  std::stringstream result;
+  std::size_t width = sizeof(T) * 2;
+
+  result << std::hex << std::setfill('0') << std::setw(width);
+
+  if (IsLittleEndian()) {
+    if (asBigEndian) {
+      result << SwapByteOrder<T>(val | 0);
+    } else {
+      result << (val | 0);
+    }
+  } else {
+    if (asBigEndian) {
+      result << (val | 0);
+    } else {
+      result << SwapByteOrder<T>(val | 0);
+    }
+  }
+
+  return result.str();
+}
+
+std::string StringToHex(const std::string& string) {
+  std::ostringstream result;
+
+  for (std::size_t i = 0; i < string.length(); ++i) {
+    result << std::hex << std::setfill('0') << static_cast<int>(string[i]);
+  }
+
+  return result.str();
+}
+
 }  // namespace
 
 bool GstRegistryHasElementForMediaType(SbMediaVideoCodec codec) {
@@ -181,11 +238,39 @@ std::vector<std::string> CodecToGstCaps(SbMediaAudioCodec codec,
     case kSbMediaAudioCodecEac3:
       return {{"audio/x-eac3"}};
 #endif  // SB_HAS(AC3_AUDIO)
-    case kSbMediaAudioCodecOpus:
-      return {{"audio/x-opus, channel-mapping-family=0"}};
+    case kSbMediaAudioCodecOpus:{ 
+      std::string caps = "audio/x-opus, channel-mapping-family=0, streamheader=(buffer)<";
+      
+      //if value larger than 1 byte, use big endianess for proper reading from buffer on the gstreamer side
+      caps += StringToHex("OpusHead");                                                         // OpusHeader
+      caps += IntToHex(static_cast<uint8_t>(1));                                               // version, always 1
+      caps += IntToHex(static_cast<uint8_t>(info ? info->number_of_channels : 1));             // channel count
+      caps += IntToHex(static_cast<uint16_t>(0), true);                                        // preskip
+      caps += IntToHex(static_cast<uint32_t>(info ? info->samples_per_second : 48000), true);  // inputSampleRate
+      caps += IntToHex(static_cast<uint16_t>(0), true);                                        // outputgain
+      caps += IntToHex(static_cast<uint8_t>(0));                                               // mappingFamily
+      caps += IntToHex(static_cast<uint8_t>(0));                                               // padding
+      caps += ",";
+      caps += StringToHex("OpusTags");                                                         // Additional OpusTags, unused parameter
+      caps += ">;";
+      
+      return {caps};
+      
+    }
 
-    case kSbMediaAudioCodecVorbis:
-      return {{"audio/x-vorbis"}};
+    case kSbMediaAudioCodecVorbis:{
+      std::string caps = "audio/x-vorbis"; 
+      if (info) {
+        caps += ", channels=" + std::to_string(info->number_of_channels);
+        caps += ", rate=" + std::to_string(info->samples_per_second);
+        LOG(INFO) << "Adding audio caps data from sample info.";
+      }
+      else{
+        caps += ", channels=1";
+        caps += ", rate=48000";
+      }
+      return {caps};
+    }
   }
 }
 
