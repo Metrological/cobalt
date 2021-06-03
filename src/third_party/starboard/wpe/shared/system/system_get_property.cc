@@ -60,8 +60,8 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       char property_name[128];
       uint8_t property_length = sizeof(property_name);
       std::memset(property_name, 0, property_length);
-      deviceinfo_chipset(property_name, &property_length);
-      if (property_length > 0) {
+      uint32_t ret = deviceinfo_chipset(property_name, &property_length);
+      if ((ret == 0) && (property_length > 0)) {
         return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
       } else {
         return CopyStringAndTestIfSuccess(out_value, value_length,
@@ -72,8 +72,8 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       char property_name[128];
       uint8_t property_length = sizeof(property_name);
       std::memset(property_name, 0, property_length);
-      deviceinfo_firmware_version(property_name, &property_length);
-      if (property_length > 0) {
+      uint32_t ret = deviceinfo_firmware_version(property_name, &property_length);
+      if ((ret == 0) && (property_length > 0)) {
         return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
       } else {
         return CopyStringAndTestIfSuccess(out_value, value_length,
@@ -81,8 +81,11 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       }
     }
     case kSbSystemPropertyModelName: {
-      auto* property_name = std::getenv("COBALT_MODEL_NAME");
-      if (property_name) {
+      char property_name[128];
+      uint8_t property_length = sizeof(property_name);
+      std::memset(property_name, 0, property_length);
+      uint32_t ret = deviceinfo_model_name(property_name, &property_length);
+      if ((ret == 0) && (property_length > 0)) {
         return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
       } else {
         return CopyStringAndTestIfSuccess(out_value, value_length,
@@ -90,8 +93,11 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       }
     }
     case kSbSystemPropertyModelYear: {
-      auto* property_name = std::getenv("COBALT_MODEL_YEAR");
-      if (property_name) {
+      char property_name[128];
+      uint8_t property_length = sizeof(property_name);
+      std::memset(property_name, 0, property_length);
+      uint32_t ret = deviceinfo_model_year(property_name, &property_length);
+      if ((ret == 0) && (property_length > 0)) {
         return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
       } else {
         return CopyStringAndTestIfSuccess(out_value, value_length,
@@ -106,8 +112,11 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
     case kSbSystemPropertyNetworkOperatorName:
 #endif
     {
-      auto* property_name = std::getenv("COBALT_MANUFACTURER_NAME");
-      if (property_name) {
+      char property_name[128];
+      uint8_t property_length = sizeof(property_name);
+      std::memset(property_name, 0, property_length);
+      uint32_t ret = deviceinfo_system_integrator_name(property_name, &property_length);
+      if ((ret == 0) && (property_length > 0)) {
         return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
       } else {
         return CopyStringAndTestIfSuccess(out_value, value_length,
@@ -118,16 +127,28 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       return false;
 
     case kSbSystemPropertyFriendlyName: {
-      auto* property_name = std::getenv("COBALT_FRIENDLY_NAME");
-      if (property_name) {
+      char property_name[128];
+      uint8_t property_length = sizeof(property_name);
+      std::memset(property_name, 0, property_length);
+      uint32_t ret = deviceinfo_friendly_name(property_name, &property_length);
+      if ((ret == 0) && (property_length > 0)) {
         return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
       } else {
         return CopyStringAndTestIfSuccess(out_value, value_length,
             SB_PLATFORM_FRIENDLY_NAME);
       }
     }
-    case kSbSystemPropertyPlatformName:
-      return CopyStringAndTestIfSuccess(out_value, value_length, kPlatformName);
+    case kSbSystemPropertyPlatformName: {
+      char property_name[128];
+      uint8_t property_length = sizeof(property_name);
+      std::memset(property_name, 0, property_length);
+      uint32_t ret = deviceinfo_platform_name(property_name, &property_length);
+      if ((ret == 0) && (property_length > 0)) {
+        return CopyStringAndTestIfSuccess(out_value, value_length, property_name);
+      } else {
+        return CopyStringAndTestIfSuccess(out_value, value_length, kPlatformName);
+      }
+    }
 
 #if SB_API_VERSION >= 11
     case kSbSystemPropertyCertificationScope: {
