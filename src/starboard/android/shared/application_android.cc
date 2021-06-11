@@ -69,8 +69,6 @@ namespace {
         return "WindowFocusGained";
       case ApplicationAndroid::AndroidCommand::kWindowFocusLost:
         return "WindowFocusLost";
-      case ApplicationAndroid::AndroidCommand::kDeepLink:
-        return "DeepLink";
       default:
         return "unknown";
     }
@@ -300,21 +298,6 @@ void ApplicationAndroid::ProcessAndroidCommand() {
     case AndroidCommand::kStop:
       sync_state = activity_state_ = cmd.type;
       break;
-    case AndroidCommand::kDeepLink:
-      char* deep_link = static_cast<char*>(cmd.data);
-      SB_LOG(INFO) << "AndroidCommand::kDeepLink: deep_link=" << deep_link
-                   << " state=" << state();
-      if (deep_link != NULL) {
-        if (state() == kStateUnstarted) {
-          SetStartLink(deep_link);
-          SB_LOG(INFO) << "ApplicationAndroid SetStartLink";
-          SbMemoryDeallocate(static_cast<void*>(deep_link));
-        } else {
-          SB_LOG(INFO) << "ApplicationAndroid Inject: kSbEventTypeLink";
-          Inject(new Event(kSbEventTypeLink, deep_link, SbMemoryDeallocate));
-        }
-      }
-      break;
   }
 
   // If there's a window, sync the app state to the Activity lifecycle, letting
@@ -354,7 +337,7 @@ void ApplicationAndroid::SendAndroidCommand(AndroidCommand::CommandType type,
     // Android main thread. This lets the MediaSession get released now without
     // having to wait to bounce between threads.
     JniEnvExt* env = JniEnvExt::Get();
-    env->CallStarboardVoidMethod("beforeSuspend", "()V");
+    env->CallStarboardVoidMethodOrAbort("beforeSuspend", "()V");
   }
   AndroidCommand cmd {type, data};
   ScopedLock lock(android_command_mutex_);
@@ -555,14 +538,12 @@ jboolean Java_dev_cobalt_coat_StarboardBridge_nativeOnSearchRequested(
 }
 
 void ApplicationAndroid::HandleDeepLink(const char* link_url) {
-  SB_LOG(INFO) << "ApplicationAndroid::HandleDeepLink link_url=" << link_url;
   if (link_url == NULL || link_url[0] == '\0') {
     return;
   }
   char* deep_link = SbStringDuplicate(link_url);
   SB_DCHECK(deep_link);
-
-  SendAndroidCommand(AndroidCommand::kDeepLink, deep_link);
+  Inject(new Event(kSbEventTypeLink, deep_link, SbMemoryDeallocate));
 }
 
 extern "C" SB_EXPORT_PLATFORM

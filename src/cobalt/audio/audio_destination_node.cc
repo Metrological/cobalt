@@ -64,7 +64,8 @@ void AudioDestinationNode::OnInputNodeConnected() {
   audio_device_to_delete_ = NULL;
 }
 
-void AudioDestinationNode::FillAudioBus(bool all_consumed, AudioBus* audio_bus,
+void AudioDestinationNode::FillAudioBus(bool all_consumed,
+                                        ShellAudioBus* audio_bus,
                                         bool* silence) {
   // This is called on Audio thread.
   AudioLock::AutoLock lock(audio_lock());

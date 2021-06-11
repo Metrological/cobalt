@@ -42,13 +42,15 @@ class SplashScreen : public LifecycleObserver {
                render_tree::ResourceProvider* resource_provider,
                float layout_refresh_rate,
                const base::Optional<GURL>& fallback_splash_screen_url,
+               const GURL& initial_main_web_module_url,
                cobalt::browser::SplashScreenCache* splash_screen_cache,
                const base::Callback<void(base::TimeDelta)>&
                    on_splash_screen_shutdown_complete);
   ~SplashScreen();
 
-  void SetSize(const cssom::ViewportSize& viewport_size) {
-    web_module_->SetSize(viewport_size);
+  void SetSize(const cssom::ViewportSize& window_dimensions,
+               float video_pixel_ratio) {
+    web_module_->SetSize(window_dimensions, video_pixel_ratio);
   }
 
   // LifecycleObserver implementation.

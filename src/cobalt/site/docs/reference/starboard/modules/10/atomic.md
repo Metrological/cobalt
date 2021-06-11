@@ -29,7 +29,7 @@ as appropriate.
 #### Definition ####
 
 ```
-typedef SbAtomic32 SbAtomicPtr
+typedef SbAtomic64 SbAtomicPtr
 ```
 
 ## Functions ##

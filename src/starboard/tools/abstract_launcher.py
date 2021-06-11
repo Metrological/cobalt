@@ -23,10 +23,6 @@ import _env  # pylint: disable=unused-import
 from starboard.tools import build
 from starboard.tools import paths
 
-ARG_NOINSTALL = "noinstall"
-ARG_SYSTOOLS = "systools"
-ARG_DRYRUN = "dryrun"
-
 
 def _GetLauncherForPlatform(platform_name):
   """Gets the module containing a platform's concrete launcher implementation.
@@ -129,11 +125,6 @@ class AbstractLauncher(object):
       env_variables = {}
     self.env_variables = env_variables
 
-    launcher_args = kwargs.get("launcher_args", None)
-    if launcher_args is None:
-      launcher_args = []
-    self.launcher_args = launcher_args
-
     # Launchers that need different startup timeout times should reassign
     # this variable during initialization.
     self.startup_timeout_seconds = 2 * 60
@@ -183,8 +174,39 @@ class AbstractLauncher(object):
     Raises:
       RuntimeError: Suspend signal not supported on platform.
     """
-
     raise RuntimeError("Suspend not supported for this platform.")
+
+  def SendConceal(self):
+    """sends conceal signal to the launcher's executable.
+
+    Raises:
+      RuntimeError: Conceal signal not supported on platform.
+    """
+    raise RuntimeError("Conceal not supported for this platform.")
+
+  def SendFocus(self):
+    """sends focus signal to the launcher's executable.
+
+    Raises:
+      RuntimeError: focus signal not supported on platform.
+    """
+    raise RuntimeError("Focus not supported for this platform.")
+
+  def SendFreeze(self):
+    """sends freeze signal to the launcher's executable.
+
+    Raises:
+      RuntimeError: Freeze signal not supported on platform.
+    """
+    raise RuntimeError("Freeze not supported for this platform.")
+
+  def SendStop(self):
+    """sends stop signal to the launcher's executable.
+
+    Raises:
+      RuntimeError: Stop signal not supported on platform.
+    """
+    raise RuntimeError("Stop not supported for this platform.")
 
   def SupportsDeepLink(self):
     return False

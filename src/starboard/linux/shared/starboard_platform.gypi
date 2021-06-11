@@ -235,6 +235,8 @@
       '<(DEPTH)/starboard/shared/signal/crash_signals_sigaction.cc',
       '<(DEPTH)/starboard/shared/signal/suspend_signals.cc',
       '<(DEPTH)/starboard/shared/signal/suspend_signals.h',
+      '<(DEPTH)/starboard/shared/signal/system_request_conceal.cc',
+      '<(DEPTH)/starboard/shared/signal/system_request_freeze.cc',
       '<(DEPTH)/starboard/shared/signal/system_request_suspend.cc',
       '<(DEPTH)/starboard/shared/starboard/application.cc',
       '<(DEPTH)/starboard/shared/starboard/audio_sink/audio_sink_create.cc',
@@ -282,6 +284,7 @@
       '<(DEPTH)/starboard/shared/starboard/media/media_is_buffer_pool_allocate_on_demand.cc',
       '<(DEPTH)/starboard/shared/starboard/media/media_is_buffer_using_memory_pool.cc',
       '<(DEPTH)/starboard/shared/starboard/media/media_is_transfer_characteristics_supported.cc',
+      '<(DEPTH)/starboard/shared/starboard/media/media_set_output_protection.cc',
       '<(DEPTH)/starboard/shared/starboard/media/mime_type.cc',
       '<(DEPTH)/starboard/shared/starboard/media/mime_type.h',
       '<(DEPTH)/starboard/shared/starboard/memory.cc',
@@ -318,7 +321,10 @@
       '<(DEPTH)/starboard/shared/starboard/string_copy_wide.cc',
       '<(DEPTH)/starboard/shared/starboard/string_duplicate.cc',
       '<(DEPTH)/starboard/shared/starboard/system_get_random_uint64.cc',
+      '<(DEPTH)/starboard/shared/starboard/system_request_blur.cc',
+      '<(DEPTH)/starboard/shared/starboard/system_request_focus.cc',
       '<(DEPTH)/starboard/shared/starboard/system_request_pause.cc',
+      '<(DEPTH)/starboard/shared/starboard/system_request_reveal.cc',
       '<(DEPTH)/starboard/shared/starboard/system_request_stop.cc',
       '<(DEPTH)/starboard/shared/starboard/system_request_unpause.cc',
       '<(DEPTH)/starboard/shared/starboard/system_supports_resume.cc',
@@ -336,9 +342,7 @@
       '<(DEPTH)/starboard/shared/stub/cryptography_transform.cc',
       '<(DEPTH)/starboard/shared/stub/image_decode.cc',
       '<(DEPTH)/starboard/shared/stub/image_is_decode_supported.cc',
-      '<(DEPTH)/starboard/shared/stub/media_is_output_protected.cc',
       '<(DEPTH)/starboard/shared/stub/media_set_audio_write_duration.cc',
-      '<(DEPTH)/starboard/shared/stub/media_set_output_protection.cc',
       '<(DEPTH)/starboard/shared/stub/microphone_close.cc',
       '<(DEPTH)/starboard/shared/stub/microphone_create.cc',
       '<(DEPTH)/starboard/shared/stub/microphone_destroy.cc',
@@ -415,6 +419,7 @@
         ],
         'starboard_platform_sources': [
           '<(DEPTH)/starboard/linux/shared/drm_create_system.cc',
+          '<(DEPTH)/starboard/linux/shared/media_is_output_protected.cc',
           '<(DEPTH)/starboard/linux/shared/oemcrypto_engine_device_properties_linux.cc',
 
           '<(DEPTH)/starboard/shared/starboard/drm/drm_close_session.cc',
@@ -436,6 +441,7 @@
         ],
       }, {
         'starboard_platform_sources': [
+          '<(DEPTH)/starboard/shared/starboard/media/media_is_output_protected.cc',
           '<(DEPTH)/starboard/shared/stub/media_is_supported.cc',
           '<(DEPTH)/starboard/shared/stub/drm_close_session.cc',
           '<(DEPTH)/starboard/shared/stub/drm_create_system.cc',
@@ -456,7 +462,6 @@
       ['sb_evergreen_compatible == 1', {
         'starboard_platform_dependencies': [
           '<(DEPTH)/starboard/elf_loader/evergreen_config.gyp:evergreen_config',
-          '<(DEPTH)/starboard/loader_app/pending_restart.gyp:pending_restart',
           '<(DEPTH)/third_party/llvm-project/libunwind/libunwind.gyp:unwind_starboard',
        ]},
       ],

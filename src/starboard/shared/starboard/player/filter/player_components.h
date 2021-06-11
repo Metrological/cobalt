@@ -197,10 +197,9 @@ class PlayerComponents {
         scoped_refptr<VideoRendererSink>* video_renderer_sink);
 
     // Check AudioRenderer ctor for more details on the parameters.
-    virtual void GetAudioRendererParams(
-        const CreationParameters& creation_parameters,
-        int* max_cached_frames,
-        int* min_frames_per_append) const;
+    void GetAudioRendererParams(const CreationParameters& creation_parameters,
+                                int* max_cached_frames,
+                                int* min_frames_per_append) const;
 
    private:
     SB_DISALLOW_COPY_AND_ASSIGN(Factory);

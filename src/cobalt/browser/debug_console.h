@@ -89,8 +89,9 @@ class DebugConsole : public LifecycleObserver {
     return (GetMode() != debug::console::kDebugConsoleModeOff);
   }
 
-  void SetSize(const cssom::ViewportSize& viewport_size) {
-    web_module_->SetSize(viewport_size);
+  void SetSize(const cssom::ViewportSize& window_dimensions,
+               float video_pixel_ratio) {
+    web_module_->SetSize(window_dimensions, video_pixel_ratio);
   }
 
   // LifecycleObserver implementation.

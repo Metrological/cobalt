@@ -241,9 +241,6 @@ void CrashReportUploadThread::ProcessPendingReport(
                                   Metrics::CrashSkippedReason::kUploadFailed);
       break;
   }
-#if defined(STARBOARD)
-  database_->RemoveOldReports(/*num_reports_to_save=*/2);
-#endif
 }
 
 CrashReportUploadThread::UploadResult CrashReportUploadThread::UploadReport(

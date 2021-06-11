@@ -21,6 +21,7 @@
       'target_name': 'system_window',
       'type': 'static_library',
       'sources': [
+        'application_event.h',
         'keyboard_event.h',
         'system_window.h',
         'system_window.cc',

@@ -373,11 +373,8 @@ SbMediaSupportType CanPlayMimeAndKeySystem(const MimeType& mime_type,
   }
 
   if (codecs.size() == 0) {
-    // This happens when the H5 player is either querying for progressive
-    // playback support, or probing for generic mp4 support without specific
-    // codecs.  We only support "audio/mp4" and "video/mp4" for these cases.
-    if ((mime_type.type() == "audio" || mime_type.type() == "video") &&
-        mime_type.subtype() == "mp4") {
+    // This is a progressive query.  We only support "video/mp4" in this case.
+    if (mime_type.type() == "video" && mime_type.subtype() == "mp4") {
       return kSbMediaSupportTypeMaybe;
     }
     return kSbMediaSupportTypeNotSupported;
@@ -622,20 +619,6 @@ const char* GetRangeIdName(SbMediaRangeId range_id) {
   SB_NOTREACHED();
   return "Invalid";
 }
-
-#if SB_API_VERSION >= 11
-bool IsAudioSampleInfoSubstantiallyDifferent(
-    const SbMediaAudioSampleInfo& left,
-    const SbMediaAudioSampleInfo& right) {
-  return left.codec != right.codec ||
-         left.samples_per_second != right.samples_per_second ||
-         left.number_of_channels != right.number_of_channels ||
-         left.audio_specific_config_size != right.audio_specific_config_size ||
-         SbMemoryCompare(left.audio_specific_config,
-                         right.audio_specific_config,
-                         left.audio_specific_config_size) != 0;
-}
-#endif  // SB_API_VERSION < 11
 
 }  // namespace media
 }  // namespace starboard

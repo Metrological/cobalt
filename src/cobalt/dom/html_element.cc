@@ -21,7 +21,6 @@
 #include "base/lazy_instance.h"
 #include "base/message_loop/message_loop_task_runner.h"
 #include "base/strings/string_number_conversions.h"
-#include "cobalt/base/console_log.h"
 #include "cobalt/base/tokens.h"
 #include "cobalt/cssom/absolute_url_value.h"
 #include "cobalt/cssom/cascaded_style.h"
@@ -527,9 +526,6 @@ void HTMLElement::set_scroll_left(float x) {
   node_document()->DoSynchronousLayout();
 
   if (!ui_nav_item_ || !ui_nav_item_->IsContainer()) {
-    CLOG(WARNING, debugger_hooks())
-        << "scrollLeft only works on HTML elements with 'overflow' set to "
-        << "'scroll' or 'auto'";
     return;
   }
 
@@ -579,9 +575,6 @@ void HTMLElement::set_scroll_top(float y) {
   node_document()->DoSynchronousLayout();
 
   if (!ui_nav_item_ || !ui_nav_item_->IsContainer()) {
-    CLOG(WARNING, debugger_hooks())
-        << "scrollTop only works on HTML elements with 'overflow' set to "
-        << "'scroll' or 'auto'";
     return;
   }
 
@@ -1023,7 +1016,10 @@ void HTMLElement::UpdateComputedStyleRecursively(
   // themselves still need to have their computed style updated, in case the
   // value of display is changed.
   if (computed_style()->display() == cssom::KeywordValue::GetNone()) {
-    ReleaseUiNavigationItem();
+    if (ui_nav_item_) {
+      ui_nav_item_->SetEnabled(false);
+      ui_nav_item_ = nullptr;
+    }
     return;
   }
 
@@ -1204,7 +1200,12 @@ HTMLElement::HTMLElement(Document* document, base::Token local_name)
 }
 
 HTMLElement::~HTMLElement() {
-  ReleaseUiNavigationItem();
+  // Disable any associated navigation item to prevent callbacks during
+  // destruction.
+  if (ui_nav_item_) {
+    ui_nav_item_->SetEnabled(false);
+    ui_nav_item_ = nullptr;
+  }
 
   if (IsInDocument()) {
     dom_stat_tracker_->OnHtmlElementRemovedFromDocument();
@@ -1242,8 +1243,6 @@ void HTMLElement::OnRemovedFromDocument() {
   // by OnRemovedFromDocument() being called on them from
   // Node::OnRemovedFromDocument().
   ClearRuleMatchingStateInternal(false /*invalidate_descendants*/);
-
-  ReleaseUiNavigationItem();
 }
 
 void HTMLElement::OnMutation() { InvalidateMatchingRulesRecursively(); }
@@ -1995,11 +1994,6 @@ void HTMLElement::UpdateComputedStyle(
     }
   }
 
-  // Update the UI navigation item and invalidate layout boxes if needed.
-  if (!UpdateUiNavigationAndReturnIfLayoutBoxesAreValid()) {
-    invalidation_flags.invalidate_layout_boxes = true;
-  }
-
   if (invalidation_flags.mark_descendants_as_display_none) {
     MarkNotDisplayedOnDescendants();
   }
@@ -2021,6 +2015,9 @@ void HTMLElement::UpdateComputedStyle(
       InvalidateLayoutBoxRenderTreeNodes();
     }
   }
+
+  // Update the UI navigation item.
+  UpdateUiNavigationType();
 
   computed_style_valid_ = true;
   pseudo_elements_computed_styles_valid_ = true;
@@ -2059,7 +2056,7 @@ bool HTMLElement::CanbeDesignatedByPointerIfDisplayed() const {
          computed_style()->visibility() == cssom::KeywordValue::GetVisible();
 }
 
-bool HTMLElement::UpdateUiNavigationAndReturnIfLayoutBoxesAreValid() {
+void HTMLElement::UpdateUiNavigationType() {
   base::Optional<ui_navigation::NativeItemType> ui_nav_item_type;
   if (computed_style()->overflow() == cssom::KeywordValue::GetAuto() ||
       computed_style()->overflow() == cssom::KeywordValue::GetScroll()) {
@@ -2078,15 +2075,13 @@ bool HTMLElement::UpdateUiNavigationAndReturnIfLayoutBoxesAreValid() {
       if (ui_nav_item_->GetType() == *ui_nav_item_type) {
         // Keep using the existing navigation item.
         ui_nav_item_->SetDir(ui_nav_item_dir);
-        return true;
+        return;
       }
       // The current navigation item isn't of the correct type. Disable it so
       // that callbacks won't be invoked for it. The object will be destroyed
       // when all references to it are released.
       ui_nav_item_->SetEnabled(false);
-      ui_nav_item_ = nullptr;
     }
-
     ui_nav_item_ = new ui_navigation::NavItem(
         *ui_nav_item_type,
         base::Bind(
@@ -2105,28 +2100,8 @@ bool HTMLElement::UpdateUiNavigationAndReturnIfLayoutBoxesAreValid() {
             FROM_HERE,
             base::Bind(&HTMLElement::OnUiNavScroll, base::AsWeakPtr(this))));
     ui_nav_item_->SetDir(ui_nav_item_dir);
-    return false;
   } else if (ui_nav_item_) {
     // This navigation item is no longer relevant.
-    ui_nav_item_->SetEnabled(false);
-    ui_nav_item_ = nullptr;
-    return false;
-  }
-
-  return true;
-}
-
-void HTMLElement::ReleaseUiNavigationItem() {
-  if (ui_nav_item_) {
-    // Make sure layout updates this element.
-    InvalidateLayoutBoxesOfNodeAndAncestors();
-    if (ui_nav_item_->IsContainer()) {
-      // Make sure layout updates any focus items that may be in this container.
-      InvalidateLayoutBoxesOfDescendants();
-    }
-
-    // Disable the UI navigation item so it won't receive anymore callbacks
-    // while being released.
     ui_nav_item_->SetEnabled(false);
     ui_nav_item_ = nullptr;
   }

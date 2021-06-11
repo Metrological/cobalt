@@ -56,9 +56,6 @@
     # requires a 'lib' starboard implementation for the corresponding platform.
     'sb_enable_lib%': '<(sb_enable_lib)',
 
-    # Disables an NPLB audit of C++14 support.
-    'sb_disable_cpp14_audit': 0,
-
     # When this is set to true, the web bindings for the microphone
     # are disabled
     'sb_disable_microphone_idl%': 0,
@@ -80,9 +77,6 @@
 
     # Whether this is an evergreen build.
     'sb_evergreen': 0,
-
-    # Whether to use crashpad.
-    'sb_crashpad_enabled': 0,
 
     # Whether this is an evergreen compatible platform. A compatible platform
     # can run the elf_loader and launch the evergreen build.
@@ -214,7 +208,8 @@
     'conditions': [
       ['host_os=="linux"', {
         'conditions': [
-          ['target_arch=="arm" or target_arch=="x86"', {
+          ['target_arch=="arm" or target_arch=="x86" or target_arch=="mips" or \
+            target_arch=="mipsel" or target_arch=="ppc"', {
             # All the 32 bit CPU architectures v8 supports.
             'compiler_flags_cc_host%': [
               '-m32',

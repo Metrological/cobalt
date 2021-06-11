@@ -145,20 +145,15 @@ void Quit(base::RunLoop* run_loop) {
       FROM_HERE, run_loop->QuitClosure());
 }
 
-// Called upon window.close(), which indicates that the test has finished.
-// We use this signal to stop the WebModule's message loop since our work is
-// done once the window is closed. A timeout will also trigger window.close().
-void WindowCloseCallback(base::RunLoop* run_loop,
-                         base::MessageLoop* message_loop,
-                         base::TimeDelta delta) {
-  message_loop->task_runner()->PostTask(FROM_HERE, base::Bind(Quit, run_loop));
-}
-
-// Called when layout completes.
+// Called when layout completes and results have been produced.  We use this
+// signal to stop the WebModule's message loop since our work is done after a
+// layout has been performed.
 void WebModuleOnRenderTreeProducedCallback(
     base::Optional<browser::WebModule::LayoutResults>* out_results,
+    base::RunLoop* run_loop, base::MessageLoop* message_loop,
     const browser::WebModule::LayoutResults& results) {
   out_results->emplace(results.render_tree, results.layout_time);
+  message_loop->task_runner()->PostTask(FROM_HERE, base::Bind(Quit, run_loop));
 }
 
 // This callback, when called, quits a message loop, outputs the error message
@@ -217,13 +212,14 @@ std::string RunWebPlatformTest(const GURL& url, bool* got_results) {
   // Create the WebModule and wait for a layout to occur.
   browser::WebModule web_module(
       url, base::kApplicationStateStarted,
-      base::Bind(&WebModuleOnRenderTreeProducedCallback, &results),
+      base::Bind(&WebModuleOnRenderTreeProducedCallback, &results, &run_loop,
+                 base::MessageLoop::current()),
       base::Bind(&WebModuleErrorCallback, &run_loop,
                  base::MessageLoop::current()),
-      base::Bind(&WindowCloseCallback, &run_loop, base::MessageLoop::current()),
+      browser::WebModule::CloseCallback() /* window_close_callback */,
       base::Closure() /* window_minimize_callback */,
       can_play_type_handler.get(), media_module.get(), &network_module,
-      kDefaultViewportSize, &resource_provider, 60.0f, web_module_options);
+      kDefaultViewportSize, 1.f, &resource_provider, 60.0f, web_module_options);
   run_loop.Run();
   const std::string extract_results =
       "document.getElementById(\"__testharness__results__\").textContent;";
@@ -417,11 +413,6 @@ INSTANTIATE_TEST_CASE_P(
 INSTANTIATE_TEST_CASE_P(html, WebPlatformTest,
                         ::testing::ValuesIn(EnumerateWebPlatformTests("html")),
                         GetTestName());
-
-INSTANTIATE_TEST_CASE_P(
-    intersection_observer, WebPlatformTest,
-    ::testing::ValuesIn(EnumerateWebPlatformTests("intersection-observer")),
-    GetTestName());
 
 INSTANTIATE_TEST_CASE_P(
     mediasession, WebPlatformTest,

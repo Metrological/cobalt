@@ -41,9 +41,7 @@ uint32 HardwareMesh::GetEstimatedSizeInBytes() const {
 
 const VertexBufferObject* HardwareMesh::GetVBO() const {
   if (!vbo_) {
-    if (base::MessageLoop::current()) {
-      rasterizer_task_runner_ = base::MessageLoop::current()->task_runner();
-    }
+    rasterizer_message_loop_ = base::MessageLoop::current();
     vbo_.reset(new VertexBufferObject(std::move(vertices_), draw_mode_));
   }
 
@@ -62,15 +60,12 @@ void DestroyVBO(backend::GraphicsContextEGL* cobalt_context,
 }  // namespace
 
 HardwareMesh::~HardwareMesh() {
-  if (!vbo_) {
-    return;
-  }
-
-  if (!rasterizer_task_runner_ ||
-      rasterizer_task_runner_->BelongsToCurrentThread()) {
+  if (rasterizer_message_loop_ == base::MessageLoop::current()) {
     DestroyVBO(cobalt_context_, std::move(vbo_));
     return;
   }
+
+  DCHECK(rasterizer_message_loop_);
 
   // Make sure that VBO cleanup always happens on the thread that created
   // the VBO in the first place.  We are passing cobalt_context_ by pointer
@@ -78,7 +73,7 @@ HardwareMesh::~HardwareMesh() {
   // executed because this Mesh object must be destroyed before the
   // rasterizer, and the rasterizer must be destroyed before the GL
   // context.
-  rasterizer_task_runner_->PostTask(
+  rasterizer_message_loop_->task_runner()->PostTask(
       FROM_HERE, base::Bind(&DestroyVBO, cobalt_context_, base::Passed(&vbo_)));
 }
 

@@ -14,7 +14,7 @@
 
 #include "starboard/android/shared/media_codec_bridge.h"
 
-#include "starboard/common/string.h"
+#include "starboard/format_string.h"
 
 namespace starboard {
 namespace android {
@@ -342,11 +342,6 @@ void MediaCodecBridge::ReleaseOutputBufferAtTimestamp(
   JniEnvExt::Get()->CallVoidMethodOrAbort(j_media_codec_bridge_,
                                           "releaseOutputBuffer", "(IJ)V", index,
                                           render_timestamp_ns);
-}
-
-void MediaCodecBridge::SetPlaybackRate(double playback_rate) {
-  JniEnvExt::Get()->CallVoidMethodOrAbort(
-      j_media_codec_bridge_, "setPlaybackRate", "(D)V", playback_rate);
 }
 
 jint MediaCodecBridge::Flush() {

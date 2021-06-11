@@ -301,14 +301,14 @@ math::Size AdjustSizeForFormat(
 HardwareFrontendImage::HardwareFrontendImage(
     std::unique_ptr<HardwareImageData> image_data,
     backend::GraphicsContextEGL* cobalt_context, GrContext* gr_context,
-    scoped_refptr<base::SingleThreadTaskRunner> rasterizer_task_runner)
+    base::MessageLoop* rasterizer_message_loop)
     : is_opaque_(image_data->GetDescriptor().alpha_format ==
                  render_tree::kAlphaFormatOpaque),
       alternate_rgba_format_(AlternateRgbaFormatFromImageDataDescriptor(
           image_data->GetDescriptor())),
       size_(AdjustSizeForFormat(image_data->GetDescriptor().size,
                                 alternate_rgba_format_)),
-      rasterizer_task_runner_(rasterizer_task_runner) {
+      rasterizer_message_loop_(rasterizer_message_loop) {
   backend_image_.reset(new HardwareBackendImage(
       base::Bind(&HardwareBackendImage::InitializeFromImageData,
                  base::Passed(&image_data), cobalt_context, gr_context)));
@@ -319,12 +319,12 @@ HardwareFrontendImage::HardwareFrontendImage(
     const scoped_refptr<backend::ConstRawTextureMemoryEGL>& raw_texture_memory,
     intptr_t offset, const render_tree::ImageDataDescriptor& descriptor,
     backend::GraphicsContextEGL* cobalt_context, GrContext* gr_context,
-    scoped_refptr<base::SingleThreadTaskRunner> rasterizer_task_runner)
+    base::MessageLoop* rasterizer_message_loop)
     : is_opaque_(descriptor.alpha_format == render_tree::kAlphaFormatOpaque),
       alternate_rgba_format_(
           AlternateRgbaFormatFromImageDataDescriptor(descriptor)),
       size_(AdjustSizeForFormat(descriptor.size, alternate_rgba_format_)),
-      rasterizer_task_runner_(rasterizer_task_runner) {
+      rasterizer_message_loop_(rasterizer_message_loop) {
   TRACE_EVENT0("cobalt::renderer",
                "HardwareFrontendImage::HardwareFrontendImage()");
   backend_image_.reset(new HardwareBackendImage(base::Bind(
@@ -338,7 +338,7 @@ HardwareFrontendImage::HardwareFrontendImage(
     render_tree::AlphaFormat alpha_format,
     backend::GraphicsContextEGL* cobalt_context, GrContext* gr_context,
     std::unique_ptr<math::RectF> content_region,
-    scoped_refptr<base::SingleThreadTaskRunner> rasterizer_task_runner,
+    base::MessageLoop* rasterizer_message_loop,
     base::Optional<AlternateRgbaFormat> alternate_rgba_format)
     : is_opaque_(alpha_format == render_tree::kAlphaFormatOpaque),
       content_region_(std::move(content_region)),
@@ -348,7 +348,7 @@ HardwareFrontendImage::HardwareFrontendImage(
                                        std::abs(content_region_->height()))
                           : texture->GetSize(),
           alternate_rgba_format_)),
-      rasterizer_task_runner_(rasterizer_task_runner) {
+      rasterizer_message_loop_(rasterizer_message_loop) {
   TRACE_EVENT0("cobalt::renderer",
                "HardwareFrontendImage::HardwareFrontendImage()");
   backend_image_.reset(new HardwareBackendImage(
@@ -361,13 +361,13 @@ HardwareFrontendImage::HardwareFrontendImage(
     const scoped_refptr<render_tree::Node>& root,
     const SubmitOffscreenCallback& submit_offscreen_callback,
     backend::GraphicsContextEGL* cobalt_context, GrContext* gr_context,
-    scoped_refptr<base::SingleThreadTaskRunner> rasterizer_task_runner)
+    base::MessageLoop* rasterizer_message_loop)
     : is_opaque_(false),
       size_(AdjustSizeForFormat(
           math::Size(static_cast<int>(root->GetBounds().right()),
                      static_cast<int>(root->GetBounds().bottom())),
           alternate_rgba_format_)),
-      rasterizer_task_runner_(rasterizer_task_runner) {
+      rasterizer_message_loop_(rasterizer_message_loop) {
   TRACE_EVENT0("cobalt::renderer",
                "HardwareFrontendImage::HardwareFrontendImage()");
   backend_image_.reset(new HardwareBackendImage(
@@ -382,10 +382,10 @@ HardwareFrontendImage::~HardwareFrontendImage() {
   // InitializeBackend() posted a task to call backend_image_'s
   // InitializeTask(). Make sure that task has finished before
   // destroying backend_image_.
-  if (rasterizer_task_runner_) {
-    if (!rasterizer_task_runner_->BelongsToCurrentThread() ||
+  if (rasterizer_message_loop_) {
+    if (rasterizer_message_loop_ != base::MessageLoop::current() ||
         !backend_image_->TryDestroy()) {
-      rasterizer_task_runner_->DeleteSoon(
+      rasterizer_message_loop_->task_runner()->DeleteSoon(
           FROM_HERE, backend_image_.release());
     }
   }  // else let the scoped pointer clean it up immediately.
@@ -396,16 +396,15 @@ void HardwareFrontendImage::InitializeBackend() {
   // rasterizer to initialize it when needed. The image initialization process
   // may take some time, so doing a lazy initialize can cause a big spike in
   // frame time if multiple images are initialized in one frame.
-  if (rasterizer_task_runner_) {
-    rasterizer_task_runner_->PostTask(
+  if (rasterizer_message_loop_) {
+    rasterizer_message_loop_->task_runner()->PostTask(
         FROM_HERE, base::Bind(&HardwareBackendImage::InitializeTask,
                               base::Unretained(backend_image_.get())));
   }
 }
 
 const sk_sp<SkImage>& HardwareFrontendImage::GetImage() const {
-  DCHECK(!rasterizer_task_runner_ ||
-         rasterizer_task_runner_->BelongsToCurrentThread());
+  DCHECK_EQ(rasterizer_message_loop_, base::MessageLoop::current());
   // Forward this call to the backend image.  This method must be called from
   // the rasterizer thread (e.g. during a render tree visitation).  The backend
   // image will check that this is being called from the correct thread.
@@ -413,14 +412,12 @@ const sk_sp<SkImage>& HardwareFrontendImage::GetImage() const {
 }
 
 const backend::TextureEGL* HardwareFrontendImage::GetTextureEGL() const {
-  DCHECK(!rasterizer_task_runner_ ||
-         rasterizer_task_runner_->BelongsToCurrentThread());
+  DCHECK_EQ(rasterizer_message_loop_, base::MessageLoop::current());
   return backend_image_->GetTextureEGL();
 }
 
 bool HardwareFrontendImage::CanRenderInSkia() const {
-  DCHECK(!rasterizer_task_runner_ ||
-         rasterizer_task_runner_->BelongsToCurrentThread());
+  DCHECK_EQ(rasterizer_message_loop_, base::MessageLoop::current());
   // In some cases, especially when dealing with SbDecodeTargets, we may end
   // up with a GLES2 texture whose target is not GL_TEXTURE_2D, in which case
   // we cannot use our typical Skia flow to render it, and we delegate to
@@ -434,8 +431,7 @@ bool HardwareFrontendImage::CanRenderInSkia() const {
 }
 
 bool HardwareFrontendImage::EnsureInitialized() {
-  DCHECK(!rasterizer_task_runner_ ||
-         rasterizer_task_runner_->BelongsToCurrentThread());
+  DCHECK_EQ(rasterizer_message_loop_, base::MessageLoop::current());
   return backend_image_->EnsureInitialized();
 }
 
@@ -443,7 +439,7 @@ HardwareMultiPlaneImage::HardwareMultiPlaneImage(
     std::unique_ptr<HardwareRawImageMemory> raw_image_memory,
     const render_tree::MultiPlaneImageDataDescriptor& descriptor,
     backend::GraphicsContextEGL* cobalt_context, GrContext* gr_context,
-    scoped_refptr<base::SingleThreadTaskRunner> rasterizer_task_runner)
+    base::MessageLoop* rasterizer_message_loop)
     : size_(descriptor.GetPlaneDescriptor(0).size),
       estimated_size_in_bytes_(raw_image_memory->GetSizeInBytes()),
       format_(descriptor.image_format()) {
@@ -456,7 +452,7 @@ HardwareMultiPlaneImage::HardwareMultiPlaneImage(
     planes_[i] = new HardwareFrontendImage(
         const_raw_texture_memory, descriptor.GetPlaneOffset(i),
         descriptor.GetPlaneDescriptor(i), cobalt_context, gr_context,
-        rasterizer_task_runner);
+        rasterizer_message_loop);
   }
 }
 

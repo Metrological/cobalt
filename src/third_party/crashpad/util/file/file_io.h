@@ -19,7 +19,6 @@
 
 #include <string>
 
-#include "base/base_wrapper.h"
 #include "build/build_config.h"
 
 #if defined(OS_POSIX)

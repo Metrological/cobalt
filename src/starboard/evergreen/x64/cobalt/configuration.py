@@ -64,4 +64,7 @@ class CobaltX64Configuration(cobalt_configuration.CobaltConfiguration):
         }
     }
 
-  __FILTERED_TESTS = {}
+  __FILTERED_TESTS = {
+      'base_unittests': [test_filter.FILTER_ALL],
+      'net_unittests': [test_filter.FILTER_ALL],
+  }

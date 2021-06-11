@@ -34,10 +34,6 @@
 #include "util/stream/log_output_stream.h"
 #include "util/stream/zlib_output_stream.h"
 
-#if defined(STARBOARD)
-#include "starboard/elf_loader/evergreen_info.h"
-#endif
-
 namespace crashpad {
 
 namespace {
@@ -79,20 +75,6 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
 }
 
 CrashReportExceptionHandler::~CrashReportExceptionHandler() = default;
-
-#if defined(STARBOARD)
-bool CrashReportExceptionHandler::AddEvergreenInfo(
-    const ExceptionHandlerProtocol::ClientInformation& info) {
-  evergreen_info_ = info.evergreen_information_address;
-  return true;
-}
-
-bool CrashReportExceptionHandler::AddAnnotations(
-    const ExceptionHandlerProtocol::ClientInformation& info) {
-  annotations_address_ = info.annotations_address;
-  return true;
-}
-#endif
 
 bool CrashReportExceptionHandler::HandleException(
     pid_t client_process_id,
@@ -153,13 +135,7 @@ bool CrashReportExceptionHandler::HandleExceptionWithConnection(
                        requesting_thread_stack_address,
                        requesting_thread_id,
                        &process_snapshot,
-                       &sanitized_snapshot
-#if defined(STARBOARD)
-                       ,
-                       evergreen_info_,
-                       annotations_address_
-#endif
-                       )) {
+                       &sanitized_snapshot)) {
     return false;
   }
 

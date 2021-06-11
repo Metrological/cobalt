@@ -601,27 +601,16 @@ TEST(MediaFeatureTest, ResolutionNonZeroShouldEvaluateFalse) {
       new MediaFeature(kResolutionMediaFeature));
   media_feature->set_operator(kNonZero);
 
-  EXPECT_FALSE(media_feature->EvaluateConditionValue(
-      ViewportSize(1920, 1080, 55, 0.0f)));
+  EXPECT_FALSE(media_feature->EvaluateConditionValue(ViewportSize(0, 0)));
 }
 
-TEST(MediaFeatureTest, ResolutionEqualsDefaultShouldEvaluateTrue) {
-  scoped_refptr<ResolutionValue> property(new ResolutionValue(96, kDPIUnit));
+TEST(MediaFeatureTest, ResolutionEqualsShouldEvaluateTrue) {
+  scoped_refptr<ResolutionValue> property(new ResolutionValue(100, kDPIUnit));
   scoped_refptr<MediaFeature> media_feature(
       new MediaFeature(kResolutionMediaFeature, property));
   media_feature->set_operator(kEquals);
 
-  EXPECT_TRUE(media_feature->EvaluateConditionValue(ViewportSize(1920, 1080)));
-}
-
-TEST(MediaFeatureTest, ResolutionEqualsHiDPIShouldEvaluateTrue) {
-  scoped_refptr<ResolutionValue> property(new ResolutionValue(192, kDPIUnit));
-  scoped_refptr<MediaFeature> media_feature(
-      new MediaFeature(kResolutionMediaFeature, property));
-  media_feature->set_operator(kEquals);
-
-  EXPECT_TRUE(media_feature->EvaluateConditionValue(
-      ViewportSize(1920, 1080, 55, 2.0f)));
+  EXPECT_TRUE(media_feature->EvaluateConditionValue(ViewportSize(5500, 0)));
 }
 
 TEST(MediaFeatureTest, ResolutionEqualsShouldEvaluateFalse) {

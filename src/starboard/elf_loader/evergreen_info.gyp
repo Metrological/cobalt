@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# This files contains all targets that should be created by gyp_cobalt by
+# default.
 {
   'targets': [
     {

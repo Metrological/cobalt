@@ -23,7 +23,6 @@
 #include "cobalt/render_tree/node.h"
 #include "cobalt/renderer/backend/egl/framebuffer_render_target.h"
 #include "cobalt/renderer/backend/egl/graphics_context.h"
-#include "cobalt/renderer/rasterizer/skia/skottie_animation.h"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/include/core/SkSurface.h"
 
@@ -86,9 +85,6 @@ class OffscreenTargetManager {
   bool GetCachedTarget(const render_tree::Node* node,
                        const CacheErrorFunction1D& error_function,
                        TargetInfo* out_target_info);
-  bool GetCachedTarget(const skia::SkottieAnimation* skottie_animation,
-                       const math::SizeF& size,
-                       TargetInfo* out_target_info);
 
   // Allocate a cached offscreen target of the specified size.
   // The returned values are only valid until the next call to Update().
@@ -98,9 +94,6 @@ class OffscreenTargetManager {
                             TargetInfo* out_target_info);
   void AllocateCachedTarget(const render_tree::Node* node, float size,
                             const ErrorData1D& error_data,
-                            TargetInfo* out_target_info);
-  void AllocateCachedTarget(const skia::SkottieAnimation* skottie_animation,
-                            const math::SizeF& size,
                             TargetInfo* out_target_info);
 
   // Allocate an uncached render target. The contents of the target cannot be
@@ -129,7 +122,6 @@ class OffscreenTargetManager {
   std::unique_ptr<OffscreenAtlas> offscreen_cache_1d_;
 
   std::vector<std::unique_ptr<OffscreenAtlas>> uncached_targets_;
-  std::vector<std::unique_ptr<OffscreenAtlas>> skottie_targets_;
 
   // Align offscreen targets to a particular size to more efficiently use the
   // offscreen target atlas. Use a power of 2 for the alignment so that a bit

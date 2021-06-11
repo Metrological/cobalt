@@ -27,8 +27,6 @@ class SharedLibraryLinker(clangxx.DynamicLinkerBase,
     lld_path = '{0}/bin/ld.lld'.format(self.GetPath())
 
     return shell.And('{0} '
-                     '--build-id '
-                     '-gc-sections '
                      '-X '
                      '-v '
                      '--eh-frame-hdr '

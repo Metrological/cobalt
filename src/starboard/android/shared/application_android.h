@@ -51,7 +51,6 @@ class ApplicationAndroid
       kNativeWindowDestroyed,
       kWindowFocusGained,
       kWindowFocusLost,
-      kDeepLink,
     } CommandType;
 
     CommandType type;
@@ -70,10 +69,6 @@ class ApplicationAndroid
   bool DestroyWindow(SbWindow window);
   bool OnSearchRequested();
   void HandleDeepLink(const char* link_url);
-  void SendTTSChangedEvent() {
-    Inject(new Event(kSbEventTypeAccessiblityTextToSpeechSettingsChanged,
-                     nullptr, nullptr));
-  }
 
   void SendAndroidCommand(AndroidCommand::CommandType type, void* data);
   void SendAndroidCommand(AndroidCommand::CommandType type) {

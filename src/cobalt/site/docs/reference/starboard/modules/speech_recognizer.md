@@ -218,16 +218,6 @@ state, it is first stopped and then destroyed.
 void SbSpeechRecognizerDestroy(SbSpeechRecognizer recognizer)
 ```
 
-### SbSpeechRecognizerIsSupported ###
-
-Returns whether the platform supports SbSpeechRecognizer.
-
-#### Declaration ####
-
-```
-bool SbSpeechRecognizerIsSupported()
-```
-
 ### SbSpeechRecognizerIsValid ###
 
 Indicates whether the given speech recognizer is valid.

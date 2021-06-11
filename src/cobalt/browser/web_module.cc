@@ -86,20 +86,23 @@ namespace {
 // deeper than this could be discarded, and will not be rendered.
 const int kDOMMaxElementDepth = 32;
 
-void CacheUrlContent(SplashScreenCache* splash_screen_cache,
-                     const std::string& content,
-                     const base::Optional<std::string>& topic) {
-  splash_screen_cache->SplashScreenCache::CacheSplashScreen(content, topic);
+bool CacheUrlContent(SplashScreenCache* splash_screen_cache, const GURL& url,
+                     const std::string& content) {
+  base::Optional<std::string> key = SplashScreenCache::GetKeyForStartUrl(url);
+  if (key) {
+    return splash_screen_cache->SplashScreenCache::CacheSplashScreen(*key,
+                                                                     content);
+  }
+  return false;
 }
 
-base::Callback<void(const std::string&, const base::Optional<std::string>&)>
-CacheUrlContentCallback(SplashScreenCache* splash_screen_cache) {
+base::Callback<bool(const GURL&, const std::string&)> CacheUrlContentCallback(
+    SplashScreenCache* splash_screen_cache) {
   // This callback takes in first the url, then the content string.
   if (splash_screen_cache) {
     return base::Bind(CacheUrlContent, base::Unretained(splash_screen_cache));
   } else {
-    return base::Callback<void(const std::string&,
-                               const base::Optional<std::string>&)>();
+    return base::Callback<bool(const GURL&, const std::string&)>();
   }
 }
 
@@ -210,7 +213,7 @@ class WebModule::Impl {
   }
 #endif  // defined(ENABLE_DEBUGGER)
 
-  void SetSize(cssom::ViewportSize viewport_size);
+  void SetSize(cssom::ViewportSize window_dimensions, float video_pixel_ratio);
   void SetCamera3D(const scoped_refptr<input::Camera3D>& camera_3d);
   void SetWebMediaPlayerFactory(
       media::WebMediaPlayerFactory* web_media_player_factory);
@@ -523,7 +526,7 @@ WebModule::Impl::Impl(const ConstructionData& data)
   DCHECK_LE(0, data.options.encoded_image_cache_capacity);
   loader_factory_.reset(new loader::LoaderFactory(
       name_.c_str(), fetcher_factory_.get(), resource_provider_,
-      debugger_hooks_, data.options.encoded_image_cache_capacity,
+      data.options.encoded_image_cache_capacity,
       data.options.loader_thread_priority));
 
   animated_image_tracker_.reset(new loader::image::AnimatedImageTracker(
@@ -531,7 +534,7 @@ WebModule::Impl::Impl(const ConstructionData& data)
 
   DCHECK_LE(0, data.options.image_cache_capacity);
   image_cache_ = loader::image::CreateImageCache(
-      base::StringPrintf("%s.ImageCache", name_.c_str()), debugger_hooks_,
+      base::StringPrintf("%s.ImageCache", name_.c_str()),
       static_cast<uint32>(data.options.image_cache_capacity),
       loader_factory_.get());
   DCHECK(image_cache_);
@@ -544,14 +547,13 @@ WebModule::Impl::Impl(const ConstructionData& data)
   DCHECK_LE(0, data.options.remote_typeface_cache_capacity);
   remote_typeface_cache_ = loader::font::CreateRemoteTypefaceCache(
       base::StringPrintf("%s.RemoteTypefaceCache", name_.c_str()),
-      debugger_hooks_,
       static_cast<uint32>(data.options.remote_typeface_cache_capacity),
       loader_factory_.get());
   DCHECK(remote_typeface_cache_);
 
   DCHECK_LE(0, data.options.mesh_cache_capacity);
   mesh_cache_ = loader::mesh::CreateMeshCache(
-      base::StringPrintf("%s.MeshCache", name_.c_str()), debugger_hooks_,
+      base::StringPrintf("%s.MeshCache", name_.c_str()),
       static_cast<uint32>(data.options.mesh_cache_capacity),
       loader_factory_.get());
   DCHECK(mesh_cache_);
@@ -631,9 +633,9 @@ WebModule::Impl::Impl(const ConstructionData& data)
 
   window_ = new dom::Window(
       environment_settings_.get(), data.window_dimensions,
-      data.initial_application_state, css_parser_.get(), dom_parser_.get(),
-      fetcher_factory_.get(), loader_factory_.get(), &resource_provider_,
-      animated_image_tracker_.get(), image_cache_.get(),
+      data.video_pixel_ratio, data.initial_application_state, css_parser_.get(),
+      dom_parser_.get(), fetcher_factory_.get(), loader_factory_.get(),
+      &resource_provider_, animated_image_tracker_.get(), image_cache_.get(),
       reduced_image_cache_capacity_manager_.get(), remote_typeface_cache_.get(),
       mesh_cache_.get(), local_storage_database_.get(),
       data.can_play_type_handler, data.web_media_player_factory,
@@ -1056,8 +1058,14 @@ void WebModule::Impl::SetRemoteTypefaceCacheCapacity(int64_t bytes) {
   remote_typeface_cache_->SetCapacity(static_cast<uint32>(bytes));
 }
 
-void WebModule::Impl::SetSize(cssom::ViewportSize viewport_size) {
-  window_->SetSize(viewport_size);
+void WebModule::Impl::SetSize(cssom::ViewportSize window_dimensions,
+                              float video_pixel_ratio) {
+  // A value of 0.0 for the video pixel ratio means that the ratio could not be
+  // determined. In that case it should be assumed to be the same as the
+  // graphics resolution, which corresponds to a device pixel ratio of 1.0.
+  float device_pixel_ratio =
+      video_pixel_ratio == 0.0f ? 1.0f : video_pixel_ratio;
+  window_->SetSize(window_dimensions, device_pixel_ratio);
 }
 
 void WebModule::Impl::SetCamera3D(
@@ -1306,7 +1314,7 @@ WebModule::WebModule(
     media::CanPlayTypeHandler* can_play_type_handler,
     media::WebMediaPlayerFactory* web_media_player_factory,
     network::NetworkModule* network_module,
-    const ViewportSize& window_dimensions,
+    const ViewportSize& window_dimensions, float video_pixel_ratio,
     render_tree::ResourceProvider* resource_provider, float layout_refresh_rate,
     const Options& options)
     : thread_(options.name.c_str()),
@@ -1318,8 +1326,8 @@ WebModule::WebModule(
       initial_url, initial_application_state, render_tree_produced_callback,
       error_callback, window_close_callback, window_minimize_callback,
       can_play_type_handler, web_media_player_factory, network_module,
-      window_dimensions, resource_provider, kDOMMaxElementDepth,
-      layout_refresh_rate, ui_nav_root_, options);
+      window_dimensions, video_pixel_ratio, resource_provider,
+      kDOMMaxElementDepth, layout_refresh_rate, ui_nav_root_, options);
 
   // Start the dedicated thread and create the internal implementation
   // object on that thread.
@@ -1567,10 +1575,12 @@ std::unique_ptr<debug::backend::DebuggerState> WebModule::FreezeDebugger() {
 }
 #endif  // defined(ENABLE_DEBUGGER)
 
-void WebModule::SetSize(const ViewportSize& viewport_size) {
+void WebModule::SetSize(const ViewportSize& viewport_size,
+                        float video_pixel_ratio) {
   message_loop()->task_runner()->PostTask(
-      FROM_HERE, base::Bind(&WebModule::Impl::SetSize,
-                            base::Unretained(impl_.get()), viewport_size));
+      FROM_HERE,
+      base::Bind(&WebModule::Impl::SetSize, base::Unretained(impl_.get()),
+                 viewport_size, video_pixel_ratio));
 }
 
 void WebModule::SetCamera3D(const scoped_refptr<input::Camera3D>& camera_3d) {

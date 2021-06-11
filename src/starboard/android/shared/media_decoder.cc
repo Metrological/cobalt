@@ -20,6 +20,7 @@
 #include "starboard/audio_sink.h"
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
+#include "starboard/format_string.h"
 #include "starboard/shared/pthread/thread_create_priority.h"
 
 namespace starboard {
@@ -175,12 +176,6 @@ void MediaDecoder::WriteEndOfStream() {
   if (pending_tasks_.size() == 1) {
     condition_variable_.Signal();
   }
-}
-
-void MediaDecoder::SetPlaybackRate(double playback_rate) {
-  SB_DCHECK(media_type_ == kSbMediaTypeVideo);
-  SB_DCHECK(media_codec_bridge_);
-  media_codec_bridge_->SetPlaybackRate(playback_rate);
 }
 
 // static

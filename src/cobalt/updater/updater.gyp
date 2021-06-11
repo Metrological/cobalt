@@ -22,6 +22,11 @@
         'configurator.h',
         'network_fetcher.cc',
         'network_fetcher.h',
+        # TODO: enable crash report later with crashpad dependency
+        #'crash_client.cc',
+        #'crash_client.h',
+        #'crash_reporter.cc',
+        #'crash_reporter.h',
         'patcher.cc',
         'patcher.h',
         'prefs.cc',
@@ -32,8 +37,8 @@
         'updater_module.h',
         'updater_constants.cc',
         'updater_constants.h',
-        'utils.cc',
-        'utils.h',
+        'util.cc',
+        'util.h',
       ],
       'dependencies': [
         '<(DEPTH)/base/base.gyp:base',
@@ -44,8 +49,6 @@
         '<(DEPTH)/cobalt/script/script.gyp:script',
         '<(DEPTH)/components/prefs/prefs.gyp:prefs',
         '<(DEPTH)/components/update_client/update_client.gyp:update_client',
-        '<(DEPTH)/starboard/loader_app/app_key_files.gyp:app_key_files',
-        '<(DEPTH)/starboard/loader_app/drain_file.gyp:drain_file',
         '<(DEPTH)/third_party/zlib/zlib.gyp:zip',
         '<(DEPTH)/url/url.gyp:url',
       ],
@@ -66,17 +69,6 @@
       ],
     },
     {
-      'target_name': 'updater_sandbox_deploy',
-      'type': 'none',
-      'dependencies': [
-        'updater_sandbox',
-      ],
-      'variables': {
-        'executable_name': 'updater_sandbox',
-      },
-      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
-    },
-    {
       'target_name': 'crash_sandbox',
       'type': '<(final_executable_type)',
       'dependencies': [
@@ -87,17 +79,6 @@
       ],
     },
     {
-      'target_name': 'crash_sandbox_deploy',
-      'type': 'none',
-      'dependencies': [
-        'crash_sandbox',
-      ],
-      'variables': {
-        'executable_name': 'crash_sandbox',
-      },
-      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
-    },
-    {
       'target_name': 'noop_sandbox',
       'type': '<(final_executable_type)',
       'dependencies': [
@@ -106,17 +87,6 @@
       'sources': [
         'noop_sandbox.cc',
       ],
-    },
-    {
-      'target_name': 'noop_sandbox_deploy',
-      'type': 'none',
-      'dependencies': [
-        'noop_sandbox',
-      ],
-      'variables': {
-        'executable_name': 'noop_sandbox',
-      },
-      'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
     },
   ]
 }

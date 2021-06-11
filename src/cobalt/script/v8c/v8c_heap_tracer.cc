@@ -32,7 +32,10 @@ void V8cHeapTracer::RegisterV8References(
         static_cast<WrapperPrivate*>(embedder_field.first);
     Wrappable* wrappable = wrapper_private->raw_wrappable();
     MaybeAddToFrontier(wrappable);
-    DCHECK(embedder_field.second == WrapperPrivate::kInternalFieldIdValue);
+
+    // We expect this field to always be null, since we only have it as a
+    // workaround for V8.  See "wrapper_private.h" for details.
+    DCHECK(embedder_field.second == nullptr);
   }
 }
 

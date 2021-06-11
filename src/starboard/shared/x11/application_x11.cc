@@ -41,10 +41,6 @@
 #include "starboard/shared/x11/window_internal.h"
 #include "starboard/time.h"
 
-namespace {
-const char kTouchscreenPointerSwitch[] = "touchscreen_pointer";
-}
-
 namespace starboard {
 namespace shared {
 namespace x11 {
@@ -698,6 +694,11 @@ using shared::starboard::player::filter::CpuVideoFrame;
 ApplicationX11::ApplicationX11()
     : wake_up_atom_(None),
       wm_delete_atom_(None),
+#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
+    SB_HAS(CONCEALED_STATE)
+      wm_change_state_atom_(None),
+#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
+        // SB_HAS(CONCEALED_STATE)
       composite_event_id_(kSbEventIdInvalid),
       display_(NULL),
       paste_buffer_key_release_pending_(false) {
@@ -719,7 +720,6 @@ SbWindow ApplicationX11::CreateWindow(const SbWindowOptions* options) {
     // evdev input will be sent to the first created window only.
     dev_input_.reset(DevInput::Create(window, ConnectionNumber(display_)));
   }
-  touchscreen_pointer_ = GetCommandLine()->HasSwitch(kTouchscreenPointerSwitch);
   return window;
 }
 
@@ -954,6 +954,11 @@ bool ApplicationX11::EnsureX() {
 
   wake_up_atom_ = XInternAtom(display_, "WakeUpAtom", 0);
   wm_delete_atom_ = XInternAtom(display_, "WM_DELETE_WINDOW", True);
+#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
+    SB_HAS(CONCEALED_STATE)
+  wm_change_state_atom_ = XInternAtom(display_, "WM_CHANGE_STATE", True);
+#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
+        // SB_HAS(CONCEALED_STATE)
 
   Composite();
 
@@ -972,6 +977,11 @@ void ApplicationX11::StopX() {
   display_ = NULL;
   wake_up_atom_ = None;
   wm_delete_atom_ = None;
+#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
+    SB_HAS(CONCEALED_STATE)
+  wm_change_state_atom_ = None;
+#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
+        // SB_HAS(CONCEALED_STATE)
 }
 
 shared::starboard::Application::Event* ApplicationX11::GetPendingEvent() {
@@ -1184,6 +1194,22 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
         Stop(0);
         return NULL;
       }
+
+#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
+    SB_HAS(CONCEALED_STATE)
+      if (client_message->message_type == wm_change_state_atom_) {
+        SB_DLOG(INFO) << "Received WM_CHANGE_STATE message.";
+        if (x_event->xclient.data.l[0] == IconicState) {
+          Reveal(NULL, NULL);
+          return NULL;
+        } else if (x_event->xclient.data.l[0] == NormalState) {
+          Conceal(NULL, NULL);
+          return NULL;
+        }
+      }
+#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
+        // SB_HAS(CONCEALED_STATE)
+
       // Unknown event, ignore.
       return NULL;
     }
@@ -1247,8 +1273,7 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
       data->key = XButtonEventToSbKey(x_button_event);
       data->type =
           is_press_event ? kSbInputEventTypePress : kSbInputEventTypeUnpress;
-      data->device_type = touchscreen_pointer_ ? kSbInputDeviceTypeTouchScreen
-                                               : kSbInputDeviceTypeMouse;
+      data->device_type = kSbInputDeviceTypeMouse;
       if (is_wheel_event) {
         data->pressure = NAN;
         data->size = {NAN, NAN};
@@ -1274,20 +1299,25 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
       data->size = {NAN, NAN};
       data->tilt = {NAN, NAN};
       data->type = kSbInputEventTypeMove;
-      data->device_type = touchscreen_pointer_ ? kSbInputDeviceTypeTouchScreen
-                                               : kSbInputDeviceTypeMouse;
+      data->device_type = kSbInputDeviceTypeMouse;
       data->device_id = kMouseDeviceId;
       data->key_modifiers = XEventStateToSbKeyModifiers(x_motion_event->state);
       data->position.x = x_motion_event->x;
       data->position.y = x_motion_event->y;
-      if (touchscreen_pointer_ && !data->key_modifiers) {
-        // For touch screens, only report motion events when a button is
-        // pressed.
-        return NULL;
-      }
       return new Event(kSbEventTypeInput, data.release(),
                        &DeleteDestructor<SbInputData>);
     }
+#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
+    SB_HAS(CONCEALED_STATE)
+    case FocusIn: {
+      Focus(NULL, NULL);
+      return NULL;
+    }
+    case FocusOut: {
+      Blur(NULL, NULL);
+      return NULL;
+    }
+#else
     case FocusIn: {
       Unpause(NULL, NULL);
       return NULL;
@@ -1296,6 +1326,8 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
       Pause(NULL, NULL);
       return NULL;
     }
+#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
+        // SB_HAS(CONCEALED_STATE)
     case ConfigureNotify: {
 #if SB_API_VERSION >= 8
       XConfigureEvent* x_configure_event =

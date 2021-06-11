@@ -61,7 +61,11 @@ scoped_refptr<render_tree::Image> GetVideoFrame(
   TRACE_EVENT0("cobalt::layout", "GetVideoFrame()");
   SbDecodeTarget decode_target = frame_provider->GetCurrentSbDecodeTarget();
   if (SbDecodeTargetIsValid(decode_target)) {
+#if SB_HAS(GRAPHICS)
     return resource_provider->CreateImageFromSbDecodeTarget(decode_target);
+#else   // SB_HAS(GRAPHICS)
+    return NULL;
+#endif  // SB_HAS(GRAPHICS)
   } else {
     DCHECK(frame_provider);
     return NULL;
@@ -451,12 +455,6 @@ void BoxGenerator::VisitLottiePlayer(dom::LottiePlayer* lottie_player) {
     // This behavior cannot be overridden by setting the "display" property on
     // the descendants.
     //   https://www.w3.org/TR/CSS21/visuren.html#display-prop
-
-    // A LottiePlayer element with "display: none" should potentially trigger
-    // a freeze event.
-    if (!lottie_player->GetProperties().onfreeze_callback.is_null()) {
-      lottie_player->GetProperties().onfreeze_callback.Run();
-    }
     return;
   }
 
@@ -1057,17 +1055,12 @@ void BoxGenerator::VisitNonReplacedElement(dom::HTMLElement* html_element) {
   container_box_before_split->SetUiNavItem(html_element->GetUiNavItem());
   boxes_.push_back(container_box_before_split);
 
-  // We already handle the case where the Intersection Observer root is the
-  // viewport with the initial containing block in layout.
-  if (html_element !=
-      html_element->node_document()->document_element()->AsHTMLElement()) {
-    BoxIntersectionObserverModule::IntersectionObserverRootVector roots =
-        html_element->GetLayoutIntersectionObserverRoots();
-    BoxIntersectionObserverModule::IntersectionObserverTargetVector targets =
-        html_element->GetLayoutIntersectionObserverTargets();
-    container_box_before_split->AddIntersectionObserverRootsAndTargets(
-        std::move(roots), std::move(targets));
-  }
+  BoxIntersectionObserverModule::IntersectionObserverRootVector roots =
+      html_element->GetLayoutIntersectionObserverRoots();
+  BoxIntersectionObserverModule::IntersectionObserverTargetVector targets =
+      html_element->GetLayoutIntersectionObserverTargets();
+  container_box_before_split->AddIntersectionObserverRootsAndTargets(
+      std::move(roots), std::move(targets));
 
   AppendPseudoElementToLine(html_element, dom::kBeforePseudoElementType);
 

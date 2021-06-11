@@ -4,12 +4,14 @@ title: "Starboard Module Reference: memory.h"
 ---
 
 Defines functions for memory allocation, alignment, copying, and comparing.
-Porters
+
+## Porters ##
 
 All of the "Unchecked" and "Free" functions must be implemented, but they should
 not be called directly. The Starboard platform wraps them with extra accounting
 under certain circumstances.
-Porters and Application Developers
+
+## Porters and Application Developers ##
 
 Nobody should call the "Checked", "Unchecked" or "Free" functions directly
 because that evades Starboard's memory tracking. In both port implementations
@@ -46,7 +48,7 @@ the mapped memory can be used.
 
 ### SbMemoryAlignToPageSize ###
 
-Rounds `size` up to kSbMemoryPageSize.
+Rounds `size` up to SB_MEMORY_PAGE_SIZE.
 
 #### Declaration ####
 

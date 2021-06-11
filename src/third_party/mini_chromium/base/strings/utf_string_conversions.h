@@ -7,7 +7,6 @@
 
 #include <string>
 
-#include "base/base_wrapper.h"
 #include "base/strings/string16.h"
 #include "base/strings/string_piece.h"
 

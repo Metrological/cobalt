@@ -4,7 +4,8 @@ title: "Starboard Module Reference: event.h"
 ---
 
 Defines the event system that wraps the Starboard main loop and entry point.
-The Starboard Application Lifecycle
+
+## The Starboard Application Lifecycle ##
 
 ```
     ---------- *
@@ -159,6 +160,19 @@ the type of the value pointed to by that data argument, if any.
     timing-sensitive, so as little work as possible should be done on the main
     thread if the application wants to receive this event in a timely manner. No
     data argument.
+*   `kSbEventTypeNetworkDisconnect`
+
+    The platform has detected a network disconnection. The platform should make
+    a best effort to send an event of this type when the network disconnects,
+    but there are likely to be cases where the platform cannot detect the
+    disconnection (e.g. if the connection is via a powered hub which becomes
+    disconnected), so the current network state cannot always be inferred from
+    the sequence of Connect/Disconnect events.
+*   `kSbEventTypeNetworkConnect`
+
+    The platform has detected a network connection. This event may be sent at
+    application start-up, and should always be sent if the network reconnects
+    since a disconnection event was sent.
 *   `kSbEventTypeScheduled`
 
     An event type reserved for scheduled callbacks. It will only be sent in
@@ -170,11 +184,7 @@ the type of the value pointed to by that data argument, if any.
     The platform's accessibility settings have changed. The application should
     query the accessibility settings using the appropriate APIs to get the new
     settings. Note this excludes captions settings changes, which causes
-    kSbEventTypeAccessibilityCaptionSettingsChanged to fire. If the starboard
-    version has kSbEventTypeAccessiblityTextToSpeechSettingsChanged, then that
-    event should be used to signal text-to-speech settings changes instead;
-    platforms using older starboard versions should use
-    kSbEventTypeAccessiblitySettingsChanged for text-to-speech settings changes.
+    kSbEventTypeAccessibilityCaptionSettingsChanged to fire.
 *   `kSbEventTypeLowMemory`
 
     An optional event that platforms may send to indicate that the application
@@ -222,23 +232,10 @@ the type of the value pointed to by that data argument, if any.
     triggered by the application have tickets passed in via
     SbWindowBlurOnScreenKeyboard. System-triggered events have ticket value
     kSbEventOnScreenKeyboardInvalidTicket.
-*   `kSbEventTypeOnScreenKeyboardSuggestionsUpdated`
-
-    The platform has updated the on screen keyboard suggestions. This event is
-    triggered by the system or by the application's OnScreenKeyboard update
-    suggestions method. The event has int data representing a ticket. The ticket
-    is used by the application to mark individual calls to the update
-    suggestions method as successfully completed. Events triggered by the
-    application have tickets passed in via
-    SbWindowUpdateOnScreenKeyboardSuggestions. System-triggered events have
-    ticket value kSbEventOnScreenKeyboardInvalidTicket.
 *   `kSbEventTypeAccessibilityCaptionSettingsChanged`
 
-    SB_HAS(ON_SCREEN_KEYBOARD) One or more of the fields returned by
-    SbAccessibilityGetCaptionSettings has changed.
-*   `kSbEventTypeAccessiblityTextToSpeechSettingsChanged`
-
-    The platform's text-to-speech settings have changed.
+    One or more of the fields returned by SbAccessibilityGetCaptionSettings has
+    changed.
 
 ## Typedefs ##
 

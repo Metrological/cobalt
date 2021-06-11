@@ -456,8 +456,10 @@
 #    define __has_attribute(x) 0
 #endif
 
+#if SB_HAS_QUIRK(HASFEATURE_NOT_DEFINED_BUT_IT_IS)
 #ifndef __has_feature
 #    undef __has_feature
+#endif
 #endif
 
 #ifndef __has_builtin

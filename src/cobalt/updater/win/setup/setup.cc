@@ -68,8 +68,8 @@ int Setup() {
     return -1;
   }
   base::FilePath product_dir;
-  if (!CreateProductDirectory(&product_dir)) {
-    LOG(ERROR) << "CreateProductDirectory failed.";
+  if (!GetProductDirectory(&product_dir)) {
+    LOG(ERROR) << "GetProductDirectory failed.";
     return -1;
   }
   base::FilePath exe_path;

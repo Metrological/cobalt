@@ -18,7 +18,6 @@
 
 #include "cobalt/browser/application.h"
 
-#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -39,6 +38,7 @@
 #include "cobalt/base/accessibility_caption_settings_changed_event.h"
 #include "cobalt/base/accessibility_settings_changed_event.h"
 #include "cobalt/base/accessibility_text_to_speech_settings_changed_event.h"
+#include "cobalt/base/application_event.h"
 #include "cobalt/base/cobalt_paths.h"
 #include "cobalt/base/deep_link_event.h"
 #include "cobalt/base/get_application_key.h"
@@ -62,7 +62,6 @@
 #include "cobalt/browser/switches.h"
 #include "cobalt/browser/user_agent_string.h"
 #include "cobalt/configuration/configuration.h"
-#include "cobalt/extension/installation_manager.h"
 #include "cobalt/loader/image/image_decoder.h"
 #include "cobalt/math/size.h"
 #include "cobalt/script/javascript_engine.h"
@@ -197,7 +196,7 @@ std::string GetWebDriverListenIp() {
 }
 #endif  // ENABLE_WEBDRIVER
 
-GURL GetInitialURL(bool should_preload) {
+GURL GetInitialURL() {
   GURL initial_url = GURL(kDefaultURL);
   // Allow the user to override the default URL via a command line parameter.
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
@@ -219,17 +218,6 @@ GURL GetInitialURL(bool should_preload) {
                  << "\" from parameter is not valid, using default URL "
                  << initial_url;
     }
-  }
-
-  if (should_preload) {
-    std::string query = initial_url.query();
-    if (!query.empty()) {
-      query += "&";
-    }
-    query += "launch=preload";
-    GURL::Replacements replacements;
-    replacements.SetQueryStr(query);
-    initial_url = initial_url.ReplaceComponents(replacements);
   }
 
 #if SB_API_VERSION >= 11
@@ -256,15 +244,6 @@ GURL GetInitialURL(bool should_preload) {
   return initial_url;
 }
 
-bool ValidateSplashScreen(const base::Optional<GURL>& url) {
-  if (url->is_valid() &&
-      (url->SchemeIsFile() || url->SchemeIs("h5vcc-embedded"))) {
-    return true;
-  }
-  LOG(FATAL) << "Ignoring invalid fallback splash screen: " << url->spec();
-  return false;
-}
-
 base::Optional<GURL> GetFallbackSplashScreenURL() {
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   std::string fallback_splash_screen_string;
@@ -280,49 +259,13 @@ base::Optional<GURL> GetFallbackSplashScreenURL() {
   }
   base::Optional<GURL> fallback_splash_screen_url =
       GURL(fallback_splash_screen_string);
-  ValidateSplashScreen(fallback_splash_screen_url);
+  if (!fallback_splash_screen_url->is_valid() ||
+      !(fallback_splash_screen_url->SchemeIsFile() ||
+        fallback_splash_screen_url->SchemeIs("h5vcc-embedded"))) {
+    LOG(FATAL) << "Ignoring invalid fallback splash screen: "
+               << fallback_splash_screen_string;
+  }
   return fallback_splash_screen_url;
-}
-
-// Parses the fallback_splash_screen_topics command line parameter
-// and maps topics to full file url locations, if valid.
-void ParseFallbackSplashScreenTopics(
-    const base::Optional<GURL>& default_fallback_splash_screen_url,
-    std::map<std::string, GURL>* fallback_splash_screen_topic_map) {
-  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
-  std::string topics;
-  if (command_line->HasSwitch(switches::kFallbackSplashScreenTopics)) {
-    topics = command_line->GetSwitchValueASCII(
-        switches::kFallbackSplashScreenTopics);
-  } else {
-    topics = configuration::Configuration::GetInstance()
-                 ->CobaltFallbackSplashScreenTopics();
-  }
-
-  // Note: values in topics_map may be either file paths or filenames.
-  std::map<std::string, std::string> topics_map;
-  BrowserModule::GetParamMap(topics, topics_map);
-  for (auto iterator = topics_map.begin(); iterator != topics_map.end();
-       iterator++) {
-    std::string topic = iterator->first;
-    std::string location = iterator->second;
-    base::Optional<GURL> topic_fallback_url = GURL(location);
-
-    // If not a valid url, check whether it is a valid filename in the
-    // same directory as the default fallback url.
-    if (!topic_fallback_url->is_valid()) {
-      if (default_fallback_splash_screen_url) {
-        topic_fallback_url = GURL(
-            default_fallback_splash_screen_url->GetWithoutFilename().spec() +
-            location);
-      } else {
-        break;
-      }
-    }
-    if (ValidateSplashScreen(topic_fallback_url)) {
-      (*fallback_splash_screen_topic_map)[topic] = topic_fallback_url.value();
-    }
-  }
 }
 
 base::TimeDelta GetTimedTraceDuration() {
@@ -400,9 +343,9 @@ base::Optional<cssom::ViewportSize> GetRequestedViewportSize(
     // width. This calculates the height at 4:3 aspect ratio for smaller
     // viewport widths, and 16:9 for viewports 1280 pixels wide or larger.
     if (width >= 1280) {
-      return ViewportSize(width, 9 * width / 16);
+      return ViewportSize(width, 9 * width / 16, 0);
     }
-    return ViewportSize(width, 3 * width / 4);
+    return ViewportSize(width, 3 * width / 4, 0);
   }
 
   int height = 0;
@@ -415,25 +358,13 @@ base::Optional<cssom::ViewportSize> GetRequestedViewportSize(
     return ViewportSize(width, height);
   }
 
-  double screen_diagonal_inches = 0.0f;
-  if (lengths.size() >= 3) {
-    if (!base::StringToDouble(lengths[2], &screen_diagonal_inches)) {
-      DLOG(ERROR) << "Viewport " << switch_value
-                  << " has invalid screen_diagonal_inches.";
-      return base::nullopt;
-    }
+  double screen_diagonal_inches = 0.0;
+  if (!base::StringToDouble(lengths[2], &screen_diagonal_inches)) {
+    DLOG(ERROR) << "Viewport " << switch_value
+                << " has invalid screen_diagonal_inches.";
+    return base::nullopt;
   }
-
-  double video_pixel_ratio = 1.0f;
-  if (lengths.size() >= 4) {
-    if (!base::StringToDouble(lengths[3], &video_pixel_ratio)) {
-      DLOG(ERROR) << "Viewport " << switch_value
-                  << " has invalid video_pixel_ratio.";
-      return base::nullopt;
-    }
-  }
-
-  return ViewportSize(width, height, static_cast<float>(video_pixel_ratio),
+  return ViewportSize(width, height,
                       static_cast<float>(screen_diagonal_inches));
 }
 
@@ -582,7 +513,7 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
       base::Bind(&Application::UpdatePeriodicStats, base::Unretained(this)));
 
   // Get the initial URL.
-  GURL initial_url = GetInitialURL(should_preload);
+  GURL initial_url = GetInitialURL();
   DLOG(INFO) << "Initial URL: " << initial_url;
 
   // Get the fallback splash screen URL.
@@ -610,8 +541,8 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   base::Optional<cssom::ViewportSize> requested_viewport_size =
       GetRequestedViewportSize(command_line);
 
-  unconsumed_deep_link_ = GetInitialDeepLink();
-  DLOG(INFO) << "Initial deep link: " << unconsumed_deep_link_;
+  early_deep_link_ = GetInitialDeepLink();
+  DLOG(INFO) << "Initial deep link: " << early_deep_link_;
 
   WebModule::Options web_options;
   storage::StorageManager::Options storage_manager_options;
@@ -624,9 +555,6 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
       memory_settings::GetSettings(*command_line);
   options.build_auto_mem_settings = memory_settings::GetDefaultBuildSettings();
   options.fallback_splash_screen_url = fallback_splash_screen_url;
-
-  ParseFallbackSplashScreenTopics(fallback_splash_screen_url,
-                                  &options.fallback_splash_screen_topic_map);
 
   if (command_line->HasSwitch(browser::switches::kFPSPrint)) {
     options.renderer_module_options.enable_fps_stdout = true;
@@ -701,8 +629,8 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   SecurityFlags security_flags{csp::kCSPRequired, network::kHTTPSRequired};
   // Set callback to be notified when a navigation occurs that destroys the
   // underlying WebModule.
-  options.web_module_created_callback =
-      base::Bind(&Application::WebModuleCreated, base::Unretained(this));
+  options.web_module_recreated_callback =
+      base::Bind(&Application::WebModuleRecreated, base::Unretained(this));
 
   // The main web module's stat tracker tracks event stats.
   options.web_module_options.track_event_stats = true;
@@ -776,6 +704,8 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
   options.web_module_options.csp_enforcement_mode = dom::kCspEnforcementEnable;
 
   options.requested_viewport_size = requested_viewport_size;
+  options.web_module_loaded_callback =
+      base::Bind(&Application::DispatchEarlyDeepLink, base::Unretained(this));
   account_manager_.reset(new account::AccountManager());
 
   storage_manager_.reset(new storage::StorageManager(
@@ -789,9 +719,7 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
       network_module_options));
 
 #if SB_IS(EVERGREEN)
-  if (SbSystemGetExtension(kCobaltExtensionInstallationManagerName)) {
-    updater_module_.reset(new updater::UpdaterModule(network_module_.get()));
-  }
+  updater_module_.reset(new updater::UpdaterModule(network_module_.get()));
 #endif
   browser_module_.reset(new BrowserModule(
       initial_url,
@@ -805,8 +733,13 @@ Application::Application(const base::Closure& quit_closure, bool should_preload)
 
   UpdateUserAgent();
 
+#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
+    SB_HAS(CONCEALED_STATE)
+  app_status_ = (should_preload ? kConcealedAppStatus : kRunningAppStatus);
+#else
   app_status_ = (should_preload ? kPreloadingAppStatus : kRunningAppStatus);
-
+#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
+        // SB_HAS(CONCEALED_STATE)
   // Register event callbacks.
 #if SB_API_VERSION >= 8
   window_size_change_event_callback_ = base::Bind(
@@ -951,10 +884,14 @@ void Application::Start() {
     return;
   }
 
+#if SB_API_VERSION < SB_ADD_CONCEALED_STATE_SUPPORT_VERSION && \
+    !SB_HAS(CONCEALED_STATE)
   if (app_status_ != kPreloadingAppStatus) {
     NOTREACHED() << __FUNCTION__ << ": Redundant call.";
     return;
   }
+#endif  // SB_API_VERSION < SB_ADD_CONCEALED_STATE_SUPPORT_VERSION &&
+        // !SB_HAS(CONCEALED_STATE)
 
   OnApplicationEvent(kSbEventTypeStart);
 }
@@ -982,6 +919,18 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
 
   // Create a Cobalt event from the Starboard event, if recognized.
   switch (starboard_event->type) {
+#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
+    SB_HAS(CONCEALED_STATE)
+    case kSbEventTypeBlur:
+    case kSbEventTypeFocus:
+    case kSbEventTypeConceal:
+    case kSbEventTypeReveal:
+    case kSbEventTypeFreeze:
+    case kSbEventTypeUnfreeze:
+    case kSbEventTypeLowMemory:
+      OnApplicationEvent(starboard_event->type);
+      break;
+#else
     case kSbEventTypePause:
     case kSbEventTypeUnpause:
     case kSbEventTypeSuspend:
@@ -989,6 +938,8 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
     case kSbEventTypeLowMemory:
       OnApplicationEvent(starboard_event->type);
       break;
+#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
+        // SB_HAS(CONCEALED_STATE)
 #if SB_API_VERSION >= 8
     case kSbEventTypeWindowSizeChanged:
       DispatchEventInternal(new base::WindowSizeChangedEvent(
@@ -1026,7 +977,14 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
 #endif  // SB_API_VERSION >= 12 ||
         // SB_HAS(ON_SCREEN_KEYBOARD)
     case kSbEventTypeLink: {
-      DispatchDeepLink(static_cast<const char*>(starboard_event->data));
+      const char* link = static_cast<const char*>(starboard_event->data);
+      if (browser_module_->IsWebModuleLoaded()) {
+        DLOG(INFO) << "Dispatching deep link: " << link;
+        DispatchEventInternal(new base::DeepLinkEvent(link));
+      } else {
+        DLOG(INFO) << "Storing deep link: " << link;
+        early_deep_link_ = link;
+      }
       break;
     }
     case kSbEventTypeAccessiblitySettingsChanged:
@@ -1085,6 +1043,62 @@ void Application::OnApplicationEvent(SbEventType event_type) {
       browser_module_->Start();
       DLOG(INFO) << "Finished starting.";
       break;
+#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
+    SB_HAS(CONCEALED_STATE)
+    case kSbEventTypeBlur:
+      DLOG(INFO) << "Got blur event.";
+      app_status_ = kBlurredAppStatus;
+      // This is temporary that will be changed in later CLs,
+      // for mapping Starboard Concealed state support onto
+      // Cobalt without Concealed state support to be able to
+      // test the former.
+      browser_module_->Pause();
+      DLOG(INFO) << "Finished blurring.";
+      break;
+    case kSbEventTypeFocus:
+      DLOG(INFO) << "Got focus event.";
+      app_status_ = kRunningAppStatus;
+      // This is temporary that will be changed in later CLs,
+      // for mapping Starboard Concealed state support onto
+      // Cobalt without Concealed state support to be able to
+      // test the former.
+      browser_module_->Unpause();
+      DLOG(INFO) << "Finished focusing.";
+      break;
+    case kSbEventTypeConceal:
+      DLOG(INFO) << "Got conceal event.";
+      app_status_ = kConcealedAppStatus;
+      // This is temporary that will be changed in later CLs,
+      // for mapping Starboard Concealed state support onto
+      // Cobalt without Concealed state support to be able to
+      // test the former.
+      browser_module_->Suspend();
+#if SB_IS(EVERGREEN)
+      updater_module_->Suspend();
+#endif
+      DLOG(INFO) << "Finished concealing.";
+      break;
+    case kSbEventTypeReveal:
+      DCHECK(SbSystemSupportsResume());
+      DLOG(INFO) << "Got reveal event.";
+      app_status_ = kBlurredAppStatus;
+      // This is temporary that will be changed in later CLs,
+      // for mapping Starboard Concealed state support onto
+      // Cobalt without Concealed state support to be able to
+      // test the former.
+      browser_module_->Resume();
+#if SB_IS(EVERGREEN)
+      updater_module_->Resume();
+#endif
+      DLOG(INFO) << "Finished revealing.";
+      break;
+    case kSbEventTypeFreeze:
+      DLOG(INFO) << "Got freeze event, but no action was taken.";
+      break;
+    case kSbEventTypeUnfreeze:
+      DLOG(INFO) << "Got unfreeze event, but no action was taken.";
+      break;
+#else
     case kSbEventTypePause:
       DLOG(INFO) << "Got pause event.";
       app_status_ = kPausedAppStatus;
@@ -1105,7 +1119,7 @@ void Application::OnApplicationEvent(SbEventType event_type) {
       ++app_suspend_count_;
       browser_module_->Suspend();
 #if SB_IS(EVERGREEN)
-      if (updater_module_) updater_module_->Suspend();
+      updater_module_->Suspend();
 #endif
       DLOG(INFO) << "Finished suspending.";
       break;
@@ -1116,10 +1130,12 @@ void Application::OnApplicationEvent(SbEventType event_type) {
       ++app_resume_count_;
       browser_module_->Resume();
 #if SB_IS(EVERGREEN)
-      if (updater_module_) updater_module_->Resume();
+      updater_module_->Resume();
 #endif
       DLOG(INFO) << "Finished resuming.";
       break;
+#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
+        // SB_HAS(CONCEALED_STATE)
     case kSbEventTypeLowMemory:
       DLOG(INFO) << "Got low memory event.";
       browser_module_->ReduceMemory();
@@ -1174,14 +1190,8 @@ void Application::OnWindowSizeChangedEvent(const base::Event* event) {
   float diagonal = 0.0f;  // Special value meaning diagonal size is not known.
 #endif
 
-  // A value of 0.0 for the video pixel ratio means that the ratio could not be
-  // determined. In that case it should be assumed to be the same as the
-  // graphics resolution, which corresponds to a device pixel ratio of 1.0.
-  float device_pixel_ratio =
-      (size.video_pixel_ratio == 0) ? 1.0f : size.video_pixel_ratio;
-  cssom::ViewportSize viewport_size(size.width, size.height, diagonal,
-                                    device_pixel_ratio);
-  browser_module_->OnWindowSizeChanged(viewport_size);
+  cssom::ViewportSize viewport_size(size.width, size.height, diagonal);
+  browser_module_->OnWindowSizeChanged(viewport_size, size.video_pixel_ratio);
 }
 #endif  // SB_API_VERSION >= 8
 
@@ -1241,9 +1251,8 @@ void Application::OnCaptionSettingsChangedEvent(const base::Event* event) {
 }
 #endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
 
-void Application::WebModuleCreated() {
-  TRACE_EVENT0("cobalt::browser", "Application::WebModuleCreated()");
-  DispatchDeepLinkIfNotConsumed();
+void Application::WebModuleRecreated() {
+  TRACE_EVENT0("cobalt::browser", "Application::WebModuleRecreated()");
 #if defined(ENABLE_WEBDRIVER)
   if (web_driver_module_) {
     web_driver_module_->OnWindowRecreated();
@@ -1275,7 +1284,7 @@ Application::CValStats::CValStats()
 // to a new location on the heap.
 void Application::UpdateUserAgent() {
   non_trivial_static_fields.Get().user_agent = browser_module_->GetUserAgent();
-  LOG(INFO) << "User Agent: " << non_trivial_static_fields.Get().user_agent;
+  DLOG(INFO) << "User Agent: " << non_trivial_static_fields.Get().user_agent;
 }
 
 void Application::UpdatePeriodicStats() {
@@ -1326,59 +1335,14 @@ void Application::OnMemoryTrackerCommand(const std::string& message) {
 }
 #endif  // defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
 
-// Called to handle deep link consumed events.
-void Application::OnDeepLinkConsumedCallback(const std::string& link) {
-  LOG(INFO) << "Got deep link consumed callback: " << link;
-  base::AutoLock auto_lock(unconsumed_deep_link_lock_);
-  if (link == unconsumed_deep_link_) {
-    unconsumed_deep_link_.clear();
-  }
-}
-
-void Application::DispatchDeepLink(const char* link) {
-  if (!link || *link == 0) {
+void Application::DispatchEarlyDeepLink() {
+  if (early_deep_link_.empty()) {
     return;
   }
-
-  std::string deep_link;
-  // This block exists to ensure that the lock is held while accessing
-  // unconsumed_deep_link_.
-  {
-    base::AutoLock auto_lock(unconsumed_deep_link_lock_);
-    // Stash the deep link so that if it is not consumed, it can be dispatched
-    // again after the next WebModule is created.
-    unconsumed_deep_link_ = link;
-    deep_link = unconsumed_deep_link_;
-  }
-
-  LOG(INFO) << "Dispatching deep link: " << deep_link;
-  DispatchEventInternal(new base::DeepLinkEvent(
-      deep_link, base::Bind(&Application::OnDeepLinkConsumedCallback,
-                            base::Unretained(this), deep_link)));
-}
-
-void Application::DispatchDeepLinkIfNotConsumed() {
-  std::string deep_link;
-  // This block exists to ensure that the lock is held while accessing
-  // unconsumed_deep_link_.
-  {
-    base::AutoLock auto_lock(unconsumed_deep_link_lock_);
-    deep_link = unconsumed_deep_link_;
-  }
-
-  if (!deep_link.empty()) {
-    LOG(INFO) << "Dispatching deep link: " << deep_link;
-    DispatchEventInternal(new base::DeepLinkEvent(
-        deep_link, base::Bind(&Application::OnDeepLinkConsumedCallback,
-                              base::Unretained(this), deep_link)));
-  }
+  DLOG(INFO) << "Dispatching early deep link: " << early_deep_link_;
+  DispatchEventInternal(new base::DeepLinkEvent(early_deep_link_.c_str()));
+  early_deep_link_ = "";
 }
 
 }  // namespace browser
 }  // namespace cobalt
-
-const char* GetCobaltUserAgentString() {
-  static std::string ua = cobalt::browser::CreateUserAgentString(
-      cobalt::browser::GetUserAgentPlatformInfoFromSystem());
-  return ua.c_str();
-}

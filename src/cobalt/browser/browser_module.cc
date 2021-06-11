@@ -15,7 +15,6 @@
 #include "cobalt/browser/browser_module.h"
 
 #include <algorithm>
-#include <map>
 #include <memory>
 #include <vector>
 
@@ -32,7 +31,6 @@
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "cobalt/base/cobalt_paths.h"
-#include "cobalt/base/init_cobalt.h"
 #include "cobalt/base/source_location.h"
 #include "cobalt/base/tokens.h"
 #include "cobalt/browser/on_screen_keyboard_starboard_bridge.h"
@@ -262,7 +260,7 @@ BrowserModule::BrowserModule(const GURL& url,
       // SB_HAS(ON_SCREEN_KEYBOARD)
       web_module_loaded_(base::WaitableEvent::ResetPolicy::MANUAL,
                          base::WaitableEvent::InitialState::NOT_SIGNALED),
-      web_module_created_callback_(options_.web_module_created_callback),
+      web_module_recreated_callback_(options_.web_module_recreated_callback),
       navigate_time_("Time.Browser.Navigate", 0,
                      "The last time a navigation occurred."),
       on_load_event_time_("Time.Browser.OnLoadEvent", 0,
@@ -308,7 +306,8 @@ BrowserModule::BrowserModule(const GURL& url,
       main_web_module_generation_(0),
       next_timeline_id_(1),
       current_splash_screen_timeline_id_(-1),
-      current_main_web_module_timeline_id_(-1) {
+      current_main_web_module_timeline_id_(-1),
+      web_module_loaded_callback_(options_.web_module_loaded_callback) {
   TRACE_EVENT0("cobalt::browser", "BrowserModule::BrowserModule()");
 
   // Apply platform memory setting adjustments and defaults.
@@ -454,7 +453,6 @@ BrowserModule::BrowserModule(const GURL& url,
                    base::Unretained(this))));
   }
 
-  // Set the fallback splash screen url to the default fallback url.
   fallback_splash_screen_url_ = options.fallback_splash_screen_url;
 
   // Synchronously construct our WebModule object.
@@ -565,17 +563,15 @@ void BrowserModule::Navigate(const GURL& url_reference) {
   DestroySplashScreen(base::TimeDelta());
   if (options_.enable_splash_screen_on_reloads ||
       main_web_module_generation_ == 1) {
-    base::Optional<std::string> topic = SetSplashScreenTopicFallback(url);
-    splash_screen_cache_->SetUrl(url, topic);
-
+    base::Optional<std::string> key = SplashScreenCache::GetKeyForStartUrl(url);
     if (fallback_splash_screen_url_ ||
-        splash_screen_cache_->IsSplashScreenCached()) {
+        (key && splash_screen_cache_->IsSplashScreenCached(*key))) {
       splash_screen_.reset(new SplashScreen(
           application_state_,
           base::Bind(&BrowserModule::QueueOnSplashScreenRenderTreeProduced,
                      base::Unretained(this)),
           network_module_, viewport_size, GetResourceProvider(),
-          kLayoutMaxRefreshFrequencyInHz, fallback_splash_screen_url_,
+          kLayoutMaxRefreshFrequencyInHz, fallback_splash_screen_url_, url,
           splash_screen_cache_.get(),
           base::Bind(&BrowserModule::DestroySplashScreen, weak_this_)));
       lifecycle_observers_.AddObserver(splash_screen_.get());
@@ -610,6 +606,11 @@ void BrowserModule::Navigate(const GURL& url_reference) {
     options.camera_3d = input_device_manager_->camera_3d();
   }
 
+  float video_pixel_ratio = 1.0f;
+  if (system_window_) {
+    video_pixel_ratio = system_window_->GetVideoPixelRatio();
+  }
+
   // Make sure that automem has been run before creating the WebModule, so that
   // we use properly configured options for all parameters.
   DCHECK(auto_mem_);
@@ -641,11 +642,11 @@ void BrowserModule::Navigate(const GURL& url_reference) {
       base::Bind(&BrowserModule::OnWindowClose, base::Unretained(this)),
       base::Bind(&BrowserModule::OnWindowMinimize, base::Unretained(this)),
       can_play_type_handler_.get(), media_module_.get(), network_module_,
-      viewport_size, GetResourceProvider(), kLayoutMaxRefreshFrequencyInHz,
-      options));
+      viewport_size, video_pixel_ratio, GetResourceProvider(),
+      kLayoutMaxRefreshFrequencyInHz, options));
   lifecycle_observers_.AddObserver(web_module_.get());
-  if (!web_module_created_callback_.is_null()) {
-    web_module_created_callback_.Run();
+  if (!web_module_recreated_callback_.is_null()) {
+    web_module_recreated_callback_.Run();
   }
 
   if (system_window_) {
@@ -700,6 +701,10 @@ void BrowserModule::OnLoad() {
   on_load_event_time_ = base::TimeTicks::Now().ToInternalValue();
 
   web_module_loaded_.Signal();
+
+  if (!web_module_loaded_callback_.is_null()) {
+    web_module_loaded_callback_.Run();
+  }
 }
 
 bool BrowserModule::WaitForLoad(const base::TimeDelta& timeout) {
@@ -928,22 +933,28 @@ void BrowserModule::OnWindowMinimize() {
     return;
   }
 #endif
-
+#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
+    SB_HAS(CONCEALED_STATE)
+  SbSystemRequestConceal();
+#else
   SbSystemRequestSuspend();
+#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
+        // SB_HAS(CONCEALED_STATE)
 }
 
 #if SB_API_VERSION >= 8
-void BrowserModule::OnWindowSizeChanged(const ViewportSize& viewport_size) {
+void BrowserModule::OnWindowSizeChanged(const ViewportSize& viewport_size,
+                                        float video_pixel_ratio) {
   if (web_module_) {
-    web_module_->SetSize(viewport_size);
+    web_module_->SetSize(viewport_size, video_pixel_ratio);
   }
 #if defined(ENABLE_DEBUGGER)
   if (debug_console_) {
-    debug_console_->web_module().SetSize(viewport_size);
+    debug_console_->web_module().SetSize(viewport_size, video_pixel_ratio);
   }
 #endif  // defined(ENABLE_DEBUGGER)
   if (splash_screen_) {
-    splash_screen_->web_module().SetSize(viewport_size);
+    splash_screen_->web_module().SetSize(viewport_size, video_pixel_ratio);
   }
 
   return;
@@ -1325,8 +1336,14 @@ bool BrowserModule::FilterKeyEventForHotkeys(
     }
   } else if (event.ctrl_key() && event.key_code() == dom::keycode::kS) {
     if (type == base::Tokens::keydown()) {
+#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
+    SB_HAS(CONCEALED_STATE)
+      SbSystemRequestConceal();
+#else
       // Ctrl+S suspends Cobalt.
       SbSystemRequestSuspend();
+#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
+        // SB_HAS(CONCEALED_STATE)
     }
     return false;
   }
@@ -1489,6 +1506,17 @@ void BrowserModule::Suspend() {
 void BrowserModule::Resume() {
   TRACE_EVENT0("cobalt::browser", "BrowserModule::Resume()");
   DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
+#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
+    SB_HAS(CONCEALED_STATE)
+  // This is temporary for Cobalt black box tests, will be removed
+  // with Cobalt Concealed mode changes.
+  if (application_state_ == base::kApplicationStatePreloading) {
+    Start();
+    Pause();
+    return;
+  }
+#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
+        // SB_HAS(CONCEALED_STATE)
   DCHECK(application_state_ == base::kApplicationStateSuspended);
 
   StartOrResumeInternalPreStateUpdate(false /*is_start*/);
@@ -1663,18 +1691,19 @@ void BrowserModule::DestroyRendererModule() {
 
 void BrowserModule::UpdateScreenSize() {
   ViewportSize size = GetViewportSize();
+  float video_pixel_ratio = system_window_->GetVideoPixelRatio();
 #if defined(ENABLE_DEBUGGER)
   if (debug_console_) {
-    debug_console_->SetSize(size);
+    debug_console_->SetSize(size, video_pixel_ratio);
   }
 #endif  // defined(ENABLE_DEBUGGER)
 
   if (splash_screen_) {
-    splash_screen_->SetSize(size);
+    splash_screen_->SetSize(size, video_pixel_ratio);
   }
 
   if (web_module_) {
-    web_module_->SetSize(size);
+    web_module_->SetSize(size, video_pixel_ratio);
   }
 
   if (qr_code_overlay_) {
@@ -1765,11 +1794,8 @@ ViewportSize BrowserModule::GetViewportSize() {
     math::Size target_size = renderer_module_->render_target_size();
     // ...but get the diagonal from one of the other modules.
     float diagonal_inches = 0;
-    float device_pixel_ratio = 1.0f;
     if (system_window_) {
       diagonal_inches = system_window_->GetDiagonalSizeInches();
-      device_pixel_ratio = system_window_->GetDevicePixelRatio();
-
       // For those platforms that can have a main window size smaller than the
       // render target size, the system_window_ size (if exists) should be
       // trusted over the renderer_module_ render target size.
@@ -1780,12 +1806,9 @@ ViewportSize BrowserModule::GetViewportSize() {
       }
     } else if (options_.requested_viewport_size) {
       diagonal_inches = options_.requested_viewport_size->diagonal_inches();
-      device_pixel_ratio =
-          options_.requested_viewport_size->device_pixel_ratio();
     }
 
-    ViewportSize v(target_size.width(), target_size.height(), diagonal_inches,
-                   device_pixel_ratio);
+    ViewportSize v(target_size.width(), target_size.height(), diagonal_inches);
     return v;
   }
 
@@ -1793,8 +1816,7 @@ ViewportSize BrowserModule::GetViewportSize() {
   if (system_window_) {
     math::Size size = system_window_->GetWindowSize();
     ViewportSize v(size.width(), size.height(),
-                   system_window_->GetDiagonalSizeInches(),
-                   system_window_->GetDevicePixelRatio());
+                   system_window_->GetDiagonalSizeInches());
     return v;
   }
 
@@ -1808,7 +1830,7 @@ ViewportSize BrowserModule::GetViewportSize() {
 
   // No window and no viewport size was requested, so we return a conservative
   // default.
-  ViewportSize view_size(1280, 720);
+  ViewportSize view_size(1280, 720, 0);
   return view_size;
 }
 
@@ -1896,65 +1918,6 @@ SbWindow BrowserModule::GetSbWindow() {
     return NULL;
   }
   return system_window_->GetSbWindow();
-}
-
-base::Optional<std::string> BrowserModule::SetSplashScreenTopicFallback(
-    const GURL& url) {
-  std::map<std::string, std::string> url_param_map;
-  // If this is the initial startup, use topic within deeplink, if specified.
-  if (main_web_module_generation_ == 1) {
-    GetParamMap(GetInitialDeepLink(), url_param_map);
-  }
-  // If this is not the initial startup, there was no deeplink specified, or
-  // the deeplink did not have a topic, check the current url for a topic.
-  if (url_param_map["topic"].empty()) {
-    GetParamMap(url.query(), url_param_map);
-  }
-  std::string splash_topic = url_param_map["topic"];
-  // If a topic was found, check whether a fallback url was specified.
-  if (!splash_topic.empty()) {
-    GURL splash_url = options_.fallback_splash_screen_topic_map[splash_topic];
-    if (!splash_url.spec().empty()) {
-      // Update fallback splash screen url to topic-specific URL.
-      fallback_splash_screen_url_ = splash_url;
-    }
-    return base::Optional<std::string>(splash_topic);
-  }
-  return base::Optional<std::string>();
-}
-
-void BrowserModule::GetParamMap(const std::string& url,
-                                std::map<std::string, std::string>& map) {
-  bool next_is_option = true;
-  bool next_is_value = false;
-  std::string option = "";
-  base::StringTokenizer tokenizer(url, "&=");
-  tokenizer.set_options(base::StringTokenizer::RETURN_DELIMS);
-
-  while (tokenizer.GetNext()) {
-    if (tokenizer.token_is_delim()) {
-      switch (*tokenizer.token_begin()) {
-        case '&':
-          next_is_option = true;
-          break;
-        case '=':
-          next_is_value = true;
-          break;
-      }
-    } else {
-      std::string token = tokenizer.token();
-      if (next_is_value && !option.empty()) {
-        // Overwrite previous value when an option appears more than once.
-        map[option] = token;
-      }
-      option = "";
-      if (next_is_option) {
-        option = token;
-      }
-      next_is_option = false;
-      next_is_value = false;
-    }
-  }
 }
 
 }  // namespace browser

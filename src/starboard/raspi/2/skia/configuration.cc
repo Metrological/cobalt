@@ -36,9 +36,13 @@ const char* CobaltRasterizerType() {
   return "hardware";
 }
 
+bool CobaltEnableJit() {
+  return true;
+}
+
 const CobaltExtensionConfigurationApi kConfigurationApi = {
     kCobaltExtensionConfigurationName,
-    2,
+    1,
     &common::CobaltUserOnExitStrategyDefault,
     &common::CobaltRenderDirtyRegionOnlyDefault,
     &common::CobaltEglSwapIntervalDefault,
@@ -60,8 +64,7 @@ const CobaltExtensionConfigurationApi kConfigurationApi = {
     &common::CobaltReduceGpuMemoryByDefault,
     &common::CobaltGcZealDefault,
     &CobaltRasterizerType,
-    &common::CobaltEnableJitDefault,
-    &common::CobaltFallbackSplashScreenTopicsDefault,
+    &CobaltEnableJit,
 };
 
 }  // namespace

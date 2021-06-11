@@ -27,10 +27,6 @@
 #include "util/linux/ptrace_connection.h"
 #include "util/misc/address_types.h"
 
-#if defined(STARBOARD)
-#include "starboard/elf_loader/evergreen_info.h"
-#endif
-
 namespace crashpad {
 
 //! \brief Captures a snapshot of a client over \a connection.
@@ -64,13 +60,7 @@ bool CaptureSnapshot(
     VMAddress requesting_thread_stack_address,
     pid_t* requesting_thread_id,
     std::unique_ptr<ProcessSnapshotLinux>* process_snapshot,
-    std::unique_ptr<ProcessSnapshotSanitized>* sanitized_snapshot
-#if defined(STARBOARD)
-    ,
-    VMAddress evergreen_information_address,
-    VMAddress annotations_address
-#endif
-    );
+    std::unique_ptr<ProcessSnapshotSanitized>* sanitized_snapshot);
 
 }  // namespace crashpad
 

@@ -3,7 +3,7 @@ layout: doc
 title: "Starboard Module Reference: log.h"
 ---
 
-Defines core debug logging functions.
+Defines debug logging functions.
 
 ## Enums ##
 
@@ -24,8 +24,7 @@ to filter logs by priority, or render them differently.
 
 ### SbLog ###
 
-Writes `message` to the platform's debug output log. This method is thread-safe,
-and responsible for ensuring that the output from multiple threads is not mixed.
+Writes `message` to the platform's debug output log.
 
 `priority`: The SbLogPriority at which the message should be logged. Note that
 passing `kSbLogPriorityFatal` does not terminate the program. Such a policy must
@@ -43,8 +42,7 @@ void SbLog(SbLogPriority priority, const char *message)
 
 ### SbLogFlush ###
 
-Flushes the log buffer on some platforms. This method is safe to call from
-multiple threads.
+Flushes the log buffer on some platforms.
 
 #### Declaration ####
 

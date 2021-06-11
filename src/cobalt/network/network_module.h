@@ -103,7 +103,7 @@ class NetworkModule {
 #endif
   void SetProxy(const std::string& custom_proxy_rules);
 
-  void SetEnableQuic(bool enable_quic);
+  void DisableQuic();
 
  private:
   void Initialize(const std::string& user_agent_string,

@@ -12,7 +12,8 @@ An SbDecodeTarget can be passed into any function which decodes video or image
 data. This allows the application to allocate fast graphics memory, and have
 decoding done directly into this memory, avoiding unnecessary memory copies, and
 also avoiding pushing data between CPU and GPU memory unnecessarily.
-SbDecodeTargetFormat
+
+## SbDecodeTargetFormat ##
 
 SbDecodeTargets support several different formats that can be used to decode
 into and render from. Some formats may be easier to decode into, and others may
@@ -20,7 +21,8 @@ be easier to render. Some may take less memory. Each decoder needs to support
 the SbDecodeTargetFormat passed into it, or the decode will produce an error.
 Each decoder provides a way to check if a given SbDecodeTargetFormat is
 supported by that decoder.
-SbDecodeTargetGraphicsContextProvider
+
+## SbDecodeTargetGraphicsContextProvider ##
 
 Some components may need to acquire SbDecodeTargets compatible with a certain
 rendering context, which may need to be created on a particular thread. The
@@ -34,7 +36,8 @@ needs to execute GLES commands like, for example, glGenTextures().
 
 The primary usage is likely to be the the SbPlayer implementation on some
 platforms.
-SbDecodeTarget Example
+
+## SbDecodeTarget Example ##
 
 Let's say that we are an application and we would like to use the interface
 defined in starboard/image.h to decode an imaginary "image/foo" image type.
@@ -75,7 +78,6 @@ SbMemorySet(&info, 0, sizeof(info));
 SbDecodeTargetGetInfo(target, &info);
 GLuint texture =
     info.planes[kSbDecodeTargetPlaneRGBA].texture;
-
 ```
 
 ## Macros ##
@@ -206,26 +208,10 @@ SbImageDecode()).
 
 #### Members ####
 
-*   `void * egl_display`
+*   `SbBlitterDevice device`
 
-    A reference to the EGLDisplay object that hosts the EGLContext that will be
-    used to render any produced SbDecodeTargets. Note that it has the type
-    `void*` in order to avoid #including the EGL header files here.
-*   `void * egl_context`
-
-    The EGLContext object that will be used to render any produced
-    SbDecodeTargets. Note that it has the type `void*` in order to avoid
-    #including the EGL header files here.
-*   `SbDecodeTargetGlesContextRunner gles_context_runner`
-
-    The `gles_context_runner` function pointer is passed in from the application
-    into the Starboard implementation, and can be invoked by the Starboard
-    implementation to allow running arbitrary code on the renderer's thread with
-    the EGLContext above held current.
-*   `void * gles_context_runner_context`
-
-    Context data that is to be passed in to `gles_context_runner` when it is
-    invoked.
+    The SbBlitterDevice object that will be used to render any produced
+    SbDecodeTargets.
 
 ### SbDecodeTargetInfo ###
 
@@ -267,15 +253,10 @@ Defines a rectangular content region within a SbDecodeTargetInfoPlane structure.
 
 #### Members ####
 
-*   `float left`
-
-    If the texture (width, height) is set to (1, 1), then these values will be
-    interpreted as normalized coordinates, and depending on the platform (for
-    example GLES 2.0 provides no method of obtaining the texture width/height)
-    this may be more natural than specifying absolute pixel offsets.
-*   `float top`
-*   `float right`
-*   `float bottom`
+*   `int left`
+*   `int top`
+*   `int right`
+*   `int bottom`
 
 ### SbDecodeTargetInfoPlane ###
 
@@ -283,20 +264,9 @@ Defines an image plane within a SbDecodeTargetInfo object.
 
 #### Members ####
 
-*   `uint32_t texture`
+*   `SbBlitterSurface surface`
 
-    A handle to the GL texture that can be used for rendering.
-*   `uint32_t gl_texture_target`
-
-    The GL texture target that should be used in calls to glBindTexture.
-    Typically this would be GL_TEXTURE_2D, but some platforms may require that
-    it be set to something else like GL_TEXTURE_EXTERNAL_OES.
-*   `uint32_t gl_texture_format`
-
-    For kSbDecodeTargetFormat2PlaneYUVNV12 planes: the format of the texture.
-    Usually, for the luma plane, this is either GL_ALPHA or GL_RED_EXT. For the
-    chroma plane, this is usually GL_LUMINANCE_ALPHA or GL_RG_EXT. Ignored for
-    other plane types.
+    A handle to the Blitter surface that can be used for rendering.
 *   `int width`
 
     The width of the texture/surface for this particular plane.
@@ -360,8 +330,8 @@ static bool SbDecodeTargetIsValid(SbDecodeTarget handle)
 Returns ownership of `decode_target` to the Starboard implementation. This
 function will likely result in the destruction of the SbDecodeTarget and all its
 associated surfaces, though in some cases, platforms may simply adjust a
-reference count. In the case where SB_HAS(GLES2), this function must be called
-on a thread with the context
+reference count. In the case where `SbGetGlesInterface()` returns an interface,
+this function must be called on a thread with the context
 
 #### Declaration ####
 

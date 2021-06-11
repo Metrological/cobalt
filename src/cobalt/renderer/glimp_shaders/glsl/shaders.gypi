@@ -21,11 +21,8 @@
 {
   'variables': {
     'glsl_shaders_dir': '<(DEPTH)/cobalt/renderer/glimp_shaders/glsl',
-    'glsl_shaders_0': [
-        '<!@pymod_do_main(starboard.build.gyp_functions file_glob <(DEPTH)/cobalt/renderer/glimp_shaders/glsl/ *.glsl)'
-    ],
     'glsl_shaders': [
-        '<!@pymod_do_main(starboard.build.gyp_functions basename <@(glsl_shaders_0) )',
+        '<!@(ls -1 <(DEPTH)/cobalt/renderer/glimp_shaders/glsl/*.glsl |xargs -n 1 basename)',
     ],
   }
 }

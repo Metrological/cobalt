@@ -499,10 +499,10 @@ bool ParseVp09Info(const char* codec,
     return true;
   }
 
-  // 6. Parse chroma subsampling, which we only support 00 and 01.
+  // 6. Parse chroma subsampling, which we only support 01.
   // Note that this value is not returned.
   int chroma;
-  if (!ReadTwoDigitDecimal(codec + 14, &chroma) || (chroma != 0 && chroma != 1)) {
+  if (!ReadTwoDigitDecimal(codec + 14, &chroma) || chroma != 1) {
     return false;
   }
 
@@ -584,13 +584,7 @@ VideoConfig::VideoConfig(SbMediaVideoCodec video_codec,
     : width_(width), height_(height) {
   if (video_codec == kSbMediaVideoCodecVp9) {
     video_codec_ = video_codec;
-  }
-#if SB_API_VERSION >= 11
-  else if(video_codec == kSbMediaVideoCodecAv1) {
-    video_codec_ = video_codec;
-  }
-#endif  // SB_API_VERSION >= 11
-  else if (video_codec == kSbMediaVideoCodecH264) {
+  } else if (video_codec == kSbMediaVideoCodecH264) {
     avc_parameter_sets_ =
         AvcParameterSets(AvcParameterSets::kAnnexB, data, size);
     if (avc_parameter_sets_->is_valid()) {

@@ -31,12 +31,6 @@ from starboard.tools import abstract_launcher
 from starboard.tools import build
 from starboard.tools import command_line
 
-_DISABLED_BLACKBOXTEST_CONFIGS = [
-    'android-arm/devel',
-    'android-arm64/devel',
-    'raspi-0/devel',
-]
-
 _PORT_SELECTION_RETRY_LIMIT = 10
 _PORT_SELECTION_RANGE = [5000, 7000]
 # List of blocked ports.
@@ -46,10 +40,8 @@ _SERVER_EXIT_TIMEOUT_SECONDS = 30
 # resume signals.
 _TESTS_NEEDING_SYSTEM_SIGNAL = [
     'cancel_sync_loads_when_suspended',
-    'pointer_test',
     'preload_font',
     'preload_visibility',
-    'preload_launch_parameter',
     'signal_handler_doesnt_crash',
     'suspend_visibility',
     'timer_hit_after_preload',
@@ -66,7 +58,7 @@ _TESTS_NO_SIGNAL = [
 # These tests can only be run on platforms whose app launcher can send deep
 # links.
 _TESTS_NEEDING_DEEP_LINK = [
-    'deep_links',
+    'fire_deep_link_before_load',
 ]
 # Location of test files.
 _TEST_DIR_PATH = 'cobalt.black_box_tests.tests.'
@@ -90,12 +82,12 @@ class BlackBoxTestCase(unittest.TestCase):
   @classmethod
   def setUpClass(cls):
     super(BlackBoxTestCase, cls).setUpClass()
-    logging.info('Running ' + cls.__name__)
+    print('Running ' + cls.__name__)
 
   @classmethod
   def tearDownClass(cls):
     super(BlackBoxTestCase, cls).tearDownClass()
-    logging.info('Done ' + cls.__name__)
+    print('Done ' + cls.__name__)
 
   def CreateCobaltRunner(self, url, target_params=None):
     all_target_params = list(target_params) if target_params else []
@@ -152,6 +144,8 @@ class BlackBoxTests(object):
                test_name=None,
                wpt_http_port=None,
                device_ips=None):
+    logging.basicConfig(level=logging.DEBUG)
+
     # Setup global variables used by test cases.
     global _launcher_params
     _launcher_params = command_line.CreateLauncherParams()
@@ -196,23 +190,10 @@ class BlackBoxTests(object):
   def Run(self):
     if self.proxy_port == '-1':
       return 1
-
-    # Temporary means to determine if we are running on CI
-    # TODO: Update to IS_CI environment variable or similar
-    out_dir = _launcher_params.out_directory
-    is_ci = out_dir and 'mh_lab' in out_dir
-
-    target = (_launcher_params.platform, _launcher_params.config)
-    if is_ci and '{}/{}'.format(*target) in _DISABLED_BLACKBOXTEST_CONFIGS:
-      logging.warning(
-          'Blackbox tests disabled for platform:{} config:{}'.format(*target))
-      return 0
-
     logging.info('Using proxy port: %s', self.proxy_port)
 
     with ProxyServer(
-        port=self.proxy_port,
-        host_resolve_map=self.host_resolve_map,
+        port=self.proxy_port, host_resolve_map=self.host_resolve_map,
         client_ips=self.device_ips):
       if self.test_name:
         suite = unittest.TestLoader().loadTestsFromModule(
@@ -258,7 +239,6 @@ class BlackBoxTests(object):
 
 def main():
   parser = argparse.ArgumentParser()
-  parser.add_argument('-v', '--verbose', required=False, action='store_true')
   parser.add_argument(
       '--server_binding_address',
       default='127.0.0.1',
@@ -293,14 +273,6 @@ def main():
       help=('IPs of test devices that will be allowed to connect. If not'
             'specified, all IPs will be allowed to connect.'))
   args, _ = parser.parse_known_args()
-
-  # This format matches Cobalt's console log format.
-  logging_format = ('[%(process)d:%(asctime)s.%(msecs)03d...:'
-                    '%(levelname)s:%(filename)s(%(lineno)s)] %(message)s')
-  logging.basicConfig(
-      level=logging.INFO, format=logging_format, datefmt='%m%d/%H%M%S')
-  if args.verbose:
-    logging.getLogger().setLevel(logging.DEBUG)
 
   test_object = BlackBoxTests(args.server_binding_address, args.proxy_address,
                               args.proxy_port, args.test_name,

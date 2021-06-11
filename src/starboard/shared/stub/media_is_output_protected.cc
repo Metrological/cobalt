@@ -16,8 +16,6 @@
 
 #include "starboard/common/log.h"
 
-#if SB_API_VERSION < 12
 bool SbMediaIsOutputProtected() {
   return false;
 }
-#endif  // SB_API_VERSION < 12

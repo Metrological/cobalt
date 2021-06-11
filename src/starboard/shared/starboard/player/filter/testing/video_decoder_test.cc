@@ -343,10 +343,6 @@ TEST_P(VideoDecoderTest, ResetAfterInput) {
           *continue_process = false;
           return;
         }
-        if (fixture_.GetDecodedFramesCount() >=
-            fixture_.video_decoder()->GetMaxNumberOfCachedFrames()) {
-          fixture_.PopDecodedFrame();
-        }
         *continue_process = event.status != Status::kBufferFull;
       });
   ASSERT_FALSE(error_occurred);
@@ -366,10 +362,6 @@ TEST_P(VideoDecoderTest, MultipleResets) {
             error_occurred = true;
             *continue_process = false;
             return;
-          }
-          if (fixture_.GetDecodedFramesCount() >=
-              fixture_.video_decoder()->GetMaxNumberOfCachedFrames()) {
-            fixture_.PopDecodedFrame();
           }
           *continue_process = event.status != Status::kBufferFull;
         });

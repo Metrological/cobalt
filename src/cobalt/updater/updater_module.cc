@@ -34,11 +34,11 @@
 #include "cobalt/extension/installation_manager.h"
 #include "cobalt/updater/crash_client.h"
 #include "cobalt/updater/crash_reporter.h"
-#include "cobalt/updater/utils.h"
+#include "cobalt/updater/util.h"
 #include "components/crx_file/crx_verifier.h"
 #include "components/update_client/utils.h"
-#include "starboard/common/file.h"
 #include "starboard/configuration_constants.h"
+#include "starboard/loader_app/installation_manager.h"
 
 namespace {
 
@@ -50,8 +50,8 @@ constexpr uint8_t kCobaltPublicKeyHash[] = {
     0x9e, 0x8b, 0x2d, 0x22, 0x65, 0x19, 0xb1, 0xfa, 0xba, 0x02, 0x04,
     0x3a, 0xb2, 0x7a, 0xf6, 0xfe, 0xd5, 0x35, 0xa1, 0x19, 0xd9};
 
-// The map to translate update state from ComponentState to readable string.
-const std::map<ComponentState, const char*> update_state_map = {
+// The map to translate updater status from enum to readable string.
+const std::map<ComponentState, const char*> updater_status_map = {
     {ComponentState::kNew, "Will check for update soon"},
     {ComponentState::kChecking, "Checking for update"},
     {ComponentState::kCanUpdate, "Update is available"},
@@ -78,15 +78,9 @@ namespace updater {
 void Observer::OnEvent(Events event, const std::string& id) {
   std::string status;
   if (update_client_->GetCrxUpdateState(id, &crx_update_item_)) {
-    auto status_iterator = update_state_map.find(crx_update_item_.state);
-    if (status_iterator == update_state_map.end()) {
+    auto status_iterator = updater_status_map.find(crx_update_item_.state);
+    if (status_iterator == updater_status_map.end()) {
       status = "Status is unknown.";
-    } else if (crx_update_item_.state == ComponentState::kUpToDate &&
-               updater_configurator_->GetPreviousUpdaterStatus().compare(
-                   update_state_map.find(ComponentState::kUpdated)->second) ==
-                   0) {
-      status =
-          std::string(update_state_map.find(ComponentState::kUpdated)->second);
     } else {
       status = std::string(status_iterator->second);
     }
@@ -143,6 +137,19 @@ void UpdaterModule::Resume() {
 
 void UpdaterModule::Initialize() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  // TODO: enable crash report with dependency on CrashPad
+  // updater::crash_reporter::InitializeCrashKeys();
+
+  // static crash_reporter::CrashKeyString<16> crash_key_process_type(
+  //     "process_type");
+  // crash_key_process_type.Set("updater");
+
+  // if (CrashClient::GetInstance()->InitializeCrashReporting())
+  //   VLOG(1) << "Crash reporting initialized.";
+  // else
+  //   VLOG(1) << "Crash reporting is not available.";
+
+  // StartCrashReporter(UPDATER_VERSION_STRING);
 
   updater_configurator_ = base::MakeRefCounted<Configurator>(network_module_);
   update_client_ = update_client::UpdateClientFactory(updater_configurator_);
@@ -151,9 +158,8 @@ void UpdaterModule::Initialize() {
   update_client_->AddObserver(updater_observer_.get());
 
   // Schedule the first update check.
-  updater_thread_.task_runner()->PostDelayedTask(
-      FROM_HERE, base::Bind(&UpdaterModule::Update, base::Unretained(this)),
-      base::TimeDelta::FromMinutes(1));
+  updater_thread_.task_runner()->PostTask(
+      FROM_HERE, base::Bind(&UpdaterModule::Update, base::Unretained(this)));
 }
 
 void UpdaterModule::Finalize() {
@@ -199,7 +205,7 @@ void UpdaterModule::Update() {
   const std::vector<std::string> app_ids = {
       updater_configurator_->GetAppGuid()};
 
-  const base::Version manifest_version(GetCurrentEvergreenVersion());
+  const base::Version manifest_version(GetEvergreenVersion());
   if (!manifest_version.IsValid()) {
     SB_LOG(ERROR) << "Updater failed to get the current update version.";
     return;
@@ -252,10 +258,6 @@ void UpdaterModule::Update() {
       base::TimeDelta::FromHours(kNextUpdateCheckHours));
 }
 
-void UpdaterModule::CompareAndSwapChannelChanged(int old_value, int new_value) {
-  updater_configurator_->CompareAndSwapChannelChanged(old_value, new_value);
-}
-
 // The following three methods all called by the main web module thread.
 std::string UpdaterModule::GetUpdaterChannel() const {
   return updater_configurator_->GetChannel();
@@ -268,30 +270,6 @@ void UpdaterModule::SetUpdaterChannel(const std::string& updater_channel) {
 void UpdaterModule::RunUpdateCheck() {
   updater_thread_.task_runner()->PostTask(
       FROM_HERE, base::Bind(&UpdaterModule::Update, base::Unretained(this)));
-}
-
-void UpdaterModule::ResetInstallations() {
-  auto installation_manager =
-      static_cast<const CobaltExtensionInstallationManagerApi*>(
-          SbSystemGetExtension(kCobaltExtensionInstallationManagerName));
-  if (!installation_manager) {
-    SB_LOG(ERROR) << "Updater failed to get installation manager extension.";
-    return;
-  }
-  if (installation_manager->Reset() == IM_EXT_ERROR) {
-    SB_LOG(ERROR) << "Updater failed to reset installations.";
-    return;
-  }
-  base::FilePath product_data_dir;
-  if (!GetProductDirectoryPath(&product_data_dir)) {
-    SB_LOG(ERROR) << "Updater failed to get product directory path.";
-    return;
-  }
-  if (!starboard::SbFileDeleteRecursive(product_data_dir.value().c_str(),
-                                        true)) {
-    SB_LOG(ERROR) << "Updater failed to clean the product directory.";
-    return;
-  }
 }
 
 }  // namespace updater

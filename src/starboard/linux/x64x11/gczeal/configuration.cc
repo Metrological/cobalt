@@ -36,9 +36,13 @@ bool CobaltGcZeal() {
   return true;
 }
 
+bool CobaltEnableJit() {
+  return true;
+}
+
 const CobaltExtensionConfigurationApi kConfigurationApi = {
     kCobaltExtensionConfigurationName,
-    2,
+    1,
     &common::CobaltUserOnExitStrategyDefault,
     &common::CobaltRenderDirtyRegionOnlyDefault,
     &CobaltEglSwapInterval,
@@ -60,8 +64,7 @@ const CobaltExtensionConfigurationApi kConfigurationApi = {
     &common::CobaltReduceGpuMemoryByDefault,
     &CobaltGcZeal,
     &common::CobaltRasterizerTypeDefault,
-    &common::CobaltEnableJitDefault,
-    &common::CobaltFallbackSplashScreenTopicsDefault,
+    &CobaltEnableJit,
 };
 
 }  // namespace

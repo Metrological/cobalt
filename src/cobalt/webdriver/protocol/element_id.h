@@ -31,7 +31,7 @@ class ElementId {
   static const char kElementKey[];
 
   // Convert the ElementId to a WebElement JSON object:
-  // https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#WebElement-JSON-Object
+  // https://code.google.com/p/selenium/wiki/JsonWireProtocol#WebElement_JSON_Object
   static std::unique_ptr<base::Value> ToValue(const ElementId& element_id);
   static base::Optional<ElementId> FromValue(const base::Value* value);
 

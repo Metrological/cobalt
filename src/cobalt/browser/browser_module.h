@@ -15,7 +15,6 @@
 #ifndef COBALT_BROWSER_BROWSER_MODULE_H_
 #define COBALT_BROWSER_BROWSER_MODULE_H_
 
-#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -101,14 +100,14 @@ class BrowserModule {
     renderer::RendererModule::Options renderer_module_options;
     WebModule::Options web_module_options;
     media::MediaModule::Options media_module_options;
-    base::Closure web_module_created_callback;
+    base::Closure web_module_recreated_callback;
     memory_settings::AutoMemSettings command_line_auto_mem_settings;
     memory_settings::AutoMemSettings build_auto_mem_settings;
     base::Optional<GURL> fallback_splash_screen_url;
-    std::map<std::string, GURL> fallback_splash_screen_topic_map;
     base::Optional<cssom::ViewportSize> requested_viewport_size;
     bool enable_splash_screen_on_reloads;
     bool enable_on_screen_keyboard = true;
+    base::Closure web_module_loaded_callback;
   };
 
   // Type for a collection of URL handler callbacks that can potentially handle
@@ -193,7 +192,8 @@ class BrowserModule {
 
 #if SB_API_VERSION >= 8
   // Called when a kSbEventTypeWindowSizeChange event is fired.
-  void OnWindowSizeChanged(const cssom::ViewportSize& viewport_size);
+  void OnWindowSizeChanged(const cssom::ViewportSize& viewport_size,
+                           float video_pixel_ratio);
 #endif  // SB_API_VERSION >= 8
 
 #if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
@@ -216,11 +216,6 @@ class BrowserModule {
 #endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
 
   bool IsWebModuleLoaded() { return web_module_loaded_.IsSignaled(); }
-
-  // Parses url and defines a mapping of parameter values of the form
-  // &option=value&foo=bar.
-  static void GetParamMap(const std::string& url,
-                          std::map<std::string, std::string>& map);
 
  private:
 #if SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
@@ -438,10 +433,6 @@ class BrowserModule {
   // applied according to the current time.
   scoped_refptr<render_tree::Node> GetLastSubmissionAnimated();
 
-  // Sets the fallback splash screen url to a topic-specific URL, if applicable.
-  // Returns the topic used, or an empty Optional if a topic isn't found.
-  base::Optional<std::string> SetSplashScreenTopicFallback(const GURL& url);
-
   // TODO:
   //     WeakPtr usage here can be avoided if BrowserModule has a thread to
   //     own where it can ensure that its tasks are all resolved when it is
@@ -546,9 +537,9 @@ class BrowserModule {
   // Will be signalled when the WebModule's Window.onload event is fired.
   base::WaitableEvent web_module_loaded_;
 
-  // This will be called after a WebModule has been recreated, which could occur
-  // on navigation.
-  base::Closure web_module_created_callback_;
+  // This will be called after the WebModule has been destroyed and recreated,
+  // which could occur on navigation.
+  base::Closure web_module_recreated_callback_;
 
   // The time when a URL navigation starts. This is recorded after the previous
   // WebModule is destroyed.
@@ -683,6 +674,9 @@ class BrowserModule {
   // by automem.  We want this so that we can check that it never changes, since
   // we do not have the ability to modify it after startup.
   base::Optional<int64_t> javascript_gc_threshold_in_bytes_;
+
+  // Callback to run when the Web Module is loaded.
+  base::Closure web_module_loaded_callback_;
 };
 
 }  // namespace browser

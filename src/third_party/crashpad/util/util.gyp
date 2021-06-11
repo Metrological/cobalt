@@ -23,12 +23,10 @@
       'dependencies': [
         '../compat/compat.gyp:crashpad_compat',
         '../third_party/mini_chromium/mini_chromium.gyp:base',
+        '../third_party/zlib/zlib.gyp:zlib',
         '../third_party/lss/lss.gyp:lss',
       ],
-      'defines': [
-        'ZLIB_CONST',
-        'CRASHPAD_USE_BORINGSSL',
-      ],
+      'defines': [ 'ZLIB_CONST' ],
       'include_dirs': [
         '..',
         '<(INTERMEDIATE_DIR)',
@@ -416,8 +414,9 @@
             ],
           },
         }],
-        ['target_os=="linux" or target_os=="android"', {
+        ['host_os=="linux" or host_os=="android"', {
           'sources': [
+            'net/http_transport_socket.cc',
             'process/process_memory_sanitized.cc',
             'process/process_memory_sanitized.h',
           ],
@@ -426,7 +425,7 @@
             'misc/capture_context_linux.S',
           ],
         }],
-        ['target_os!="linux" and target_os!="android"', {
+        ['host_os!="linux" and host_os!="android"', {
           'sources/': [
             ['exclude', '^process/'],
           ],

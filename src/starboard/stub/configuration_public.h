@@ -22,7 +22,23 @@
 #ifndef STARBOARD_STUB_CONFIGURATION_PUBLIC_H_
 #define STARBOARD_STUB_CONFIGURATION_PUBLIC_H_
 
+#if SB_API_VERSION != SB_EXPERIMENTAL_API_VERSION
+#error \
+    "This platform's sabi.json file is expected to track the experimental " \
+"Starboard API version."
+#endif  // SB_API_VERSION != SB_EXPERIMENTAL_API_VERSION
+
 // --- Architecture Configuration --------------------------------------------
+
+// Configuration parameters that allow the application to make some general
+// compile-time decisions with respect to the the number of cores likely to be
+// available on this platform. For a definitive measure, the application should
+// still call SbSystemGetNumberOfProcessors at runtime.
+
+// Whether the current platform's thread scheduler will automatically balance
+// threads between cores, as opposed to systems where threads will only ever run
+// on the specifically pinned core.
+#define SB_HAS_CROSS_CORE_SCHEDULER 1
 
 // Some platforms will not align variables on the stack with an alignment
 // greater than 16 bytes. Platforms where this is the case should define the
@@ -33,13 +49,37 @@
 // the case should define the following quirk.
 #undef SB_HAS_QUIRK_THREAD_AFFINITY_UNSUPPORTED
 
+// Some platforms the mapped GL buffer memory is slow to read from.  Platforms
+// where this is the case should define the following quirk.
+#undef SB_HAS_QUIRK_GL_MAP_BUFFER_MEMORY_IS_SLOW_TO_READ
 // --- System Header Configuration -------------------------------------------
 
 // Any system headers listed here that are not provided by the platform will be
 // emulated in starboard/types.h.
 
+// Whether the current platform provides the standard header stdarg.h.
+#define SB_HAS_STDARG_H 1
+
+// Whether the current platform provides the standard header stdbool.h.
+#define SB_HAS_STDBOOL_H 1
+
+// Whether the current platform provides the standard header stddef.h.
+#define SB_HAS_STDDEF_H 1
+
+// Whether the current platform provides the standard header stdint.h.
+#define SB_HAS_STDINT_H 1
+
+// Whether the current platform provides the standard header inttypes.h.
+#define SB_HAS_INTTYPES_H 1
+
 // Whether the current platform provides the standard header sys/types.h.
 #define SB_HAS_SYS_TYPES_H 0
+
+// Whether the current platform provides the standard header limits.h.
+#define SB_HAS_LIMITS_H 1
+
+// Whether the current platform provides the standard header float.h.
+#define SB_HAS_FLOAT_H 1
 
 // Whether the current platform provides ssize_t.
 #define SB_HAS_SSIZE_T 1
@@ -53,11 +93,17 @@
 #define SB_IS_WCHAR_T_UTF16 1
 #endif
 
-// Chrome only defines this for ARMEL.
+// Chrome only defines these two if ARMEL or MIPSEL are defined.
 #if defined(__ARMEL__)
 // Chrome has an exclusion for iOS here, we should too when we support iOS.
 #define SB_IS_WCHAR_T_UNSIGNED 1
+#elif defined(__MIPSEL__)
+#define SB_IS_WCHAR_T_SIGNED 1
 #endif
+
+// Some platforms have memset predefined in system headers. Platforms where this
+// is the case should define the following quirk.
+#undef SB_HAS_QUIRK_MEMSET_IN_SYSTEM_HEADERS
 
 // This quirk is used to switch the headers included in
 // starboard/shared/linux/socket_get_interface_address.cc for darwin system
@@ -88,6 +134,15 @@
 // The platform's annotation for marking a symbol as imported from outside of
 // the current linking unit.
 #define SB_IMPORT_PLATFORM
+
+// On some platforms the __GNUC__ is defined even though parts of the
+// functionality are missing. Setting this to non-zero allows disabling missing
+// functionality encountered.
+#undef SB_HAS_QUIRK_COMPILER_SAYS_GNUC_BUT_ISNT
+
+// On some compilers, the frontend has a quirk such that #ifdef cannot
+// correctly detect __has_feature is defined, and an example error you get is:
+#undef SB_HAS_QUIRK_HASFEATURE_NOT_DEFINED_BUT_IT_IS
 
 // --- Extensions Configuration ----------------------------------------------
 
@@ -122,6 +177,9 @@
 
 // The location to include hash_set on this platform.
 #define SB_HASH_SET_INCLUDE <ext/hash_set>
+
+// Define this to how this platform copies varargs blocks.
+#define SB_VA_COPY(dest, source) va_copy(dest, source)
 
 // --- Filesystem Configuration ----------------------------------------------
 
@@ -177,12 +235,7 @@
 // being played without audio for several seconds after seeking.  When the
 // following macro is defined, the app will append audio frames start from the
 // timestamp that is before the timestamp of the video key frame being appended.
-//
-// This quirk has been deprecated in Starboard version 12 or later.  Please see
-// `configuration_public.md` for more details.
-#if SB_API_VERSION < 12
 #undef SB_HAS_QUIRK_SEEK_TO_KEYFRAME
-#endif  // SB_API_VERSION < 12
 
 // The implementation is allowed to support kSbMediaAudioSampleTypeInt16 only
 // when this macro is defined.

@@ -68,10 +68,6 @@ static const char* kKeySystems[] = {
     "com.youtube.fairplay",
 };
 
-static const char* kEncryptionSchemes[] = {
-    "cenc", "cbcs", "cbcs-1-9",
-};
-
 }  // namespace nplb
 }  // namespace starboard
 

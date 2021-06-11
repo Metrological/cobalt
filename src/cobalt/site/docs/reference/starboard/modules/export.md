@@ -10,15 +10,6 @@ libraries.
 
 ### SB_EXPORT ###
 
-Specification for a symbol that should be exported when building the DLL and
-imported when building code that uses the DLL.
-
-### SB_EXPORT_PRIVATE ###
-
-Specification for a symbol that should be exported or imported for testing
-purposes only.
-
-### SB_IMPORT ###
-
-Specification for a symbol that is expected to be defined externally to this
-module.
+COMPONENT_BUILD is defined when generating shared libraries for each project,
+rather than static libraries. This means we need to be careful about
+EXPORT/IMPORT.

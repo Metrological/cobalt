@@ -19,7 +19,6 @@
 #include <string>
 #include <vector>
 
-#include "cobalt/base/debugger_hooks.h"
 #include "cobalt/loader/image/image.h"
 #include "cobalt/render_tree/resource_provider.h"
 #if defined(STARBOARD)
@@ -37,8 +36,7 @@ namespace image {
 // image to ImageDecoder.
 class ImageDataDecoder {
  public:
-  explicit ImageDataDecoder(render_tree::ResourceProvider* resource_provider,
-                            const base::DebuggerHooks& debugger_hooks);
+  explicit ImageDataDecoder(render_tree::ResourceProvider* resource_provider);
 
   virtual ~ImageDataDecoder() {}
 
@@ -66,8 +64,6 @@ class ImageDataDecoder {
     return resource_provider_;
   }
 
-  const base::DebuggerHooks& debugger_hooks() { return debugger_hooks_; }
-
   void set_state(State state) { state_ = state; }
   State state() const { return state_; }
 
@@ -87,8 +83,6 @@ class ImageDataDecoder {
 
   // |resource_provider_| is used to allocate render_tree::ImageData
   render_tree::ResourceProvider* const resource_provider_;
-  // |debugger_hooks_| is used with CLOG to report errors to the WebDev.
-  const base::DebuggerHooks& debugger_hooks_;
   // |data_buffer_| is used to cache the undecoded data.
   std::vector<uint8> data_buffer_;
   // Record the current decoding status.

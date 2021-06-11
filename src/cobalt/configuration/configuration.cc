@@ -25,8 +25,7 @@ namespace configuration {
 Configuration* Configuration::configuration_ = nullptr;
 
 Configuration* Configuration::GetInstance() {
-  return base::Singleton<Configuration,
-                         base::LeakySingletonTraits<Configuration>>::get();
+  return base::Singleton<Configuration>::get();
 }
 
 Configuration::Configuration() {
@@ -153,13 +152,6 @@ const char* Configuration::CobaltFallbackSplashScreenUrl() {
 #else
   return "none";
 #endif
-}
-
-const char* Configuration::CobaltFallbackSplashScreenTopics() {
-  if (configuration_api_ && configuration_api_->version >= 2) {
-    return configuration_api_->CobaltFallbackSplashScreenTopics();
-  }
-  return "";
 }
 
 bool Configuration::CobaltEnableQuic() {

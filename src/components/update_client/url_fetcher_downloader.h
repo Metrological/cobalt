@@ -15,10 +15,9 @@
 #include "base/threading/thread_checker.h"
 #include "base/time/time.h"
 #include "components/update_client/crx_downloader.h"
-#include "components/update_client/update_client_errors.h"
 
 #if defined(OS_STARBOARD)
-#include "components/update_client/cobalt_slot_management.h"
+#include "cobalt/extension/installation_manager.h"
 #endif
 
 namespace update_client {
@@ -40,11 +39,6 @@ class UrlFetcherDownloader : public CrxDownloader {
 
   void CreateDownloadDir();
   void StartURLFetch(const GURL& url);
-
-#if defined(OS_STARBOARD)
-  void SelectSlot(const GURL& url);
-  void ConfirmSlot(const GURL& url);
-#endif
   void OnNetworkFetcherComplete(base::FilePath file_path,
                                 int net_error,
                                 int64_t content_size);
@@ -52,10 +46,6 @@ class UrlFetcherDownloader : public CrxDownloader {
                          int response_code,
                          int64_t content_length);
   void OnDownloadProgress(int64_t content_length);
-  void ReportDownloadFailure(const GURL& url);
-#if defined(OS_STARBOARD)
-  void ReportDownloadFailure(const GURL& url, CrxDownloaderError error);
-#endif
 
   THREAD_CHECKER(thread_checker_);
 
@@ -72,7 +62,7 @@ class UrlFetcherDownloader : public CrxDownloader {
   int64_t total_bytes_ = -1;
 
 #if defined(OS_STARBOARD)
-  CobaltSlotManagement cobalt_slot_management_;
+  int installation_index_ = IM_EXT_INVALID_INDEX;
 #endif
 
   DISALLOW_COPY_AND_ASSIGN(UrlFetcherDownloader);

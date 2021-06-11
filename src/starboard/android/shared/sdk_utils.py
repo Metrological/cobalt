@@ -35,9 +35,10 @@ _NDK_VERSION = '21.1.6352462'
 _CMAKE_VERSION = '3.10.2.4988404'
 
 # Packages to install in the Android SDK.
+# We download ndk-bundle separately, so it's not in this list.
 # Get available packages from "sdkmanager --list --verbose"
 _ANDROID_SDK_PACKAGES = [
-    'build-tools;30.0.0',
+    'build-tools;30.0.0-rc4',  # TODO: Change to the stable released SDK
     'cmake;' + _CMAKE_VERSION,
     'cmdline-tools;1.0',
     'emulator',
@@ -45,7 +46,7 @@ _ANDROID_SDK_PACKAGES = [
     'extras;google;m2repository',
     'ndk;' + _NDK_VERSION,
     'patcher;v4',
-    'platforms;android-30',
+    'platforms;android-29',
     'platform-tools',
 ]
 
@@ -232,8 +233,6 @@ def _DownloadInstallOrUpdateSdk():
     _DownloadAndUnzipFile(_SDK_URL, _STARBOARD_TOOLCHAINS_SDK_DIR)
     # TODO: Remove this workaround for sdkmanager incorrectly picking up the
     # "tools" directory from the ZIP as the name of its component.
-    # https://issuetracker.google.com/issues/67495440#comment32
-    # https://issuetracker.google.com/issues/150943631
     if not os.access(_SDKMANAGER_TOOL, os.X_OK):
       old_tools_dir = os.path.join(_STARBOARD_TOOLCHAINS_SDK_DIR, 'tools')
       new_tools_dir = os.path.join(_STARBOARD_TOOLCHAINS_SDK_DIR,
@@ -257,6 +256,10 @@ def _DownloadInstallOrUpdateSdk():
   if _IsOnBuildbot():
     try:
       # Accept "Terms and Conditions" (android-sdk-license)
+      time.sleep(_SDK_LICENSE_PROMPT_SLEEP_SECONDS)
+      p.stdin.write('y\n')
+      # Accept "SDK Preview" license (android-sdk-preview-license)
+      # TODO: Remove when no longer on prerelease SDK (build-tools;30.0.0-rc4).
       time.sleep(_SDK_LICENSE_PROMPT_SLEEP_SECONDS)
       p.stdin.write('y\n')
     except IOError:

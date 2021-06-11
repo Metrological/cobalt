@@ -38,7 +38,8 @@
 namespace cobalt {
 namespace media {
 
-// TODO: This class requires a large block of memory.
+// TODO: This class requires a large block of memory.  Consider to
+// use ShellBufferFactory for its memory if possible to avoid possible OOM.
 
 // A BufferedDataSource based on net::URLFetcher that can be used to retrieve
 // progressive videos from both local and network sources.

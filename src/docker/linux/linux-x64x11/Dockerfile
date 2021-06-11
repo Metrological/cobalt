@@ -1,5 +1,4 @@
-ARG FROM_IMAGE
-FROM ${FROM_IMAGE:-cobalt-build-base}
+FROM cobalt-build-base
 
 RUN apt update -qqy \
     && apt install -qqy --no-install-recommends \

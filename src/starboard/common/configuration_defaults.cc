@@ -30,11 +30,7 @@ int CobaltEglSwapIntervalDefault() {
 }
 
 const char* CobaltFallbackSplashScreenUrlDefault() {
-  return "h5vcc-embedded://black_splash_screen.html";
-}
-
-const char* CobaltFallbackSplashScreenTopicsDefault() {
-  return "";
+  return "none";
 }
 
 bool CobaltEnableQuicDefault() {
@@ -106,7 +102,7 @@ const char* CobaltRasterizerTypeDefault() {
 }
 
 bool CobaltEnableJitDefault() {
-  return true;
+  return false;
 }
 
 }  // namespace common

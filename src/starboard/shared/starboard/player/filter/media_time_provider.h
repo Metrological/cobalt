@@ -34,8 +34,7 @@ class MediaTimeProvider {
   // This function can be called from *any* thread.
   virtual SbTime GetCurrentMediaTime(bool* is_playing,
                                      bool* is_eos_played,
-                                     bool* is_underflow,
-                                     double* playback_rate) = 0;
+                                     bool* is_underflow) = 0;
 
  protected:
   virtual ~MediaTimeProvider() {}

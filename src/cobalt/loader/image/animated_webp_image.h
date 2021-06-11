@@ -27,7 +27,6 @@
 #include "base/threading/thread.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
-#include "cobalt/base/debugger_hooks.h"
 #include "cobalt/loader/image/image.h"
 #include "cobalt/render_tree/color_rgba.h"
 #include "cobalt/render_tree/resource_provider.h"
@@ -40,8 +39,7 @@ namespace image {
 class AnimatedWebPImage : public AnimatedImage {
  public:
   AnimatedWebPImage(const math::Size& size, bool is_opaque,
-                    render_tree::ResourceProvider* resource_provider,
-                    const base::DebuggerHooks& debugger_hooks);
+                    render_tree::ResourceProvider* resource_provider);
 
   const math::Size& GetSize() const override { return size_; }
 
@@ -108,7 +106,6 @@ class AnimatedWebPImage : public AnimatedImage {
   int current_frame_index_;
   bool should_dispose_previous_frame_to_background_;
   render_tree::ResourceProvider* resource_provider_;
-  const base::DebuggerHooks& debugger_hooks_;
   scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
 
   render_tree::ColorRGBA background_color_;

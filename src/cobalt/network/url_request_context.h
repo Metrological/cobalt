@@ -47,7 +47,7 @@ class URLRequestContext : public net::URLRequestContext {
 
   void SetProxy(const std::string& custom_proxy_rules);
 
-  void SetEnableQuic(bool enable_quic);
+  void DisableQuic();
 
  private:
   THREAD_CHECKER(thread_checker_);

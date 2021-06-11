@@ -10,11 +10,6 @@ This document records all notable changes made to Cobalt since the last release.
    `cobalt_enable_jit` environment variable in `gyp_configuration.py` will
    switch V8 to use JIT-less mode. V8 requires at least Starboard version 10.
 
- - **Runtime V8 snapshot is no longer supported**
-   V8 has deprecated runtime snapshot and mandated build-time snapshot, Cobalt
-   adopts this change as well. Build-time snapshot greatly improves first
-   startup speed after install and is required for JIT-less mode.
-
  - **scratch_surface_cache_size_in_bytes is removed.**
 
    Because it never ended up being used, `scratch_suface_cache_size_in_bytes`
@@ -90,40 +85,6 @@ This document records all notable changes made to Cobalt since the last release.
    In order to support native WOFF2 font loading, we've also updated our FreeType
    version from 2.6.2 to 2.10.2. For a full list of FreeType updates included in
    this change, visit www.freetype.org.
-
- - **Added support for Lottie animations.**
-
-   Cobalt can now embed and play Lottie animations
-   (https://airbnb.design/lottie/), i.e. animations created in Adobe After
-   Effects and exported to JSON via the Bodymovin plugin. These animations
-   improve the user experience and can readily be incorporated into apps as if
-   they were static images. Cobalt implements a "lottie-player" custom element
-   with a playback API modeled after the Lottie Web Player
-   (https://lottiefiles.com/web-player). In order to support Lottie, Cobalt
-   updated its Skia port from m61 to m79.
-
- - **Added support for MediaKeySystemMediaCapability.encryptionScheme.**
-
-   Cobalt now supports `MediaKeySystemMediaCapability.encryptionScheme` for
-   `Navigator.requestMediaKeySystemAccess()`. `encryptionScheme` can be 'cenc',
-   'cbcs', or 'cbcs-1-9'.
-   The default implementation assumes that:
-   1. When the Widevine DRM system is used, all the above encryption schemes
-      should be supported across all containers and codecs supported by the
-      platform.
-   2. When the PlayReady DRM system is used, only 'cenc' is supported across all
-      containers and codecs supported by the platform.
-
-   It is possible to customize this behavior via an extension to
-  `SbMediaCanPlayMimeAndKeySystem()`.  Please see the Starboard change log and
-   the comment of `SbMediaCanPlayMimeAndKeySystem()` in `media.h` for more
-   details.
-
- - **Added support for controlling shutdown behavior of graphics system.**
-
-   Cobalt normally clears the framebuffer to opaque black on suspend or exit.
-   This behavior can now be overridden by implementing the cobalt extension
-   function `CobaltExtensionGraphicsApi::ShouldClearFrameOnShutdown`.
 
 ## Version 20
 

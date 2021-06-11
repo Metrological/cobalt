@@ -25,6 +25,11 @@ import("//starboard/linux/shared/dlmalloc.gni")
 # =============================================================================
 
 config("compiler_defaults") {
+  cflags = [
+     # We'll pretend not to be Linux, but Starboard instead.
+    "-U__linux__",
+  ]
+
   cflags_c = [
     # Limit to C99. This allows Linux to be a canary build for any
     # C11 features that are not supported on some platforms' compilers.
@@ -483,7 +488,9 @@ source_set("starboard_platform") {
     "//starboard/shared/starboard/media/media_get_audio_configuration_stereo_only.cc",
     "//starboard/shared/starboard/media/media_get_audio_output_count_stereo_only.cc",
     "//starboard/shared/starboard/media/media_is_audio_supported_aac_and_opus.cc",
+    "//starboard/shared/starboard/media/media_is_output_protected.cc",
     "//starboard/shared/starboard/media/media_is_transfer_characteristics_supported.cc",
+    "//starboard/shared/starboard/media/media_set_output_protection.cc",
     "//starboard/shared/starboard/media/media_util.cc",
     "//starboard/shared/starboard/media/media_util.h",
     "//starboard/shared/starboard/media/mime_type.cc",
@@ -572,9 +579,7 @@ source_set("starboard_platform") {
     "//starboard/shared/stub/drm_update_session.cc",
     "//starboard/shared/stub/image_decode.cc",
     "//starboard/shared/stub/image_is_decode_supported.cc",
-    "//starboard/shared/stub/media_is_output_protected.cc",
     "//starboard/shared/stub/media_is_supported.cc",
-    "//starboard/shared/stub/media_set_output_protection.cc",
     "//starboard/shared/stub/microphone_close.cc",
     "//starboard/shared/stub/microphone_create.cc",
     "//starboard/shared/stub/microphone_destroy.cc",

@@ -1,9 +1,7 @@
 name: "v8"
 description:
   "Subtree at v8."
-  "v8 is Google's JavaScript engine developed for The Chromium Project. Cobalt "
-  "uses v8 as its primary JavaScript engine. v8 works closely with Cobalt's "
-  "script interface and templated bindings code."
+
 third_party {
   url {
     type: LOCAL_SOURCE

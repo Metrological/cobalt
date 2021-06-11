@@ -22,7 +22,7 @@ namespace starboard {
 namespace nplb {
 namespace {
 
-TEST(SbDrmUpdateServerCertificateTest, RainyDay) {
+TEST(SbDrmUpdateServerCertificateTest, SunnyDay) {
   // Ensure that |SbDrmUpdateServerCertificate| can be called over all key
   // systems.
   for (auto key_system : kKeySystems) {

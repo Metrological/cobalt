@@ -107,7 +107,6 @@
 #include <iosfwd>
 #include <string>
 
-#include "base/base_wrapper.h"
 #include "base/compiler_specific.h"
 #include "build/build_config.h"
 

@@ -11,19 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Allow use of gyp-win-tool via python as copy and stamp tools."""
+"""Allow to use gyp-win-tool via python as a copy and a stamp tools."""
 
 import sys
 from starboard.tools.toolchain import abstract
 
 
 class Copy(abstract.Copy):
-  """Copies individual files."""
+  """Copies individual files using python.exe."""
 
   def __init__(self, **kwargs):
     self._path = kwargs.get('path', sys.executable)
-    self._extra_flags = kwargs.get('extra_flags',
-                                   ['gyp-win-tool', 'recursive-mirror'])
+    self._extra_flags = kwargs.get('extra_flags', [])
 
   def GetPath(self):
     return self._path
@@ -56,7 +55,7 @@ class Stamp(abstract.Stamp):
 
   def __init__(self, **kwargs):
     self._path = kwargs.get('path', sys.executable)
-    self._extra_flags = kwargs.get('extra_flags', ['gyp-win-tool', 'stamp'])
+    self._extra_flags = kwargs.get('extra_flags', [])
 
   def GetPath(self):
     return self._path

@@ -22,9 +22,8 @@ namespace loader {
 namespace image {
 
 LottieAnimationDecoder::LottieAnimationDecoder(
-    render_tree::ResourceProvider* resource_provider,
-    const base::DebuggerHooks& debugger_hooks)
-    : ImageDataDecoder(resource_provider, debugger_hooks) {
+    render_tree::ResourceProvider* resource_provider)
+    : ImageDataDecoder(resource_provider) {
   TRACE_EVENT0("cobalt::loader::image",
                "LottieAnimationDecoder::LottieAnimationDecoder()");
   TRACK_MEMORY_SCOPE("Rendering");

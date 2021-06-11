@@ -18,7 +18,6 @@
 
 #include "starboard/android/shared/jni_utils.h"
 #include "starboard/android/shared/media_common.h"
-#include "starboard/common/log.h"
 
 namespace starboard {
 namespace android {
@@ -36,12 +35,6 @@ jlong GetSystemNanoTime() {
 }
 
 }  // namespace
-
-VideoRenderAlgorithm::VideoRenderAlgorithm(VideoDecoder* video_decoder)
-    : video_decoder_(video_decoder) {
-  SB_DCHECK(video_decoder_);
-  video_decoder_->SetPlaybackRate(playback_rate_);
-}
 
 void VideoRenderAlgorithm::Render(
     MediaTimeProvider* media_time_provider,
@@ -62,15 +55,10 @@ void VideoRenderAlgorithm::Render(
     bool is_audio_playing;
     bool is_audio_eos_played;
     bool is_underflow;
-    double playback_rate;
     SbTime playback_time = media_time_provider->GetCurrentMediaTime(
-        &is_audio_playing, &is_audio_eos_played, &is_underflow, &playback_rate);
+        &is_audio_playing, &is_audio_eos_played, &is_underflow);
     if (!is_audio_playing) {
       break;
-    }
-    if (playback_rate != playback_rate_) {
-      playback_rate_ = playback_rate;
-      video_decoder_->SetPlaybackRate(playback_rate);
     }
 
     jlong early_us = frames->front()->timestamp() - playback_time;

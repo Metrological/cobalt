@@ -122,6 +122,11 @@ class ApplicationX11 : public shared::starboard::QueueApplication {
 
   Atom wake_up_atom_;
   Atom wm_delete_atom_;
+#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
+    SB_HAS(CONCEALED_STATE)
+  Atom wm_change_state_atom_;
+#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
+        // SB_HAS(CONCEALED_STATE)
 
   SbEventId composite_event_id_;
   Mutex frame_mutex_;
@@ -150,9 +155,6 @@ class ApplicationX11 : public shared::starboard::QueueApplication {
 
   // The /dev/input input handler. Only set when there is an open window.
   scoped_ptr<::starboard::shared::dev_input::DevInput> dev_input_;
-
-  // Indicates whether pointer input is from a touchscreen.
-  bool touchscreen_pointer_;
 };
 
 }  // namespace x11

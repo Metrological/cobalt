@@ -37,7 +37,7 @@
             'starboard_full',
           ],
         }],
-      ],
+       ],
     },
     {
       'target_name': 'starboard_full',
@@ -52,15 +52,6 @@
         '<(DEPTH)/<(starboard_path)/starboard_platform.gyp:starboard_platform',
       ],
       'conditions': [
-        ['sb_crashpad_enabled == 1', {
-          'dependencies': [
-            '<(DEPTH)/third_party/crashpad/wrapper/wrapper.gyp:crashpad_wrapper',
-          ],
-        }, {
-          'dependencies': [
-            '<(DEPTH)/third_party/crashpad/wrapper/wrapper.gyp:crashpad_wrapper_stub',
-          ],
-        }],
         ['final_executable_type=="shared_library"', {
           'all_dependent_settings': {
             'target_conditions': [

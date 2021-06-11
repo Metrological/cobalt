@@ -146,10 +146,13 @@ class AndroidConfiguration(PlatformConfiguration):
     if not self._target_toolchain:
       tool_prefix = os.path.join(sdk_utils.GetNdkPath(), 'toolchains', 'llvm',
                                  'prebuilt', 'linux-x86_64', 'bin', '')
-      cc_path = self.build_accelerator + ' ' + tool_prefix + _ABI_TOOL_NAMES[self.android_abi][0]
+      cc_path = tool_prefix + _ABI_TOOL_NAMES[self.android_abi][0]
       cxx_path = cc_path + '++'
       ar_path = tool_prefix + _ABI_TOOL_NAMES[self.android_abi][1]
       clang_flags = [
+          # We'll pretend not to be Linux, but Starboard instead.
+          '-U__linux__',
+
           # libwebp uses the cpufeatures library to detect ARM NEON support
           '-I{}/sources/android/cpufeatures'.format(self.android_ndk_home),
 
@@ -243,7 +246,7 @@ class AndroidConfiguration(PlatformConfiguration):
     if not self._host_toolchain:
       if not hasattr(self, 'host_compiler_environment'):
         self.host_compiler_environment = build.GetHostCompilerEnvironment(
-            clang_build.GetClangSpecification(), self.build_accelerator)
+            clang_build.GetClangSpecification(), False)
       cc_path = self.host_compiler_environment['CC_host'],
       cxx_path = self.host_compiler_environment['CXX_host']
       self._host_toolchain = [
@@ -322,23 +325,11 @@ class AndroidConfiguration(PlatformConfiguration):
           # This test is failing because localhost is not defined for IPv6 in
           # /etc/hosts.
           'SbSocketAddressTypes/SbSocketResolveTest.Localhost/1',
-          # SbDirectory has problems with empty Asset dirs.
+          # SbDirectory has problems with empty Asset dirs. See b/154881065.
           'SbDirectoryCanOpenTest.SunnyDayStaticContent',
           'SbDirectoryGetNextTest.SunnyDayStaticContent',
           'SbDirectoryOpenTest.SunnyDayStaticContent',
           'SbFileGetPathInfoTest.WorksOnStaticContentDirectories',
-          # Android doesn't currently support specifying a bitrate under 8000
-          'SbMediaCanPlayMimeAndKeySystem.MinimumSupport',
-          # There are issues with playback of heeac format files where the input
-          # |frames_per_channel| is 6912, instead of 12544 (as with other
-          # formats).
-          'SbPlayerWriteSampleTests/SbPlayerWriteSampleTest.NoInput/6',
-          # These tests are disabled due to not receiving the kEndOfStream
-          # player state update within the specified timeout.
-          'SbPlayerWriteSampleTests/SbPlayerWriteSampleTest.NoInput/7',
-          'SbPlayerWriteSampleTests/SbPlayerWriteSampleTest.NoInput/8',
-          'SbPlayerWriteSampleTests/SbPlayerWriteSampleTest.NoInput/9',
-          'SbPlayerWriteSampleTests/SbPlayerWriteSampleTest.NoInput/10',
       ],
   }
 

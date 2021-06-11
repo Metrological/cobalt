@@ -21,11 +21,13 @@
 
 #include <stdarg.h>
 
-#include <string>
-#include <vector>
-
 #include "starboard/configuration.h"
 #include "starboard/string.h"
+
+#if SB_API_VERSION < 11
+
+#include <string>
+#include <vector>
 
 namespace starboard {
 
@@ -51,5 +53,7 @@ SB_C_INLINE std::string FormatString(const char* format, ...) {
 }
 
 }  // namespace starboard
+
+#endif  // SB_API_VERSION < 11
 
 #endif  // STARBOARD_COMMON_STRING_H_

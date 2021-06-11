@@ -30,13 +30,14 @@ class LinuxX64X11Gcc63Configuration(shared_configuration.LinuxConfiguration):
   """Starboard Linux platform configuration."""
 
   def __init__(self,
-               platform='linux-x64x11-gcc-6-3',
+               platform,
                asan_enabled_by_default=False,
                sabi_json_path='starboard/sabi/default/sabi.json'):
     super(LinuxX64X11Gcc63Configuration, self).__init__(
         platform,
         asan_enabled_by_default,
-        sabi_json_path)
+        goma_supports_compiler=False,
+        sabi_json_path=sabi_json_path)
 
     self.toolchain_dir = os.path.join(build.GetToolchainsDir(),
                                       'x86_64-linux-gnu-gcc-6.3.0', 'gcc')
@@ -61,16 +62,11 @@ class LinuxX64X11Gcc63Configuration(shared_configuration.LinuxConfiguration):
 
   def GetEnvironmentVariables(self):
     toolchain_bin_dir = os.path.join(self.toolchain_dir, 'bin')
-
     env_variables = {
-        'CC': self.build_accelerator + ' ' + os.path.join(toolchain_bin_dir,
-                                                          'gcc'),
-        'CXX': self.build_accelerator + ' ' + os.path.join(toolchain_bin_dir,
-                                                           'g++'),
-        'CC_HOST': self.build_accelerator + ' ' + os.path.join(
-            toolchain_bin_dir, 'gcc'),
-        'CXX_HOST': self.build_accelerator + ' ' + os.path.join(
-            toolchain_bin_dir, 'g++'),
+        'CC': os.path.join(toolchain_bin_dir, 'gcc'),
+        'CXX': os.path.join(toolchain_bin_dir, 'g++'),
+        'CC_HOST': os.path.join(toolchain_bin_dir, 'gcc'),
+        'CXX_HOST': os.path.join(toolchain_bin_dir, 'g++'),
     }
     return env_variables
 
@@ -113,4 +109,5 @@ class LinuxX64X11Gcc63Configuration(shared_configuration.LinuxConfiguration):
 
 def CreatePlatformConfig():
   return LinuxX64X11Gcc63Configuration(
+      'linux-x64x11-gcc-6-3',
       sabi_json_path='starboard/sabi/x64/sysv/sabi-v{sb_api_version}.json')

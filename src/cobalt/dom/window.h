@@ -122,9 +122,7 @@ class Window : public EventTarget,
   // close() was called.
   typedef base::Callback<void(base::TimeDelta)> CloseCallback;
   typedef UrlRegistry<MediaSource> MediaSourceRegistry;
-  typedef base::Callback<void(const std::string&,
-                              const base::Optional<std::string>&)>
-      CacheCallback;
+  typedef base::Callback<bool(const GURL&, const std::string&)> CacheCallback;
 
   enum ClockType {
     kClockTypeTestRunner,
@@ -134,7 +132,7 @@ class Window : public EventTarget,
 
   Window(
       script::EnvironmentSettings* settings,
-      const cssom::ViewportSize& view_size,
+      const cssom::ViewportSize& view_size, float device_pixel_ratio,
       base::ApplicationState initial_application_state,
       cssom::CSSParser* css_parser, Parser* dom_parser,
       loader::FetcherFactory* fetcher_factory,
@@ -268,9 +266,7 @@ class Window : public EventTarget,
   // The devicePixelRatio attribute returns the ratio of CSS pixels per device
   // pixel.
   //   https://www.w3.org/TR/2013/WD-cssom-view-20131217/#dom-window-devicepixelratio
-  float device_pixel_ratio() const {
-    return viewport_size_.device_pixel_ratio();
-  }
+  float device_pixel_ratio() const { return device_pixel_ratio_; }
 
   // Web API: GlobalCrypto (implements)
   //   https://www.w3.org/TR/WebCryptoAPI/#crypto-interface
@@ -351,7 +347,7 @@ class Window : public EventTarget,
       const SynchronousLayoutAndProduceRenderTreeCallback&
           synchronous_layout_callback);
 
-  void SetSize(cssom::ViewportSize size);
+  void SetSize(cssom::ViewportSize size, float device_pixel_ratio);
 
   void SetCamera3D(const scoped_refptr<input::Camera3D>& camera_3d);
 
@@ -381,8 +377,7 @@ class Window : public EventTarget,
   void OnDocumentRootElementUnableToProvideOffsetDimensions();
 
   // Cache the passed in splash screen content for the window.location URL.
-  void CacheSplashScreen(const std::string& content,
-                         const base::Optional<std::string>& topic);
+  void CacheSplashScreen(const std::string& content);
 
   const scoped_refptr<loader::CORSPreflightCache> get_preflight_cache() {
     return preflight_cache_;
@@ -429,6 +424,8 @@ class Window : public EventTarget,
   void FireHashChangeEvent();
 
   cssom::ViewportSize viewport_size_;
+
+  float device_pixel_ratio_;
 
   // A resize event can be pending if a resize occurs and the current visibility
   // state is not visible. In this case, the resize event will run when the

@@ -67,7 +67,6 @@ std::string GetStartDeepLink() {
   if (j_url) {
     start_url = env->GetStringStandardUTFOrAbort(j_url.Get());
   }
-  SB_LOG(INFO) << "GetStartDeepLink: " << start_url;
   return start_url;
 }
 

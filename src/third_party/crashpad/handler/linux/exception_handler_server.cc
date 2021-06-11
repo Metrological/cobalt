@@ -37,10 +37,6 @@
 #include "util/linux/socket.h"
 #include "util/misc/as_underlying_type.h"
 
-#if defined(STARBOARD)
-#include "starboard/elf_loader/evergreen_info.h"
-#endif
-
 namespace crashpad {
 
 namespace {
@@ -438,33 +434,12 @@ bool ExceptionHandlerServer::ReceiveClientMessage(Event* event) {
           message.requesting_thread_stack_address,
           event->fd.get(),
           event->type == Event::Type::kSharedSocketMessage);
-
-#if defined(STARBOARD)
-    case ExceptionHandlerProtocol::ClientToServerMessage::kTypeAddEvergreenInfo:
-      return HandleAddEvergreenInfoRequest(creds, message.client_info);
-    case ExceptionHandlerProtocol::ClientToServerMessage::kTypeAddAnnotations:
-      return HandleAddAnnotationsRequest(creds, message.client_info);
-#endif
   }
 
   DCHECK(false);
   LOG(ERROR) << "Unknown message type";
   return false;
 }
-
-#if defined(STARBOARD)
-bool ExceptionHandlerServer::HandleAddEvergreenInfoRequest(
-    const ucred& creds,
-    const ExceptionHandlerProtocol::ClientInformation& client_info) {
-  return delegate_->AddEvergreenInfo(client_info);
-}
-
-bool ExceptionHandlerServer::HandleAddAnnotationsRequest(
-    const ucred& creds,
-    const ExceptionHandlerProtocol::ClientInformation& client_info) {
-  return delegate_->AddAnnotations(client_info);
-}
-#endif
 
 bool ExceptionHandlerServer::HandleCrashDumpRequest(
     const ucred& creds,

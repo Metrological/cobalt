@@ -92,7 +92,7 @@ const int64_t kPerformanceTimerMinResolutionInMicroseconds = 20;
 
 Window::Window(
     script::EnvironmentSettings* settings, const ViewportSize& view_size,
-    base::ApplicationState initial_application_state,
+    float device_pixel_ratio, base::ApplicationState initial_application_state,
     cssom::CSSParser* css_parser, Parser* dom_parser,
     loader::FetcherFactory* fetcher_factory,
     loader::LoaderFactory* loader_factory,
@@ -141,6 +141,7 @@ Window::Window(
     // see EventTarget constructor for more details.
     : EventTarget(settings, kUnpackOnErrorEvents),
       viewport_size_(view_size),
+      device_pixel_ratio_(device_pixel_ratio),
       is_resize_event_pending_(false),
       is_reporting_script_error_(false),
 #if defined(ENABLE_TEST_RUNNER)
@@ -617,12 +618,13 @@ void Window::SetSynchronousLayoutAndProduceRenderTreeCallback(
   document_->set_synchronous_layout_and_produce_render_tree_callback(callback);
 }
 
-void Window::SetSize(ViewportSize size) {
-  if (size == viewport_size_) {
+void Window::SetSize(ViewportSize size, float device_pixel_ratio) {
+  if (size == viewport_size_ && device_pixel_ratio == device_pixel_ratio_) {
     return;
   }
 
   viewport_size_ = size;
+  device_pixel_ratio_ = device_pixel_ratio;
   screen_->SetSize(viewport_size_);
   // This will cause layout invalidation.
   document_->SetViewport(viewport_size_);
@@ -702,13 +704,12 @@ void Window::TraceMembers(script::Tracer* tracer) {
   tracer->Trace(on_screen_keyboard_);
 }
 
-void Window::CacheSplashScreen(const std::string& content,
-                               const base::Optional<std::string>& topic) {
+void Window::CacheSplashScreen(const std::string& content) {
   if (splash_screen_cache_callback_.is_null()) {
     return;
   }
   DLOG(INFO) << "Caching splash screen for URL " << location()->url();
-  splash_screen_cache_callback_.Run(content, topic);
+  splash_screen_cache_callback_.Run(location()->url(), content);
 }
 
 const scoped_refptr<OnScreenKeyboard>& Window::on_screen_keyboard() const {

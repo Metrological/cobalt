@@ -27,7 +27,6 @@ import android.os.Bundle;
 import android.view.ViewGroup.LayoutParams;
 import android.view.ViewParent;
 import android.widget.FrameLayout;
-import dev.cobalt.media.MediaCodecUtil;
 import dev.cobalt.media.VideoSurfaceView;
 import dev.cobalt.util.Log;
 import dev.cobalt.util.UsedByNative;
@@ -46,9 +45,7 @@ public abstract class CobaltActivity extends NativeActivity {
   private static final java.lang.String META_DATA_APP_URL = "cobalt.APP_URL";
 
   private static final String SPLASH_URL_ARG = "--fallback_splash_screen_url=";
-  private static final String SPLASH_TOPICS_ARG = "--fallback_splash_screen_topics=";
   private static final java.lang.String META_DATA_SPLASH_URL = "cobalt.SPLASH_URL";
-  private static final java.lang.String META_DATA_SPLASH_TOPICS = "cobalt.SPLASH_TOPIC";
 
   private static final String FORCE_MIGRATION_FOR_STORAGE_PARTITIONING =
       "--force_migration_for_storage_partitioning";
@@ -110,9 +107,6 @@ public abstract class CobaltActivity extends NativeActivity {
 
   @Override
   protected void onStart() {
-    if (!isReleaseBuild()) {
-      MediaCodecUtil.dumpAllDecoders();
-    }
     if (forceCreateNewVideoSurfaceView) {
       Log.w(TAG, "Force to create a new video surface.");
       createNewSurfaceView();
@@ -167,10 +161,7 @@ public abstract class CobaltActivity extends NativeActivity {
     List<String> args = new ArrayList<>(Arrays.asList(DEBUG_ARGS));
     if (argsExtra != null) {
       for (int i = 0; i < argsExtra.length; i++) {
-        // Replace escaped commas with commas. In order to have a comma in the arg string, it has
-        // to be escaped when forming the Intent with "am start --esa". However, "am" doesn't remove
-        // the escape after splitting on unescaped commas, so it's still in the string we get.
-        args.add(argsExtra[i].toString().replace("\\,", ","));
+        args.add(argsExtra[i].toString());
       }
     }
 
@@ -178,9 +169,7 @@ public abstract class CobaltActivity extends NativeActivity {
     boolean hasUrlArg = hasArg(args, URL_ARG);
     // If the splash screen url arg isn't specified, get it from AndroidManifest.xml.
     boolean hasSplashUrlArg = hasArg(args, SPLASH_URL_ARG);
-    // If the splash screen topics arg isn't specified, get it from AndroidManifest.xml.
-    boolean hasSplashTopicsArg = hasArg(args, SPLASH_TOPICS_ARG);
-    if (!hasUrlArg || !hasSplashUrlArg || !hasSplashTopicsArg) {
+    if (!hasUrlArg || !hasSplashUrlArg) {
       try {
         ActivityInfo ai =
             getPackageManager()
@@ -196,12 +185,6 @@ public abstract class CobaltActivity extends NativeActivity {
             String splashUrl = ai.metaData.getString(META_DATA_SPLASH_URL);
             if (splashUrl != null) {
               args.add(SPLASH_URL_ARG + splashUrl);
-            }
-          }
-          if (!hasSplashTopicsArg) {
-            String splashTopics = ai.metaData.getString(META_DATA_SPLASH_TOPICS);
-            if (splashTopics != null) {
-              args.add(SPLASH_TOPICS_ARG + splashTopics);
             }
           }
           if (ai.metaData.getBoolean(META_FORCE_MIGRATION_FOR_STORAGE_PARTITIONING)) {
@@ -243,16 +226,6 @@ public abstract class CobaltActivity extends NativeActivity {
   public void onRequestPermissionsResult(
       int requestCode, String[] permissions, int[] grantResults) {
     getStarboardBridge().onRequestPermissionsResult(requestCode, permissions, grantResults);
-  }
-
-  public void resetVideoSurface() {
-    runOnUiThread(
-        new Runnable() {
-          @Override
-          public void run() {
-            createNewSurfaceView();
-          }
-        });
   }
 
   public void setVideoSurfaceBounds(final int x, final int y, final int width, final int height) {

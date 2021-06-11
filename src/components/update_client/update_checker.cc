@@ -22,11 +22,6 @@
 #include "base/threading/thread_checker.h"
 #include "base/threading/thread_task_runner_handle.h"
 #include "build/build_config.h"
-#if defined(OS_STARBOARD)
-#include "cobalt/extension/installation_manager.h"
-#include "cobalt/updater/utils.h"
-#include "components/update_client/cobalt_slot_management.h"
-#endif
 #include "components/update_client/component.h"
 #include "components/update_client/configurator.h"
 #include "components/update_client/persisted_data.h"
@@ -43,6 +38,14 @@
 namespace update_client {
 
 namespace {
+
+#if defined(COBALT_BUILD_TYPE_DEBUG) || defined(COBALT_BUILD_TYPE_DEVEL)
+const std::string kDefaultUpdaterChannel = "dev";
+#elif defined(COBALT_BUILD_TYPE_QA)
+const std::string kDefaultUpdaterChannel = "qa";
+#elif defined(COBALT_BUILD_TYPE_GOLD)
+const std::string kDefaultUpdaterChannel = "prod";
+#endif
 
 // Returns a sanitized version of the brand or an empty string otherwise.
 std::string SanitizeBrand(const std::string& brand) {
@@ -202,7 +205,7 @@ void UpdateCheckerImpl::CheckForUpdatesHelper(
         crx_component->supports_group_policy_enable_component_updates &&
         !enabled_component_updates;
 
-    base::Version current_version = crx_component->version;
+    base::Version version = crx_component->version;
 #if defined(OS_STARBOARD)
     std::string unpacked_version =
         GetPersistedData()->GetLastUnpackedVersion(app_id);
@@ -210,30 +213,13 @@ void UpdateCheckerImpl::CheckForUpdatesHelper(
     // version of the running binary, use the former to indicate the current
     // update version in the update check request.
     if (!unpacked_version.empty() &&
-        base::Version(unpacked_version).CompareTo(current_version) > 0) {
-      current_version = base::Version(unpacked_version);
+        base::Version(unpacked_version).CompareTo(version) > 0) {
+      version = base::Version(unpacked_version);
     }
-
-    // Check if there is an available update already for quick roll-forward
-    auto installation_api =
-        static_cast<const CobaltExtensionInstallationManagerApi*>(
-            SbSystemGetExtension(kCobaltExtensionInstallationManagerName));
-    if (!installation_api) {
-      SB_LOG(ERROR) << "Failed to get installation manager extension.";
-      return;
-    }
-
-    if (CobaltQuickUpdate(installation_api, current_version)) {
-      return;
-    }
-
-// If the quick roll forward update slot candidate doesn't exist, continue
-// with update check.
 #endif
     apps.push_back(MakeProtocolApp(
-        app_id, current_version, SanitizeBrand(config_->GetBrand()),
-        install_source, crx_component->install_location,
-        crx_component->fingerprint,
+        app_id, version, SanitizeBrand(config_->GetBrand()), install_source,
+        crx_component->install_location, crx_component->fingerprint,
         SanitizeInstallerAttributes(crx_component->installer_attributes),
         metadata_->GetCohort(app_id), metadata_->GetCohortName(app_id),
         metadata_->GetCohortHint(app_id), crx_component->disabled_reasons,
@@ -241,6 +227,22 @@ void UpdateCheckerImpl::CheckForUpdatesHelper(
         MakeProtocolPing(app_id, metadata_)));
   }
   std::string updater_channel = config_->GetChannel();
+#if defined(OS_STARBOARD)
+  // If the updater channel is not set, read from pref store instead.
+  if (updater_channel.empty()) {
+    // All apps of the update use the same channel.
+    updater_channel = GetPersistedData()->GetUpdaterChannel(ids_checked_[0]);
+    if (updater_channel.empty()) {
+      updater_channel = kDefaultUpdaterChannel;
+    }
+    // Set the updater channel from the persistent store or to default channel,
+    // if it's not set already.
+    config_->SetChannel(updater_channel);
+  } else {
+    // Update the record of updater channel in pref store.
+    GetPersistedData()->SetUpdaterChannel(ids_checked_[0], updater_channel);
+  }
+#endif
 
   const auto request = MakeProtocolRequest(
       session_id, config_->GetProdId(),
@@ -260,10 +262,6 @@ void UpdateCheckerImpl::CheckForUpdatesHelper(
       config_->EnabledCupSigning(),
       base::BindOnce(&UpdateCheckerImpl::OnRequestSenderComplete,
                      base::Unretained(this)));
-#if defined(OS_STARBOARD)
-  // Reset is_channel_changed flag to false if it is true
-  config_->CompareAndSwapChannelChanged(1, 0);
-#endif
 }
 
 void UpdateCheckerImpl::OnRequestSenderComplete(int error,

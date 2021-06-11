@@ -279,12 +279,10 @@ void AudioRendererImpl::Seek(SbTime seek_to_time) {
 
 SbTime AudioRendererImpl::GetCurrentMediaTime(bool* is_playing,
                                               bool* is_eos_played,
-                                              bool* is_underflow,
-                                              double* playback_rate) {
+                                              bool* is_underflow) {
   SB_DCHECK(is_playing);
   SB_DCHECK(is_eos_played);
   SB_DCHECK(is_underflow);
-  SB_DCHECK(playback_rate);
 
   SbTime media_time = 0;
   SbTimeMonotonic now = -1;
@@ -300,7 +298,6 @@ SbTime AudioRendererImpl::GetCurrentMediaTime(bool* is_playing,
     *is_underflow = underflow_;
 
     if (seeking_ || !decoder_sample_rate_) {
-      *playback_rate = playback_rate_;
       return seeking_to_time_;
     }
 
@@ -326,7 +323,7 @@ SbTime AudioRendererImpl::GetCurrentMediaTime(bool* is_playing,
         elasped_since_last_set * samples_per_second / kSbTimeSecond;
     frames_played =
         audio_frame_tracker_.GetFutureFramesPlayedAdjustedToPlaybackRate(
-            elapsed_frames, playback_rate);
+            elapsed_frames);
     media_time =
         seeking_to_time_ + frames_played * kSbTimeSecond / samples_per_second;
     if (media_time < last_media_time_) {
@@ -524,7 +521,7 @@ void AudioRendererImpl::OnFirstOutput(
 
   // TODO: Support planar only audio sink.
   audio_renderer_sink_->Start(
-      seeking_to_time_, channels_, destination_sample_rate, sink_sample_type_,
+      channels_, destination_sample_rate, sink_sample_type_,
       kSbMediaAudioFrameStorageTypeInterleaved,
       reinterpret_cast<SbAudioSinkFrameBuffers>(frame_buffers_),
       max_cached_frames_, this);

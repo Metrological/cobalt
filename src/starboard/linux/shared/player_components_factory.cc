@@ -15,8 +15,10 @@
 #include "starboard/common/log.h"
 #include "starboard/common/ref_counted.h"
 #include "starboard/common/scoped_ptr.h"
-#include "starboard/common/string.h"
+#include "starboard/format_string.h"
+#if SB_API_VERSION >= 11
 #include "starboard/gles.h"
+#endif  // SB_API_VERSION >= 11
 #include "starboard/media.h"
 #include "starboard/shared/ffmpeg/ffmpeg_audio_decoder.h"
 #include "starboard/shared/ffmpeg/ffmpeg_video_decoder.h"

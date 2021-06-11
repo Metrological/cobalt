@@ -27,7 +27,6 @@
 #include "base/threading/thread_checker.h"
 #include "base/timer/timer.h"
 #include "cobalt/base/c_val.h"
-#include "cobalt/base/debugger_hooks.h"
 #include "cobalt/csp/content_security_policy.h"
 #include "cobalt/loader/decoder.h"
 #include "cobalt/loader/fetcher_factory.h"
@@ -45,8 +44,6 @@ namespace loader {
 
 template <typename CacheType>
 class ResourceCache;
-
-class ResourceCacheBase;
 
 enum CallbackType {
   kOnLoadingSuccessCallbackType,
@@ -99,15 +96,13 @@ class CachedResourceBase
   typedef base::Callback<std::unique_ptr<Loader>()> StartLoadingFunc;
 
   CachedResourceBase(
-      const ResourceCacheBase* owner, const GURL& url,
-      const StartLoadingFunc& start_loading_func,
+      const GURL& url, const StartLoadingFunc& start_loading_func,
       const base::Closure& on_retry_loading,
       const base::Callback<bool()>& has_resource_func,
       const base::Callback<void()>& reset_resource_func,
       const base::Callback<bool()>& are_loading_retries_enabled_func,
       const base::Callback<void(CallbackType)>& on_resource_loaded)
-      : owner_(owner),
-        url_(url),
+      : url_(url),
         start_loading_func_(start_loading_func),
         on_retry_loading_(on_retry_loading),
         has_resource_func_(has_resource_func),
@@ -118,15 +113,14 @@ class CachedResourceBase
   }
 
   CachedResourceBase(
-      const ResourceCacheBase* owner, const GURL& url, const Origin& origin,
+      const GURL& url, const Origin& origin,
       const StartLoadingFunc& start_loading_func,
       const base::Closure& on_retry_loading,
       const base::Callback<bool()>& has_resource_func,
       const base::Callback<void()>& reset_resource_func,
       const base::Callback<bool()>& are_loading_retries_enabled_func,
       const base::Callback<void(CallbackType)>& on_resource_loaded)
-      : owner_(owner),
-        url_(url),
+      : url_(url),
         origin_(origin),
         start_loading_func_(start_loading_func),
         on_retry_loading_(on_retry_loading),
@@ -163,7 +157,6 @@ class CachedResourceBase
 
   THREAD_CHECKER(cached_resource_thread_checker_);
 
-  const ResourceCacheBase* owner_;
   const GURL url_;
   const Origin origin_;
   const StartLoadingFunc start_loading_func_;
@@ -201,8 +194,7 @@ class CachedResource : public CachedResourceBase {
 
   // Request fetching and decoding a single resource based on the url.
   CachedResource(
-      const ResourceCache<CacheType>* owner, const GURL& url,
-      const Origin& origin,
+      const GURL& url, const Origin& origin,
       const base::Callback<std::unique_ptr<Loader>(CachedResource*)>&
           start_loading_func,
       const base::Callback<void(CachedResourceBase*)>& on_retry_loading,
@@ -215,8 +207,7 @@ class CachedResource : public CachedResourceBase {
   // and there is no need to fetch or load this resource again. |loader_|
   // is NULL in this case.
   CachedResource(
-      const ResourceCache<CacheType>* owner, const GURL& url,
-      ResourceType* resource,
+      const GURL& url, ResourceType* resource,
       const base::Callback<std::unique_ptr<Loader>(CachedResource*)>&
           start_loading_func,
       const base::Callback<void(CachedResourceBase*)>& on_retry_loading,
@@ -270,8 +261,7 @@ class CachedResource : public CachedResourceBase {
 
 template <typename CacheType>
 CachedResource<CacheType>::CachedResource(
-    const ResourceCache<CacheType>* owner, const GURL& url,
-    const Origin& origin,
+    const GURL& url, const Origin& origin,
     const base::Callback<std::unique_ptr<Loader>(CachedResource*)>&
         start_loading_func,
     const base::Callback<void(CachedResourceBase*)>& on_retry_loading,
@@ -280,8 +270,7 @@ CachedResource<CacheType>::CachedResource(
     const base::Callback<void(CachedResource*, CallbackType)>&
         on_resource_loaded)
     : CachedResourceBase(
-          owner, url, origin,
-          base::Bind(start_loading_func, base::Unretained(this)),
+          url, origin, base::Bind(start_loading_func, base::Unretained(this)),
           base::Bind(on_retry_loading, base::Unretained(this)),
           base::Bind(&CachedResource::HasResource, base::Unretained(this)),
           base::Bind(&CachedResource::ResetResource, base::Unretained(this)),
@@ -293,8 +282,7 @@ CachedResource<CacheType>::CachedResource(
 
 template <typename CacheType>
 CachedResource<CacheType>::CachedResource(
-    const ResourceCache<CacheType>* owner, const GURL& url,
-    ResourceType* resource,
+    const GURL& url, ResourceType* resource,
     const base::Callback<std::unique_ptr<Loader>(CachedResource*)>&
         start_loading_func,
     const base::Callback<void(CachedResourceBase*)>& on_retry_loading,
@@ -303,7 +291,7 @@ CachedResource<CacheType>::CachedResource(
     const base::Callback<void(CachedResource*, CallbackType)>&
         on_resource_loaded)
     : CachedResourceBase(
-          owner, url, base::Bind(start_loading_func, base::Unretained(this)),
+          url, base::Bind(start_loading_func, base::Unretained(this)),
           base::Bind(on_retry_loading, base::Unretained(this)),
           base::Bind(&CachedResource::HasResource, base::Unretained(this)),
           base::Bind(&CachedResource::ResetResource, base::Unretained(this)),
@@ -389,8 +377,6 @@ class ResourceCacheBase {
     return security_callback_;
   }
 
-  const base::DebuggerHooks& debugger_hooks() const { return debugger_hooks_; }
-
   uint32 capacity() const { return cache_capacity_; }
   void SetCapacity(uint32 capacity);
 
@@ -416,9 +402,8 @@ class ResourceCacheBase {
   typedef net::linked_hash_map<std::string, ResourceCallbackInfo>
       ResourceCallbackMap;
 
-  ResourceCacheBase(const std::string& name,
-                    const base::DebuggerHooks& debugger_hooks,
-                    uint32 cache_capacity, bool are_loading_retries_enabled,
+  ResourceCacheBase(const std::string& name, uint32 cache_capacity,
+                    bool are_loading_retries_enabled,
                     const ReclaimMemoryFunc& reclaim_memory_func);
 
   // Called by CachedResource objects when they fail to load as a result of a
@@ -445,8 +430,6 @@ class ResourceCacheBase {
 
   // The name of this resource cache object, useful while debugging.
   const std::string name_;
-
-  const base::DebuggerHooks& debugger_hooks_;
 
   bool are_loading_retries_enabled_;
 
@@ -519,9 +502,8 @@ class ResourceCache : public ResourceCacheBase {
   typedef base::Callback<void(const std::string&)>
       NotifyResourceRequestedFunction;
 
-  ResourceCache(const std::string& name,
-                const base::DebuggerHooks& debugger_hooks,
-                uint32 cache_capacity, bool are_loading_retries_enabled,
+  ResourceCache(const std::string& name, uint32 cache_capacity,
+                bool are_loading_retries_enabled,
                 const CreateLoaderFunction& create_loader_function,
                 const NotifyResourceRequestedFunction&
                     notify_resource_requested_function =
@@ -604,12 +586,12 @@ class ResourceCache : public ResourceCacheBase {
 
 template <typename CacheType>
 ResourceCache<CacheType>::ResourceCache(
-    const std::string& name, const base::DebuggerHooks& debugger_hooks,
-    uint32 cache_capacity, bool are_loading_retries_enabled,
+    const std::string& name, uint32 cache_capacity,
+    bool are_loading_retries_enabled,
     const CreateLoaderFunction& create_loader_function,
     const NotifyResourceRequestedFunction& notify_resource_requested_function)
     : ResourceCacheBase(
-          name, debugger_hooks, cache_capacity, are_loading_retries_enabled,
+          name, cache_capacity, are_loading_retries_enabled,
           base::Bind(&ResourceCache::ReclaimMemory, base::Unretained(this))),
       create_loader_function_(create_loader_function),
       notify_resource_requested_function_(notify_resource_requested_function) {
@@ -640,7 +622,7 @@ ResourceCache<CacheType>::GetOrCreateCachedResource(const GURL& url,
   auto resource_iterator = unreferenced_cached_resource_map_.find(url.spec());
   if (resource_iterator != unreferenced_cached_resource_map_.end()) {
     scoped_refptr<CachedResourceType> cached_resource(new CachedResourceType(
-        this, url, resource_iterator->second.get(),
+        url, resource_iterator->second.get(),
         base::Bind(&ResourceCache::StartLoadingResource,
                    base::Unretained(this)),
         base::Bind(&ResourceCache::NotifyResourceLoadingRetryScheduled,
@@ -661,7 +643,7 @@ ResourceCache<CacheType>::GetOrCreateCachedResource(const GURL& url,
   resource_iterator = weak_referenced_cached_resource_map_.find(url.spec());
   if (resource_iterator != weak_referenced_cached_resource_map_.end()) {
     scoped_refptr<CachedResourceType> cached_resource(new CachedResourceType(
-        this, url, resource_iterator->second.get(),
+        url, resource_iterator->second.get(),
         base::Bind(&ResourceCache::StartLoadingResource,
                    base::Unretained(this)),
         base::Bind(&ResourceCache::NotifyResourceLoadingRetryScheduled,
@@ -683,7 +665,7 @@ ResourceCache<CacheType>::GetOrCreateCachedResource(const GURL& url,
 
   // Create the cached resource and fetch its resource based on the url.
   scoped_refptr<CachedResourceType> cached_resource(new CachedResourceType(
-      this, url, origin,
+      url, origin,
       base::Bind(&ResourceCache::StartLoadingResource, base::Unretained(this)),
       base::Bind(&ResourceCache::NotifyResourceLoadingRetryScheduled,
                  base::Unretained(this)),

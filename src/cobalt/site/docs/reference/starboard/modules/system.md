@@ -6,6 +6,12 @@ title: "Starboard Module Reference: system.h"
 Defines a broad set of APIs that allow the client application to query build and
 runtime properties of the enclosing system.
 
+## Macros ##
+
+### kSbSystemPlatformErrorInvalid ###
+
+Well-defined value for an invalid `SbSystemPlatformError`.
+
 ## Enums ##
 
 ### SbSystemCapabilityId ###
@@ -118,11 +124,6 @@ Enumeration of special paths that the platform can define.
 *   `kSbSystemPathExecutableFile`
 
     Full path to the executable file.
-*   `kSbSystemPathStorageDirectory`
-
-    Path to a directory for permanent file storage. Both read and write access
-    is required. This is where an app may store its persistent settings. The
-    location should be user agnostic if possible.
 
 ### SbSystemPlatformErrorResponse ###
 
@@ -187,10 +188,9 @@ string generation.
 *   `kSbSystemPropertyModelYear`
 
     The year the device was launched, e.g. "2016".
-*   `kSbSystemPropertySystemIntegratorName`
+*   `kSbSystemPropertyNetworkOperatorName`
 
-    The corporate entity responsible for submitting the device to YouTube
-    certification and for the device maintenance/updates.
+    The name of the network operator that owns the target device, if applicable.
 *   `kSbSystemPropertyPlatformName`
 
     The name of the operating system and platform, suitable for inclusion in a
@@ -234,6 +234,17 @@ A type that can represent a system error code across all Starboard platforms.
 
 ```
 typedef int SbSystemError
+```
+
+### SbSystemPlatformError ###
+
+Opaque handle returned by `SbSystemRaisePlatformError` that can be passed to
+`SbSystemClearPlatformError`.
+
+#### Definition ####
+
+```
+typedef SbSystemPlatformErrorPrivate* SbSystemPlatformError
 ```
 
 ### SbSystemPlatformErrorCallback ###
@@ -291,6 +302,20 @@ Clears the last error set by a Starboard call in the current thread.
 
 ```
 void SbSystemClearLastError()
+```
+
+### SbSystemClearPlatformError ###
+
+Clears a platform error that was previously raised by a call to
+`SbSystemRaisePlatformError`. The platform may use this, for example, to close a
+dialog that was opened in response to the error.
+
+`handle`: The platform error to be cleared.
+
+#### Declaration ####
+
+```
+void SbSystemClearPlatformError(SbSystemPlatformError handle)
 ```
 
 ### SbSystemGetConnectionType ###
@@ -373,6 +398,32 @@ that sandboxed limit.
 
 ```
 int SbSystemGetNumberOfProcessors()
+```
+
+### SbSystemGetPath ###
+
+Retrieves the platform-defined system path specified by `path_id` and places it
+as a zero-terminated string into the user-allocated `out_path` unless it is
+longer than `path_length` - 1. This implementation must be thread-safe.
+
+This function returns `true` if the path is retrieved successfully. It returns
+`false` under any of the following conditions and, in any such case, `out_path`
+is not changed:
+
+*   `path_id` is invalid for this platform
+
+*   `path_length` is too short for the given result
+
+*   `out_path` is NULL
+
+`path_id`: The system path to be retrieved. `out_path`: The platform-defined
+system path specified by `path_id`. `path_length`: The length of the system
+path.
+
+#### Declaration ####
+
+```
+bool SbSystemGetPath(SbSystemPathId path_id, char *out_path, int path_length)
 ```
 
 ### SbSystemGetProperty ###
@@ -537,6 +588,16 @@ to a debugger. The function returns `false` if neither of those cases is true.
 bool SbSystemIsDebuggerAttached()
 ```
 
+### SbSystemPlatformErrorIsValid ###
+
+Checks whether a `SbSystemPlatformError` is valid.
+
+#### Declaration ####
+
+```
+static bool SbSystemPlatformErrorIsValid(SbSystemPlatformError handle)
+```
+
 ### SbSystemRaisePlatformError ###
 
 Cobalt calls this function to notify the platform that an error has occurred in
@@ -544,8 +605,13 @@ the application that the platform may need to handle. The platform is expected
 to then notify the user of the error and to provide a means for any required
 interaction, such as by showing a dialog.
 
-The return value is a boolean. If the platform cannot respond to the error, then
-this function should return `false`, otherwise it should return `true`.
+The return value is a handle that may be used in a subsequent call to
+`SbSystemClearPlatformError`. For example, the handle could be used to
+programatically dismiss a dialog that was raised in response to the error. The
+lifetime of the object referenced by the handle is until the user reacts to the
+error or the error is dismissed by a call to SbSystemClearPlatformError,
+whichever happens first. Note that if the platform cannot respond to the error,
+then this function should return `kSbSystemPlatformErrorInvalid`.
 
 This function may be called from any thread, and it is the platform's
 responsibility to decide how to handle an error received while a previous error
@@ -562,7 +628,7 @@ if it is called.
 #### Declaration ####
 
 ```
-bool SbSystemRaisePlatformError(SbSystemPlatformErrorType type, SbSystemPlatformErrorCallback callback, void *user_data)
+SbSystemPlatformError SbSystemRaisePlatformError(SbSystemPlatformErrorType type, SbSystemPlatformErrorCallback callback, void *user_data)
 ```
 
 ### SbSystemRequestPause ###
@@ -633,26 +699,6 @@ continue to be done, and unrelated system events may be dispatched.
 
 ```
 void SbSystemRequestUnpause()
-```
-
-### SbSystemSignWithCertificationSecretKey ###
-
-Computes a HMAC-SHA256 digest of `message` into `digest` using the application's
-certification secret.
-
-This function may be implemented as an alternative to implementing
-SbSystemGetProperty(kSbSystemPropertyBase64EncodedCertificationSecret), however
-both should not be implemented.
-
-The output will be written into `digest`. `digest_size_in_bytes` must be 32 (or
-greater), since 32-bytes will be written into it. Returns false in the case of
-an error, or if it is not implemented. In this case the contents of `digest`
-will be undefined.
-
-#### Declaration ####
-
-```
-bool SbSystemSignWithCertificationSecretKey(const uint8_t *message, size_t message_size_in_bytes, uint8_t *digest, size_t digest_size_in_bytes)
 ```
 
 ### SbSystemSort ###

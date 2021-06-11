@@ -5,14 +5,13 @@ from __future__ import division
 from __future__ import print_function
 
 import json
-import logging
 import os
 import re
 import sys
+import thread
 import threading
 import time
 import traceback
-import thread
 
 import _env  # pylint: disable=unused-import
 from cobalt.tools.automated_testing import c_val_names
@@ -26,8 +25,8 @@ RE_WEBDRIVER_LISTEN = re.compile(r'Starting WebDriver server on port (\d+)')
 RE_WEBDRIVER_FAILED = re.compile(r'Could not start WebDriver server')
 # Pattern to match Cobalt log line for when a WindowDriver has been created.
 RE_WINDOWDRIVER_CREATED = re.compile(
-    (r'^\[[\d:]+/[\d.]+:INFO:browser_module\.cc\(\d+\)\] Created WindowDriver: '
-     r'ID=\S+'))
+    r'^\[[\d:]+/[\d.]+:INFO:browser_module\.cc\(\d+\)\] Created WindowDriver: ID=\S+'
+)
 # Pattern to match Cobalt log line for when a WebModule is has been loaded.
 RE_WEBMODULE_LOADED = re.compile(
     r'^\[[\d:]+/[\d.]+:INFO:browser_module\.cc\(\d+\)\] Loaded WebModule')
@@ -47,7 +46,6 @@ PAGE_LOAD_WAIT_SECONDS = 30
 WINDOWDRIVER_CREATED_TIMEOUT_SECONDS = 45
 WEBMODULE_LOADED_TIMEOUT_SECONDS = 45
 FIND_ELEMENT_RETRY_LIMIT = 20
-EXECUTE_JAVASCRIPT_RETRY_LIMIT = 10
 
 COBALT_WEBDRIVER_CAPABILITIES = {
     'browserName': 'cobalt',
@@ -114,7 +112,6 @@ class CobaltRunner(object):
     self.launcher_params = launcher_params
     if log_file:
       self.log_file = open(log_file)
-      logging.basicConfig(stream=self.log_file, level=logging.INFO)
     else:
       self.log_file = sys.stdout
     self.url = url
@@ -135,6 +132,22 @@ class CobaltRunner(object):
   def SendSuspend(self):
     """Sends a system signal to put Cobalt into suspend state."""
     self.launcher.SendSuspend()
+
+  def SendConceal(self):
+    """Sends a system signal to put Cobalt into concealed state."""
+    self.launcher.SendConceal()
+
+  def SendFocus(self):
+    """Sends a system signal to put Cobalt into started state."""
+    self.launcher.SendFocus()
+
+  def SendFreeze(self):
+    """Sends a system signal to put Cobalt into frozen state."""
+    self.launcher.SendFreeze()
+
+  def SendStop(self):
+    """Sends a system signal to put Cobalt into stopped state."""
+    self.launcher.SendStop()
 
   def SendDeepLink(self, link):
     """Sends a deep link to Cobalt."""
@@ -179,8 +192,8 @@ class CobaltRunner(object):
 
       # Bail out immediately if the Cobalt WebDriver server doesn't start.
       if RE_WEBDRIVER_FAILED.search(line):
-        logging.error('\nCobalt WebDriver server not started.'
-                      '\nIs another instance of Cobalt running?')
+        print('\nCobalt WebDriver server not started.'
+              '\nIs another instance of Cobalt running?')
         self.launcher.Kill()
 
       match = RE_WEBDRIVER_LISTEN.search(line)
@@ -188,7 +201,7 @@ class CobaltRunner(object):
         continue
 
       port = match.group(1)
-      logging.info('WebDriver port opened:' + port + '\n')
+      print('WebDriver port opened:' + port + '\n', file=self.log_file)
       self._StartWebdriver(port)
 
   def __enter__(self):
@@ -231,7 +244,7 @@ class CobaltRunner(object):
       self.WaitForStart()
     except KeyboardInterrupt:
       # potentially from thread.interrupt_main(). We will treat as
-      # a timeout regardless.
+      # a timeout regardless
 
       self.Exit(should_fail=True)
       raise TimeoutException
@@ -270,8 +283,8 @@ class CobaltRunner(object):
       self.runner_thread.join(COBALT_EXIT_TIMEOUT_SECONDS)
     if self.runner_thread.isAlive():
       sys.stderr.write(
-          '***Runner thread still alive after sending graceful shutdown '
-          'command, try again by killing app***\n')
+          '***Runner thread still alive after sending graceful shutdown command, try again by killing app***\n'
+      )
       self.launcher.Kill()
     # Once the write end of the pipe has been closed by the launcher, the reader
     # thread will get EOF and exit.
@@ -290,7 +303,7 @@ class CobaltRunner(object):
     self.webdriver = self.selenium_webdriver_module.Remote(
         url, COBALT_WEBDRIVER_CAPABILITIES)
     self.webdriver.command_executor.set_timeout(WEBDRIVER_HTTP_TIMEOUT_SECONDS)
-    logging.info('Selenium Connected')
+    print('Selenium Connected\n', file=self.log_file)
     self.test_script_started.set()
 
   def WaitForStart(self):
@@ -302,17 +315,16 @@ class CobaltRunner(object):
     if not self.test_script_started.wait(startup_timeout_seconds):
       self.Exit(should_fail=True)
       raise TimeoutException
-    logging.info('Cobalt started')
+    print('Cobalt started', file=self.log_file)
 
   def _RunLauncher(self):
     """Thread run routine."""
     try:
-      logging.info('Running launcher')
+      print('Running launcher', file=self.log_file)
       self.launcher.Run()
-      logging.info('Cobalt terminated.')
+      print('Cobalt terminated.', file=self.log_file)
       if not self.failed and self.success_message:
         print('{}\n'.format(self.success_message))
-        logging.info('%s\n', self.success_message)
     # pylint: disable=broad-except
     except Exception as ex:
       sys.stderr.write('Exception running Cobalt ' + str(ex))
@@ -328,21 +340,7 @@ class CobaltRunner(object):
     return self.webdriver is not None
 
   def ExecuteJavaScript(self, js_code):
-    retry_count = 0
-    while True:
-      if retry_count >= EXECUTE_JAVASCRIPT_RETRY_LIMIT:
-        raise TimeoutException(
-            'Selenium element or window not found in {} tries'.format(
-                EXECUTE_JAVASCRIPT_RETRY_LIMIT))
-      retry_count += 1
-      try:
-        result = self.webdriver.execute_script(js_code)
-      except (selenium_exceptions.NoSuchElementException,
-              selenium_exceptions.NoSuchWindowException):
-        time.sleep(0.2)
-        continue
-      break
-    return result
+    return self.webdriver.execute_script(js_code)
 
   def GetCval(self, cval_name):
     """Returns the Python object represented by a cval string.
@@ -355,14 +353,15 @@ class CobaltRunner(object):
     """
     javascript_code = 'return h5vcc.cVal.getValue(\'{}\')'.format(cval_name)
     cval_string = self.ExecuteJavaScript(javascript_code)
-    if cval_string:
+    if cval_string is None:
+      return None
+    else:
       try:
         # Try to parse numbers and booleans.
         return json.loads(cval_string)
       except ValueError:
         # If we can't parse a value, return the cval string as-is.
         return cval_string
-    return None
 
   def GetCvalBatch(self, cval_name_list):
     """Retrieves a batch of cvals.
@@ -454,20 +453,15 @@ class CobaltRunner(object):
     # after navigation. We only introduced it because of limited time budget
     # at the moment, please don't introduce any code that relies on it.
     retry_count = 0
-    while True:
-      if retry_count >= FIND_ELEMENT_RETRY_LIMIT:
-        raise TimeoutException(
-            'Selenium element or window not found in {} tries'.format(
-                FIND_ELEMENT_RETRY_LIMIT))
+    while retry_count < FIND_ELEMENT_RETRY_LIMIT:
       retry_count += 1
       try:
         elements = self.webdriver.find_elements_by_css_selector(css_selector)
-      except (selenium_exceptions.NoSuchElementException,
-              selenium_exceptions.NoSuchWindowException):
+      except selenium_exceptions.NoSuchElementException:
         time.sleep(0.2)
         continue
       break
-    if expected_num and len(elements) != expected_num:
+    if expected_num is not None and len(elements) != expected_num:
       raise CobaltRunner.AssertException(
           'Expected number of element {} is: {}, got {}'.format(
               css_selector, expected_num, len(elements)))

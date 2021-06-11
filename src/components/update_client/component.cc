@@ -18,11 +18,6 @@
 #include "base/threading/thread_task_runner_handle.h"
 #include "base/values.h"
 #include "components/update_client/action_runner.h"
-
-#if defined(OS_STARBOARD)
-#include "components/update_client/cobalt_slot_management.h"
-#endif
-
 #include "components/update_client/component_unpacker.h"
 #include "components/update_client/configurator.h"
 #include "components/update_client/network.h"
@@ -149,17 +144,12 @@ void InstallOnBlockingTaskRunner(
     // TODO: add correct error code.
     install_error = InstallError::GENERIC_ERROR;
   } else {
-    char app_key[IM_EXT_MAX_APP_KEY_LENGTH];
-    if (installation_api->GetAppKey(app_key, IM_EXT_MAX_APP_KEY_LENGTH) ==
-        IM_EXT_ERROR) {
+    int ret =
+        installation_api->RequestRollForwardToInstallation(installation_index);
+    if (ret == IM_EXT_ERROR) {
+      SB_LOG(ERROR) << "Failed to request roll forward.";
       // TODO: add correct error code.
       install_error = InstallError::GENERIC_ERROR;
-    } else {
-      if (!CobaltFinishInstallation(installation_api, installation_index,
-                                    unpack_path.value(), app_key)) {
-        // TODO: add correct error code.
-        install_error = InstallError::GENERIC_ERROR;
-      }
     }
   }
 
@@ -195,14 +185,6 @@ void UnpackCompleteOnBlockingTaskRunner(
 #endif
 
   if (result.error != UnpackerError::kNone) {
-#if defined(OS_STARBOARD)
-    // When there is an error unpacking the downloaded CRX, such as a failure to
-    // verify the package, we should remember to clear out any drain files.
-    if (base::DirectoryExists(crx_path.DirName())) {
-      CobaltSlotManagement cobalt_slot_management;
-      cobalt_slot_management.CleanupAllDrainFiles(crx_path.DirName());
-    }
-#endif
     main_task_runner->PostTask(
         FROM_HERE,
         base::BindOnce(std::move(callback), ErrorCategory::kUnpack,
@@ -559,12 +541,6 @@ void Component::StateNew::DoHandle() {
   DCHECK(thread_checker_.CalledOnValidThread());
 
   auto& component = State::component();
-
-#if defined(OS_STARBOARD)
-  auto& config = component.update_context_.config;
-  config->SetPreviousUpdaterStatus(config->GetUpdaterStatus());
-#endif
-
   if (component.crx_component()) {
     TransitionState(std::make_unique<StateChecking>(&component));
   } else {

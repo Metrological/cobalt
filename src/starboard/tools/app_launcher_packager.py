@@ -24,7 +24,6 @@ import fnmatch
 import logging
 import os
 import shutil
-import string
 import sys
 import tempfile
 
@@ -33,18 +32,21 @@ from paths import REPOSITORY_ROOT
 from paths import THIRD_PARTY_ROOT
 sys.path.append(THIRD_PARTY_ROOT)
 # pylint: disable=g-import-not-at-top,g-bad-import-order
+import jinja2
 from starboard.tools import port_symlink
 import starboard.tools.platform
 
 # Default python directories to app launcher resources.
 _INCLUDE_FILE_PATTERNS = [
-    ('buildbot', '_env.py'),  # Only needed for device_server to execute
-    ('buildbot', '__init__.py'),  # Only needed for device_server to execute
-    ('buildbot/device_server', '*.py'),
+    ('buildbot', '*.py'),
     ('buildbot/device_server/shared/ssl_certs', '*'),
     ('cobalt', '*.py'),
+    # TODO: Test and possibly prune.
+    ('lbshell', '*.py'),
     ('starboard', '*.py'),
-    ('starboard/tools', 'platform.py.template')
+    # jinja2 required by this app_launcher_packager.py script.
+    ('third_party/jinja2', '*.py'),
+    ('third_party/markupsafe', '*.py'),  # Required by third_party/jinja2
 ]
 
 _INCLUDE_BLACK_BOX_TESTS_PATTERNS = [
@@ -122,7 +124,7 @@ def _WritePlatformsInfo(repo_root, dest_root):
   logging.info('Baking platform info files.')
   current_file = os.path.abspath(__file__)
   current_dir = os.path.dirname(current_file)
-  dest_dir = os.path.join(dest_root, 'starboard', 'tools')
+  dest_dir = current_dir.replace(repo_root, dest_root)
   platforms_map = {}
   for p in starboard.tools.platform.GetAll():
     platform_path = os.path.relpath(
@@ -130,11 +132,10 @@ def _WritePlatformsInfo(repo_root, dest_root):
     # Store posix paths even on Windows so MH Linux hosts can use them.
     # The template has code to re-normalize them when used on Windows hosts.
     platforms_map[p] = platform_path.replace('\\', '/')
-  template = string.Template(
+  template = jinja2.Template(
       open(os.path.join(current_dir, 'platform.py.template')).read())
   with open(os.path.join(dest_dir, 'platform.py'), 'w+') as f:
-    sub = template.substitute(platforms_map=platforms_map)
-    f.write(sub.encode('utf-8'))
+    template.stream(platforms_map=platforms_map).dump(f, encoding='utf-8')
   logging.info('Finished baking in platform info files.')
 
 
@@ -256,11 +257,7 @@ def main(command_args):
       help='List to stdout the application resources relative to the current '
       'directory.')
   parser.add_argument(
-      '-v',
-      '--verbose',
-      action='store_true',
-      help='Enables verbose logging. For more control over the '
-      "logging level use '--log_level' instead.")
+      '-v', '--verbose', action='store_true', help='Verbose logging output.')
   args = parser.parse_args(command_args)
 
   if not args.verbose:

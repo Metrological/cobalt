@@ -163,6 +163,19 @@ not showing does nothing and does not fire any event.
 void SbWindowFocusOnScreenKeyboard(SbWindow window, int ticket)
 ```
 
+### SbWindowGetDiagonalSizeInInches ###
+
+Gets the size of the diagonal between two opposing screen corners.
+
+A return value of 0 means that starboard does not know what the screen diagonal
+is.
+
+#### Declaration ####
+
+```
+float SbWindowGetDiagonalSizeInInches(SbWindow window)
+```
+
 ### SbWindowGetOnScreenKeyboardBoundingRect ###
 
 Get the rectangle of the on screen keyboard in screen pixel coordinates. Return
@@ -238,10 +251,7 @@ static bool SbWindowIsValid(SbWindow window)
 
 ### SbWindowSetDefaultOptions ###
 
-Gets the size of the diagonal between two opposing screen corners.
-
-A return value of 0 means that starboard does not know what the screen diagonal
-is. Sets the default options for system windows.
+Sets the default options for system windows.
 
 `options`: The option values to use as default values. This object must not be
 `NULL`.

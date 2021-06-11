@@ -17,7 +17,6 @@
 
 #include <string>
 
-#include "cobalt/h5vcc/h5vcc_crash_type.h"
 #include "cobalt/script/wrappable.h"
 
 namespace cobalt {
@@ -28,8 +27,6 @@ class H5vccCrashLog : public script::Wrappable {
   H5vccCrashLog() {}
 
   bool SetString(const std::string& key, const std::string& value);
-
-  void TriggerCrash(H5vccCrashType intent);
 
   DEFINE_WRAPPABLE_TYPE(H5vccCrashLog);
 

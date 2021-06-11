@@ -43,6 +43,7 @@
         'event.h',
         'export.h',
         'file.h',
+        'format_string.h',
         'gles.h',
         'input.h',
         'key.h',

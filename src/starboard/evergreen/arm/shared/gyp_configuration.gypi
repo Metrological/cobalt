@@ -24,8 +24,6 @@
 
       # Force char to be signed.
       '-fsigned-char',
-      '-ffunction-sections',
-      '-fdata-sections',
     ],
 
     'linker_flags': [

@@ -18,14 +18,11 @@ import static dev.cobalt.media.Log.TAG;
 
 import android.content.Context;
 import android.graphics.Color;
-import android.os.Build;
 import android.util.AttributeSet;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import dev.cobalt.util.Log;
-import java.util.HashSet;
-import java.util.Set;
 
 /**
  * A Surface view to be used by the video decoder. It informs the Starboard application when the
@@ -34,17 +31,6 @@ import java.util.Set;
 public class VideoSurfaceView extends SurfaceView {
 
   private static Surface currentSurface = null;
-
-  private static final Set<String> needResetSurfaceList = new HashSet<>();
-
-  static {
-    needResetSurfaceList.add("Nexus Player");
-
-    // Reset video surface on nexus player to avoid b/159073388.
-    if (needResetSurfaceList.contains(Build.MODEL)) {
-      nativeSetNeedResetSurface();
-    }
-  }
 
   public VideoSurfaceView(Context context) {
     super(context);
@@ -75,9 +61,7 @@ public class VideoSurfaceView extends SurfaceView {
     // punch-out video when the position / size is animated.
   }
 
-  private static native void nativeOnVideoSurfaceChanged(Surface surface);
-
-  private static native void nativeSetNeedResetSurface();
+  private native void nativeOnVideoSurfaceChanged(Surface surface);
 
   private class SurfaceHolderCallback implements SurfaceHolder.Callback {
 

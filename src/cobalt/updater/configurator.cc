@@ -1,4 +1,4 @@
-// Copyright 2020 The Cobalt Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -28,36 +28,31 @@ namespace {
 // Default time constants.
 const int kDelayOneMinute = 60;
 const int kDelayOneHour = kDelayOneMinute * 60;
-const std::set<std::string> valid_channels = {
-    // Default channel for debug/devel builds.
-    "dev",
-    // Channel for dogfooders.
-    "dogfood",
-    // Default channel for gold builds.
-    "prod",
-    // Default channel for qa builds. A gold build can switch to this channel to
-    // get an official qa build.
-    "qa",
-    // Test an update with higher version than prod channel.
-    "test",
-    // Test an update with mismatched sabi.
-    "tmsabi",
-    // Test an update that does nothing.
-    "tnoop",
-    // Test an update that crashes.
-    "tcrash",
-    // Test an update that fails verification.
-    "tfailv",
-    // Test a series of continuous updates with two channels.
-    "tseries1", "tseries2",
-};
 
 #if defined(COBALT_BUILD_TYPE_DEBUG) || defined(COBALT_BUILD_TYPE_DEVEL)
-const std::string kDefaultUpdaterChannel = "dev";
+const std::set<std::string> valid_channels = {"dev"};
 #elif defined(COBALT_BUILD_TYPE_QA)
-const std::string kDefaultUpdaterChannel = "qa";
+// Find more information about these test channels in the Evergreen test plan.
+const std::set<std::string> valid_channels = {
+    "qa",
+    // A normal test channel that serves a valid update
+    "test",
+    // Test an update with mismatched sabi
+    "tmsabi",
+    // Test an update that does nothing
+    "tnoop",
+    // Test an update that crashes
+    "tcrash",
+    // Test an update that fails verification
+    "tfailv",
+    // Test a series of continuous updates with two channels
+    "tseries1",
+    "tseries2",
+    // Test an update that's larger than the available storage on the device
+    "tistore",
+};
 #elif defined(COBALT_BUILD_TYPE_GOLD)
-const std::string kDefaultUpdaterChannel = "prod";
+const std::set<std::string> valid_channels = {"prod", "dogfood"};
 #endif
 
 std::string GetDeviceProperty(SbSystemPropertyId id) {
@@ -79,21 +74,10 @@ namespace updater {
 
 Configurator::Configurator(network::NetworkModule* network_module)
     : pref_service_(CreatePrefService()),
-      persisted_data_(std::make_unique<update_client::PersistedData>(
-          pref_service_.get(), nullptr)),
-      is_channel_changed_(0),
       unzip_factory_(base::MakeRefCounted<UnzipperFactory>()),
       network_fetcher_factory_(
           base::MakeRefCounted<NetworkFetcherFactoryCobalt>(network_module)),
-      patch_factory_(base::MakeRefCounted<PatcherFactory>()) {
-  const std::string persisted_channel =
-      persisted_data_->GetUpdaterChannel(GetAppGuid());
-  if (persisted_channel.empty()) {
-    SetChannel(kDefaultUpdaterChannel);
-  } else {
-    SetChannel(persisted_channel);
-  }
-}
+      patch_factory_(base::MakeRefCounted<PatcherFactory>()) {}
 Configurator::~Configurator() = default;
 
 int Configurator::InitialDelay() const { return 0; }
@@ -125,18 +109,14 @@ base::Version Configurator::GetBrowserVersion() const {
 std::string Configurator::GetBrand() const { return {}; }
 
 std::string Configurator::GetLang() const {
-  const char* locale_id = SbSystemGetLocaleId();
-  if (!locale_id) {
-    return "";
-  }
-  std::string locale_string(locale_id);
+  std::string locale_id(SbSystemGetLocaleId());
   // POSIX platforms put time zone id at the end of the locale id, like
   // |en_US.UTF8|. We remove the time zone id.
-  int first_dot = locale_string.find_first_of(".");
+  int first_dot = locale_id.find_first_of(".");
   if (first_dot != std::string::npos) {
-    return locale_string.substr(0, first_dot);
+    return locale_id.substr(0, first_dot);
   }
-  return locale_string;
+  return locale_id;
 }
 
 std::string Configurator::GetOSLongName() const {
@@ -148,11 +128,11 @@ base::flat_map<std::string, std::string> Configurator::ExtraRequestParams()
   base::flat_map<std::string, std::string> params;
   params.insert(std::make_pair("SABI", SB_SABI_JSON_ID));
   params.insert(std::make_pair("sbversion", std::to_string(SB_API_VERSION)));
-  params.insert(
-      std::make_pair("jsengine", script::GetJavaScriptEngineNameAndVersion()));
   params.insert(std::make_pair(
-      "updaterchannelchanged",
-      SbAtomicNoBarrier_Load(&is_channel_changed_) == 1 ? "True" : "False"));
+      "jsengine", script::GetJavaScriptEngineNameAndVersion()));
+  params.insert(std::make_pair("updaterchannelchanged",
+                               IsChannelChanged() ? "True" : "False"));
+
   // Brand name
   params.insert(
       std::make_pair("brand", GetDeviceProperty(kSbSystemPropertyBrandName)));
@@ -216,10 +196,6 @@ update_client::RecoveryCRXElevator Configurator::GetRecoveryCRXElevator()
   return {};
 }
 
-void Configurator::CompareAndSwapChannelChanged(int old_value, int new_value) {
-  SbAtomicNoBarrier_CompareAndSwap(&is_channel_changed_, old_value, new_value);
-}
-
 // The updater channel is get and set by main web module thread and update
 // client thread. The getter and set use a lock to prevent synchronization
 // issue.
@@ -231,7 +207,6 @@ std::string Configurator::GetChannel() const {
 void Configurator::SetChannel(const std::string& updater_channel) {
   base::AutoLock auto_lock(updater_channel_lock_);
   updater_channel_ = updater_channel;
-  persisted_data_->SetUpdaterChannel(GetAppGuid(), updater_channel);
 }
 
 bool Configurator::IsChannelValid(const std::string& channel) {
@@ -252,17 +227,6 @@ std::string Configurator::GetUpdaterStatus() const {
 void Configurator::SetUpdaterStatus(const std::string& status) {
   base::AutoLock auto_lock(updater_status_lock_);
   updater_status_ = status;
-}
-
-std::string Configurator::GetPreviousUpdaterStatus() const {
-  base::AutoLock auto_lock(
-      const_cast<base::Lock&>(previous_updater_status_lock_));
-  return previous_updater_status_;
-}
-
-void Configurator::SetPreviousUpdaterStatus(const std::string& status) {
-  base::AutoLock auto_lock(previous_updater_status_lock_);
-  previous_updater_status_ = status;
 }
 
 }  // namespace updater

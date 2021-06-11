@@ -95,11 +95,6 @@
             '<(DEPTH)/starboard/benchmark/benchmark.gyp:*',
           ],
         }],
-        ['sb_evergreen==0', {
-          'dependencies': [
-            '<(DEPTH)/third_party/crashpad/crashpad.gyp:*',
-          ],
-        }]
       ],
     },
   ],

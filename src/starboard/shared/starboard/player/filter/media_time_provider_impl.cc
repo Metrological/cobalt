@@ -79,8 +79,7 @@ void MediaTimeProviderImpl::Seek(SbTime seek_to_time) {
 
 SbTime MediaTimeProviderImpl::GetCurrentMediaTime(bool* is_playing,
                                                   bool* is_eos_played,
-                                                  bool* is_underflow,
-                                                  double* playback_rate) {
+                                                  bool* is_underflow) {
   ScopedLock scoped_lock(mutex_);
 
   SbTime current = GetCurrentMediaTime_Locked();
@@ -88,7 +87,6 @@ SbTime MediaTimeProviderImpl::GetCurrentMediaTime(bool* is_playing,
   *is_playing = is_playing_;
   *is_eos_played = false;
   *is_underflow = false;
-  *playback_rate = playback_rate_;
 
   return current;
 }

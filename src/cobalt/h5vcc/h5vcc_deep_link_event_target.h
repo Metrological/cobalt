@@ -42,15 +42,11 @@ class H5vccDeepLinkEventTarget : public script::Wrappable {
   typedef script::ScriptValue<H5vccDeepLinkEventCallback>
       H5vccDeepLinkEventCallbackHolder;
 
-  H5vccDeepLinkEventTarget(
-      base::Callback<const std::string&()> unconsumed_deep_link_callback);
+  H5vccDeepLinkEventTarget();
 
   // Called from JavaScript to register an event listener callback.
   // May be called from any thread.
   void AddListener(const H5vccDeepLinkEventCallbackHolder& callback_holder);
-
-  // Returns true if there is no listener.
-  bool empty() { return listeners_.empty(); }
 
   // Dispatches an event to the registered listeners.
   // May be called from any thread.
@@ -61,7 +57,6 @@ class H5vccDeepLinkEventTarget : public script::Wrappable {
  private:
   H5vccEventListenerContainer<const std::string&, H5vccDeepLinkEventCallback>
       listeners_;
-  base::Callback<const std::string&()> unconsumed_deep_link_callback_;
 
   DISALLOW_COPY_AND_ASSIGN(H5vccDeepLinkEventTarget);
 };

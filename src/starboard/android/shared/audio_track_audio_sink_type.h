@@ -18,7 +18,6 @@
 #include <atomic>
 #include <functional>
 #include <map>
-#include <vector>
 
 #include "starboard/android/shared/audio_sink_min_required_frames_tester.h"
 #include "starboard/android/shared/jni_env_ext.h"
@@ -55,19 +54,6 @@ class AudioTrackAudioSinkType : public SbAudioSinkPrivate::Type {
       SbAudioSinkPrivate::ConsumeFramesFunc consume_frames_func,
       SbAudioSinkPrivate::ErrorFunc error_func,
       void* context) override;
-  SbAudioSink Create(
-      int channels,
-      int sampling_frequency_hz,
-      SbMediaAudioSampleType audio_sample_type,
-      SbMediaAudioFrameStorageType audio_frame_storage_type,
-      SbAudioSinkFrameBuffers frame_buffers,
-      int frames_per_channel,
-      SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
-      SbAudioSinkPrivate::ConsumeFramesFunc consume_frames_func,
-      SbAudioSinkPrivate::ErrorFunc error_func,
-      SbTime start_time,
-      int tunnel_mode_audio_session_id,
-      void* context);
 
   bool IsValid(SbAudioSink audio_sink) override {
     return audio_sink != kSbAudioSinkInvalid && audio_sink->IsType(this);
@@ -88,10 +74,10 @@ class AudioTrackAudioSinkType : public SbAudioSinkPrivate::Type {
                                        SbMediaAudioSampleType sample_type,
                                        int sampling_frequency_hz);
 
+  MinRequiredFramesTester min_required_frames_tester_;
   Mutex min_required_frames_map_mutex_;
   // The minimum frames required to avoid underruns of different frequencies.
   std::map<int, int> min_required_frames_map_;
-  MinRequiredFramesTester min_required_frames_tester_;
 };
 
 class AudioTrackAudioSink : public SbAudioSinkPrivate {
@@ -106,9 +92,6 @@ class AudioTrackAudioSink : public SbAudioSinkPrivate {
       int preferred_buffer_size,
       SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
       ConsumeFramesFunc consume_frames_func,
-      SbAudioSinkPrivate::ErrorFunc error_func,
-      SbTime start_media_time,
-      int tunnel_mode_audio_session_id,
       void* context);
   ~AudioTrackAudioSink() override;
 
@@ -123,9 +106,8 @@ class AudioTrackAudioSink : public SbAudioSinkPrivate {
   static void* ThreadEntryPoint(void* context);
   void AudioThreadFunc();
 
-  int WriteData(JniEnvExt* env, void* buffer, int size, SbTime sync_time);
+  int WriteData(JniEnvExt* env, const void* buffer, int size);
 
-  // TODO: Add const to the following variables where appropriate.
   Type* type_;
   int channels_;
   int sampling_frequency_hz_;
@@ -134,25 +116,18 @@ class AudioTrackAudioSink : public SbAudioSinkPrivate {
   int frames_per_channel_;
   SbAudioSinkUpdateSourceStatusFunc update_source_status_func_;
   ConsumeFramesFunc consume_frames_func_;
-  SbAudioSinkPrivate::ErrorFunc error_func_;
-  const SbTime start_time_;
-  const int tunnel_mode_audio_session_id_;
-  const int max_frames_per_request_;
-
   void* context_;
-  int last_playback_head_position_ = 0;
-  jobject j_audio_track_bridge_ = nullptr;
-  jobject j_audio_data_ = nullptr;
+  int last_playback_head_position_;
+  jobject j_audio_track_bridge_;
+  jobject j_audio_data_;
 
-  volatile bool quit_ = false;
-  SbThread audio_out_thread_ = kSbThreadInvalid;
+  volatile bool quit_;
+  SbThread audio_out_thread_;
 
-  Mutex mutex_;
-  double playback_rate_ = 1.0;
+  starboard::Mutex mutex_;
+  double playback_rate_;
 
-  // TODO: Rename to |frames_in_audio_track| and move it into AudioThreadFunc()
-  //       as a local variable.
-  int written_frames_ = 0;
+  int written_frames_;
 };
 
 }  // namespace shared

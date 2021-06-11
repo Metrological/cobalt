@@ -12,7 +12,6 @@
 #include <sstream>
 #include <string>
 
-#include "base/base_wrapper.h"
 #include "base/macros.h"
 #include "build/build_config.h"
 

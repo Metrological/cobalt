@@ -26,7 +26,6 @@
 #include "starboard/memory.h"
 #include "starboard/once.h"
 #include "starboard/shared/starboard/application.h"
-#include "starboard/shared/starboard/media/mime_type.h"
 #include "starboard/shared/widevine/widevine_storage.h"
 #include "starboard/shared/widevine/widevine_timer.h"
 #include "starboard/time.h"
@@ -41,7 +40,7 @@ namespace widevine {
 namespace {
 
 const int kInitializationVectorSize = 16;
-const char* kWidevineKeySystems[] = {"com.widevine", "com.widevine.alpha"};
+const char* kWidevineKeySystem[] = {"com.widevine", "com.widevine.alpha"};
 const char kWidevineStorageFileName[] = "wvcdm.dat";
 
 // Key usage may be blocked due to incomplete HDCP authentication which could
@@ -239,21 +238,6 @@ DrmSystemWidevine::DrmSystemWidevine(
   cdm_.reset(wv3cdm::create(this, NULL, kEnablePrivacyMode));
   SB_DCHECK(cdm_);
 
-#if SB_API_VERSION >= 11
-  // Get cert scope and pass to widevine.
-  const size_t kCertificationScopeLength = 1023;
-  char cert_scope_property[kCertificationScopeLength + 1] = {0};
-  bool result =
-      SbSystemGetProperty(kSbSystemPropertyCertificationScope,
-                          cert_scope_property, kCertificationScopeLength);
-  if (result) {
-    SB_LOG(INFO) << "Succeeded to get platform cert scope.";
-    cdm_->setAppParameter("youtube_cert_scope", cert_scope_property);
-  } else {
-    SB_LOG(INFO) << "Unable to get platform cert scope.";
-  }
-#endif  // SB_API_VERSION >= 11
-
   GetRegistry()->Register(this);
 }
 
@@ -265,28 +249,8 @@ DrmSystemWidevine::~DrmSystemWidevine() {
 
 // static
 bool DrmSystemWidevine::IsKeySystemSupported(const char* key_system) {
-  SB_DCHECK(key_system);
-
-  // It is possible that the |key_system| comes with extra attributes, like
-  // `com.widevine.alpha; encryptionscheme="cenc"`.  We prepend "key_system/"
-  // to it, so it can be parsed by MimeType.
-  starboard::media::MimeType mime_type(std::string("key_system/") + key_system);
-
-  if (!mime_type.is_valid()) {
-    return false;
-  }
-  SB_DCHECK(mime_type.type() == "key_system");
-
-  for (auto wv_key_system : kWidevineKeySystems) {
-    if (mime_type.subtype() == wv_key_system) {
-      for (int i = 0; i < mime_type.GetParamCount(); ++i) {
-        if (mime_type.GetParamName(i) == "encryptionscheme") {
-          auto value = mime_type.GetParamStringValue(i);
-          if (value != "cenc" && value != "cbcs" && value != "cbcs-1-9") {
-            return false;
-          }
-        }
-      }
+  for (auto wv_key_system : kWidevineKeySystem) {
+    if (SbStringCompareAll(key_system, wv_key_system) == 0) {
       return true;
     }
   }

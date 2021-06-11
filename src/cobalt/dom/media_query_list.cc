@@ -42,8 +42,7 @@ bool MediaQueryList::matches() const {
   }
   ViewportSize viewport(math::ToRoundedInt(screen_->avail_width()),
                         math::ToRoundedInt(screen_->avail_height()),
-                        screen_->diagonal_inches(),
-                        screen_->device_pixel_ratio());
+                        screen_->diagonal_inches());
   return media_list_->EvaluateConditionValue(viewport);
 }
 

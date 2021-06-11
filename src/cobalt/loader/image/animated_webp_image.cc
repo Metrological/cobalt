@@ -41,8 +41,7 @@ const int kMinimumDelayInMilliseconds = 10;
 
 AnimatedWebPImage::AnimatedWebPImage(
     const math::Size& size, bool is_opaque,
-    render_tree::ResourceProvider* resource_provider,
-    const base::DebuggerHooks& debugger_hooks)
+    render_tree::ResourceProvider* resource_provider)
     : size_(size),
       is_opaque_(is_opaque),
       demux_(NULL),
@@ -54,7 +53,6 @@ AnimatedWebPImage::AnimatedWebPImage(
       current_frame_index_(0),
       should_dispose_previous_frame_to_background_(false),
       resource_provider_(resource_provider),
-      debugger_hooks_(debugger_hooks),
       frame_provider_(new FrameProvider()) {
   TRACE_EVENT0("cobalt::loader::image",
                "AnimatedWebPImage::AnimatedWebPImage()");
@@ -203,8 +201,9 @@ void AnimatedWebPImage::DecodeFrames() {
   DCHECK(task_runner_->BelongsToCurrentThread());
 
   if (decode_closure_.callback().is_null()) {
-    decode_closure_.Reset(base::Bind(&AnimatedWebPImage::LockAndDecodeFrames,
-                                     base::Unretained(this)));
+    decode_closure_.Reset(
+        base::Bind(&AnimatedWebPImage::LockAndDecodeFrames,
+                   base::Unretained(this)));
   }
 
   if (AdvanceFrame()) {
@@ -264,10 +263,9 @@ bool AnimatedWebPImage::DecodeOneFrame(int frame_index) {
       return false;
     }
 
-    ImageDecoder image_decoder(resource_provider_, debugger_hooks_,
-                               base::Bind(&RecordImage, &next_frame_image),
-                               ImageDecoder::kImageTypeWebP,
-                               base::Bind(&DecodeError));
+    ImageDecoder image_decoder(
+        resource_provider_, base::Bind(&RecordImage, &next_frame_image),
+        ImageDecoder::kImageTypeWebP, base::Bind(&DecodeError));
     image_decoder.DecodeChunk(
         reinterpret_cast<const char*>(webp_iterator.fragment.bytes),
         webp_iterator.fragment.size);

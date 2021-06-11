@@ -53,9 +53,9 @@ class StubWindow {
         dom_parser_(
             new dom_parser::Parser(base::Bind(&StubLoadCompleteCallback))),
         fetcher_factory_(new loader::FetcherFactory(NULL)),
-        loader_factory_(new loader::LoaderFactory(
-            "Test", fetcher_factory_.get(), NULL, null_debugger_hooks_, 0,
-            base::ThreadPriority::DEFAULT)),
+        loader_factory_(
+            new loader::LoaderFactory("Test", fetcher_factory_.get(), NULL, 0,
+                                      base::ThreadPriority::DEFAULT)),
         local_storage_database_(NULL),
         url_("about:blank"),
         dom_stat_tracker_(new dom::DomStatTracker("StubWindow")) {
@@ -68,7 +68,7 @@ class StubWindow {
                   0, NULL, NULL, NULL, NULL, NULL, engine_.get(),
                   global_environment(), null_debugger_hooks_, NULL));
     window_ = new dom::Window(
-        environment_settings_.get(), cssom::ViewportSize(1920, 1080),
+        environment_settings_.get(), cssom::ViewportSize(1920, 1080), 1.f,
         base::kApplicationStateStarted, css_parser_.get(), dom_parser_.get(),
         fetcher_factory_.get(), loader_factory_.get(), NULL, NULL, NULL, NULL,
         NULL, NULL, &local_storage_database_, NULL, NULL, NULL, NULL,
@@ -106,7 +106,6 @@ class StubWindow {
       const base::Optional<std::string>& error) {}
 
   base::MessageLoop message_loop_;
-  base::NullDebuggerHooks null_debugger_hooks_;
   std::unique_ptr<css_parser::Parser> css_parser_;
   std::unique_ptr<dom_parser::Parser> dom_parser_;
   std::unique_ptr<loader::FetcherFactory> fetcher_factory_;
@@ -117,6 +116,7 @@ class StubWindow {
   std::unique_ptr<script::EnvironmentSettings> environment_settings_;
   std::unique_ptr<script::JavaScriptEngine> engine_;
   scoped_refptr<script::GlobalEnvironment> global_environment_;
+  base::NullDebuggerHooks null_debugger_hooks_;
   scoped_refptr<dom::Window> window_;
 };
 

@@ -22,8 +22,6 @@
 
     'compiler_flags': [
       '-isystem<(cobalt_repo_root)/third_party/musl/arch/i386',
-      '-ffunction-sections',
-      '-fdata-sections',
     ],
   },
 

@@ -92,8 +92,7 @@ class AudioRendererImpl : public AudioRenderer,
   void Seek(SbTime seek_to_time) override;
   SbTime GetCurrentMediaTime(bool* is_playing,
                              bool* is_eos_played,
-                             bool* is_underflow,
-                             double* playback_rate) override;
+                             bool* is_underflow) override;
 
  private:
   enum EOSState {

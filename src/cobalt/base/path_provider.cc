@@ -31,9 +31,6 @@ base::FilePath GetOrCreateDirectory(SbSystemPathId path_id) {
     base::FilePath directory(path.get());
     if (base::PathExists(directory) || base::CreateDirectory(directory)) {
       return directory;
-    } else {
-      DLOG(ERROR) << "Attempt to open or create this path failed: " +
-                         directory.value();
     }
   }
   return base::FilePath();

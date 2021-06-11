@@ -123,8 +123,7 @@ void MinRequiredFramesTester::TesterThreadFunc() {
         min_required_frames_ * task.number_of_channels *
             GetSampleSize(task.sample_type),
         &MinRequiredFramesTester::UpdateSourceStatusFunc,
-        &MinRequiredFramesTester::ConsumeFramesFunc,
-        &MinRequiredFramesTester::ErrorFunc, 0, -1, this);
+        &MinRequiredFramesTester::ConsumeFramesFunc, this);
     {
       ScopedLock scoped_lock(mutex_);
       wait_timeout = !condition_variable_.WaitTimed(kSbTimeSecond * 5);
@@ -132,6 +131,7 @@ void MinRequiredFramesTester::TesterThreadFunc() {
 
     if (wait_timeout) {
       SB_LOG(ERROR) << "Audio sink min required frames tester timeout.";
+      SB_NOTREACHED();
     }
 
     delete audio_sink_;
@@ -173,14 +173,6 @@ void MinRequiredFramesTester::ConsumeFramesFunc(int frames_consumed,
   SB_DCHECK(tester);
 
   tester->ConsumeFrames(frames_consumed);
-}
-
-// static
-void MinRequiredFramesTester::ErrorFunc(bool capability_changed,
-                                        void* context) {
-  // TODO: Handle errors during minimum frames test, maybe by terminating the
-  //       test earlier.
-  SB_NOTREACHED();
 }
 
 void MinRequiredFramesTester::UpdateSourceStatus(int* frames_in_buffer,

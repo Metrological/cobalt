@@ -208,13 +208,6 @@ SbMediaIsAudioSupported().
 
 ### Enables a test that checks that Opus is supported.
 
-### Add `kSbSystemPropertySystemIntegratorName`
-
-This change also deprecates `kSbSystemPropertyOriginalDesignManufacturerName`.
-The `kSbSystemPropertySystemIntegratorName` value will represent the corporate
-entity responsible for submitting the device to YouTube certification and for
-the device maintenance/updates.
-
 ### Deprecated the Blitter API.
 
 Blitter API is no longer supported on any platform. Use the OpenGL ES
@@ -232,12 +225,7 @@ optimizations are used instead.
 ### Deprecated unused enums |kSbPlayerDecoderStateBufferFull| and
 |kSbPlayerDecoderStateDestroyed|.
 
-### Deprecated the usage of |SbMediaIsOutputProtected()| and
-|SbMediaSetOutputProtection()|.
-
-### Deprecated the |SB_HAS_QUIRK_SEEK_TO_KEYFRAME| macro.
-
-### Deprecated the |SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING| macro.
+### Deprecate the |SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING| macro.
 
 ### Deprecated 'cobalt_minimum_frame_time_in_milliseconds'.
 
@@ -260,23 +248,6 @@ If the platform supports text-to-speech settings, it must use the new
 kSbEventTypeAccessiblityTextToSpeechSettingsChanged event to inform the app
 when those settings change. For older starboard versions, use
 kSbEventTypeAccessiblitySettingsChanged instead.
-
-### Add extension to SbMediaCanPlayMimeAndKeySystem() for encryptionScheme.
-
-Now the Starboard implementation may choose to support |key_system| with extra
-attributes, in order to selectively support encryption schemes on particular
-containers or codecs.
-The Starboard implementation needn't support |key_system| with extra attributes
-if it meets the requirements for the default implementation of
-`Navigator.requestMediaKeySystemAccess()`, which assumes that:
-1. When the Widevine DRM system is used, all the encryption schemes ('cenc',
-   'cbcs', 'cbcs-1-9') should be supported across all containers and codecs
-   supported by the platform.
-2. When the PlayReady DRM system is used, only 'cenc' is supported across all
-   containers and codecs supported by the platform.
-
-Please see the comment of `SbMediaCanPlayMimeAndKeySystem()` in `media.h` for
-more details.
 
 ## Version 11
 

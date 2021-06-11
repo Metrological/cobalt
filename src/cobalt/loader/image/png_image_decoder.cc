@@ -16,7 +16,6 @@
 
 #include "base/logging.h"
 #include "base/trace_event/trace_event.h"
-#include "cobalt/base/console_log.h"
 #include "nb/memory_scope.h"
 
 namespace cobalt {
@@ -67,9 +66,8 @@ void DecodingWarning(png_structp png, png_const_charp warning_msg) {
 }  // namespace
 
 PNGImageDecoder::PNGImageDecoder(
-    render_tree::ResourceProvider* resource_provider,
-    const base::DebuggerHooks& debugger_hooks)
-    : ImageDataDecoder(resource_provider, debugger_hooks),
+    render_tree::ResourceProvider* resource_provider)
+    : ImageDataDecoder(resource_provider),
       png_(NULL),
       info_(NULL),
       has_alpha_(false),
@@ -236,8 +234,8 @@ void PNGImageDecoder::HeaderAvailableCallback() {
   if (interlace_type == PNG_INTERLACE_ADAM7) {
     // Notify libpng to send us rows for interlaced pngs.
     png_set_interlace_handling(png_);
-    CLOG(WARNING, debugger_hooks()) << "Interlaced PNGs are not displayed "
-                                       "properly in older versions of Cobalt";
+    DLOG(WARNING) << "Interlaced PNGs are not displayed properly in older "
+                     "versions of Cobalt";
   }
 
   // Updates |info_| to reflect any transformations that have been requested.

@@ -27,10 +27,6 @@ def _MaybeJoin(shell, command):
 class Shell(abstract.Shell):
   """Constructs command lines using Cmd syntax."""
 
-  def __init__(self, quote=True):
-    # Toggle whether or not to quote command line arguments.
-    self.quote = quote
-
   def MaybeQuoteArgument(self, arg):
     # Rather than attempting to enumerate the bad shell characters, just
     # whitelist common OK ones and quote anything else.
@@ -80,10 +76,7 @@ class Shell(abstract.Shell):
 
   def Join(self, command):
     assert not isinstance(command, basestring)
-    if self.quote:
-      return ' '.join(self.MaybeQuoteArgument(argument) for argument in command)
-    else:
-      return ' '.join(command)
+    return ' '.join(self.MaybeQuoteArgument(argument) for argument in command)
 
   def And(self, *commands):
     return ' && '.join(_MaybeJoin(self, command) for command in commands)

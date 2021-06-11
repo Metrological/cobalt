@@ -27,7 +27,6 @@ Types of audio elementary streams that can be supported.
 *   `kSbMediaAudioCodecNone`
 *   `kSbMediaAudioCodecAac`
 *   `kSbMediaAudioCodecAc3`
-*   `kSbMediaAudioCodecEac3`
 *   `kSbMediaAudioCodecOpus`
 *   `kSbMediaAudioCodecVorbis`
 
@@ -190,25 +189,17 @@ output.
     `0` if this device cannot provide this information, in which case the caller
     can probably assume stereo output.
 
-### SbMediaAudioSampleInfo ###
+### SbMediaAudioHeader ###
 
-An audio sample info, which is a description of a given audio sample. This, in
-hexadecimal string form, acts as a set of instructions to the audio decoder.
+An audio sequence header, which is a description of a given audio stream. This,
+in hexadecimal string form, acts as a set of instructions to the audio decoder.
 
-The audio sample info consists of a little-endian hexadecimal encoded
+The Sequence Header consists of a little-endian hexadecimal encoded
 `WAVEFORMATEX` structure followed by an Audio-specific configuration field. The
 `WAVEFORMATEX` structure is specified at: [http://msdn.microsoft.com/en-us/library/dd390970(v=vs.85).aspx](http://msdn.microsoft.com/en-us/library/dd390970(v=vs.85).aspx)
 
 #### Members ####
 
-*   `SbMediaAudioCodec codec`
-
-    The audio codec of this sample.
-*   `const char * mime`
-
-    The mime of the audio stream when `codec` isn't kSbMediaAudioCodecNone. It
-    may point to an empty string if the mime is not available, and it can only
-    be set to NULL when `codec` is kSbMediaAudioCodecNone.
 *   `uint16_t format_tag`
 
     The waveform-audio format type code.
@@ -372,26 +363,6 @@ The set of information required by the decoder or player for each video sample.
 
 #### Members ####
 
-*   `SbMediaVideoCodec codec`
-
-    The video codec of this sample.
-*   `const char * mime`
-
-    The mime of the video stream when `codec` isn't kSbMediaVideoCodecNone. It
-    may point to an empty string if the mime is not available, and it can only
-    be set to NULL when `codec` is kSbMediaVideoCodecNone.
-*   `const char * max_video_capabilities`
-
-    Indicates the max video capabilities required. The web app will not provide
-    a video stream exceeding the maximums described by this parameter. Allows
-    the platform to optimize playback pipeline for low quality video streams if
-    it knows that it will never adapt to higher quality streams. The string uses
-    the same format as the string passed in to SbMediaCanPlayMimeAndKeySystem(),
-    for example, when it is set to "width=1920; height=1080; framerate=15;", the
-    video will never adapt to resolution higher than 1920x1080 or frame per
-    second higher than 15 fps. When the maximums are unknown, this will be set
-    to an empty string. It can only be set to NULL when `codec` is
-    kSbMediaVideoCodecNone.
 *   `bool is_key_frame`
 
     Indicates whether the associated sample is a key frame (I-frame). Video key
@@ -406,7 +377,7 @@ The set of information required by the decoder or player for each video sample.
     The frame height of this sample, in pixels. Also could be parsed from the
     Sequence Parameter Set (SPS) NAL Unit. Frame dimensions must only change on
     key frames, but may change on any key frame.
-*   `SbMediaColorMetadata color_metadata`
+*   `SbMediaColorMetadata* color_metadata`
 
     HDR metadata common for HDR10 and WebM/VP9-based HDR formats as well as the
     Color Space, and Color elements: MatrixCoefficients, BitsPerChannel,
@@ -429,38 +400,10 @@ Note that neither `mime` nor `key_system` can be NULL. This function returns
 `mime`: The mime information of the media in the form of `video/webm` or
 `video/mp4; codecs="avc1.42001E"`. It may include arbitrary parameters like
 "codecs", "channels", etc. Note that the "codecs" parameter may contain more
-than one codec, delimited by comma. `key_system`: A lowercase value in the form
+than one codec, delimited by comma. `key_system`: A lowercase value in fhe form
 of "com.example.somesystem" as suggested by [https://w3c.github.io/encrypted-media/#key-system](https://w3c.github.io/encrypted-media/#key-system)) that can
 be matched exactly with known DRM key systems of the platform. When `key_system`
 is an empty string, the return value is an indication for non-encrypted media.
-
-An implementation may choose to support `key_system` with extra attributes,
-separated by ';', like `com.example.somesystem; attribute_name1="value1";
-attribute_name2=value1`. If `key_system` with attributes is not supported by an
-implementation, it should treat `key_system` as if it contains only the key
-system, and reject any input containing extra attributes, i.e. it can keep using
-its existing implementation. When an implementation supports `key_system` with
-attributes, it has to support all attributes defined by the Starboard version
-the implementation uses. An implementation should ignore any unknown attributes,
-and make a decision solely based on the key system and the known attributes. For
-example, if an implementation supports "com.widevine.alpha", it should also
-return `kSbMediaSupportTypeProbably` kSbMediaSupportTypeProbably when
-`key_system` is `com.widevine.alpha; invalid_attribute="invalid_value"`.
-Currently the only attribute has to be supported is `encryptionscheme`. It
-reflects the value passed to `encryptionScheme` encryptionScheme of
-MediaKeySystemMediaCapability, as defined in [https://wicg.github.io/encrypted-media-encryption-scheme/,](https://wicg.github.io/encrypted-media-encryption-scheme/,),) which can take value "cenc", "cbcs", or "cbcs-1-9". Empty string is
-not a valid value for `encryptionscheme` and the implementation should return
-`kSbMediaSupportTypeNotSupported` kSbMediaSupportTypeNotSupported when
-`encryptionscheme` is set to "". The implementation should return
-`kSbMediaSupportTypeNotSupported` kSbMediaSupportTypeNotSupported for unknown
-values of known attributes. For example, if an implementation supports
-"encryptionscheme" with value "cenc", "cbcs", or "cbcs-1-9", then it should
-return `kSbMediaSupportTypeProbably` kSbMediaSupportTypeProbably when
-`key_system` is `com.widevine.alpha; encryptionscheme="cenc"`, and return
-`kSbMediaSupportTypeNotSupported` kSbMediaSupportTypeNotSupported when
-`key_system` is `com.widevine.alpha; encryptionscheme="invalid"`. If an
-implementation supports key system with attributes on one key system, it has to
-support key system with attributes on all key systems supported.
 
 #### Declaration ####
 
@@ -681,6 +624,18 @@ pools should be allocated on demand, as opposed to using SbMemory* functions.
 bool SbMediaIsBufferUsingMemoryPool()
 ```
 
+### SbMediaIsOutputProtected ###
+
+Indicates whether output copy protection is currently enabled on all capable
+outputs. If `true`, then non-protection-capable outputs are expected to be
+blanked.
+
+#### Declaration ####
+
+```
+bool SbMediaIsOutputProtected()
+```
+
 ### SbMediaIsSupported ###
 
 Indicates whether this platform supports decoding `video_codec` and
@@ -699,21 +654,20 @@ platform to decode any supported input formats.
 bool SbMediaIsSupported(SbMediaVideoCodec video_codec, SbMediaAudioCodec audio_codec, const char *key_system)
 ```
 
-### SbMediaSetAudioWriteDuration ###
+### SbMediaSetOutputProtection ###
 
-Communicate to the platform how far past `current_playback_position` the app
-will write audio samples. The app will write all samples between
-`current_playback_position` and `current_playback_position` + `duration`, as
-soon as they are available. The app may sometimes write more samples than that,
-but the app only guarantees to write `duration` past `current_playback_position`
-in general. The platform is responsible for guaranteeing that when only
-`duration` audio samples are written at a time, no playback issues occur (such
-as transient or indefinite hanging). The platform may assume `duration` >= 0.5
-seconds.
+Enables or disables output copy protection on all capable outputs. If enabled,
+then non-protection-capable outputs are expected to be blanked.
+
+The return value indicates whether the operation was successful, and the
+function returns a success even if the call is redundant in that it doesn't
+change the current value.
+
+`enabled`: Indicates whether output protection is enabled (`true`) or disabled.
 
 #### Declaration ####
 
 ```
-void SbMediaSetAudioWriteDuration(SbTime duration)
+bool SbMediaSetOutputProtection(bool enabled)
 ```
 

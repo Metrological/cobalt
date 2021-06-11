@@ -27,6 +27,8 @@ namespace subtlecrypto {
 
 namespace {
 
+// TODO: Test performance for large input data, and evaluate
+// removing copies of inputs to a vector.
 const ByteVector to_vector(const dom::BufferSource &data) {
   const uint8_t *buff;
   int buf_len;
@@ -38,21 +40,18 @@ std::string algo_name(const Algorithm &algo) {
   return algo.has_name() ? algo.name() : "";
 }
 
-template <typename T, typename W>
-std::string get_name(const W &algorithm) {
-  if (algorithm.template IsType<T>()) {
-    return algo_name(algorithm.template AsType<T>());
-  }
-  return std::is_same<T, Algorithm>::value ? ""
-                                           : get_name<Algorithm>(algorithm);
+std::string to_string(SubtleCrypto::AlgorithmIdentifier algorithm) {
+  return algorithm.IsType<std::string>()
+             ? algorithm.AsType<std::string>()
+             : algo_name(algorithm.AsType<Algorithm>());
 }
 
-template <typename T = Algorithm, typename W>
-std::string get_name_or_string(const W &algorithm) {
+template <typename T, typename W>
+std::string getName(const W &algorithm) {
   if (algorithm.template IsType<T>()) {
     return algo_name(algorithm.template AsType<T>());
   }
-  return algorithm.template AsType<std::string>();
+  return "";
 }
 
 template <typename Promise>
@@ -109,7 +108,9 @@ PromiseArray SubtleCrypto::Decrypt(EncryptionAlgorithm algorithm,
   // parameter passed to the decrypt method.
   // 3. Let normalizedAlgorithm be the result of normalizing an algorithm, with
   // alg set to algorithm and op set to "decrypt".
-  std::string normalizedAlgorithm = get_name<AesCtrParams>(algorithm);
+  std::string normalizedAlgorithm = getName<AesCtrParams>(algorithm);
+  if (normalizedAlgorithm.empty())
+    normalizedAlgorithm = getName<Algorithm>(algorithm);
   // 5. Let promise be a new Promise.
   auto promise = CreatePromise();
   // 4. If an error occurred, return a Promise rejected with
@@ -168,7 +169,9 @@ PromiseArray SubtleCrypto::Encrypt(EncryptionAlgorithm algorithm,
   // parameter passed to the encrypt method.
   // 3. Let normalizedAlgorithm be the result of normalizing an algorithm, with
   // alg set to algorithm and op set to "encrypt".
-  std::string normalizedAlgorithm = get_name<AesCtrParams>(algorithm);
+  std::string normalizedAlgorithm = getName<AesCtrParams>(algorithm);
+  if (normalizedAlgorithm.empty())
+    normalizedAlgorithm = getName<Algorithm>(algorithm);
   // 5. Let promise be a new Promise.
   auto promise = CreatePromise();
   // 4. If an error occurred, return a Promise rejected with
@@ -225,7 +228,7 @@ PromiseArray SubtleCrypto::Sign(AlgorithmIdentifier algorithm,
   // parameter passed to the sign method.
   // 3. Let normalizedAlgorithm be the result of normalizing an algorithm, with
   // alg set to algorithm and op set to "sign".
-  std::string normalizedAlgorithm = get_name_or_string(algorithm);
+  std::string normalizedAlgorithm = getName<Algorithm>(algorithm);
   // 5. Let promise be a new Promise.
   auto promise = CreatePromise();
   if (normalizedAlgorithm == "HMAC") {
@@ -261,7 +264,7 @@ PromiseBool SubtleCrypto::Verify(AlgorithmIdentifier algorithm,
   // parameter passed to the verify method.
   // 4. Let normalizedAlgorithm be the result of normalizing an algorithm, with
   // alg set to algorithm and op set to "verify".
-  std::string normalizedAlgorithm = get_name_or_string(algorithm);
+  std::string normalizedAlgorithm = getName<Algorithm>(algorithm);
   // 6. Let promise be a new Promise.
   auto promise = CreatePromise<PromiseBool, bool>();
   if (normalizedAlgorithm == "HMAC") {
@@ -294,7 +297,7 @@ PromiseArray SubtleCrypto::Digest(AlgorithmIdentifier algorithm,
   // parameter passed to the digest method.
   // 3. Let normalizedAlgorithm be the result of normalizing an algorithm, with
   // alg set to algorithm and op set to "digest".
-  auto normalizedAlgorithm = get_name_or_string(algorithm);
+  auto normalizedAlgorithm = to_string(algorithm);
   // 5. Let promise be a new Promise.
   auto promise = CreatePromise();
   auto hash = Hash::CreateByName(normalizedAlgorithm);
@@ -348,7 +351,7 @@ PromiseWrappable SubtleCrypto::ImportKey(
   // 3. Let normalizedAlgorithm be the result of normalizing an algorithm, with
   // alg set to algorithm and op set to "importKey".
   std::string normalizedAlgorithm =
-      get_name_or_string<ImportKeyAlgorithmParams>(algorithm);
+      getName<ImportKeyAlgorithmParams>(algorithm);
   // 5. Let promise be a new Promise.
   auto promise = CreateKeyPromise();
 

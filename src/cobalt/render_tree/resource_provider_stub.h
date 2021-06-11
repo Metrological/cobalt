@@ -282,6 +282,7 @@ class ResourceProviderStub : public ResourceProvider {
     return base::WrapRefCounted(new ImageStub(std::move(skia_source_data)));
   }
 
+#if SB_HAS(GRAPHICS)
   scoped_refptr<Image> CreateImageFromSbDecodeTarget(
       SbDecodeTarget decode_target) override {
     NOTREACHED();
@@ -290,11 +291,14 @@ class ResourceProviderStub : public ResourceProvider {
   }
 
   bool SupportsSbDecodeTarget() override { return false; }
+#endif  // SB_HAS(GRAPHICS)
 
+#if SB_HAS(GRAPHICS)
   SbDecodeTargetGraphicsContextProvider*
   GetSbDecodeTargetGraphicsContextProvider() override {
     return NULL;
   }
+#endif  // SB_HAS(GRAPHICS)
 
   std::unique_ptr<RawImageMemory> AllocateRawImageMemory(
       size_t size_in_bytes, size_t alignment) override {

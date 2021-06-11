@@ -38,7 +38,6 @@ from __future__ import print_function
 
 import _env  # pylint: disable=unused-import,g-bad-import-order
 
-import logging
 import os
 import SimpleHTTPServer
 import threading
@@ -70,9 +69,9 @@ class JavascriptRequestDetector(MakeRequestHandlerClass(_SERVER_ROOT_PATH)):
     if parsed_path.path == '/testdata/' + _CANCEL_SYNC_LOADS_WHEN_SUSPENDED_JS:
       _received_script_resource_request.set()
       # It is important not to send any response back, so we block.
-      logging.info('Waiting on test to finish.')
+      print('Waiting on test to finish.')
       _test_finished.wait()
-      logging.info('Test is finished.')
+      print('Test is finished.')
       return
 
     return SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
@@ -106,19 +105,19 @@ class CancelSyncLoadsWhenSuspended(black_box_tests.BlackBoxTestCase):
           cobalt_launcher_thread.start()
 
           # Step 3. Wait HTTP request for html resource.
-          logging.info('Waiting for script resource request')
+          print('Waiting for script resource request')
           request_received = _received_script_resource_request.wait(
               _MAX_ALLOTTED_TIME_SECONDS)
-          logging.info('Request received: {}'.format(request_received))
+          print('Request received: {}'.format(request_received))
           # Step 5. Wait for a request for javascript resource.
           self.assertTrue(request_received)
 
           # Step 6. Suspend Cobalt process.
-          logging.info('Suspending Cobalt.')
+          print('Suspending Cobalt.')
           runner.SendSuspend()
           # Step 7. Cobalt disconnects from the socket.
           # Step 8. Resume Cobalt process, which enables the JS test to pass.
-          logging.info('Resuming Cobalt.')
+          print('Resuming Cobalt.')
           runner.SendResume()
 
           # Step 9. Check to see if JSTestsSucceeded().
@@ -130,5 +129,5 @@ class CancelSyncLoadsWhenSuspended(black_box_tests.BlackBoxTestCase):
       # Consider an exception being thrown as a test failure.
       self.assertTrue(False)
     finally:
-      logging.info('Cleaning up.')
+      print('Cleaning up.')
       _test_finished.set()
