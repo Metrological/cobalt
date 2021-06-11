@@ -147,6 +147,9 @@ void BaseEventHandler(const SbEvent* event) {
 #if SB_API_VERSION >= 13
     case kSbEventDateTimeConfigurationChanged:
 #endif
+#if SB_HAS(WPE_FRAMEWORK)
+    case kSbEventTypeNavigate:
+#endif // SB_HAS(WPE_FRAMEWORK)
       event_function(event);
       break;
   }

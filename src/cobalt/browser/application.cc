@@ -1128,6 +1128,13 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
       DispatchEventInternal(new base::WindowOnOnlineEvent());
       break;
 #endif
+#if SB_HAS(WPE_FRAMEWORK)
+    case kSbEventTypeNavigate: {
+      const char* url = static_cast<const char*>(starboard_event->data);
+      browser_module_->Navigate(GURL(url));
+      break;
+    }
+#endif // SB_HAS(WPE_FRAMEWORK)
 #if SB_API_VERSION >= 13
     case kSbEventDateTimeConfigurationChanged:
       DispatchEventInternal(new base::DateTimeConfigurationChangedEvent());
@@ -1271,6 +1278,9 @@ void Application::OnApplicationEvent(SbEventType event_type) {
     case kSbEventTypeOsNetworkDisconnected:
     case kSbEventTypeOsNetworkConnected:
 #endif
+#if SB_HAS(WPE_FRAMEWORK)
+    case kSbEventTypeNavigate:
+#endif // SB_HAS(WPE_FRAMEWORK)
 #if SB_API_VERSION >= 13
     case kSbEventDateTimeConfigurationChanged:
 #endif
