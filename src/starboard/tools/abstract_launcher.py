@@ -23,6 +23,10 @@ import _env  # pylint: disable=unused-import
 from starboard.tools import build
 from starboard.tools import paths
 
+ARG_NOINSTALL = "noinstall"
+ARG_SYSTOOLS = "systools"
+ARG_DRYRUN = "dryrun"
+
 
 def _GetLauncherForPlatform(platform_name):
   """Gets the module containing a platform's concrete launcher implementation.
@@ -125,6 +129,11 @@ class AbstractLauncher(object):
       env_variables = {}
     self.env_variables = env_variables
 
+    launcher_args = kwargs.get("launcher_args", None)
+    if launcher_args is None:
+      launcher_args = []
+    self.launcher_args = launcher_args
+
     # Launchers that need different startup timeout times should reassign
     # this variable during initialization.
     self.startup_timeout_seconds = 2 * 60
@@ -226,6 +235,27 @@ class AbstractLauncher(object):
     raise RuntimeError(
         "Deep link not supported for this platform (link {} sent).".format(
             link))
+
+  # Not like SendSuspendResume sending signals to cobalt, system suspend and
+  # resume send system signals to suspend and resume cobalt process.
+  def SupportsSystemSuspendResume(self):
+    return False
+
+  def SendSystemResume(self):
+    """sends a system signal to the resume the launcher's executable.
+
+    Raises:
+      RuntimeError: System resume signal not supported on platform.
+    """
+    raise RuntimeError("System resume signal not supported for this platform.")
+
+  def SendSystemSuspend(self):
+    """sends a system signal to suspend the current running executable.
+
+    Raises:
+      RuntimeError: System suspend signal not supported on platform.
+    """
+    raise RuntimeError("System suspend signal not supported for this platform.")
 
   def GetStartupTimeout(self):
     """Gets the number of seconds to wait before assuming a launcher timeout."""

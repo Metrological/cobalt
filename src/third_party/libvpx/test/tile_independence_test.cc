@@ -24,9 +24,7 @@ class TileIndependenceTest : public ::libvpx_test::EncoderTest,
                              public ::libvpx_test::CodecTestWithParam<int> {
  protected:
   TileIndependenceTest()
-      : EncoderTest(GET_PARAM(0)),
-        md5_fw_order_(),
-        md5_inv_order_(),
+      : EncoderTest(GET_PARAM(0)), md5_fw_order_(), md5_inv_order_(),
         n_tiles_(GET_PARAM(1)) {
     init_flags_ = VPX_CODEC_USE_PSNR;
     vpx_codec_dec_cfg_t cfg = vpx_codec_dec_cfg_t();
@@ -50,7 +48,7 @@ class TileIndependenceTest : public ::libvpx_test::EncoderTest,
 
   virtual void PreEncodeFrameHook(libvpx_test::VideoSource *video,
                                   libvpx_test::Encoder *encoder) {
-    if (video->frame() == 1) {
+    if (video->frame() == 0) {
       encoder->Control(VP9E_SET_TILE_COLUMNS, n_tiles_);
     }
   }
@@ -58,7 +56,7 @@ class TileIndependenceTest : public ::libvpx_test::EncoderTest,
   void UpdateMD5(::libvpx_test::Decoder *dec, const vpx_codec_cx_pkt_t *pkt,
                  ::libvpx_test::MD5 *md5) {
     const vpx_codec_err_t res = dec->DecodeFrame(
-        reinterpret_cast<uint8_t*>(pkt->data.frame.buf), pkt->data.frame.sz);
+        reinterpret_cast<uint8_t *>(pkt->data.frame.buf), pkt->data.frame.sz);
     if (res != VPX_CODEC_OK) {
       abort_ = true;
       ASSERT_EQ(VPX_CODEC_OK, res);
@@ -102,7 +100,5 @@ TEST_P(TileIndependenceTest, MD5Match) {
   ASSERT_STREQ(md5_fw_str, md5_inv_str);
 }
 
-VP9_INSTANTIATE_TEST_CASE(TileIndependenceTest, ::testing::Range(0, 2, 1));
-
-VP10_INSTANTIATE_TEST_CASE(TileIndependenceTest, ::testing::Range(0, 2, 1));
+VP9_INSTANTIATE_TEST_SUITE(TileIndependenceTest, ::testing::Range(0, 2, 1));
 }  // namespace

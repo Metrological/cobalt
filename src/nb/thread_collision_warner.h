@@ -15,7 +15,7 @@
 //
 //          In this case the macro DFAKE_SCOPED_LOCK has to be
 //          used, it checks that if a thread is inside the push/pop then
-//          noone else is still inside the pop/push
+//          no one else is still inside the pop/push
 //
 // class NonThreadSafeQueue {
 //  public:
@@ -34,7 +34,7 @@
 //
 //          In this case the macro DFAKE_SCOPED_RECURSIVE_LOCK
 //          has to be used, it checks that if a thread is inside the push/pop
-//          then noone else is still inside the pop/push
+//          then no one else is still inside the pop/push
 //
 // class NonThreadSafeQueue {
 //  public:
@@ -74,7 +74,7 @@
 // };
 //
 //
-// Example: Class that has to be contructed/destroyed on same thread, it has
+// Example: Class that has to be constructed/destroyed on same thread, it has
 //          a "shareable" method (with external synchronization) and a not
 //          shareable method (even with external synchronization).
 //
@@ -93,7 +93,7 @@
 //   DFAKE_MUTEX(shareable_section_);
 // };
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) || defined(DCHECK_ALWAYS_ON)
 
 // Defines a class member that acts like a mutex. It is used only as a
 // verification tool.
@@ -138,7 +138,7 @@ struct DCheckAsserter : public AsserterBase {
 class ThreadCollisionWarner {
  public:
   // The parameter asserter is there only for test purpose
-  ThreadCollisionWarner(AsserterBase* asserter = new DCheckAsserter())
+  explicit ThreadCollisionWarner(AsserterBase* asserter = new DCheckAsserter())
       : valid_thread_id_(0), counter_(0), asserter_(asserter) {}
 
   ~ThreadCollisionWarner() { delete asserter_; }

@@ -28,12 +28,11 @@
 namespace cobalt {
 namespace browser {
 
-#if SB_API_VERSION >= 11
-
 namespace {
 
 constexpr size_t kSHA256DigestSize = 32;
 
+#if SB_API_VERSION < 13
 bool ComputeSignatureWithSystemPropertySecret(const std::string& message,
                                               uint8_t* signature) {
   const size_t kBase64EncodedCertificationSecretLength = 1023;
@@ -50,6 +49,7 @@ bool ComputeSignatureWithSystemPropertySecret(const std::string& message,
                                             signature, kSHA256DigestSize);
   return true;
 }
+#endif  // SB_API_VERSION < 13
 
 bool ComputeSignatureFromSignAPI(const std::string& message,
                                  uint8_t* signature) {
@@ -68,8 +68,10 @@ std::string ComputeBase64Signature(const std::string& message) {
   if (ComputeSignatureFromSignAPI(message, signature)) {
     DLOG(INFO) << "Using certification signature provided by "
                << "SbSystemSignWithCertificationSecretKey().";
+#if SB_API_VERSION < 13
   } else if (ComputeSignatureWithSystemPropertySecret(message, signature)) {
     DLOG(INFO) << "Using certification key from SbSystemGetProperty().";
+#endif  // SB_API_VERSION < 13
   } else {
     return std::string();
   }
@@ -197,8 +199,6 @@ void ComputeHMACSHA256SignatureWithProvidedKey(const std::string& message,
     DLOG(ERROR) << "Unable to sign HMAC-SHA256.";
   }
 }
-
-#endif  // SB_API_VERSION >= 11
 
 }  // namespace browser
 }  // namespace cobalt

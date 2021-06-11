@@ -31,6 +31,7 @@
 #include "cobalt/cssom/css_style_declaration.h"
 #include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/animation_frame_request_callback_list.h"
+#include "cobalt/dom/application_lifecycle_state.h"
 #include "cobalt/dom/captions/system_caption_settings.h"
 #include "cobalt/dom/crypto.h"
 #include "cobalt/dom/csp_delegate_type.h"
@@ -63,7 +64,6 @@
 #include "cobalt/media/web_media_player_factory.h"
 #include "cobalt/network_bridge/cookie_jar.h"
 #include "cobalt/network_bridge/net_poster.h"
-#include "cobalt/page_visibility/page_visibility_state.h"
 #include "cobalt/script/callback_function.h"
 #include "cobalt/script/environment_settings.h"
 #include "cobalt/script/error_report.h"
@@ -87,7 +87,6 @@ namespace cobalt {
 namespace dom {
 
 class Camera3D;
-class Console;
 class Document;
 class Element;
 class Event;
@@ -106,8 +105,7 @@ class WindowTimers;
 //   https://www.w3.org/TR/html50/browsers.html#the-window-object
 //
 // TODO: Properly handle viewport resolution change event.
-class Window : public EventTarget,
-               public page_visibility::PageVisibilityState::Observer {
+class Window : public EventTarget, public ApplicationLifecycleState::Observer {
  public:
   typedef AnimationFrameRequestCallbackList::FrameRequestCallback
       FrameRequestCallback;
@@ -122,7 +120,9 @@ class Window : public EventTarget,
   // close() was called.
   typedef base::Callback<void(base::TimeDelta)> CloseCallback;
   typedef UrlRegistry<MediaSource> MediaSourceRegistry;
-  typedef base::Callback<bool(const GURL&, const std::string&)> CacheCallback;
+  typedef base::Callback<void(const std::string&,
+                              const base::Optional<std::string>&)>
+      CacheCallback;
 
   enum ClockType {
     kClockTypeTestRunner,
@@ -132,7 +132,7 @@ class Window : public EventTarget,
 
   Window(
       script::EnvironmentSettings* settings,
-      const cssom::ViewportSize& view_size, float device_pixel_ratio,
+      const cssom::ViewportSize& view_size,
       base::ApplicationState initial_application_state,
       cssom::CSSParser* css_parser, Parser* dom_parser,
       loader::FetcherFactory* fetcher_factory,
@@ -166,7 +166,6 @@ class Window : public EventTarget,
       const base::Closure& window_minimize_callback,
       OnScreenKeyboardBridge* on_screen_keyboard_bridge,
       const scoped_refptr<input::Camera3D>& camera_3d,
-      const scoped_refptr<cobalt::media_session::MediaSession>& media_session,
       const OnStartDispatchEventCallback&
           start_tracking_dispatch_event_callback,
       const OnStopDispatchEventCallback& stop_tracking_dispatch_event_callback,
@@ -266,7 +265,9 @@ class Window : public EventTarget,
   // The devicePixelRatio attribute returns the ratio of CSS pixels per device
   // pixel.
   //   https://www.w3.org/TR/2013/WD-cssom-view-20131217/#dom-window-devicepixelratio
-  float device_pixel_ratio() const { return device_pixel_ratio_; }
+  float device_pixel_ratio() const {
+    return viewport_size_.device_pixel_ratio();
+  }
 
   // Web API: GlobalCrypto (implements)
   //   https://www.w3.org/TR/WebCryptoAPI/#crypto-interface
@@ -312,10 +313,6 @@ class Window : public EventTarget,
   //   https://dvcs.w3.org/hg/speech-api/raw-file/4f41ea1126bb/webspeechapi.html#tts-section
   scoped_refptr<speech::SpeechSynthesis> speech_synthesis() const;
 
-  // Custom, not in any spec.
-  //
-  const scoped_refptr<Console>& console() const;
-
   const scoped_refptr<Camera3D>& camera_3d() const;
 
 #if defined(ENABLE_TEST_RUNNER)
@@ -347,18 +344,18 @@ class Window : public EventTarget,
       const SynchronousLayoutAndProduceRenderTreeCallback&
           synchronous_layout_callback);
 
-  void SetSize(cssom::ViewportSize size, float device_pixel_ratio);
+  void SetSize(cssom::ViewportSize size);
 
   void SetCamera3D(const scoped_refptr<input::Camera3D>& camera_3d);
 
   void set_web_media_player_factory(
-      media::WebMediaPlayerFactory* web_media_player_factory) {
-    html_element_context_->set_web_media_player_factory(
-        web_media_player_factory);
+    media::WebMediaPlayerFactory* web_media_player_factory) {
+  html_element_context_->set_web_media_player_factory(
+      web_media_player_factory);
   }
 
   // Sets the current application state, forwarding on to the
-  // PageVisibilityState associated with it and its document, causing
+  // ApplicationLifecycleState associated with it and its document, causing
   // precipitate events to be dispatched.
   void SetApplicationState(base::ApplicationState state);
 
@@ -367,17 +364,21 @@ class Window : public EventTarget,
   // Returns whether or not the script was handled.
   bool ReportScriptError(const script::ErrorReport& error_report);
 
-  // page_visibility::PageVisibilityState::Observer implementation.
+  // ApplicationLifecycleState::Observer implementation.
   void OnWindowFocusChanged(bool has_focus) override;
-  void OnVisibilityStateChanged(
-      page_visibility::VisibilityState visibility_state) override;
+  void OnVisibilityStateChanged(VisibilityState visibility_state) override;
+  void OnFrozennessChanged(bool is_frozen) override;
 
   // Called when the document's root element has its offset dimensions requested
   // and is unable to provide them.
   void OnDocumentRootElementUnableToProvideOffsetDimensions();
 
+  void OnWindowOnOnlineEvent();
+  void OnWindowOnOfflineEvent();
+
   // Cache the passed in splash screen content for the window.location URL.
-  void CacheSplashScreen(const std::string& content);
+  void CacheSplashScreen(const std::string& content,
+                         const base::Optional<std::string>& topic);
 
   const scoped_refptr<loader::CORSPreflightCache> get_preflight_cache() {
     return preflight_cache_;
@@ -404,6 +405,9 @@ class Window : public EventTarget,
 
   bool enable_map_to_mesh() { return enable_map_to_mesh_; }
 
+  const scoped_refptr<media_session::MediaSession>
+      media_session() const;
+
   DEFINE_WRAPPABLE_TYPE(Window);
 
  private:
@@ -425,8 +429,6 @@ class Window : public EventTarget,
 
   cssom::ViewportSize viewport_size_;
 
-  float device_pixel_ratio_;
-
   // A resize event can be pending if a resize occurs and the current visibility
   // state is not visible. In this case, the resize event will run when the
   // visibility state changes to visible.
@@ -441,14 +443,13 @@ class Window : public EventTarget,
   scoped_refptr<TestRunner> test_runner_;
 #endif  // ENABLE_TEST_RUNNER
 
-  const std::unique_ptr<HTMLElementContext> html_element_context_;
   scoped_refptr<Performance> performance_;
+  const std::unique_ptr<HTMLElementContext> html_element_context_;
   scoped_refptr<Document> document_;
   std::unique_ptr<loader::Loader> document_loader_;
   scoped_refptr<History> history_;
   scoped_refptr<Navigator> navigator_;
   std::unique_ptr<RelayLoadEvent> relay_on_load_event_;
-  scoped_refptr<Console> console_;
   scoped_refptr<Camera3D> camera_3d_;
   std::unique_ptr<WindowTimers> window_timers_;
   std::unique_ptr<AnimationFrameRequestCallbackList>

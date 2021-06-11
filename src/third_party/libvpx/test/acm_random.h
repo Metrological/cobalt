@@ -8,8 +8,12 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef TEST_ACM_RANDOM_H_
-#define TEST_ACM_RANDOM_H_
+#ifndef VPX_TEST_ACM_RANDOM_H_
+#define VPX_TEST_ACM_RANDOM_H_
+
+#include <assert.h>
+
+#include <limits>
 
 #include "third_party/googletest/src/include/gtest/gtest.h"
 
@@ -23,13 +27,28 @@ class ACMRandom {
 
   explicit ACMRandom(int seed) : random_(seed) {}
 
-  void Reset(int seed) {
-    random_.Reseed(seed);
-  }
+  void Reset(int seed) { random_.Reseed(seed); }
   uint16_t Rand16(void) {
     const uint32_t value =
         random_.Generate(testing::internal::Random::kMaxRange);
     return (value >> 15) & 0xffff;
+  }
+
+  int32_t Rand20Signed(void) {
+    // Use 20 bits: values between 524287 and -524288.
+    const uint32_t value = random_.Generate(1048576);
+    return static_cast<int32_t>(value) - 524288;
+  }
+
+  int16_t Rand16Signed(void) {
+    // Use 16 bits: values between 32767 and -32768.
+    return static_cast<int16_t>(random_.Generate(65536));
+  }
+
+  int16_t Rand13Signed(void) {
+    // Use 13 bits: values between 4095 and -4096.
+    const uint32_t value = random_.Generate(8192);
+    return static_cast<int16_t>(value) - 4096;
   }
 
   int16_t Rand9Signed(void) {
@@ -49,20 +68,21 @@ class ACMRandom {
     // Returns a random value near 0 or near 255, to better exercise
     // saturation behavior.
     const uint8_t r = Rand8();
-    return r < 128 ? r << 4 : r >> 4;
+    return static_cast<uint8_t>((r < 128) ? r << 4 : r >> 4);
   }
 
-  int PseudoUniform(int range) {
+  uint32_t RandRange(const uint32_t range) {
+    // testing::internal::Random::Generate provides values in the range
+    // testing::internal::Random::kMaxRange.
+    assert(range <= testing::internal::Random::kMaxRange);
     return random_.Generate(range);
   }
 
-  int operator()(int n) {
-    return PseudoUniform(n);
-  }
+  int PseudoUniform(int range) { return random_.Generate(range); }
 
-  static int DeterministicSeed(void) {
-    return 0xbaba;
-  }
+  int operator()(int n) { return PseudoUniform(n); }
+
+  static int DeterministicSeed(void) { return 0xbaba; }
 
  private:
   testing::internal::Random random_;
@@ -70,4 +90,4 @@ class ACMRandom {
 
 }  // namespace libvpx_test
 
-#endif  // TEST_ACM_RANDOM_H_
+#endif  // VPX_TEST_ACM_RANDOM_H_

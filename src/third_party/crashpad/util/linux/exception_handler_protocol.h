@@ -52,6 +52,16 @@ class ExceptionHandlerProtocol {
     //!     SanitizationInformation struct, or 0 if there is no such struct.
     VMAddress sanitization_information_address;
 
+#if defined(STARBOARD)
+    //! \brief The address in the client's address space of an EvergreenInfo
+    //!     struct, or 0 if there is no such struct.
+    VMAddress evergreen_information_address;
+
+    //! \brief The address in the client's address space of an
+    //!     CrashpadAnnotations struct, or 0 if there is no such struct.
+    VMAddress annotations_address;
+#endif
+
 #if defined(OS_LINUX)
     //! \brief Indicates that the client is likely in a crash loop if a crash
     //!     occurs before this timestamp. This value is only used by ChromeOS's
@@ -82,7 +92,14 @@ class ExceptionHandlerProtocol {
       kTypeCheckCredentials,
 
       //! \brief Used to request a crash dump for the sending client.
-      kTypeCrashDumpRequest
+      kTypeCrashDumpRequest,
+
+#if defined(STARBOARD)
+      //! \brief Used to store Evergreen mapping info in the handler for use at
+      //!     time of crash.
+      kTypeAddEvergreenInfo,
+      kTypeAddAnnotations,
+#endif
     };
 
     Type type;

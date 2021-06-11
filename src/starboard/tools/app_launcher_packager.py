@@ -24,6 +24,7 @@ import fnmatch
 import logging
 import os
 import shutil
+import string
 import sys
 import tempfile
 
@@ -32,21 +33,16 @@ from paths import REPOSITORY_ROOT
 from paths import THIRD_PARTY_ROOT
 sys.path.append(THIRD_PARTY_ROOT)
 # pylint: disable=g-import-not-at-top,g-bad-import-order
-import jinja2
+from starboard.tools import command_line
+from starboard.tools import log_level
 from starboard.tools import port_symlink
 import starboard.tools.platform
 
 # Default python directories to app launcher resources.
 _INCLUDE_FILE_PATTERNS = [
-    ('buildbot', '*.py'),
-    ('buildbot/device_server/shared/ssl_certs', '*'),
     ('cobalt', '*.py'),
-    # TODO: Test and possibly prune.
-    ('lbshell', '*.py'),
     ('starboard', '*.py'),
-    # jinja2 required by this app_launcher_packager.py script.
-    ('third_party/jinja2', '*.py'),
-    ('third_party/markupsafe', '*.py'),  # Required by third_party/jinja2
+    ('starboard/tools', 'platform.py.template')
 ]
 
 _INCLUDE_BLACK_BOX_TESTS_PATTERNS = [
@@ -124,7 +120,7 @@ def _WritePlatformsInfo(repo_root, dest_root):
   logging.info('Baking platform info files.')
   current_file = os.path.abspath(__file__)
   current_dir = os.path.dirname(current_file)
-  dest_dir = current_dir.replace(repo_root, dest_root)
+  dest_dir = os.path.join(dest_root, 'starboard', 'tools')
   platforms_map = {}
   for p in starboard.tools.platform.GetAll():
     platform_path = os.path.relpath(
@@ -132,10 +128,11 @@ def _WritePlatformsInfo(repo_root, dest_root):
     # Store posix paths even on Windows so MH Linux hosts can use them.
     # The template has code to re-normalize them when used on Windows hosts.
     platforms_map[p] = platform_path.replace('\\', '/')
-  template = jinja2.Template(
+  template = string.Template(
       open(os.path.join(current_dir, 'platform.py.template')).read())
   with open(os.path.join(dest_dir, 'platform.py'), 'w+') as f:
-    template.stream(platforms_map=platforms_map).dump(f, encoding='utf-8')
+    sub = template.substitute(platforms_map=platforms_map)
+    f.write(sub.encode('utf-8'))
   logging.info('Finished baking in platform info files.')
 
 
@@ -237,8 +234,8 @@ def MakeZipArchive(src, output_zip):
 
 
 def main(command_args):
-  logging.basicConfig(level=logging.INFO)
   parser = argparse.ArgumentParser()
+  command_line.AddLoggingArguments(parser, default='warning')
   dest_group = parser.add_mutually_exclusive_group(required=True)
   dest_group.add_argument(
       '-d',
@@ -257,11 +254,14 @@ def main(command_args):
       help='List to stdout the application resources relative to the current '
       'directory.')
   parser.add_argument(
-      '-v', '--verbose', action='store_true', help='Verbose logging output.')
+      '-v',
+      '--verbose',
+      action='store_true',
+      help='Enables verbose logging. For more control over the '
+      "logging level use '--log_level' instead.")
   args = parser.parse_args(command_args)
 
-  if not args.verbose:
-    logging.disable(logging.INFO)
+  log_level.InitializeLogging(args)
 
   if args.destination_root:
     CopyAppLauncherTools(REPOSITORY_ROOT, args.destination_root)
@@ -273,6 +273,7 @@ def main(command_args):
     finally:
       shutil.rmtree(temp_dir)
   elif args.list:
+    src_files = []
     for src_file in _GetSourceFilesList(REPOSITORY_ROOT):
       # Skip paths with '$' since they won't get through the Ninja generator.
       if '$' in src_file:
@@ -281,8 +282,15 @@ def main(command_args):
       src_file = os.path.relpath(src_file)
       # Forward slashes for gyp, even on Windows.
       src_file = src_file.replace('\\', '/')
-      print src_file
+      src_files.append(src_file)
+    out = ' '.join(src_files)
+    return out.strip()
   return 0
+
+
+def DoMain(argv):
+  """Script main function."""
+  return main(argv)
 
 
 if __name__ == '__main__':

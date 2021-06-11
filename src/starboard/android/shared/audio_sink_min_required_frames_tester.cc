@@ -14,6 +14,7 @@
 
 #include "starboard/android/shared/audio_sink_min_required_frames_tester.h"
 
+#include <string>
 #include <vector>
 
 #include "starboard/android/shared/audio_track_audio_sink_type.h"
@@ -123,7 +124,8 @@ void MinRequiredFramesTester::TesterThreadFunc() {
         min_required_frames_ * task.number_of_channels *
             GetSampleSize(task.sample_type),
         &MinRequiredFramesTester::UpdateSourceStatusFunc,
-        &MinRequiredFramesTester::ConsumeFramesFunc, this);
+        &MinRequiredFramesTester::ConsumeFramesFunc,
+        &MinRequiredFramesTester::ErrorFunc, 0, -1, false, this);
     {
       ScopedLock scoped_lock(mutex_);
       wait_timeout = !condition_variable_.WaitTimed(kSbTimeSecond * 5);
@@ -131,7 +133,6 @@ void MinRequiredFramesTester::TesterThreadFunc() {
 
     if (wait_timeout) {
       SB_LOG(ERROR) << "Audio sink min required frames tester timeout.";
-      SB_NOTREACHED();
     }
 
     delete audio_sink_;
@@ -173,6 +174,16 @@ void MinRequiredFramesTester::ConsumeFramesFunc(int frames_consumed,
   SB_DCHECK(tester);
 
   tester->ConsumeFrames(frames_consumed);
+}
+
+// static
+void MinRequiredFramesTester::ErrorFunc(bool capability_changed,
+                                        const std::string& error_message,
+                                        void* context) {
+  SB_LOG(ERROR) << "Error occurred while writing frames: " << error_message;
+  // TODO: Handle errors during minimum frames test, maybe by terminating the
+  //       test earlier.
+  SB_NOTREACHED();
 }
 
 void MinRequiredFramesTester::UpdateSourceStatus(int* frames_in_buffer,

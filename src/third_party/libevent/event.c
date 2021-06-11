@@ -29,14 +29,17 @@
 #endif
 
 #ifdef STARBOARD
+#if defined LIBEVENT_PLATFORM_HEADER
+#include LIBEVENT_PLATFORM_HEADER
+#else  //  defined LIBEVENT_PLATFORM_HEADER
 #include "libevent-starboard.h"
+#endif  //  defined LIBEVENT_PLATFORM_HEADER
 
 #include "compat/sys/queue.h"
 
 // Include Starboard poems after all system headers.
 #include "starboard/client_porting/poem/assert_poem.h"
 #include "starboard/client_porting/poem/stdio_poem.h"
-#include "starboard/client_porting/poem/stdlib_poem.h"
 #include "starboard/time.h"
 #else  // STARBOARD
 #ifdef WIN32

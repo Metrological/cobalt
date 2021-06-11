@@ -16,7 +16,11 @@
 
 #include <stdlib.h>
 
+#if SB_API_VERSION < 13
+
 // NOLINTNEXTLINE(runtime/int)
 long SbStringParseSignedInteger(const char* start, char** out_end, int base) {
   return strtol(start, out_end, base);
 }
+
+#endif  // SB_API_VERSION < 13

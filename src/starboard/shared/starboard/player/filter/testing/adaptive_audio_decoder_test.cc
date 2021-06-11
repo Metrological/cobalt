@@ -32,8 +32,6 @@
 #include "testing/gtest/include/gtest/gtest.h"
 
 // TODO: Implement AudioDecoderMock and refactor the test accordingly.
-#if SB_API_VERSION >= 11
-
 namespace starboard {
 namespace shared {
 namespace starboard {
@@ -57,15 +55,8 @@ scoped_refptr<InputBuffer> GetAudioInputBuffer(VideoDmpReader* dmp_reader,
 
   auto player_sample_info =
       dmp_reader->GetPlayerSampleInfo(kSbMediaTypeAudio, index);
-#if SB_API_VERSION >= 11
   return new InputBuffer(StubDeallocateSampleFunc, NULL, NULL,
                          player_sample_info);
-#else   // SB_API_VERSION >= 11
-  SbMediaAudioSampleInfo audio_sample_info =
-      dmp_reader.GetAudioSampleInfo(index);
-  return new InputBuffer(kSbMediaTypeAudio, StubDeallocateSampleFunc, NULL,
-                         NULL, player_sample_info, &audio_sample_info);
-#endif  // SB_API_VERSION >= 11
 }
 
 string GetTestInputDirectory() {
@@ -74,11 +65,10 @@ string GetTestInputDirectory() {
   std::vector<char> content_path(kPathSize);
   SB_CHECK(SbSystemGetPath(kSbSystemPathContentDirectory, content_path.data(),
                            kPathSize));
-  string directory_path = string(content_path.data()) + kSbFileSepChar +
-                          "test" + kSbFileSepChar + "starboard" +
-                          kSbFileSepChar + "shared" + kSbFileSepChar +
-                          "starboard" + kSbFileSepChar + "player" +
-                          kSbFileSepChar + "testdata";
+  string directory_path =
+      string(content_path.data()) + kSbFileSepChar + "test" + kSbFileSepChar +
+      "starboard" + kSbFileSepChar + "shared" + kSbFileSepChar + "starboard" +
+      kSbFileSepChar + "player" + kSbFileSepChar + "testdata";
 
   SB_CHECK(SbDirectoryCanOpen(directory_path.c_str()))
       << "Cannot open directory " << directory_path;
@@ -360,7 +350,7 @@ TEST_P(AdaptiveAudioDecoderTest, MultipleInput) {
                                static_cast<double>(kSbTimeSecond);
   // The |num_of_output_frames_| may not accurately match
   // |expected_output_frames|. Each time to switch decoder, it may have one
-  // sample difference in ouput due to integer conversion. The total difference
+  // sample difference in output due to integer conversion. The total difference
   // should not exceed the length of |dmp_readers_|.
   AssertExpectedAndOutputFramesMatch(expected_output_frames);
 }
@@ -372,7 +362,7 @@ vector<vector<const char*>> GetSupportedTests() {
     return test_params;
   }
 
-  vector<const char*> supported_files = GetSupportedAudioTestFiles(false);
+  vector<const char*> supported_files = GetSupportedAudioTestFiles(false, true);
 
   // Generate test cases. For example, we have |supported_files| [A, B, C].
   // Add tests A->A, A->B, A->C, B->A, B->B, B->C, C->A, C->B and C->C.
@@ -409,5 +399,3 @@ INSTANTIATE_TEST_CASE_P(AdaptiveAudioDecoderTests,
 }  // namespace starboard
 }  // namespace shared
 }  // namespace starboard
-
-#endif  // SB_API_VERSION >= 11

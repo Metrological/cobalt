@@ -27,7 +27,7 @@ gles::Context* GetCurrentContext() {
   SB_DCHECK(context) << "GL ES command issued while no context was current.";
   return context;
 }
-}
+}  // namespace
 
 extern "C" {
 
@@ -262,7 +262,13 @@ void GL_APIENTRY glCopyTexSubImage2D(GLenum target,
                                      GLint y,
                                      GLsizei width,
                                      GLsizei height) {
-  SB_NOTIMPLEMENTED();
+  gles::Context* context = GetCurrentContext();
+  if (!context) {
+    return;
+  }
+
+  return context->CopyTexSubImage2D(target, level, xoffset, yoffset, x, y,
+                                    width, height);
 }
 
 GLuint GL_APIENTRY glCreateProgram(void) {
@@ -476,6 +482,15 @@ void GL_APIENTRY glFrontFace(GLenum face) {
   }
 
   return context->FrontFace(face);
+}
+
+void GL_APIENTRY glGenBuffersForVideoFrame(GLsizei n, GLuint* buffers) {
+  gles::Context* context = GetCurrentContext();
+  if (!context) {
+    return;
+  }
+
+  return context->GenBuffersForVideoFrame(n, buffers);
 }
 
 void GL_APIENTRY glGenBuffers(GLsizei n, GLuint* buffers) {

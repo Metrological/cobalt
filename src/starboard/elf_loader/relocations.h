@@ -34,7 +34,7 @@ enum RelocationType {
 // class representing the ELF relocations.
 class Relocations {
  public:
-  Relocations(Addr base_memory_adddress,
+  Relocations(Addr base_memory_address,
               DynamicSection* dynamic_section,
               ExportedSymbols* exported_symbols);
 
@@ -84,7 +84,8 @@ class Relocations {
 
   ExportedSymbols* exported_symbols_;
 
-  SB_DISALLOW_COPY_AND_ASSIGN(Relocations);
+  Relocations(const Relocations&) = delete;
+  void operator=(const Relocations&) = delete;
 };
 
 }  // namespace elf_loader

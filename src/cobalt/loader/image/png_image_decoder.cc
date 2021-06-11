@@ -16,6 +16,7 @@
 
 #include "base/logging.h"
 #include "base/trace_event/trace_event.h"
+#include "cobalt/base/console_log.h"
 #include "nb/memory_scope.h"
 
 namespace cobalt {
@@ -33,7 +34,7 @@ const double kInverseGamma = 0.45455;
 const uint32 kMaxPNGSize = 1000000UL;
 
 // Use fix point multiplier instead of integer division or floating point math.
-// This multipler produces exactly the same result for all values in range 0 -
+// This multiplier produces exactly the same result for all values in range 0 -
 // 255.
 const uint32 kFixPointOffset = 24;
 const uint32 kFixPointShifted = 1U << kFixPointOffset;
@@ -66,8 +67,9 @@ void DecodingWarning(png_structp png, png_const_charp warning_msg) {
 }  // namespace
 
 PNGImageDecoder::PNGImageDecoder(
-    render_tree::ResourceProvider* resource_provider)
-    : ImageDataDecoder(resource_provider),
+    render_tree::ResourceProvider* resource_provider,
+    const base::DebuggerHooks& debugger_hooks)
+    : ImageDataDecoder(resource_provider, debugger_hooks),
       png_(NULL),
       info_(NULL),
       has_alpha_(false),
@@ -95,7 +97,7 @@ size_t PNGImageDecoder::DecodeChunkInternal(const uint8* data, size_t size) {
   // from setjmp indicates whether control reached that point normally or from a
   // call to longjmp. If the return is from a direct invocation, setjmp returns
   // 0. If the return is from a call to longjmp, setjmp returns a nonzero value.
-MSVC_PUSH_DISABLE_WARNING(4611);
+  MSVC_PUSH_DISABLE_WARNING(4611);
   // warning C4611: interaction between '_setjmp' and C++ object destruction is
   // non-portable.
   if (setjmp(png_->jmpbuf)) {
@@ -104,7 +106,7 @@ MSVC_PUSH_DISABLE_WARNING(4611);
     set_state(kError);
     return 0;
   }
-MSVC_POP_WARNING();
+  MSVC_POP_WARNING();
 
   png_process_data(png_, info_, const_cast<png_bytep>(data), size);
 
@@ -234,8 +236,8 @@ void PNGImageDecoder::HeaderAvailableCallback() {
   if (interlace_type == PNG_INTERLACE_ADAM7) {
     // Notify libpng to send us rows for interlaced pngs.
     png_set_interlace_handling(png_);
-    DLOG(WARNING) << "Interlaced PNGs are not displayed properly in older "
-                     "versions of Cobalt";
+    CLOG(WARNING, debugger_hooks()) << "Interlaced PNGs are not displayed "
+                                       "properly in older versions of Cobalt";
   }
 
   // Updates |info_| to reflect any transformations that have been requested.

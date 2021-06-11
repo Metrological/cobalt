@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# This files contains all targets that should be created by gyp_cobalt by
-# default.
 {
   'targets': [
     {
@@ -38,6 +36,13 @@
         ':installation_store_proto',
         '<(DEPTH)/starboard/starboard.gyp:starboard',
       ],
+      'conditions': [
+        ['sb_evergreen_compatible_lite != 1', {
+          'dependencies': [
+            '<(DEPTH)/starboard/loader_app/pending_restart.gyp:pending_restart',
+          ],},
+        ],
+      ],
       'include_dirs': [
         # Get protobuf headers from the chromium tree.
         '<(DEPTH)/third_party/protobuf/src',
@@ -49,6 +54,13 @@
       'sources': [
         'installation_manager_test.cc',
         '<(DEPTH)/starboard/common/test_main.cc',
+      ],
+      'conditions': [
+        ['sb_evergreen_compatible_lite != 1', {
+          'sources': [
+            'pending_restart_test.cc',
+          ],},
+        ],
       ],
       'dependencies': [
          ':installation_manager',

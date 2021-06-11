@@ -19,7 +19,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "cobalt/updater/updater_constants.h"
 // #include "cobalt/updater/updater_version.h"
-#include "cobalt/updater/util.h"
+#include "cobalt/updater/utils.h"
 // #include "third_party/crashpad/crashpad/client/crashpad_client.h"
 // #include "third_party/crashpad/crashpad/handler/handler_main.h"
 
@@ -62,7 +62,7 @@ void StartCrashReporter(const std::string& version) {
   base::PathService::Get(base::FILE_EXE, &handler_path);
 
   base::FilePath database_path;
-  if (!GetProductDirectory(&database_path)) {
+  if (!CreateProductDirectory(&database_path)) {
     LOG(DFATAL) << "Failed to get the database path.";
     return;
   }

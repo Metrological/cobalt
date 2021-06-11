@@ -25,13 +25,11 @@ namespace configuration {
 Configuration* Configuration::configuration_ = nullptr;
 
 Configuration* Configuration::GetInstance() {
-  return base::Singleton<Configuration>::get();
+  return base::Singleton<Configuration,
+                         base::LeakySingletonTraits<Configuration>>::get();
 }
 
 Configuration::Configuration() {
-#if SB_API_VERSION < 11
-  configuration_api_ = nullptr;
-#else
   configuration_api_ = static_cast<const CobaltExtensionConfigurationApi*>(
       SbSystemGetExtension(kCobaltExtensionConfigurationName));
   if (configuration_api_) {
@@ -45,7 +43,6 @@ Configuration::Configuration() {
       configuration_api_ = nullptr;
     }
   }
-#endif
 }
 
 const char* Configuration::CobaltUserOnExitStrategy() {
@@ -152,6 +149,13 @@ const char* Configuration::CobaltFallbackSplashScreenUrl() {
 #else
   return "none";
 #endif
+}
+
+const char* Configuration::CobaltFallbackSplashScreenTopics() {
+  if (configuration_api_ && configuration_api_->version >= 2) {
+    return configuration_api_->CobaltFallbackSplashScreenTopics();
+  }
+  return "";
 }
 
 bool Configuration::CobaltEnableQuic() {
@@ -437,15 +441,6 @@ float Configuration::CobaltImageCacheCapacityMultiplierWhenPlayingVideo() {
 
 int Configuration::CobaltJsGarbageCollectionThresholdInBytes() {
   if (configuration_api_) {
-#if defined(COBALT_JS_GARBAGE_COLLECTION_THRESHOLD_IN_BYTES)
-    LOG(ERROR) << "COBALT_JS_GARBAGE_COLLECTION_THRESHOLD_IN_BYTES and "
-                  "CobaltExtensionConfigurationApi::"
-                  "CobaltJsGarbageCollectionThresholdInBytes() "
-                  "are both defined. Remove "
-                  "'mozjs_garbage_collection_threshold_in_bytes' "
-                  "from your \"gyp_configuration.gypi\" file in favor of "
-                  "using CobaltJsGarbageCollectionThresholdInBytes().";
-#endif
     return configuration_api_->CobaltJsGarbageCollectionThresholdInBytes();
   }
 #if SB_API_VERSION >= 12
@@ -457,8 +452,6 @@ int Configuration::CobaltJsGarbageCollectionThresholdInBytes() {
 #error "instead."
 #endif
   return 8 * 1024 * 1024;
-#elif defined(COBALT_JS_GARBAGE_COLLECTION_THRESHOLD_IN_BYTES)
-  return COBALT_JS_GARBAGE_COLLECTION_THRESHOLD_IN_BYTES;
 #else
   return 8 * 1024 * 1024;
 #endif

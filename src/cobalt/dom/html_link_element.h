@@ -65,15 +65,19 @@ class HTMLLinkElement : public HTMLElement {
   void OnInsertedIntoDocument() override;
   void OnRemovedFromDocument() override;
 
+  // Create Performance Resource Timing entry for link element.
+  void GetLoadTimingInfoAndCreateResourceTiming();
+
   DEFINE_WRAPPABLE_TYPE(HTMLLinkElement);
 
- private:
+ protected:
   ~HTMLLinkElement() override {}
 
+ private:
   void ResolveAndSetAbsoluteURL();
 
   // From the spec: HTMLLinkElement.
-  void Obtain();
+  virtual void Obtain();
 
   void OnContentProduced(const loader::Origin& last_url_origin,
                          std::unique_ptr<std::string> content);

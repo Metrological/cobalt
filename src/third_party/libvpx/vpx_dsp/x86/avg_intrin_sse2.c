@@ -11,12 +11,14 @@
 #include <emmintrin.h>
 
 #include "./vpx_dsp_rtcd.h"
+#include "vpx/vpx_integer.h"
+#include "vpx_dsp/x86/bitdepth_conversion_sse2.h"
 #include "vpx_ports/mem.h"
 
 void vpx_minmax_8x8_sse2(const uint8_t *s, int p, const uint8_t *d, int dp,
                          int *min, int *max) {
   __m128i u0, s0, d0, diff, maxabsdiff, minabsdiff, negdiff, absdiff0, absdiff;
-  u0  = _mm_setzero_si128();
+  u0 = _mm_setzero_si128();
   // Row 0
   s0 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(s)), u0);
   d0 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(d)), u0);
@@ -94,7 +96,7 @@ void vpx_minmax_8x8_sse2(const uint8_t *s, int p, const uint8_t *d, int dp,
 unsigned int vpx_avg_8x8_sse2(const uint8_t *s, int p) {
   __m128i s0, s1, u0;
   unsigned int avg = 0;
-  u0  = _mm_setzero_si128();
+  u0 = _mm_setzero_si128();
   s0 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(s)), u0);
   s1 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(s + p)), u0);
   s0 = _mm_adds_epu16(s0, s1);
@@ -121,7 +123,7 @@ unsigned int vpx_avg_8x8_sse2(const uint8_t *s, int p) {
 unsigned int vpx_avg_4x4_sse2(const uint8_t *s, int p) {
   __m128i s0, s1, u0;
   unsigned int avg = 0;
-  u0  = _mm_setzero_si128();
+  u0 = _mm_setzero_si128();
   s0 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(s)), u0);
   s1 = _mm_unpacklo_epi8(_mm_loadl_epi64((const __m128i *)(s + p)), u0);
   s0 = _mm_adds_epu16(s0, s1);
@@ -135,6 +137,56 @@ unsigned int vpx_avg_4x4_sse2(const uint8_t *s, int p) {
   avg = _mm_extract_epi16(s0, 0);
   return (avg + 8) >> 4;
 }
+
+#if CONFIG_VP9_HIGHBITDEPTH
+unsigned int vpx_highbd_avg_8x8_sse2(const uint8_t *s8, int p) {
+  __m128i s0, s1;
+  unsigned int avg;
+  const uint16_t *s = CONVERT_TO_SHORTPTR(s8);
+  const __m128i zero = _mm_setzero_si128();
+  s0 = _mm_loadu_si128((const __m128i *)(s));
+  s1 = _mm_loadu_si128((const __m128i *)(s + p));
+  s0 = _mm_adds_epu16(s0, s1);
+  s1 = _mm_loadu_si128((const __m128i *)(s + 2 * p));
+  s0 = _mm_adds_epu16(s0, s1);
+  s1 = _mm_loadu_si128((const __m128i *)(s + 3 * p));
+  s0 = _mm_adds_epu16(s0, s1);
+  s1 = _mm_loadu_si128((const __m128i *)(s + 4 * p));
+  s0 = _mm_adds_epu16(s0, s1);
+  s1 = _mm_loadu_si128((const __m128i *)(s + 5 * p));
+  s0 = _mm_adds_epu16(s0, s1);
+  s1 = _mm_loadu_si128((const __m128i *)(s + 6 * p));
+  s0 = _mm_adds_epu16(s0, s1);
+  s1 = _mm_loadu_si128((const __m128i *)(s + 7 * p));
+  s0 = _mm_adds_epu16(s0, s1);
+  s1 = _mm_unpackhi_epi16(s0, zero);
+  s0 = _mm_unpacklo_epi16(s0, zero);
+  s0 = _mm_add_epi32(s0, s1);
+  s0 = _mm_add_epi32(s0, _mm_srli_si128(s0, 8));
+  s0 = _mm_add_epi32(s0, _mm_srli_si128(s0, 4));
+  avg = _mm_cvtsi128_si32(s0);
+
+  return (avg + 32) >> 6;
+}
+
+unsigned int vpx_highbd_avg_4x4_sse2(const uint8_t *s8, int p) {
+  __m128i s0, s1;
+  unsigned int avg;
+  const uint16_t *s = CONVERT_TO_SHORTPTR(s8);
+  s0 = _mm_loadl_epi64((const __m128i *)(s));
+  s1 = _mm_loadl_epi64((const __m128i *)(s + p));
+  s0 = _mm_adds_epu16(s0, s1);
+  s1 = _mm_loadl_epi64((const __m128i *)(s + 2 * p));
+  s0 = _mm_adds_epu16(s0, s1);
+  s1 = _mm_loadl_epi64((const __m128i *)(s + 3 * p));
+  s0 = _mm_adds_epu16(s0, s1);
+  s0 = _mm_add_epi16(s0, _mm_srli_si128(s0, 4));
+  s0 = _mm_add_epi16(s0, _mm_srli_si128(s0, 2));
+  avg = _mm_extract_epi16(s0, 0);
+
+  return (avg + 8) >> 4;
+}
+#endif  // CONFIG_VP9_HIGHBITDEPTH
 
 static void hadamard_col8_sse2(__m128i *in, int iter) {
   __m128i a0 = in[0];
@@ -212,8 +264,9 @@ static void hadamard_col8_sse2(__m128i *in, int iter) {
   }
 }
 
-void vpx_hadamard_8x8_sse2(int16_t const *src_diff, int src_stride,
-                           int16_t *coeff) {
+static INLINE void hadamard_8x8_sse2(const int16_t *src_diff,
+                                     ptrdiff_t src_stride, tran_low_t *coeff,
+                                     int is_final) {
   __m128i src[8];
   src[0] = _mm_load_si128((const __m128i *)src_diff);
   src[1] = _mm_load_si128((const __m128i *)(src_diff += src_stride));
@@ -227,37 +280,74 @@ void vpx_hadamard_8x8_sse2(int16_t const *src_diff, int src_stride,
   hadamard_col8_sse2(src, 0);
   hadamard_col8_sse2(src, 1);
 
-  _mm_store_si128((__m128i *)coeff, src[0]);
-  coeff += 8;
-  _mm_store_si128((__m128i *)coeff, src[1]);
-  coeff += 8;
-  _mm_store_si128((__m128i *)coeff, src[2]);
-  coeff += 8;
-  _mm_store_si128((__m128i *)coeff, src[3]);
-  coeff += 8;
-  _mm_store_si128((__m128i *)coeff, src[4]);
-  coeff += 8;
-  _mm_store_si128((__m128i *)coeff, src[5]);
-  coeff += 8;
-  _mm_store_si128((__m128i *)coeff, src[6]);
-  coeff += 8;
-  _mm_store_si128((__m128i *)coeff, src[7]);
+  if (is_final) {
+    store_tran_low(src[0], coeff);
+    coeff += 8;
+    store_tran_low(src[1], coeff);
+    coeff += 8;
+    store_tran_low(src[2], coeff);
+    coeff += 8;
+    store_tran_low(src[3], coeff);
+    coeff += 8;
+    store_tran_low(src[4], coeff);
+    coeff += 8;
+    store_tran_low(src[5], coeff);
+    coeff += 8;
+    store_tran_low(src[6], coeff);
+    coeff += 8;
+    store_tran_low(src[7], coeff);
+  } else {
+    int16_t *coeff16 = (int16_t *)coeff;
+    _mm_store_si128((__m128i *)coeff16, src[0]);
+    coeff16 += 8;
+    _mm_store_si128((__m128i *)coeff16, src[1]);
+    coeff16 += 8;
+    _mm_store_si128((__m128i *)coeff16, src[2]);
+    coeff16 += 8;
+    _mm_store_si128((__m128i *)coeff16, src[3]);
+    coeff16 += 8;
+    _mm_store_si128((__m128i *)coeff16, src[4]);
+    coeff16 += 8;
+    _mm_store_si128((__m128i *)coeff16, src[5]);
+    coeff16 += 8;
+    _mm_store_si128((__m128i *)coeff16, src[6]);
+    coeff16 += 8;
+    _mm_store_si128((__m128i *)coeff16, src[7]);
+  }
 }
 
-void vpx_hadamard_16x16_sse2(int16_t const *src_diff, int src_stride,
-                             int16_t *coeff) {
+void vpx_hadamard_8x8_sse2(const int16_t *src_diff, ptrdiff_t src_stride,
+                           tran_low_t *coeff) {
+  hadamard_8x8_sse2(src_diff, src_stride, coeff, 1);
+}
+
+static INLINE void hadamard_16x16_sse2(const int16_t *src_diff,
+                                       ptrdiff_t src_stride, tran_low_t *coeff,
+                                       int is_final) {
+#if CONFIG_VP9_HIGHBITDEPTH
+  // For high bitdepths, it is unnecessary to store_tran_low
+  // (mult/unpack/store), then load_tran_low (load/pack) the same memory in the
+  // next stage.  Output to an intermediate buffer first, then store_tran_low()
+  // in the final stage.
+  DECLARE_ALIGNED(32, int16_t, temp_coeff[16 * 16]);
+  int16_t *t_coeff = temp_coeff;
+#else
+  int16_t *t_coeff = coeff;
+#endif
+  int16_t *coeff16 = (int16_t *)coeff;
   int idx;
   for (idx = 0; idx < 4; ++idx) {
-    int16_t const *src_ptr = src_diff + (idx >> 1) * 8 * src_stride
-                                + (idx & 0x01) * 8;
-    vpx_hadamard_8x8_sse2(src_ptr, src_stride, coeff + idx * 64);
+    const int16_t *src_ptr =
+        src_diff + (idx >> 1) * 8 * src_stride + (idx & 0x01) * 8;
+    hadamard_8x8_sse2(src_ptr, src_stride, (tran_low_t *)(t_coeff + idx * 64),
+                      0);
   }
 
   for (idx = 0; idx < 64; idx += 8) {
-    __m128i coeff0 = _mm_load_si128((const __m128i *)coeff);
-    __m128i coeff1 = _mm_load_si128((const __m128i *)(coeff + 64));
-    __m128i coeff2 = _mm_load_si128((const __m128i *)(coeff + 128));
-    __m128i coeff3 = _mm_load_si128((const __m128i *)(coeff + 192));
+    __m128i coeff0 = _mm_load_si128((const __m128i *)t_coeff);
+    __m128i coeff1 = _mm_load_si128((const __m128i *)(t_coeff + 64));
+    __m128i coeff2 = _mm_load_si128((const __m128i *)(t_coeff + 128));
+    __m128i coeff3 = _mm_load_si128((const __m128i *)(t_coeff + 192));
 
     __m128i b0 = _mm_add_epi16(coeff0, coeff1);
     __m128i b1 = _mm_sub_epi16(coeff0, coeff1);
@@ -271,25 +361,90 @@ void vpx_hadamard_16x16_sse2(int16_t const *src_diff, int src_stride,
 
     coeff0 = _mm_add_epi16(b0, b2);
     coeff1 = _mm_add_epi16(b1, b3);
-    _mm_store_si128((__m128i *)coeff, coeff0);
-    _mm_store_si128((__m128i *)(coeff + 64), coeff1);
-
     coeff2 = _mm_sub_epi16(b0, b2);
     coeff3 = _mm_sub_epi16(b1, b3);
-    _mm_store_si128((__m128i *)(coeff + 128), coeff2);
-    _mm_store_si128((__m128i *)(coeff + 192), coeff3);
 
-    coeff += 8;
+    if (is_final) {
+      store_tran_low(coeff0, coeff);
+      store_tran_low(coeff1, coeff + 64);
+      store_tran_low(coeff2, coeff + 128);
+      store_tran_low(coeff3, coeff + 192);
+      coeff += 8;
+    } else {
+      _mm_store_si128((__m128i *)coeff16, coeff0);
+      _mm_store_si128((__m128i *)(coeff16 + 64), coeff1);
+      _mm_store_si128((__m128i *)(coeff16 + 128), coeff2);
+      _mm_store_si128((__m128i *)(coeff16 + 192), coeff3);
+      coeff16 += 8;
+    }
+
+    t_coeff += 8;
   }
 }
 
-int vpx_satd_sse2(const int16_t *coeff, int length) {
+void vpx_hadamard_16x16_sse2(const int16_t *src_diff, ptrdiff_t src_stride,
+                             tran_low_t *coeff) {
+  hadamard_16x16_sse2(src_diff, src_stride, coeff, 1);
+}
+
+void vpx_hadamard_32x32_sse2(const int16_t *src_diff, ptrdiff_t src_stride,
+                             tran_low_t *coeff) {
+#if CONFIG_VP9_HIGHBITDEPTH
+  // For high bitdepths, it is unnecessary to store_tran_low
+  // (mult/unpack/store), then load_tran_low (load/pack) the same memory in the
+  // next stage.  Output to an intermediate buffer first, then store_tran_low()
+  // in the final stage.
+  DECLARE_ALIGNED(32, int16_t, temp_coeff[32 * 32]);
+  int16_t *t_coeff = temp_coeff;
+#else
+  int16_t *t_coeff = coeff;
+#endif
+  int idx;
+  for (idx = 0; idx < 4; ++idx) {
+    const int16_t *src_ptr =
+        src_diff + (idx >> 1) * 16 * src_stride + (idx & 0x01) * 16;
+    hadamard_16x16_sse2(src_ptr, src_stride,
+                        (tran_low_t *)(t_coeff + idx * 256), 0);
+  }
+
+  for (idx = 0; idx < 256; idx += 8) {
+    __m128i coeff0 = _mm_load_si128((const __m128i *)t_coeff);
+    __m128i coeff1 = _mm_load_si128((const __m128i *)(t_coeff + 256));
+    __m128i coeff2 = _mm_load_si128((const __m128i *)(t_coeff + 512));
+    __m128i coeff3 = _mm_load_si128((const __m128i *)(t_coeff + 768));
+
+    __m128i b0 = _mm_add_epi16(coeff0, coeff1);
+    __m128i b1 = _mm_sub_epi16(coeff0, coeff1);
+    __m128i b2 = _mm_add_epi16(coeff2, coeff3);
+    __m128i b3 = _mm_sub_epi16(coeff2, coeff3);
+
+    b0 = _mm_srai_epi16(b0, 2);
+    b1 = _mm_srai_epi16(b1, 2);
+    b2 = _mm_srai_epi16(b2, 2);
+    b3 = _mm_srai_epi16(b3, 2);
+
+    coeff0 = _mm_add_epi16(b0, b2);
+    coeff1 = _mm_add_epi16(b1, b3);
+    store_tran_low(coeff0, coeff);
+    store_tran_low(coeff1, coeff + 256);
+
+    coeff2 = _mm_sub_epi16(b0, b2);
+    coeff3 = _mm_sub_epi16(b1, b3);
+    store_tran_low(coeff2, coeff + 512);
+    store_tran_low(coeff3, coeff + 768);
+
+    coeff += 8;
+    t_coeff += 8;
+  }
+}
+
+int vpx_satd_sse2(const tran_low_t *coeff, int length) {
   int i;
   const __m128i zero = _mm_setzero_si128();
   __m128i accum = zero;
 
   for (i = 0; i < length; i += 8) {
-    const __m128i src_line = _mm_load_si128((const __m128i *)coeff);
+    const __m128i src_line = load_tran_low(coeff);
     const __m128i inv = _mm_sub_epi16(zero, src_line);
     const __m128i abs = _mm_max_epi16(src_line, inv);  // abs(src_line)
     const __m128i abs_lo = _mm_unpacklo_epi16(abs, zero);
@@ -309,7 +464,7 @@ int vpx_satd_sse2(const int16_t *coeff, int length) {
   return _mm_cvtsi128_si32(accum);
 }
 
-void vpx_int_pro_row_sse2(int16_t *hbuf, uint8_t const*ref,
+void vpx_int_pro_row_sse2(int16_t *hbuf, const uint8_t *ref,
                           const int ref_stride, const int height) {
   int idx;
   __m128i zero = _mm_setzero_si128();
@@ -358,16 +513,16 @@ void vpx_int_pro_row_sse2(int16_t *hbuf, uint8_t const*ref,
   _mm_storeu_si128((__m128i *)hbuf, s1);
 }
 
-int16_t vpx_int_pro_col_sse2(uint8_t const *ref, const int width) {
+int16_t vpx_int_pro_col_sse2(const uint8_t *ref, const int width) {
   __m128i zero = _mm_setzero_si128();
-  __m128i src_line = _mm_load_si128((const __m128i *)ref);
+  __m128i src_line = _mm_loadu_si128((const __m128i *)ref);
   __m128i s0 = _mm_sad_epu8(src_line, zero);
   __m128i s1;
   int i;
 
   for (i = 16; i < width; i += 16) {
     ref += 16;
-    src_line = _mm_load_si128((const __m128i *)ref);
+    src_line = _mm_loadu_si128((const __m128i *)ref);
     s1 = _mm_sad_epu8(src_line, zero);
     s0 = _mm_adds_epu16(s0, s1);
   }
@@ -378,8 +533,7 @@ int16_t vpx_int_pro_col_sse2(uint8_t const *ref, const int width) {
   return _mm_extract_epi16(s0, 0);
 }
 
-int vpx_vector_var_sse2(int16_t const *ref, int16_t const *src,
-                        const int bwl) {
+int vpx_vector_var_sse2(const int16_t *ref, const int16_t *src, const int bwl) {
   int idx;
   int width = 4 << bwl;
   int16_t mean;
@@ -398,26 +552,26 @@ int vpx_vector_var_sse2(int16_t const *ref, int16_t const *src,
     diff = _mm_subs_epi16(v0, v1);
 
     sum = _mm_add_epi16(sum, diff);
-    v0  = _mm_madd_epi16(diff, diff);
+    v0 = _mm_madd_epi16(diff, diff);
     sse = _mm_add_epi32(sse, v0);
 
     ref += 8;
     src += 8;
   }
 
-  v0  = _mm_srli_si128(sum, 8);
+  v0 = _mm_srli_si128(sum, 8);
   sum = _mm_add_epi16(sum, v0);
-  v0  = _mm_srli_epi64(sum, 32);
+  v0 = _mm_srli_epi64(sum, 32);
   sum = _mm_add_epi16(sum, v0);
-  v0  = _mm_srli_epi32(sum, 16);
+  v0 = _mm_srli_epi32(sum, 16);
   sum = _mm_add_epi16(sum, v0);
 
-  v1  = _mm_srli_si128(sse, 8);
+  v1 = _mm_srli_si128(sse, 8);
   sse = _mm_add_epi32(sse, v1);
-  v1  = _mm_srli_epi64(sse, 32);
+  v1 = _mm_srli_epi64(sse, 32);
   sse = _mm_add_epi32(sse, v1);
 
-  mean = _mm_extract_epi16(sum, 0);
+  mean = (int16_t)_mm_extract_epi16(sum, 0);
 
   return _mm_cvtsi128_si32(sse) - ((mean * mean) >> (bwl + 2));
 }

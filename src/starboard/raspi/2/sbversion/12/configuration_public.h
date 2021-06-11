@@ -30,6 +30,9 @@
 // Whether the current platform provides the standard header sys/types.h.
 #define SB_HAS_SYS_TYPES_H 1
 
+// Whether the current platform provides ssize_t.
+#define SB_HAS_SSIZE_T 1
+
 // Type detection for wchar_t.
 #if defined(__WCHAR_MAX__) && \
     (__WCHAR_MAX__ == 0x7fffffff || __WCHAR_MAX__ == 0xffffffff)
@@ -128,13 +131,6 @@
 // required for platforms that want to JIT.
 #define SB_CAN_MAP_EXECUTABLE_MEMORY 1
 
-// The Raspberry Pi does not apparently align fields in a heap-allocated struct
-// by over 16 bytes.
-#define SB_HAS_QUIRK_DOES_NOT_ALIGN_FIELDS_IN_HEAP_OVER_16_BYTES 1
-
-// The Raspberry Pi does not apparently align stack variables by over 16 bytes.
-#define SB_HAS_QUIRK_DOES_NOT_STACK_ALIGN_OVER_16_BYTES 1
-
 // --- Network Configuration -------------------------------------------------
 
 // Specifies whether this platform supports IPV6.
@@ -154,5 +150,14 @@
 #if !defined(__GNUC__)
 #error "RasPi builds need a GCC-like compiler (for the moment)."
 #endif
+
+// --- Platform Specific Quirks ----------------------------------------------
+
+// The Raspberry Pi does not apparently align fields in a heap-allocated struct
+// by over 16 bytes.
+#define SB_HAS_QUIRK_DOES_NOT_ALIGN_FIELDS_IN_HEAP_OVER_16_BYTES 1
+
+// The Raspberry Pi does not apparently align stack variables by over 16 bytes.
+#define SB_HAS_QUIRK_DOES_NOT_STACK_ALIGN_OVER_16_BYTES 1
 
 #endif  // STARBOARD_RASPI_2_SBVERSION_12_CONFIGURATION_PUBLIC_H_

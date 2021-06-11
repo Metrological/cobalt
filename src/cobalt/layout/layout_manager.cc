@@ -43,7 +43,8 @@ namespace layout {
 
 class LayoutManager::Impl : public dom::DocumentObserver {
  public:
-  Impl(const std::string& name, const scoped_refptr<dom::Window>& window,
+  Impl(const bool suspended, const std::string& name,
+       const scoped_refptr<dom::Window>& window,
        const OnRenderTreeProducedCallback& on_render_tree_produced,
        const OnLayoutCallback& on_layout, LayoutTrigger layout_trigger,
        int dom_max_element_depth, float layout_refresh_rate,
@@ -88,7 +89,7 @@ class LayoutManager::Impl : public dom::DocumentObserver {
   // Setting these flags triggers an update of the layout box tree and the
   // generation of a new render tree at a regular interval (e.g. 60Hz). Events
   // such as DOM mutations cause them to be set to true. While the render tree
-  // is excusively produced at the regular interval, the box tree can also be
+  // is exclusively produced at the regular interval, the box tree can also be
   // updated via a call to DoSynchronousLayout().
   bool are_computed_styles_and_box_tree_dirty_;
   base::CVal<bool> is_render_tree_pending_;
@@ -161,7 +162,8 @@ scoped_refptr<render_tree::Node> AttachCameraNodes(
 }  // namespace
 
 LayoutManager::Impl::Impl(
-    const std::string& name, const scoped_refptr<dom::Window>& window,
+    const bool suspended, const std::string& name,
+    const scoped_refptr<dom::Window>& window,
     const OnRenderTreeProducedCallback& on_render_tree_produced,
     const OnLayoutCallback& on_layout, LayoutTrigger layout_trigger,
     int dom_max_element_depth, float layout_refresh_rate,
@@ -184,7 +186,7 @@ LayoutManager::Impl::Impl(
       dom_max_element_depth_(dom_max_element_depth),
       layout_refresh_rate_(layout_refresh_rate),
       layout_stat_tracker_(layout_stat_tracker),
-      suspended_(false),
+      suspended_(suspended),
       clear_window_with_background_color_(clear_window_with_background_color) {
   window_->document()->AddObserver(this);
   window_->SetSynchronousLayoutCallback(
@@ -432,20 +434,23 @@ void LayoutManager::Impl::DoLayoutAndProduceRenderTree() {
   }
 
   on_layout_callback_.Run();
+  document->UpdateUiNavigation();
 }
 
 LayoutManager::LayoutManager(
-    const std::string& name, const scoped_refptr<dom::Window>& window,
+    const bool suspended, const std::string& name,
+    const scoped_refptr<dom::Window>& window,
     const OnRenderTreeProducedCallback& on_render_tree_produced,
     const OnLayoutCallback& on_layout, LayoutTrigger layout_trigger,
     const int dom_max_element_depth, const float layout_refresh_rate,
     const std::string& language, bool enable_image_animations,
     LayoutStatTracker* layout_stat_tracker,
     bool clear_window_with_background_color)
-    : impl_(new Impl(name, window, on_render_tree_produced, on_layout,
-                     layout_trigger, dom_max_element_depth, layout_refresh_rate,
-                     language, enable_image_animations, layout_stat_tracker,
-                     clear_window_with_background_color)) {}
+    : impl_(new Impl(suspended, name, window, on_render_tree_produced,
+                     on_layout, layout_trigger, dom_max_element_depth,
+                     layout_refresh_rate, language, enable_image_animations,
+                     layout_stat_tracker, clear_window_with_background_color)) {
+}
 
 LayoutManager::~LayoutManager() {}
 

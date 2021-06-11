@@ -12,18 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# This files contains all targets that should be created by gyp_cobalt by
-# default.
 {
   'variables': {
     'common_loader_app_sources': [
-        'loader_app.cc',
-        'system_get_extension_shim.h',
-        'system_get_extension_shim.cc',
+      'loader_app.cc',
+      'loader_app_switches.h',
+      'loader_app_switches.cc',
+      'system_get_extension_shim.h',
+      'system_get_extension_shim.cc',
     ],
     'common_loader_app_dependencies': [
-        '<(DEPTH)/starboard/loader_app/installation_manager.gyp:installation_manager',
-        '<(DEPTH)/starboard/starboard.gyp:starboard',
+      '<(DEPTH)/starboard/elf_loader/sabi_string.gyp:sabi_string',
+      '<(DEPTH)/starboard/loader_app/app_key.gyp:app_key',
+      '<(DEPTH)/starboard/loader_app/installation_manager.gyp:installation_manager',
+      '<(DEPTH)/starboard/loader_app/slot_management.gyp:slot_management',
+      '<(DEPTH)/starboard/starboard.gyp:starboard',
     ],
   },
   'targets': [
@@ -87,6 +90,18 @@
         'executable_name': 'loader_app_sys',
       },
       'includes': [ '<(DEPTH)/starboard/build/deploy.gypi' ],
+    },
+    {
+      'target_name': 'loader_app_tests_deploy',
+      'type': 'none',
+      'dependencies': [
+        'loader_app',
+        '<(DEPTH)/starboard/loader_app/app_key.gyp:app_key_test_deploy',
+        '<(DEPTH)/starboard/loader_app/app_key_files.gyp:app_key_files_test_deploy',
+        '<(DEPTH)/starboard/loader_app/drain_file.gyp:drain_file_test_deploy',
+        '<(DEPTH)/starboard/loader_app/installation_manager.gyp:installation_manager_test_deploy',
+        '<(DEPTH)/starboard/loader_app/slot_management.gyp:slot_management_test_deploy',
+      ],
     },
   ],
 }

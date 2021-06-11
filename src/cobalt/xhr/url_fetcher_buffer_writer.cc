@@ -26,6 +26,9 @@ namespace {
 // Allocate 64KB if the total size is unknown to avoid allocating small buffer
 // too many times.
 const int64_t kDefaultPreAllocateSizeInBytes = 64 * 1024;
+// Set max allocate size to avoid erroneous size estimate.
+const int64_t kMaxPreAllocateSizeInBytes = 10 * 1024 * 1024;
+const uint8_t kResizingMultiplier = 2;
 
 void ReleaseMemory(std::string* str) {
   DCHECK(str);
@@ -103,7 +106,8 @@ URLFetcherResponseWriter::Buffer::GetTemporaryReferenceOfString() {
   return copy_of_data_as_string_;
 }
 
-void URLFetcherResponseWriter::Buffer::GetAndReset(std::string* str) {
+void URLFetcherResponseWriter::Buffer::GetAndResetDataAndDownloadProgress(
+    std::string* str) {
   DCHECK(str);
 
   ReleaseMemory(str);
@@ -119,9 +123,15 @@ void URLFetcherResponseWriter::Buffer::GetAndReset(std::string* str) {
   }
 
   data_as_string_.swap(*str);
+
+  // It is important to reset the |download_progress_| and return the data in
+  // one function to avoid potential race condition that may prevent the last
+  // bit of data of Fetcher from being downloaded, because the data download is
+  // guarded by HasProgressSinceLastGetAndReset().
+  download_progress_ = 0;
 }
 
-void URLFetcherResponseWriter::Buffer::GetAndReset(
+void URLFetcherResponseWriter::Buffer::GetAndResetData(
     PreallocatedArrayBufferData* data) {
   DCHECK(data);
 
@@ -151,9 +161,16 @@ void URLFetcherResponseWriter::Buffer::MaybePreallocate(int64_t capacity) {
 
   if (capacity < 0) {
     capacity = kDefaultPreAllocateSizeInBytes;
+  } else if (capacity > kMaxPreAllocateSizeInBytes) {
+    LOG(WARNING) << "Allocation of " << capacity << " bytes is capped to "
+                 << kMaxPreAllocateSizeInBytes;
+    capacity = kMaxPreAllocateSizeInBytes;
   } else {
     capacity_known_ = true;
   }
+  // Record the desired_capacity_ to avoid reserving unused memory during
+  // resizing.
+  desired_capacity_ = static_cast<size_t>(capacity);
 
   if (capacity == 0) {
     return;
@@ -205,7 +222,16 @@ void URLFetcherResponseWriter::Buffer::Write(const void* buffer,
       SB_LOG(WARNING) << "Data written is larger than the preset capacity "
                       << data_as_array_buffer_.byte_length();
     }
-    data_as_array_buffer_.Resize(data_as_array_buffer_size_ + num_bytes);
+    size_t new_size = std::max(
+        std::min(data_as_array_buffer_.byte_length() * kResizingMultiplier,
+                 desired_capacity_),
+        data_as_array_buffer_size_ + num_bytes);
+    if (new_size > desired_capacity_) {
+      // Content-length is wrong, response size is completely unknown.
+      // Double the capacity to avoid frequent resizing.
+      new_size *= kResizingMultiplier;
+    }
+    data_as_array_buffer_.Resize(new_size);
   }
 
   auto destination = static_cast<uint8_t*>(data_as_array_buffer_.data()) +

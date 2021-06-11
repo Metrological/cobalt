@@ -136,12 +136,14 @@ void VideoDecoderTestFixture::OnDecoderStatusUpdate(
     event_queue_.push_back(Event(kBufferFull, frame));
   } else {
     event_queue_.push_back(Event(kError, frame));
+    SB_LOG(WARNING) << "OnDecoderStatusUpdate received unknown state.";
   }
 }
 
 void VideoDecoderTestFixture::OnError() {
   ScopedLock scoped_lock(mutex_);
   event_queue_.push_back(Event(kError, NULL));
+  SB_LOG(WARNING) << "Video decoder received error.";
 }
 
 #if SB_HAS(GLES2)
@@ -185,6 +187,7 @@ void VideoDecoderTestFixture::WaitForNextEvent(Event* event,
     SbThreadSleep(kSbTimeMillisecond);
   } while (SbTimeGetMonotonicNow() - start < timeout);
   event->status = kTimeout;
+  SB_LOG(WARNING) << "WaitForNextEvent() timeout.";
 }
 
 bool VideoDecoderTestFixture::HasPendingEvents() {
@@ -220,7 +223,7 @@ void VideoDecoderTestFixture::AssertValidDecodeTargetWhenSupported() {
 #endif  // SB_HAS(GLES2)
 }
 
-// This has to be called when the decoder is just initialized/reseted or when
+// This has to be called when the decoder is just initialized/reset or when
 // status is |kNeedMoreInput|.
 void VideoDecoderTestFixture::WriteSingleInput(size_t index) {
   ASSERT_TRUE(need_more_input_);
@@ -333,6 +336,7 @@ void VideoDecoderTestFixture::DrainOutputs(bool* error_occurred,
                     event.frame->timestamp());
         }
         decoded_frames_.push_back(event.frame);
+        SB_DCHECK(!outstanding_inputs_.empty());
         ASSERT_TRUE(AlmostEqualTime(*outstanding_inputs_.begin(),
                                     event.frame->timestamp()));
         outstanding_inputs_.erase(outstanding_inputs_.begin());
@@ -362,14 +366,8 @@ scoped_refptr<InputBuffer> VideoDecoderTestFixture::GetVideoInputBuffer(
     size_t index) {
   auto video_sample_info =
       dmp_reader_.GetPlayerSampleInfo(kSbMediaTypeVideo, index);
-#if SB_API_VERSION >= 11
   auto input_buffer =
       new InputBuffer(StubDeallocateSampleFunc, NULL, NULL, video_sample_info);
-#else   // SB_API_VERSION >= 11
-  auto input_buffer =
-      new InputBuffer(kSbMediaTypeVideo, StubDeallocateSampleFunc, NULL, NULL,
-                      video_sample_info, NULL);
-#endif  // SB_API_VERSION >= 11
   auto iter = invalid_inputs_.find(index);
   if (iter != invalid_inputs_.end()) {
     std::vector<uint8_t> content(input_buffer->size(), iter->second);

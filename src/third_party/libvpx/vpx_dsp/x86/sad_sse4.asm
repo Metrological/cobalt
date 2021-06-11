@@ -165,13 +165,15 @@
     movdqa          [rdi + 16],    xmm2
 %endmacro
 
+SECTION .text
+
 ;void vpx_sad16x16x8_sse4_1(
 ;    const unsigned char *src_ptr,
 ;    int  src_stride,
 ;    const unsigned char *ref_ptr,
 ;    int  ref_stride,
 ;    unsigned short *sad_array);
-global sym(vpx_sad16x16x8_sse4_1) PRIVATE
+globalsym(vpx_sad16x16x8_sse4_1)
 sym(vpx_sad16x16x8_sse4_1):
     push        rbp
     mov         rbp, rsp
@@ -212,7 +214,7 @@ sym(vpx_sad16x16x8_sse4_1):
 ;    int  ref_stride,
 ;    unsigned short *sad_array
 ;);
-global sym(vpx_sad16x8x8_sse4_1) PRIVATE
+globalsym(vpx_sad16x8x8_sse4_1)
 sym(vpx_sad16x8x8_sse4_1):
     push        rbp
     mov         rbp, rsp
@@ -249,7 +251,7 @@ sym(vpx_sad16x8x8_sse4_1):
 ;    int  ref_stride,
 ;    unsigned short *sad_array
 ;);
-global sym(vpx_sad8x8x8_sse4_1) PRIVATE
+globalsym(vpx_sad8x8x8_sse4_1)
 sym(vpx_sad8x8x8_sse4_1):
     push        rbp
     mov         rbp, rsp
@@ -286,7 +288,7 @@ sym(vpx_sad8x8x8_sse4_1):
 ;    int  ref_stride,
 ;    unsigned short *sad_array
 ;);
-global sym(vpx_sad8x16x8_sse4_1) PRIVATE
+globalsym(vpx_sad8x16x8_sse4_1)
 sym(vpx_sad8x16x8_sse4_1):
     push        rbp
     mov         rbp, rsp
@@ -327,7 +329,7 @@ sym(vpx_sad8x16x8_sse4_1):
 ;    int  ref_stride,
 ;    unsigned short *sad_array
 ;);
-global sym(vpx_sad4x4x8_sse4_1) PRIVATE
+globalsym(vpx_sad4x4x8_sse4_1)
 sym(vpx_sad4x4x8_sse4_1):
     push        rbp
     mov         rbp, rsp

@@ -73,7 +73,7 @@ class AudioLock : public base::RefCountedThreadSafe<AudioLock> {
 
 // This represents a set of AudioNode objects and their connections. It allows
 // for arbitrary routing of signals to the AudioDestinationNode (what the user
-// ultimately hears). Nodes are created from the cotnext and are then connected
+// ultimately hears). Nodes are created from the context and are then connected
 // together. In most user cases, only a single AudioContext is used per
 // document.
 //   https://www.w3.org/TR/webaudio/#AudioContext-section
@@ -124,11 +124,9 @@ class AudioContext : public dom::EventTarget {
   // ArrayBuffer can, for example, be loaded from an XMLHttpRequest's response
   // attribute after setting the responseType to "arraybuffer". Audio file data
   // can be in any of the formats supported by the audio element.
-  void DecodeAudioData(script::EnvironmentSettings* settings,
-                       const script::Handle<script::ArrayBuffer>& audio_data,
+  void DecodeAudioData(const script::Handle<script::ArrayBuffer>& audio_data,
                        const DecodeSuccessCallbackArg& success_handler);
-  void DecodeAudioData(script::EnvironmentSettings* settings,
-                       const script::Handle<script::ArrayBuffer>& audio_data,
+  void DecodeAudioData(const script::Handle<script::ArrayBuffer>& audio_data,
                        const DecodeSuccessCallbackArg& success_handler,
                        const DecodeErrorCallbackArg& error_handler);
 
@@ -155,27 +153,26 @@ class AudioContext : public dom::EventTarget {
 
  private:
   struct DecodeCallbackInfo {
-    DecodeCallbackInfo(script::EnvironmentSettings* settings,
-                       const script::Handle<script::ArrayBuffer>& data_handle,
+    DecodeCallbackInfo(const script::Handle<script::ArrayBuffer>& data_handle,
                        AudioContext* const audio_context,
                        const DecodeSuccessCallbackArg& success_handler)
-        : env_settings(settings),
-          audio_data_reference(audio_context, data_handle),
+        : audio_data(reinterpret_cast<const char*>(data_handle->Data()),
+                     data_handle->ByteLength()),
           success_callback(audio_context, success_handler) {}
 
-    DecodeCallbackInfo(script::EnvironmentSettings* settings,
-                       const script::Handle<script::ArrayBuffer>& data_handle,
+    DecodeCallbackInfo(const script::Handle<script::ArrayBuffer>& data_handle,
                        AudioContext* const audio_context,
                        const DecodeSuccessCallbackArg& success_handler,
                        const DecodeErrorCallbackArg& error_handler)
-        : env_settings(settings),
-          audio_data_reference(audio_context, data_handle),
+        : audio_data(reinterpret_cast<const char*>(data_handle->Data()),
+                     data_handle->ByteLength()),
           success_callback(audio_context, success_handler) {
       error_callback.emplace(audio_context, error_handler);
     }
 
-    script::EnvironmentSettings* env_settings;
-    script::ScriptValue<script::ArrayBuffer>::Reference audio_data_reference;
+    DecodeCallbackInfo(const DecodeCallbackInfo&) = delete;
+
+    std::string audio_data;
     DecodeSuccessCallbackReference success_callback;
     base::Optional<DecodeErrorCallbackReference> error_callback;
   };
@@ -190,7 +187,7 @@ class AudioContext : public dom::EventTarget {
 
   void DecodeAudioDataInternal(std::unique_ptr<DecodeCallbackInfo> info);
   void DecodeFinish(int callback_id, float sample_rate,
-                    std::unique_ptr<ShellAudioBus> audio_bus);
+                    std::unique_ptr<AudioBus> audio_bus);
 
   script::GlobalEnvironment* global_environment_;
 

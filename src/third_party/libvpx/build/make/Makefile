@@ -26,7 +26,7 @@ test-no-data-check:: .DEFAULT
 testdata:: .DEFAULT
 utiltest: .DEFAULT
 exampletest-no-data-check utiltest-no-data-check: .DEFAULT
-
+test_%: .DEFAULT ;
 
 # Note: md5sum is not installed on OS X, but openssl is. Openssl may not be
 # installed on cygwin, so we need to autodetect here.
@@ -90,7 +90,7 @@ all:
 
 .PHONY: clean
 clean::
-	rm -f $(OBJS-yes) $(OBJS-yes:.o=.d) $(OBJS-yes:.asm.s.o=.asm.s)
+	rm -f $(OBJS-yes) $(OBJS-yes:.o=.d) $(OBJS-yes:.asm.S.o=.asm.S)
 	rm -f $(CLEAN-OBJS)
 
 .PHONY: clean
@@ -99,6 +99,7 @@ distclean: clean
       rm -f Makefile; \
       rm -f config.log config.mk; \
       rm -f vpx_config.[hc] vpx_config.asm; \
+      rm -f arm_neon.h; \
     else \
       rm -f $(target)-$(TOOLCHAIN).mk; \
     fi
@@ -124,6 +125,7 @@ ifeq ($(TOOLCHAIN), x86-os2-gcc)
 CFLAGS += -mstackrealign
 endif
 
+# x86[_64]
 $(BUILD_PFX)%_mmx.c.d: CFLAGS += -mmmx
 $(BUILD_PFX)%_mmx.c.o: CFLAGS += -mmmx
 $(BUILD_PFX)%_sse2.c.d: CFLAGS += -msse2
@@ -138,6 +140,12 @@ $(BUILD_PFX)%_avx.c.d: CFLAGS += -mavx
 $(BUILD_PFX)%_avx.c.o: CFLAGS += -mavx
 $(BUILD_PFX)%_avx2.c.d: CFLAGS += -mavx2
 $(BUILD_PFX)%_avx2.c.o: CFLAGS += -mavx2
+$(BUILD_PFX)%_avx512.c.d: CFLAGS += -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl
+$(BUILD_PFX)%_avx512.c.o: CFLAGS += -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl
+
+# POWER
+$(BUILD_PFX)%_vsx.c.d: CFLAGS += -maltivec -mvsx
+$(BUILD_PFX)%_vsx.c.o: CFLAGS += -maltivec -mvsx
 
 $(BUILD_PFX)%.c.d: %.c
 	$(if $(quiet),@echo "    [DEP] $@")
@@ -180,13 +188,13 @@ $(BUILD_PFX)%.asm.o: %.asm
 	$(qexec)$(if $(CONFIG_DEPENDENCY_TRACKING),,mkdir -p $(dir $@))
 	$(qexec)$(AS) $(ASFLAGS) -o $@ $<
 
-$(BUILD_PFX)%.s.d: %.s
+$(BUILD_PFX)%.S.d: %.S
 	$(if $(quiet),@echo "    [DEP] $@")
 	$(qexec)mkdir -p $(dir $@)
 	$(qexec)$(SRC_PATH_BARE)/build/make/gen_asm_deps.sh \
             --build-pfx=$(BUILD_PFX) --depfile=$@ $(ASFLAGS) $< > $@
 
-$(BUILD_PFX)%.s.o: %.s
+$(BUILD_PFX)%.S.o: %.S
 	$(if $(quiet),@echo "    [AS] $@")
 	$(qexec)$(if $(CONFIG_DEPENDENCY_TRACKING),,mkdir -p $(dir $@))
 	$(qexec)$(AS) $(ASFLAGS) -o $@ $<
@@ -198,8 +206,8 @@ $(BUILD_PFX)%.c.S: %.c
 	$(qexec)$(if $(CONFIG_DEPENDENCY_TRACKING),,mkdir -p $(dir $@))
 	$(qexec)$(CC) -S $(CFLAGS) -o $@ $<
 
-.PRECIOUS: %.asm.s
-$(BUILD_PFX)%.asm.s: %.asm
+.PRECIOUS: %.asm.S
+$(BUILD_PFX)%.asm.S: %.asm
 	$(if $(quiet),@echo "    [ASM CONVERSION] $@")
 	$(qexec)mkdir -p $(dir $@)
 	$(qexec)$(ASM_CONVERSION) <$< >$@
@@ -418,15 +426,14 @@ ifneq ($(call enabled,DIST-SRCS),)
     DIST-SRCS-yes            += build/make/gen_asm_deps.sh
     DIST-SRCS-yes            += build/make/Makefile
     DIST-SRCS-$(CONFIG_MSVS)  += build/make/gen_msvs_def.sh
-    DIST-SRCS-$(CONFIG_MSVS)  += build/make/gen_msvs_proj.sh
     DIST-SRCS-$(CONFIG_MSVS)  += build/make/gen_msvs_sln.sh
     DIST-SRCS-$(CONFIG_MSVS)  += build/make/gen_msvs_vcxproj.sh
     DIST-SRCS-$(CONFIG_MSVS)  += build/make/msvs_common.sh
     DIST-SRCS-$(CONFIG_RVCT) += build/make/armlink_adapter.sh
-    DIST-SRCS-$(ARCH_ARM)    += build/make/ads2gas.pl
-    DIST-SRCS-$(ARCH_ARM)    += build/make/ads2gas_apple.pl
-    DIST-SRCS-$(ARCH_ARM)    += build/make/ads2armasm_ms.pl
-    DIST-SRCS-$(ARCH_ARM)    += build/make/thumb.pm
+    DIST-SRCS-$(VPX_ARCH_ARM) += build/make/ads2gas.pl
+    DIST-SRCS-$(VPX_ARCH_ARM) += build/make/ads2gas_apple.pl
+    DIST-SRCS-$(VPX_ARCH_ARM) += build/make/ads2armasm_ms.pl
+    DIST-SRCS-$(VPX_ARCH_ARM) += build/make/thumb.pm
     DIST-SRCS-yes            += $(target:-$(TOOLCHAIN)=).mk
 endif
 INSTALL-SRCS := $(call cond_enabled,CONFIG_INSTALL_SRCS,INSTALL-SRCS)
@@ -449,3 +456,5 @@ all: $(BUILD_TARGETS)
 install:: $(INSTALL_TARGETS)
 dist: $(INSTALL_TARGETS)
 test::
+
+.SUFFIXES:  # Delete default suffix rules

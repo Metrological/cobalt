@@ -29,8 +29,6 @@
 #include "starboard/export.h"
 #include "starboard/types.h"
 
-#if SB_API_VERSION >= 11
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -96,6 +94,10 @@ typedef struct SbCPUFeaturesARM {
   bool has_vfp;
   // VFP version 3
   bool has_vfp3;
+#if SB_API_VERSION >= 13
+  // VFP version 4
+  bool has_vfp4;
+#endif
   // VFP version 3 with 32 D-registers.
   bool has_vfp3_d32;
   // SDIV and UDIV hardware division in ARM mode.
@@ -166,7 +168,7 @@ typedef struct SbCPUFeaturesX86 {
   //     valid flags depends of specific architecture. Below are processor
   //     feature flags valid on x86 and x86_64
   //
-  //     See kernal source:
+  //     See kernel source:
   //     https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/
   //     tree/arch/x86/include/asm/cpufeatures.h
   // ---------------------------------------------------------------------
@@ -329,5 +331,4 @@ SB_EXPORT bool SbCPUFeaturesGet(SbCPUFeatures* features);
 }  // extern "C"
 #endif
 
-#endif  // SB_API_VERSION >= 11
 #endif  // STARBOARD_CPU_FEATURES_H_

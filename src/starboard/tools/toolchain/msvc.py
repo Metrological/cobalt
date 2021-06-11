@@ -50,31 +50,29 @@ class CompilerBase(object):
     return 'msvc'
 
   def GetRspFilePath(self):
-    return '$out.rsp'
+    return None
 
   def GetRspFileContent(self):
-    return self._command_flags
+    return None
 
   def GetCommand(self, path, extra_flags, flags, shell):
     del extra_flags  # Not used.
     del shell  # Not used.
-    self._command_flags = flags
-    return ('{path} /nologo /showIncludes /FC @$out.rsp /c $in /Fo$out '
-            '/Fd$pdbname'.format(path=path))
+    return ('{path} /nologo /showIncludes {flags} /c $in /Fo$out /Fd$out.pdb'
+            .format(path=path, flags=flags))
 
   def GetFlags(self, defines, include_dirs, cflags):
-    del cflags  # Not used.
     defines = defines + self._gyp_defines
     quoted_defines = QuoteArguments(defines)
-    define_flags = [
-        '/D{0}'.format(define) for define in quoted_defines
-    ]
+    define_flags = ['/D{0}'.format(define) for define in quoted_defines]
     include_dirs = include_dirs + self._gyp_include_dirs
     quoted_include_dirs = QuoteArguments(include_dirs)
     include_dir_flags = [
         '/I{0}'.format(include_dir) for include_dir in quoted_include_dirs
     ]
-    return define_flags + include_dir_flags + self._gyp_cflags
+    if self._gyp_cflags:
+      cflags = self._gyp_cflags
+    return define_flags + include_dir_flags + cflags
 
 
 class CCompiler(CompilerBase, abstract.CCompiler):
@@ -127,25 +125,14 @@ class AssemblerWithCPreprocessor(abstract.AssemblerWithCPreprocessor):
     del extra_flags  # Not used.
     del shell  # Not used.
     return ('{python} gyp-win-tool asm-wrapper {arch} {path} {flags} /c /Fo '
-            '$out $in'.format(python=sys.executable, arch=self._arch,
-                              path=path, flags=flags))
+            '$out $in'.format(
+                python=sys.executable, arch=self._arch, path=path, flags=flags))
 
   def GetDescription(self):
     return 'ASM $in'
 
   def GetFlags(self, defines, include_dirs, cflags):
-    del cflags  # Not used.
-    defines = defines + self._gyp_defines
-    quoted_defines = QuoteArguments(defines)
-    define_flags = [
-        '/D{0}'.format(define) for define in quoted_defines
-    ]
-    include_dirs = include_dirs + self._gyp_include_dirs
-    quoted_include_dirs = QuoteArguments(include_dirs)
-    include_dir_flags = [
-        '/I{0}'.format(include_dir) for include_dir in quoted_include_dirs
-    ]
-    return define_flags + include_dir_flags
+    return []
 
 
 class StaticLinkerBase(object):
@@ -155,6 +142,8 @@ class StaticLinkerBase(object):
     self._path = common.GetPath('ar', **kwargs)
     self._arch = kwargs.get('arch', 'environment.x64')
     self._gyp_libflags = kwargs.get('gyp_libflags', [])
+    self._max_concurrent_processes = kwargs.get('max_concurrent_processes',
+                                                None)
 
   def GetPath(self):
     return self._path
@@ -164,8 +153,7 @@ class StaticLinkerBase(object):
     return []
 
   def GetMaxConcurrentProcesses(self):
-    # Run as much concurrent processes as possible.
-    return None
+    return self._max_concurrent_processes
 
   def GetDescription(self):
     return 'LIB $out'
@@ -181,9 +169,8 @@ class StaticLinkerBase(object):
     del shell  # Not used.
     self._command_flags = flags
     return ('{python} gyp-win-tool link-wrapper {arch} {path} /nologo '
-            '/ignore:4221 /OUT:$out @$out.rsp'.format(python=sys.executable,
-                                                      arch=self._arch,
-                                                      path=path))
+            '/ignore:4221 /OUT:$out @$out.rsp'.format(
+                python=sys.executable, arch=self._arch, path=path))
 
   def GetFlags(self):
     return self._gyp_libflags
@@ -224,7 +211,8 @@ class DynamicLinkerBase(object):
     return self._max_concurrent_processes
 
   def GetFlags(self, ldflags):
-    return ldflags + self._gyp_ldflags
+    del ldflags  # Not used.
+    return self._gyp_ldflags
 
 
 class ExecutableLinker(DynamicLinkerBase, abstract.ExecutableLinker):
@@ -247,9 +235,8 @@ class ExecutableLinker(DynamicLinkerBase, abstract.ExecutableLinker):
     del shell  # Not used.
     self._command_flags = flags
     return ('{python} gyp-win-tool link-wrapper {arch} {path} /nologo '
-            '/OUT:$out /PDB:$out.pdb @$out.rsp'.format(python=sys.executable,
-                                                       arch=self._arch,
-                                                       path=path))
+            '/OUT:$out /PDB:$out.pdb @$out.rsp'.format(
+                python=sys.executable, arch=self._arch, path=path))
 
 
 class SharedLibraryLinker(DynamicLinkerBase, abstract.SharedLibraryLinker):
@@ -272,9 +259,8 @@ class SharedLibraryLinker(DynamicLinkerBase, abstract.SharedLibraryLinker):
     del shell  # Not used.
     self._command_flags = flags
     return ('{python} gyp-win-tool link-wrapper {arch} {path} /nologo '
-            '$implibflag /DLL /OUT:$dll /PDB:$dll.pdb @$dll.rsp'.format(python=sys.executable,
-                                                      arch=self._arch,
-                                                      path=path))
+            '$implibflag /DLL /OUT:$dll /PDB:$dll.pdb @$dll.rsp'.format(
+                python=sys.executable, arch=self._arch, path=path))
 
   def GetRestat(self):
     return True

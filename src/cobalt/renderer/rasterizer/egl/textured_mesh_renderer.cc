@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "base/strings/stringprintf.h"
+#include "cobalt/extension/graphics.h"
 #include "cobalt/math/size.h"
 #include "cobalt/renderer/backend/egl/utils.h"
 #include "cobalt/renderer/egl_and_gles.h"
@@ -346,12 +347,51 @@ uint32 TexturedMeshRenderer::CreateFragmentShader(
   if (color_matrix) {
     blit_fragment_shader_source +=
         ");"
-        "  gl_FragColor = untransformed_color * to_rgb_color_matrix;"
-        "}";
+        "  vec4 color = untransformed_color * to_rgb_color_matrix;";
   } else {
     blit_fragment_shader_source +=
         ");"
-        "  gl_FragColor = untransformed_color;"
+        "  vec4 color = untransformed_color;";
+  }
+
+  const CobaltExtensionGraphicsApi* graphics_extension =
+      static_cast<const CobaltExtensionGraphicsApi*>(
+          SbSystemGetExtension(kCobaltExtensionGraphicsName));
+  CobaltExtensionGraphicsMapToMeshColorAdjustment color_adjustment;
+  if (graphics_extension != nullptr &&
+      strcmp(graphics_extension->name, kCobaltExtensionGraphicsName) == 0 &&
+      graphics_extension->version >= 5 &&
+      graphics_extension->GetMapToMeshColorAdjustments(&color_adjustment)) {
+    // Setup vectors for the color adjustments. Ensure they use dot for decimal
+    // point regardless of locale.
+    std::stringstream buffer;
+    buffer.imbue(std::locale::classic());
+    buffer << "  vec4 scale0 = vec4(" << color_adjustment.rgba0_scale[0] << ","
+           << color_adjustment.rgba0_scale[1] << ","
+           << color_adjustment.rgba0_scale[2] << ","
+           << color_adjustment.rgba0_scale[3] << ");";
+    buffer << "  vec4 scale1 = vec4(" << color_adjustment.rgba1_scale[0] << ","
+           << color_adjustment.rgba1_scale[1] << ","
+           << color_adjustment.rgba1_scale[2] << ","
+           << color_adjustment.rgba1_scale[3] << ");";
+    buffer << "  vec4 scale2 = vec4(" << color_adjustment.rgba2_scale[0] << ","
+           << color_adjustment.rgba2_scale[1] << ","
+           << color_adjustment.rgba2_scale[2] << ","
+           << color_adjustment.rgba2_scale[3] << ");";
+    buffer << "  vec4 scale3 = vec4(" << color_adjustment.rgba3_scale[0] << ","
+           << color_adjustment.rgba3_scale[1] << ","
+           << color_adjustment.rgba3_scale[2] << ","
+           << color_adjustment.rgba3_scale[3] << ");";
+    blit_fragment_shader_source +=
+        "  vec4 color2 = color * color;"
+        "  vec4 color3 = color2 * color;" +
+        buffer.str() +
+        "  color = scale0 + scale1*color + scale2*color2 + scale3*color3;"
+        "  gl_FragColor = clamp(color, vec4(0.0), vec4(1.0));"
+        "}";
+  } else {
+    blit_fragment_shader_source +=
+        "  gl_FragColor = color;"
         "}";
   }
 
@@ -525,7 +565,6 @@ TexturedMeshRenderer::ProgramInfo TexturedMeshRenderer::GetBlitProgram(
       } break;
       case Image::YUV_2PLANE_BT709: {
         std::vector<TextureInfo> texture_infos;
-#if SB_API_VERSION >= 7
         switch (image.textures[0].texture->GetFormat()) {
           case GL_ALPHA:
             texture_infos.push_back(TextureInfo("y", "a"));
@@ -550,10 +589,6 @@ TexturedMeshRenderer::ProgramInfo TexturedMeshRenderer::GetBlitProgram(
           default:
             NOTREACHED();
         }
-#else   // SB_API_VERSION >= 7
-        texture_infos.push_back(TextureInfo("y", "a"));
-        texture_infos.push_back(TextureInfo("uv", "ba"));
-#endif  // SB_API_VERSION >= 7
         result = MakeBlitProgram(
             color_matrix, texture_infos,
             CreateFragmentShader(texture_target, texture_infos, color_matrix));
@@ -562,7 +597,7 @@ TexturedMeshRenderer::ProgramInfo TexturedMeshRenderer::GetBlitProgram(
       case Image::YUV_3PLANE_BT709:
       case Image::YUV_3PLANE_10BIT_BT2020: {
         std::vector<TextureInfo> texture_infos;
-#if SB_API_VERSION >= 7 && defined(GL_RED_EXT)
+#if defined(GL_RED_EXT)
         if (image.textures[0].texture->GetFormat() == GL_RED_EXT) {
           texture_infos.push_back(TextureInfo("y", "r"));
         } else {
@@ -578,11 +613,11 @@ TexturedMeshRenderer::ProgramInfo TexturedMeshRenderer::GetBlitProgram(
         } else {
           texture_infos.push_back(TextureInfo("v", "a"));
         }
-#else   // SB_API_VERSION >= 7 && defined(GL_RED_EXT)
+#else   // defined(GL_RED_EXT)
         texture_infos.push_back(TextureInfo("y", "a"));
         texture_infos.push_back(TextureInfo("u", "a"));
         texture_infos.push_back(TextureInfo("v", "a"));
-#endif  // SB_API_VERSION >= 7 && defined(GL_RED_EXT)
+#endif  // defined(GL_RED_EXT)
         result = MakeBlitProgram(
             color_matrix, texture_infos,
             CreateFragmentShader(texture_target, texture_infos, color_matrix));

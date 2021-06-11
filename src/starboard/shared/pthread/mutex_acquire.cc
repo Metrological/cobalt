@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "starboard/common/mutex.h"
+#include "starboard/mutex.h"
 
 #include <pthread.h>
 
@@ -35,12 +35,12 @@ SbMutexResult SbMutexAcquire(SbMutex* mutex) {
     SetInitialized(&(SB_INTERNAL_MUTEX(mutex)->initialized_state));
   }
 #endif
-#if SB_ENABLE_CONCURRENTY_DEBUG
+#if SB_ENABLE_CONCURRENCY_DEBUG
   starboard::experimental::ScopedMutexWaitTracker tracker(mutex);
   if (tracker.acquired()) {
     return kSbMutexAcquired;
   }
-#endif  // SB_ENABLE_CONCURRENTY_DEBUG
+#endif  // SB_ENABLE_CONCURRENCY_DEBUG
   int result = pthread_mutex_lock(SB_PTHREAD_INTERNAL_MUTEX(mutex));
   if (IsSuccess(result)) {
     return kSbMutexAcquired;

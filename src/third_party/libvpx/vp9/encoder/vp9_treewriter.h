@@ -8,8 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef VP9_ENCODER_VP9_TREEWRITER_H_
-#define VP9_ENCODER_VP9_TREEWRITER_H_
+#ifndef VPX_VP9_ENCODER_VP9_TREEWRITER_H_
+#define VPX_VP9_ENCODER_VP9_TREEWRITER_H_
 
 #include "vpx_dsp/bitwriter.h"
 
@@ -18,15 +18,15 @@ extern "C" {
 #endif
 
 void vp9_tree_probs_from_distribution(vpx_tree tree,
-                                      unsigned int branch_ct[ /* n - 1 */ ][2],
-                                      const unsigned int num_events[ /* n */ ]);
+                                      unsigned int branch_ct[/* n - 1 */][2],
+                                      const unsigned int num_events[/* n */]);
 
 struct vp9_token {
   int value;
   int len;
 };
 
-void vp9_tokens_from_tree(struct vp9_token*, const vpx_tree_index *);
+void vp9_tokens_from_tree(struct vp9_token *, const vpx_tree_index *);
 
 static INLINE void vp9_write_tree(vpx_writer *w, const vpx_tree_index *tree,
                                   const vpx_prob *probs, int bits, int len,
@@ -48,4 +48,4 @@ static INLINE void vp9_write_token(vpx_writer *w, const vpx_tree_index *tree,
 }  // extern "C"
 #endif
 
-#endif  // VP9_ENCODER_VP9_TREEWRITER_H_
+#endif  // VPX_VP9_ENCODER_VP9_TREEWRITER_H_

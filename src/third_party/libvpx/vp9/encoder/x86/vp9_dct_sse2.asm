@@ -11,6 +11,7 @@
 %define private_prefix vp9
 
 %include "third_party/x86inc/x86inc.asm"
+%include "vpx_dsp/x86/bitdepth_conversion_sse2.asm"
 
 SECTION .text
 
@@ -45,7 +46,6 @@ SECTION .text
 
 INIT_XMM sse2
 cglobal fwht4x4, 3, 4, 8, input, output, stride
-; TODO(linfeng): The duplication with vp10 should be resolved.
   lea             r3q,       [inputq + strideq*4]
   movq            m0,        [inputq] ;a1
   movq            m1,        [inputq + strideq*2] ;b1
@@ -63,25 +63,7 @@ cglobal fwht4x4, 3, 4, 8, input, output, stride
   psllw           m0,        2
   psllw           m1,        2
 
-%if CONFIG_VP9_HIGHBITDEPTH
-  ; sign extension
-  mova            m2,             m0
-  mova            m3,             m1
-  punpcklwd       m0,             m0
-  punpcklwd       m1,             m1
-  punpckhwd       m2,             m2
-  punpckhwd       m3,             m3
-  psrad           m0,             16
-  psrad           m1,             16
-  psrad           m2,             16
-  psrad           m3,             16
-  mova            [outputq],      m0
-  mova            [outputq + 16], m2
-  mova            [outputq + 32], m1
-  mova            [outputq + 48], m3
-%else
-  mova            [outputq],      m0
-  mova            [outputq + 16], m1
-%endif
+  STORE_TRAN_LOW 0, outputq, 0, 2, 3
+  STORE_TRAN_LOW 1, outputq, 8, 2, 3
 
   RET

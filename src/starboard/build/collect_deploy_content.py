@@ -17,10 +17,12 @@
 import argparse
 import logging
 import os
+import shutil
 import sys
 
 import _env  # pylint: disable=unused-import
 import starboard.tools.port_symlink as port_symlink
+from starboard.tools import log_level
 
 # The name of an environment variable that when set to |'1'|, signals to us that
 # we should log all output directories that we have populated.
@@ -85,13 +87,17 @@ def main(argv):
       metavar='subdirs',
       nargs='*',
       help='subdirectories within both the input and output directories')
+  parser.add_argument(
+      '--copy_override',
+      action='store_true',
+      help='Overrides the behavior of collect_deploy_content to copy files, '
+      'instead of symlinking them.')
   options = parser.parse_args(argv[1:])
 
   if os.environ.get(_SHOULD_LOG_ENV_KEY, None) == '1':
-    log_level = logging.INFO
+    log_level.InitializeLoggingWithLevel(logging.INFO)
   else:
-    log_level = logging.WARNING
-  logging.basicConfig(level=log_level, format='COLLECT CONTENT: %(message)s')
+    log_level.InitializeLoggingWithLevel(logging.WARNING)
 
   logging.info('max_depth: %s', options.max_depth)
   logging.info('< %s', options.input_dir)
@@ -134,7 +140,9 @@ def main(argv):
           msg += ' path points to an unknown type'
         logging.error(msg)
 
-    if options.use_absolute_symlinks:
+    if options.copy_override:
+      shutil.copytree(src_path, dst_path)
+    elif options.use_absolute_symlinks:
       port_symlink.MakeSymLink(
           target_path=os.path.abspath(src_path),
           link_path=os.path.abspath(dst_path))

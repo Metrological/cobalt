@@ -10,6 +10,7 @@
 
 #include <assert.h>
 
+#include "./vp9_rtcd.h"
 #include "vp9/common/vp9_enums.h"
 #include "vp9/encoder/mips/msa/vp9_fdct_msa.h"
 
@@ -86,9 +87,7 @@ void vp9_fht4x4_msa(const int16_t *input, int16_t *output, int32_t stride,
       TRANSPOSE4x4_SH_SH(in0, in1, in2, in3, in0, in1, in2, in3);
       VP9_FADST4(in0, in1, in2, in3, in0, in1, in2, in3);
       break;
-    default:
-      assert(0);
-      break;
+    default: assert(0); break;
   }
 
   TRANSPOSE4x4_SH_SH(in0, in1, in2, in3, in0, in1, in2, in3);

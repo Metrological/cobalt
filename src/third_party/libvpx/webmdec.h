@@ -7,8 +7,8 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
-#ifndef WEBMDEC_H_
-#define WEBMDEC_H_
+#ifndef VPX_WEBMDEC_H_
+#define VPX_WEBMDEC_H_
 
 #include "./tools_common.h"
 
@@ -52,8 +52,7 @@ int file_is_webm(struct WebmInputContext *webm_ctx,
 //      0 - Success
 //      1 - End of Stream
 //     -1 - Error
-int webm_read_frame(struct WebmInputContext *webm_ctx,
-                    uint8_t **buffer,
+int webm_read_frame(struct WebmInputContext *webm_ctx, uint8_t **buffer,
                     size_t *buffer_size);
 
 // Guesses the frame rate of the input file based on the container timestamps.
@@ -67,4 +66,4 @@ void webm_free(struct WebmInputContext *webm_ctx);
 }  // extern "C"
 #endif
 
-#endif  // WEBMDEC_H_
+#endif  // VPX_WEBMDEC_H_

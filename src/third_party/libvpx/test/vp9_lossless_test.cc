@@ -21,15 +21,13 @@ namespace {
 
 const int kMaxPsnr = 100;
 
-class LosslessTest : public ::libvpx_test::EncoderTest,
-    public ::libvpx_test::CodecTestWithParam<libvpx_test::TestMode> {
+class LosslessTest
+    : public ::libvpx_test::EncoderTest,
+      public ::libvpx_test::CodecTestWithParam<libvpx_test::TestMode> {
  protected:
   LosslessTest()
-      : EncoderTest(GET_PARAM(0)),
-        psnr_(kMaxPsnr),
-        nframes_(0),
-        encoding_mode_(GET_PARAM(1)) {
-  }
+      : EncoderTest(GET_PARAM(0)), psnr_(kMaxPsnr), nframes_(0),
+        encoding_mode_(GET_PARAM(1)) {}
 
   virtual ~LosslessTest() {}
 
@@ -40,7 +38,7 @@ class LosslessTest : public ::libvpx_test::EncoderTest,
 
   virtual void PreEncodeFrameHook(::libvpx_test::VideoSource *video,
                                   ::libvpx_test::Encoder *encoder) {
-    if (video->frame() == 1) {
+    if (video->frame() == 0) {
       // Only call Control if quantizer > 0 to verify that using quantizer
       // alone will activate lossless
       if (cfg_.rc_max_quantizer > 0 || cfg_.rc_min_quantizer > 0) {
@@ -55,13 +53,10 @@ class LosslessTest : public ::libvpx_test::EncoderTest,
   }
 
   virtual void PSNRPktHook(const vpx_codec_cx_pkt_t *pkt) {
-    if (pkt->data.psnr.psnr[0] < psnr_)
-      psnr_= pkt->data.psnr.psnr[0];
+    if (pkt->data.psnr.psnr[0] < psnr_) psnr_ = pkt->data.psnr.psnr[0];
   }
 
-  double GetMinPsnr() const {
-      return psnr_;
-  }
+  double GetMinPsnr() const { return psnr_; }
 
  private:
   double psnr_;
@@ -123,12 +118,8 @@ TEST_P(LosslessTest, TestLossLessEncodingCtrl) {
   EXPECT_GE(psnr_lossless, kMaxPsnr);
 }
 
-VP9_INSTANTIATE_TEST_CASE(LosslessTest,
-                          ::testing::Values(::libvpx_test::kRealTime,
-                                            ::libvpx_test::kOnePassGood,
-                                            ::libvpx_test::kTwoPassGood));
-
-VP10_INSTANTIATE_TEST_CASE(LosslessTest,
-                           ::testing::Values(::libvpx_test::kOnePassGood,
+VP9_INSTANTIATE_TEST_SUITE(LosslessTest,
+                           ::testing::Values(::libvpx_test::kRealTime,
+                                             ::libvpx_test::kOnePassGood,
                                              ::libvpx_test::kTwoPassGood));
 }  // namespace

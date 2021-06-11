@@ -7,8 +7,8 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
-#ifndef TEST_I420_VIDEO_SOURCE_H_
-#define TEST_I420_VIDEO_SOURCE_H_
+#ifndef VPX_TEST_I420_VIDEO_SOURCE_H_
+#define VPX_TEST_I420_VIDEO_SOURCE_H_
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -21,16 +21,13 @@ namespace libvpx_test {
 // so that we can do actual file encodes.
 class I420VideoSource : public YUVVideoSource {
  public:
-  I420VideoSource(const std::string &file_name,
-                  unsigned int width, unsigned int height,
-                  int rate_numerator, int rate_denominator,
+  I420VideoSource(const std::string &file_name, unsigned int width,
+                  unsigned int height, int rate_numerator, int rate_denominator,
                   unsigned int start, int limit)
-      : YUVVideoSource(file_name, VPX_IMG_FMT_I420,
-                       width, height,
-                       rate_numerator, rate_denominator,
-                       start, limit) {}
+      : YUVVideoSource(file_name, VPX_IMG_FMT_I420, width, height,
+                       rate_numerator, rate_denominator, start, limit) {}
 };
 
 }  // namespace libvpx_test
 
-#endif  // TEST_I420_VIDEO_SOURCE_H_
+#endif  // VPX_TEST_I420_VIDEO_SOURCE_H_

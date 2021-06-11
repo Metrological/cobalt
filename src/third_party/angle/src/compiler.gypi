@@ -53,7 +53,6 @@
             '<(DEPTH)/third_party/angle/src/compiler/translator/FunctionLookup.h',
             '<(DEPTH)/third_party/angle/src/compiler/translator/HashNames.cpp',
             '<(DEPTH)/third_party/angle/src/compiler/translator/HashNames.h',
-            '<(DEPTH)/third_party/angle/src/compiler/translator/ImmutableString.cpp',
             '<(DEPTH)/third_party/angle/src/compiler/translator/ImmutableString.h',
             '<(DEPTH)/third_party/angle/src/compiler/translator/ImmutableStringBuilder.cpp',
             '<(DEPTH)/third_party/angle/src/compiler/translator/ImmutableStringBuilder.h',
@@ -88,7 +87,6 @@
             '<(DEPTH)/third_party/angle/src/compiler/translator/Severity.h',
             '<(DEPTH)/third_party/angle/src/compiler/translator/ShaderLang.cpp',
             '<(DEPTH)/third_party/angle/src/compiler/translator/ShaderVars.cpp',
-            '<(DEPTH)/third_party/angle/src/compiler/translator/StaticType.cpp',
             '<(DEPTH)/third_party/angle/src/compiler/translator/StaticType.h',
             '<(DEPTH)/third_party/angle/src/compiler/translator/Symbol.cpp',
             '<(DEPTH)/third_party/angle/src/compiler/translator/Symbol.h',
@@ -353,6 +351,13 @@
             'dependencies': [ 'angle_common' ],
             'includes': [ '../gyp/common_defines.gypi', ],
             'sources': [ '<@(angle_preprocessor_sources)', ],
+            'msvs_settings':
+            {
+                  'VCCLCompilerTool':
+                  {
+                        'WarnAsError': 'false',
+                  },
+            },
         },
         {
             'target_name': 'translator',
@@ -370,10 +375,14 @@
             ],
             'msvs_settings':
             {
-              'VCLibrarianTool':
-              {
-                'AdditionalOptions': ['/ignore:4221']
-              },
+                  'VCCLCompilerTool':
+                  {
+                        'WarnAsError': 'false',
+                  },
+                  'VCLibrarianTool':
+                  {
+                        'AdditionalOptions': ['/ignore:4221'],
+                  },
             },
             'conditions':
             [

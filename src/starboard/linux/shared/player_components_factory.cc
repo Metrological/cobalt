@@ -15,14 +15,12 @@
 #include "starboard/common/log.h"
 #include "starboard/common/ref_counted.h"
 #include "starboard/common/scoped_ptr.h"
-#include "starboard/format_string.h"
-#if SB_API_VERSION >= 11
+#include "starboard/common/string.h"
 #include "starboard/gles.h"
-#endif  // SB_API_VERSION >= 11
 #include "starboard/media.h"
 #include "starboard/shared/ffmpeg/ffmpeg_audio_decoder.h"
 #include "starboard/shared/ffmpeg/ffmpeg_video_decoder.h"
-#include "starboard/shared/libaom/aom_video_decoder.h"
+#include "starboard/shared/libdav1d/dav1d_video_decoder.h"
 #include "starboard/shared/libde265/de265_video_decoder.h"
 #include "starboard/shared/libvpx/vpx_video_decoder.h"
 #include "starboard/shared/opus/opus_audio_decoder.h"
@@ -64,7 +62,6 @@ class PlayerComponentsFactory : public PlayerComponents::Factory {
       typedef ::starboard::shared::ffmpeg::AudioDecoder FfmpegAudioDecoder;
       typedef ::starboard::shared::opus::OpusAudioDecoder OpusAudioDecoder;
 
-#if SB_API_VERSION >= 11
       auto decoder_creator = [](const SbMediaAudioSampleInfo& audio_sample_info,
                                 SbDrmSystem drm_system) {
         if (audio_sample_info.codec == kSbMediaAudioCodecOpus) {
@@ -87,41 +84,11 @@ class PlayerComponentsFactory : public PlayerComponents::Factory {
       audio_decoder->reset(new AdaptiveAudioDecoder(
           creation_parameters.audio_sample_info(),
           creation_parameters.drm_system(), decoder_creator));
-#else   // SB_API_VERSION >= 11
-      if (creation_parameters.audio_codec() == kSbMediaAudioCodecOpus) {
-        scoped_ptr<OpusAudioDecoder> audio_decoder_impl(
-            new OpusAudioDecoder(creation_parameters.audio_sample_info()));
-        if (audio_decoder_impl && audio_decoder_impl->is_valid()) {
-          audio_decoder->reset(audio_decoder_impl.release());
-        } else {
-          audio_decoder->reset();
-          SB_LOG(ERROR) << "Failed to create Opus audio decoder.";
-          *error_message = "Failed to create Opus audio decoder.";
-          return false;
-        }
-      } else {
-        scoped_ptr<FfmpegAudioDecoder> audio_decoder_impl(
-            FfmpegAudioDecoder::Create(
-                creation_parameters.audio_codec(),
-                creation_parameters.audio_sample_info()));
-        if (audio_decoder_impl && audio_decoder_impl->is_valid()) {
-          audio_decoder->reset(audio_decoder_impl.release());
-        } else {
-          audio_decoder->reset();
-          SB_LOG(ERROR) << "Failed to create audio decoder for codec "
-                        << creation_parameters.audio_codec();
-          *error_message =
-              FormatString("Failed to create audio decoder for codec %d.",
-                           creation_parameters.audio_codec());
-          return false;
-        }
-      }
-#endif  // SB_API_VERSION >= 11
       audio_renderer_sink->reset(new AudioRendererSinkImpl);
     }
 
     if (creation_parameters.video_codec() != kSbMediaVideoCodecNone) {
-      typedef ::starboard::shared::aom::VideoDecoder Av1VideoDecoderImpl;
+      typedef ::starboard::shared::libdav1d::VideoDecoder Av1VideoDecoderImpl;
       typedef ::starboard::shared::de265::VideoDecoder H265VideoDecoderImpl;
       typedef ::starboard::shared::ffmpeg::VideoDecoder FfmpegVideoDecoderImpl;
       typedef ::starboard::shared::vpx::VideoDecoder VpxVideoDecoderImpl;
@@ -134,11 +101,7 @@ class PlayerComponentsFactory : public PlayerComponents::Factory {
 
       video_decoder->reset();
 
-#if SB_API_VERSION < 11
-      const SbMediaVideoCodec kAv1VideoCodec = kSbMediaVideoCodecVp10;
-#else   // SB_API_VERSION < 11
       const SbMediaVideoCodec kAv1VideoCodec = kSbMediaVideoCodecAv1;
-#endif  // SB_API_VERSION < 11
 
       if (creation_parameters.video_codec() == kSbMediaVideoCodecVp9) {
         video_decoder->reset(new VpxVideoDecoderImpl(
@@ -201,13 +164,7 @@ scoped_ptr<PlayerComponents::Factory> PlayerComponents::Factory::Create() {
 bool VideoDecoder::OutputModeSupported(SbPlayerOutputMode output_mode,
                                        SbMediaVideoCodec codec,
                                        SbDrmSystem drm_system) {
-  bool has_gles_support = false;
-
-#if SB_API_VERSION >= 11
-  has_gles_support = SbGetGlesInterface();
-#elif SB_HAS(GLES2)
-  has_gles_support = true;
-#endif
+  bool has_gles_support = SbGetGlesInterface();
 
   if (!has_gles_support) {
     return output_mode == kSbPlayerOutputModePunchOut;

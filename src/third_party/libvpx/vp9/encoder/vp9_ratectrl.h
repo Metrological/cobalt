@@ -8,26 +8,39 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-
-#ifndef VP9_ENCODER_VP9_RATECTRL_H_
-#define VP9_ENCODER_VP9_RATECTRL_H_
+#ifndef VPX_VP9_ENCODER_VP9_RATECTRL_H_
+#define VPX_VP9_ENCODER_VP9_RATECTRL_H_
 
 #include "vpx/vpx_codec.h"
 #include "vpx/vpx_integer.h"
 
 #include "vp9/common/vp9_blockd.h"
+#include "vp9/encoder/vp9_lookahead.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Bits Per MB at different Q (Multiplied by 512)
-#define BPER_MB_NORMBITS    9
+// Used to control aggressive VBR mode.
+// #define AGGRESSIVE_VBR 1
 
-#define MIN_GF_INTERVAL     4
-#define MAX_GF_INTERVAL     16
-#define FIXED_GF_INTERVAL   8    // Used in some testing modes only
-#define ONEHALFONLY_RESIZE  0
+// Bits Per MB at different Q (Multiplied by 512)
+#define BPER_MB_NORMBITS 9
+
+#define MIN_GF_INTERVAL 4
+#define MAX_GF_INTERVAL 16
+#define FIXED_GF_INTERVAL 8  // Used in some testing modes only
+#define ONEHALFONLY_RESIZE 0
+
+#define FRAME_OVERHEAD_BITS 200
+
+// Threshold used to define a KF group as static (e.g. a slide show).
+// Essentially this means that no frame in the group has more than 1% of MBs
+// that are not marked as coded with 0,0 motion in the first pass.
+#define STATIC_KF_GROUP_THRESH 99
+
+// The maximum duration of a GF group that is static (for example a slide show).
+#define MAX_STATIC_GF_GROUP_LENGTH 250
 
 typedef enum {
   INTER_NORMAL = 0,
@@ -53,36 +66,32 @@ typedef enum {
   UP_ORIG = -2,        // From 1/2 or 3/4 to orig.
 } RESIZE_ACTION;
 
-typedef enum {
-  ORIG = 0,
-  THREE_QUARTER = 1,
-  ONE_HALF = 2
-} RESIZE_STATE;
+typedef enum { ORIG = 0, THREE_QUARTER = 1, ONE_HALF = 2 } RESIZE_STATE;
 
 // Frame dimensions multiplier wrt the native frame size, in 1/16ths,
 // specified for the scale-up case.
 // e.g. 24 => 16/24 = 2/3 of native size. The restriction to 1/16th is
 // intended to match the capabilities of the normative scaling filters,
 // giving precedence to the up-scaling accuracy.
-static const int frame_scale_factor[FRAME_SCALE_STEPS] = {16, 24};
+static const int frame_scale_factor[FRAME_SCALE_STEPS] = { 16, 24 };
 
 // Multiplier of the target rate to be used as threshold for triggering scaling.
-static const double rate_thresh_mult[FRAME_SCALE_STEPS] = {1.0, 2.0};
+static const double rate_thresh_mult[FRAME_SCALE_STEPS] = { 1.0, 2.0 };
 
 // Scale dependent Rate Correction Factor multipliers. Compensates for the
 // greater number of bits per pixel generated in down-scaled frames.
-static const double rcf_mult[FRAME_SCALE_STEPS] = {1.0, 2.0};
+static const double rcf_mult[FRAME_SCALE_STEPS] = { 1.0, 2.0 };
 
 typedef struct {
-  // Rate targetting variables
-  int base_frame_target;           // A baseline frame target before adjustment
-                                   // for previous under or over shoot.
-  int this_frame_target;           // Actual frame target after rc adjustment.
+  // Rate targeting variables
+  int base_frame_target;  // A baseline frame target before adjustment
+                          // for previous under or over shoot.
+  int this_frame_target;  // Actual frame target after rc adjustment.
   int projected_frame_size;
   int sb64_target_rate;
-  int last_q[FRAME_TYPES];         // Separate values for Intra/Inter
-  int last_boosted_qindex;         // Last boosted GF/KF/ARF q
-  int last_kf_qindex;              // Q index of the last key frame coded.
+  int last_q[FRAME_TYPES];  // Separate values for Intra/Inter
+  int last_boosted_qindex;  // Last boosted GF/KF/ARF q
+  int last_kf_qindex;       // Q index of the last key frame coded.
 
   int gfu_boost;
   int last_boost;
@@ -151,6 +160,8 @@ typedef struct {
   int rc_2_frame;
   int q_1_frame;
   int q_2_frame;
+  // Keep track of the last target average frame bandwidth.
+  int last_avg_frame_bandwidth;
 
   // Auto frame-scaling variables.
   FRAME_SCALE_LEVEL frame_size_selector;
@@ -159,10 +170,39 @@ typedef struct {
   int frame_height[FRAME_SCALE_STEPS];
   int rf_level_maxq[RATE_FACTOR_LEVELS];
 
-  uint64_t avg_source_sad;
+  int fac_active_worst_inter;
+  int fac_active_worst_gf;
+  uint64_t avg_source_sad[MAX_LAG_BUFFERS];
+  uint64_t prev_avg_source_sad_lag;
+  int high_source_sad_lagindex;
+  int high_num_blocks_with_motion;
+  int alt_ref_gf_group;
+  int last_frame_is_src_altref;
   int high_source_sad;
   int count_last_scene_change;
+  int hybrid_intra_scene_change;
+  int re_encode_maxq_scene_change;
   int avg_frame_low_motion;
+  int af_ratio_onepass_vbr;
+  int force_qpmin;
+  int reset_high_source_sad;
+  double perc_arf_usage;
+  int force_max_q;
+  // Last frame was dropped post encode on scene change.
+  int last_post_encode_dropped_scene_change;
+  // Enable post encode frame dropping for screen content. Only enabled when
+  // ext_use_post_encode_drop is enabled by user.
+  int use_post_encode_drop;
+  // External flag to enable post encode frame dropping, controlled by user.
+  int ext_use_post_encode_drop;
+
+  int damped_adjustment[RATE_FACTOR_LEVELS];
+  double arf_active_best_quality_adjustment_factor;
+  int arf_increase_active_best_quality;
+
+  int preserve_arf_as_gld;
+  int preserve_next_arf_as_gld;
+  int show_arf_as_gld;
 } RATE_CONTROL;
 
 struct VP9_COMP;
@@ -171,19 +211,20 @@ struct VP9EncoderConfig;
 void vp9_rc_init(const struct VP9EncoderConfig *oxcf, int pass,
                  RATE_CONTROL *rc);
 
-int vp9_estimate_bits_at_q(FRAME_TYPE frame_kind, int q, int mbs,
-                           double correction_factor,
-                           vpx_bit_depth_t bit_depth);
+int vp9_estimate_bits_at_q(FRAME_TYPE frame_type, int q, int mbs,
+                           double correction_factor, vpx_bit_depth_t bit_depth);
 
 double vp9_convert_qindex_to_q(int qindex, vpx_bit_depth_t bit_depth);
+
+int vp9_convert_q_to_qindex(double q_val, vpx_bit_depth_t bit_depth);
 
 void vp9_rc_init_minq_luts(void);
 
 int vp9_rc_get_default_min_gf_interval(int width, int height, double framerate);
 // Note vp9_rc_get_default_max_gf_interval() requires the min_gf_interval to
-// be passed in to ensure that the max_gf_interval returned is at least as bis
+// be passed in to ensure that the max_gf_interval returned is at least as big
 // as that.
-int vp9_rc_get_default_max_gf_interval(double framerate, int min_frame_rate);
+int vp9_rc_get_default_max_gf_interval(double framerate, int min_gf_interval);
 
 // Generally at the high level, the following flow is expected
 // to be enforced for rate control:
@@ -211,6 +252,9 @@ int vp9_rc_get_default_max_gf_interval(double framerate, int min_frame_rate);
 // encode_frame_to_data_rate() function.
 void vp9_rc_get_one_pass_vbr_params(struct VP9_COMP *cpi);
 void vp9_rc_get_one_pass_cbr_params(struct VP9_COMP *cpi);
+int vp9_calc_pframe_target_size_one_pass_cbr(const struct VP9_COMP *cpi);
+int vp9_calc_iframe_target_size_one_pass_cbr(const struct VP9_COMP *cpi);
+void vp9_update_buffer_level_preencode(struct VP9_COMP *cpi);
 void vp9_rc_get_svc_params(struct VP9_COMP *cpi);
 
 // Post encode update of the rate control parameters based
@@ -223,19 +267,23 @@ void vp9_rc_postencode_update_drop_frame(struct VP9_COMP *cpi);
 // Changes only the rate correction factors in the rate control structure.
 void vp9_rc_update_rate_correction_factors(struct VP9_COMP *cpi);
 
+// Post encode drop for CBR mode.
+int post_encode_drop_cbr(struct VP9_COMP *cpi, size_t *size);
+
+int vp9_test_drop(struct VP9_COMP *cpi);
+
 // Decide if we should drop this frame: For 1-pass CBR.
 // Changes only the decimation count in the rate control structure
 int vp9_rc_drop_frame(struct VP9_COMP *cpi);
 
 // Computes frame size bounds.
 void vp9_rc_compute_frame_size_bounds(const struct VP9_COMP *cpi,
-                                      int this_frame_target,
+                                      int frame_target,
                                       int *frame_under_shoot_limit,
                                       int *frame_over_shoot_limit);
 
 // Picks q and q bounds given the target for bits
-int vp9_rc_pick_q_and_bounds(const struct VP9_COMP *cpi,
-                             int *bottom_index,
+int vp9_rc_pick_q_and_bounds(const struct VP9_COMP *cpi, int *bottom_index,
                              int *top_index);
 
 // Estimates q to achieve a target bits per frame
@@ -277,12 +325,18 @@ void vp9_set_target_rate(struct VP9_COMP *cpi);
 
 int vp9_resize_one_pass_cbr(struct VP9_COMP *cpi);
 
-void vp9_avg_source_sad(struct VP9_COMP *cpi);
+void vp9_scene_detection_onepass(struct VP9_COMP *cpi);
 
 int vp9_encodedframe_overshoot(struct VP9_COMP *cpi, int frame_size, int *q);
+
+void vp9_configure_buffer_updates(struct VP9_COMP *cpi, int gf_group_index);
+
+void vp9_estimate_qp_gop(struct VP9_COMP *cpi);
+
+void vp9_compute_frame_low_motion(struct VP9_COMP *const cpi);
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif
 
-#endif  // VP9_ENCODER_VP9_RATECTRL_H_
+#endif  // VPX_VP9_ENCODER_VP9_RATECTRL_H_

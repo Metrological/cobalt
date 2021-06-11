@@ -22,6 +22,8 @@
 #include "starboard/export.h"
 #include "starboard/types.h"
 
+#if SB_API_VERSION < 13
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -59,4 +61,5 @@ SB_EXPORT bool SbDoubleIsNan(const double d);
 }  // extern "C"
 #endif
 
+#endif  // SB_API_VERSION < 13
 #endif  // STARBOARD_DOUBLE_H_

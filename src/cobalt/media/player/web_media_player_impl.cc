@@ -3,11 +3,11 @@
 // found in the LICENSE file.
 #include "cobalt/media/player/web_media_player_impl.h"
 
-#include <math.h>
-
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "base/bind.h"
@@ -24,9 +24,8 @@
 #include "cobalt/media/base/limits.h"
 #include "cobalt/media/base/media_log.h"
 #include "cobalt/media/filters/chunk_demuxer.h"
-#include "cobalt/media/filters/shell_demuxer.h"
 #include "cobalt/media/player/web_media_player_proxy.h"
-#include "starboard/double.h"
+#include "cobalt/media/progressive/progressive_demuxer.h"
 #include "starboard/types.h"
 
 namespace cobalt {
@@ -71,7 +70,7 @@ DECLARE_INSTANCE_COUNTER(WebMediaPlayerImpl);
 
 bool IsNearTheEndOfStream(const WebMediaPlayerImpl* wmpi, double position) {
   float duration = wmpi->GetDuration();
-  if (SbDoubleIsFinite(duration)) {
+  if (std::isfinite(duration)) {
     // If video is very short, we always treat a position as near the end.
     if (duration <= kEndOfStreamEpsilonInSeconds) return true;
     if (position >= duration - kEndOfStreamEpsilonInSeconds) return true;
@@ -130,7 +129,8 @@ WebMediaPlayerImpl::WebMediaPlayerImpl(
       is_local_source_(false),
       supports_save_(true),
       suppress_destruction_errors_(false),
-      drm_system_(NULL) {
+      drm_system_(NULL),
+      window_(window) {
   TRACE_EVENT0("cobalt::media", "WebMediaPlayerImpl::WebMediaPlayerImpl");
 
   ON_INSTANCE_CREATED(WebMediaPlayerImpl);
@@ -292,8 +292,8 @@ void WebMediaPlayerImpl::LoadProgressive(
   is_local_source_ = !url.SchemeIs("http") && !url.SchemeIs("https");
 
   progressive_demuxer_.reset(
-      new ShellDemuxer(pipeline_thread_.task_runner(), buffer_allocator_,
-                       proxy_->data_source(), media_log_));
+      new ProgressiveDemuxer(pipeline_thread_.task_runner(), buffer_allocator_,
+                             proxy_->data_source(), media_log_));
 
   state_.is_progressive = true;
   StartPipeline(progressive_demuxer_.get());
@@ -532,7 +532,13 @@ float WebMediaPlayerImpl::GetMaxTimeSeekable() const {
 
 void WebMediaPlayerImpl::Suspend() { pipeline_->Suspend(); }
 
-void WebMediaPlayerImpl::Resume() { pipeline_->Resume(); }
+void WebMediaPlayerImpl::Resume(PipelineWindow window) {
+  if (!window_ && window) {
+    is_resuming_from_background_mode_ = true;
+  }
+  window_ = window;
+  pipeline_->Resume(window);
+}
 
 bool WebMediaPlayerImpl::DidLoadingProgress() const {
   DCHECK_EQ(main_loop_, base::MessageLoop::current());
@@ -606,7 +612,8 @@ void WebMediaPlayerImpl::SetDrmSystemReadyCB(
 }
 
 void WebMediaPlayerImpl::OnPipelineSeek(PipelineStatus status,
-                                        bool is_initial_preroll) {
+                                        bool is_initial_preroll,
+                                        const std::string& error_message) {
   DCHECK_EQ(main_loop_, base::MessageLoop::current());
   state_.starting = false;
   state_.seeking = false;
@@ -617,7 +624,8 @@ void WebMediaPlayerImpl::OnPipelineSeek(PipelineStatus status,
   }
 
   if (status != PIPELINE_OK) {
-    OnPipelineError(status, "Failed pipeline seek.");
+    OnPipelineError(status,
+                    "Failed pipeline seek with error: " + error_message + ".");
     return;
   }
 
@@ -693,7 +701,7 @@ void WebMediaPlayerImpl::OnPipelineError(PipelineStatus error,
     case PIPELINE_ERROR_EXTERNAL_RENDERER_FAILED:
       SetNetworkError(
           WebMediaPlayer::kNetworkStateFormatError,
-          message.empty() ? "Pipeline extenrnal renderer failed." : message);
+          message.empty() ? "Pipeline external renderer failed." : message);
       break;
     case DEMUXER_ERROR_COULD_NOT_OPEN:
       SetNetworkError(WebMediaPlayer::kNetworkStateFormatError,
@@ -754,6 +762,13 @@ void WebMediaPlayerImpl::OnPipelineError(PipelineStatus error,
 void WebMediaPlayerImpl::OnPipelineBufferingState(
     Pipeline::BufferingState buffering_state) {
   DVLOG(1) << "OnPipelineBufferingState(" << buffering_state << ")";
+
+  // If |is_resuming_from_background_mode_| is true, we are exiting background
+  // mode and must seek.
+  if (is_resuming_from_background_mode_) {
+    Seek(pipeline_->GetMediaTime().InSecondsF());
+    is_resuming_from_background_mode_ = false;
+  }
 
   switch (buffering_state) {
     case Pipeline::kHaveMetadata:

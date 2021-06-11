@@ -27,8 +27,8 @@
 // algorithm to stretch or compress audio data to meet playback speeds less than
 // or greater than the natural playback of the audio stream. The algorithm
 // preserves local properties of the audio, therefore, pitch and harmonics are
-// preserved. See audio_renderer_algorith.cc for a more elaborate description of
-// the algorithm.
+// preserved. See audio_renderer_algorithm.cc for a more elaborate description
+// of the algorithm.
 //
 // Audio at very low or very high playback rates are muted to preserve quality.
 
@@ -218,7 +218,8 @@ class AudioTimeStretcher {
   int initial_capacity_;
   int max_capacity_;
 
-  SB_DISALLOW_COPY_AND_ASSIGN(AudioTimeStretcher);
+  AudioTimeStretcher(const AudioTimeStretcher&) = delete;
+  void operator=(const AudioTimeStretcher&) = delete;
 };
 
 }  // namespace filter

@@ -22,12 +22,6 @@
 #ifndef STARBOARD_LINUX_X64X11_CONFIGURATION_PUBLIC_H_
 #define STARBOARD_LINUX_X64X11_CONFIGURATION_PUBLIC_H_
 
-#if SB_API_VERSION != SB_EXPERIMENTAL_API_VERSION
-#error \
-    "This platform's sabi.json file is expected to track the experimental " \
-"Starboard API version."
-#endif  // SB_API_VERSION != SB_EXPERIMENTAL_API_VERSION
-
 // --- Architecture Configuration --------------------------------------------
 
 // Configuration parameters that allow the application to make some general
@@ -57,14 +51,11 @@
 #define SB_HAS_MICROPHONE 1
 #endif  // SB_API_VERSION < 12
 
-// Whether the current platform has speech synthesis.
-#undef SB_HAS_SPEECH_SYNTHESIS
-#define SB_HAS_SPEECH_SYNTHESIS 0
-
-#if SB_API_VERSION >= 8
 // Whether the current platform implements the on screen keyboard interface.
 #define SB_HAS_ON_SCREEN_KEYBOARD 0
 
-#endif  // SB_API_VERSION >= 8
+// Whether the current platform has speech synthesis.
+#undef SB_HAS_SPEECH_SYNTHESIS
+#define SB_HAS_SPEECH_SYNTHESIS 0
 
 #endif  // STARBOARD_LINUX_X64X11_CONFIGURATION_PUBLIC_H_

@@ -66,20 +66,16 @@ using RunFunction = std::function<void(Semaphore*)>;
 
 class FunctionThread : public Thread {
  public:
-  static scoped_ptr<Thread> Create(
-      const std::string& thread_name,
-      RunFunction run_function) {
+  static scoped_ptr<Thread> Create(const std::string& thread_name,
+                                   RunFunction run_function) {
     scoped_ptr<Thread> out(new FunctionThread(thread_name, run_function));
     return out.Pass();
   }
 
   FunctionThread(const std::string& name, RunFunction run_function)
-      : Thread(name), run_function_(run_function) {
-  }
+      : Thread(name), run_function_(run_function) {}
 
-  void Run() override {
-    run_function_(join_sema());
-  }
+  void Run() override { run_function_(join_sema()); }
 
  private:
   RunFunction run_function_;
@@ -87,17 +83,19 @@ class FunctionThread : public Thread {
 
 std::string ToString(SbSocketError error) {
   switch (error) {
-    case kSbSocketOk: { return "kSbSocketOk"; }
-    case kSbSocketPending: { return "kSbSocketErrorConnectionReset"; }
-    case kSbSocketErrorFailed: { return "kSbSocketErrorFailed"; }
+    case kSbSocketOk: {
+      return "kSbSocketOk";
+    }
+    case kSbSocketPending: {
+      return "kSbSocketErrorConnectionReset";
+    }
+    case kSbSocketErrorFailed: {
+      return "kSbSocketErrorFailed";
+    }
 
-#if SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) || \
-  SB_API_VERSION >= 9
     case kSbSocketErrorConnectionReset: {
       return "kSbSocketErrorConnectionReset";
     }
-#endif  // SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) ||
-      // SB_API_VERSION >= 9
   }
   SB_NOTREACHED() << "Unexpected case " << error;
   std::stringstream ss;
@@ -167,10 +165,7 @@ class BufferedSocketWriter {
       }
     };
 
-    SbSocketWaiterAdd(waiter,
-                      sock,
-                      NULL,
-                      &F::WakeUp,
+    SbSocketWaiterAdd(waiter, sock, NULL, &F::WakeUp,
                       kSbSocketWaiterInterestWrite,
                       false);  // false means one shot.
 
@@ -180,17 +175,11 @@ class BufferedSocketWriter {
   }
 
   bool IsConnectionReset(SbSocketError err) {
-#if SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) || \
-    SB_API_VERSION >= 9
     return err == kSbSocketErrorConnectionReset;
-#else
-    return false;
-#endif  // SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) ||
-        // SB_API_VERSION >= 9
   }
 
   // Will flush data through to the dest_socket. Returns |true| if
-  // flushed, else connection was dropped or an error occured.
+  // flushed, else connection was dropped or an error occurred.
   bool Flush(SbSocket dest_socket) {
     std::string curr_write_block;
     while (TransferData(chunk_size_, &curr_write_block)) {
@@ -250,9 +239,7 @@ class BufferedSocketWriter {
 
   void PrependData(const std::string& curr_write_block) {
     ScopedLock lock_log(log_mutex_);
-    log_.insert(log_.begin(),
-                curr_write_block.begin(),
-                curr_write_block.end());
+    log_.insert(log_.begin(), curr_write_block.begin(), curr_write_block.end());
   }
 
   int max_memory_buffer_size_;
@@ -270,16 +257,13 @@ class SocketListener {
   typedef std::function<void(scoped_ptr<Socket>)> Callback;
 
   SocketListener(Socket* listen_socket, Callback cb)
-      : listen_socket_(listen_socket),
-        callback_(cb) {
+      : listen_socket_(listen_socket), callback_(cb) {
     auto run_cb = [this](Semaphore* sema) { this->Run(sema); };
     thread_ = FunctionThread::Create("NetLogSocketListener", run_cb);
     thread_->Start();
   }
 
-  ~SocketListener() {
-    thread_->Join();
-  }
+  ~SocketListener() { thread_->Join(); }
 
  private:
   void Run(Semaphore* joined_sema) {
@@ -301,15 +285,16 @@ class SocketListener {
 class NetLogServer {
  public:
   static NetLogServer* Instance();
-  NetLogServer() : buffered_socket_writer_(NET_LOG_MAX_IN_MEMORY_BUFFER,
-                                           NET_LOG_SOCKET_SEND_SIZE) {
+  NetLogServer()
+      : buffered_socket_writer_(NET_LOG_MAX_IN_MEMORY_BUFFER,
+                                NET_LOG_SOCKET_SEND_SIZE) {
     ScopedLock lock(socket_mutex_);
     listen_socket_ = CreateListenSocket();
     ListenForClient();
 
     writer_thread_ = FunctionThread::Create(
-      "NetLogSocketWriter",
-      [this](Semaphore* sema) { this->WriterTask(sema); });
+        "NetLogSocketWriter",
+        [this](Semaphore* sema) { this->WriterTask(sema); });
     writer_thread_->Start();
   }
 
@@ -319,9 +304,8 @@ class NetLogServer {
   }
 
   void ListenForClient() {
-    SocketListener::Callback cb = std::bind(&NetLogServer::OnClientConnect,
-                                            this,
-                                            std::placeholders::_1);
+    SocketListener::Callback cb =
+        std::bind(&NetLogServer::OnClientConnect, this, std::placeholders::_1);
     socket_listener_.reset();
     socket_listener_.reset(new SocketListener(listen_socket_.get(), cb));
   }
@@ -413,9 +397,12 @@ class ThreadLocalBoolean {
     void* ptr = SbThreadGetLocalValue(slot_);
     return ptr != nullptr;
   }
+
  private:
   SbThreadLocalKey slot_;
-  SB_DISALLOW_COPY_AND_ASSIGN(ThreadLocalBoolean);
+
+  ThreadLocalBoolean(const ThreadLocalBoolean&) = delete;
+  void operator=(const ThreadLocalBoolean&) = delete;
 };
 
 SB_ONCE_INITIALIZE_FUNCTION(NetLogServer, NetLogServer::Instance);
@@ -430,13 +417,10 @@ class ScopeGuard {
     tlb_->Set(true);
   }
 
-  ~ScopeGuard() {
-    tlb_->Set(disabled_);
-  }
+  ~ScopeGuard() { tlb_->Set(disabled_); }
 
-  bool IsEnabled() {
-    return !disabled_;
-  }
+  bool IsEnabled() { return !disabled_; }
+
  private:
   bool disabled_;
   ThreadLocalBoolean* tlb_;
@@ -450,9 +434,9 @@ void NetLogWaitForClientConnected(SbTime timeout) {
 #if !SB_LOGGING_IS_OFFICIAL_BUILD
   ScopeGuard guard;
   if (guard.IsEnabled()) {
-    SbTimeMonotonic expire_time = (timeout >= 0) && (timeout < kSbTimeMax)?
-                                  SbTimeGetMonotonicNow() + timeout :
-                                  kSbTimeMax;
+    SbTimeMonotonic expire_time = (timeout >= 0) && (timeout < kSbTimeMax)
+                                      ? SbTimeGetMonotonicNow() + timeout
+                                      : kSbTimeMax;
     while (true) {
       if (NetLogServer::Instance()->HasClientConnected()) {
         break;

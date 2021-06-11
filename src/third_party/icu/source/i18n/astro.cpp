@@ -1,3 +1,5 @@
+// © 2016 and later: Unicode, Inc. and others.
+// License & terms of use: http://www.unicode.org/copyright.html
 /************************************************************************
  * Copyright (C) 1996-2012, International Business Machines Corporation
  * and others. All Rights Reserved.
@@ -9,14 +11,13 @@
 
 #if !UCONFIG_NO_FORMATTING
 
+#if defined(STARBOARD)
 #include "starboard/client_porting/poem/string_poem.h"
 #include "starboard/client_porting/poem/stdio_poem.h"
-#include "starboard/client_porting/poem/math_poem.h"
+#endif  // defined(STARBOARD)
 #include "unicode/calendar.h"
-#if !defined(STARBOARD)
 #include <math.h>
 #include <float.h>
-#endif
 #include "unicode/putil.h"
 #include "uhash.h"
 #include "umutex.h"
@@ -70,7 +71,7 @@ static inline UBool isINVALID(double d) {
   return(uprv_isNaN(d));
 }
 
-static UMutex ccLock = U_MUTEX_INITIALIZER;
+static icu::UMutex ccLock;
 
 U_CDECL_BEGIN
 static UBool calendar_astro_cleanup(void) {

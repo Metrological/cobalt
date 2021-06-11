@@ -100,7 +100,20 @@ void ErrorMessageListener(v8::Local<v8::Message> message,
   for (int i = 0; i < stack->GetFrameCount(); ++i) {
     v8::Local<v8::StackFrame> frame = stack->GetFrame(isolate, i);
     description += "\n";
-    description += *v8::String::Utf8Value(isolate, frame->GetScriptName());
+    v8::String::Utf8Value function_name(isolate, frame->GetFunctionName());
+    v8::String::Utf8Value script_name(isolate, frame->GetScriptName());
+    if (*script_name) {
+      description += *script_name;
+    } else {
+      description += "unknown";
+    }
+    if (*function_name) {
+      description += "(";
+      description += *function_name;
+      description += ")";
+    } else {
+      description += "(unknown)";
+    }
     description += ":";
     description += std::to_string(frame->GetLineNumber());
     description += ":";
@@ -121,17 +134,6 @@ V8cEngine::V8cEngine(const Options& options) : options_(options) {
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
       isolate_fellowship->array_buffer_allocator;
-#if !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
-  auto* startup_data = &isolate_fellowship->startup_data;
-  if (startup_data->data != nullptr) {
-    create_params.snapshot_blob = startup_data;
-  } else {
-    // Technically possible to attempt to recover here, but hitting this
-    // indicates that something is probably seriously wrong.
-    LOG(WARNING) << "Isolate fellowship startup data was null, this will "
-                    "significantly slow down startup time.";
-  }
-#endif  // !defined(COBALT_V8_BUILDTIME_SNAPSHOT)
 
   isolate_ = v8::Isolate::New(create_params);
   CHECK(isolate_);
@@ -211,6 +213,11 @@ HeapStatistics V8cEngine::GetHeapStatistics() {
   isolate_->GetHeapStatistics(&v8_heap_statistics);
   return {v8_heap_statistics.total_heap_size(),
           v8_heap_statistics.used_heap_size()};
+}
+
+void V8cEngine::UpdateDateTimeConfiguration() {
+  isolate_->DateTimeConfigurationChangeNotification(
+      v8::Isolate::TimeZoneDetection::kRedetect);
 }
 
 }  // namespace v8c

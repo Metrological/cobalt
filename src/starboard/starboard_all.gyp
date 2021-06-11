@@ -17,7 +17,8 @@
 
 {
   'variables': {
-    'has_platform_tests%' : '<!(python <(DEPTH)/build/file_exists.py <(DEPTH)/<(starboard_path)/starboard_platform_tests.gyp)',
+    'has_platform_tests%': '<!pymod_do_main(starboard.build.gyp_functions file_exists \'<(DEPTH)/<(starboard_path)/starboard_platform_tests.gyp\')',
+    'has_platform_targets%': '<!pymod_do_main(starboard.build.gyp_functions file_exists \'<(DEPTH)/<(starboard_path)/platform_targets.gyp\')',
   },
   'conditions': [
     # If 'starboard_platform_tests' is not defined by the platform, then an
@@ -75,13 +76,18 @@
             '<(DEPTH)/starboard/examples/glclear/glclear.gyp:starboard_glclear_example',
           ],
         }],
+        ['has_platform_targets==1', {
+          'dependencies': [
+            '<(DEPTH)/<(starboard_path)/platform_targets.gyp:*',
+          ],
+        }],
         ['has_platform_tests==1', {
           'dependencies': [
             '<(DEPTH)/<(starboard_path)/starboard_platform_tests.gyp:*',
           ],
         }, {
           'dependencies': [
-            'starboard_platform_tests',
+            '<(DEPTH)/starboard/starboard_all.gyp:starboard_platform_tests_deploy',
           ],
         }],
         ['sb_filter_based_player==1', {
@@ -95,6 +101,12 @@
             '<(DEPTH)/starboard/benchmark/benchmark.gyp:*',
           ],
         }],
+        ['sb_evergreen==0', {
+          'dependencies': [
+            '<(DEPTH)/third_party/crashpad/crashpad.gyp:*',
+            '<(DEPTH)/third_party/lz4_lib/lz4.gyp:lz4',
+          ],
+        }]
       ],
     },
   ],

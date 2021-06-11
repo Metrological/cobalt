@@ -27,6 +27,8 @@ class SharedLibraryLinker(clangxx.DynamicLinkerBase,
     lld_path = '{0}/bin/ld.lld'.format(self.GetPath())
 
     return shell.And('{0} '
+                     '--build-id '
+                     '-gc-sections '
                      '-X '
                      '-v '
                      '--eh-frame-hdr '
@@ -41,4 +43,5 @@ class SharedLibraryLinker(clangxx.DynamicLinkerBase,
                      '-nostdlib '
                      '--whole-archive '
                      '--no-whole-archive '
+                     '-u GetEvergreenSabiString '
                      '@$rspfile'.format(lld_path, self.GetPath(), *extra_flags))

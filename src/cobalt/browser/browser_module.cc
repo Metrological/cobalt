@@ -15,6 +15,7 @@
 #include "cobalt/browser/browser_module.h"
 
 #include <algorithm>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -31,6 +32,7 @@
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "cobalt/base/cobalt_paths.h"
+#include "cobalt/base/init_cobalt.h"
 #include "cobalt/base/source_location.h"
 #include "cobalt/base/tokens.h"
 #include "cobalt/browser/on_screen_keyboard_starboard_bridge.h"
@@ -55,6 +57,7 @@
 #include "starboard/configuration.h"
 #include "starboard/system.h"
 #include "starboard/time.h"
+#include "third_party/icu/source/i18n/unicode/timezone.h"
 
 #if SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
 #include "base/memory/ptr_util.h"
@@ -156,7 +159,7 @@ const char kScreenshotCommandLongHelp[] =
 // by treating them as unsupported
 const char kDisableMediaCodecsCommand[] = "disable_media_codecs";
 const char kDisableMediaCodecsCommandShortHelp[] =
-    "Specify a semicolon-seperated list of disabled media codecs.";
+    "Specify a semicolon-separated list of disabled media codecs.";
 const char kDisableMediaCodecsCommandLongHelp[] =
     "Disabling Media Codecs will force the app to claim they are not "
     "supported. This "
@@ -260,7 +263,7 @@ BrowserModule::BrowserModule(const GURL& url,
       // SB_HAS(ON_SCREEN_KEYBOARD)
       web_module_loaded_(base::WaitableEvent::ResetPolicy::MANUAL,
                          base::WaitableEvent::InitialState::NOT_SIGNALED),
-      web_module_recreated_callback_(options_.web_module_recreated_callback),
+      web_module_created_callback_(options_.web_module_created_callback),
       navigate_time_("Time.Browser.Navigate", 0,
                      "The last time a navigation occurred."),
       on_load_event_time_("Time.Browser.OnLoadEvent", 0,
@@ -306,8 +309,7 @@ BrowserModule::BrowserModule(const GURL& url,
       main_web_module_generation_(0),
       next_timeline_id_(1),
       current_splash_screen_timeline_id_(-1),
-      current_main_web_module_timeline_id_(-1),
-      web_module_loaded_callback_(options_.web_module_loaded_callback) {
+      current_main_web_module_timeline_id_(-1) {
   TRACE_EVENT0("cobalt::browser", "BrowserModule::BrowserModule()");
 
   // Apply platform memory setting adjustments and defaults.
@@ -421,11 +423,11 @@ BrowserModule::BrowserModule(const GURL& url,
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
 
   if (application_state_ == base::kApplicationStateStarted ||
-      application_state_ == base::kApplicationStatePaused) {
+      application_state_ == base::kApplicationStateBlurred) {
     InitializeSystemWindow();
-  } else if (application_state_ == base::kApplicationStatePreloading) {
-    resource_provider_stub_.emplace(true /*allocate_image_data*/);
   }
+
+  resource_provider_stub_.emplace(true /*allocate_image_data*/);
 
 #if defined(ENABLE_DEBUGGER)
   debug_console_.reset(new DebugConsole(
@@ -434,7 +436,8 @@ BrowserModule::BrowserModule(const GURL& url,
                  base::Unretained(this)),
       network_module_, GetViewportSize(), GetResourceProvider(),
       kLayoutMaxRefreshFrequencyInHz,
-      base::Bind(&BrowserModule::CreateDebugClient, base::Unretained(this))));
+      base::Bind(&BrowserModule::CreateDebugClient, base::Unretained(this)),
+      base::Bind(&BrowserModule::OnMaybeFreeze, base::Unretained(this))));
   lifecycle_observers_.AddObserver(debug_console_.get());
 #endif  // defined(ENABLE_DEBUGGER)
 
@@ -453,6 +456,7 @@ BrowserModule::BrowserModule(const GURL& url,
                    base::Unretained(this))));
   }
 
+  // Set the fallback splash screen url to the default fallback url.
   fallback_splash_screen_url_ = options.fallback_splash_screen_url;
 
   // Synchronously construct our WebModule object.
@@ -467,16 +471,17 @@ BrowserModule::~BrowserModule() {
   // currently be in, to prepare for shutdown.
   switch (application_state_) {
     case base::kApplicationStateStarted:
-      Pause();
+      Blur();
     // Intentional fall-through.
-    case base::kApplicationStatePaused:
-    case base::kApplicationStatePreloading:
-      Suspend();
+    case base::kApplicationStateBlurred:
+      Conceal();
+    case base::kApplicationStateConcealed:
+      Freeze();
       break;
     case base::kApplicationStateStopped:
       NOTREACHED() << "BrowserModule does not support the stopped state.";
       break;
-    case base::kApplicationStateSuspended:
+    case base::kApplicationStateFrozen:
       break;
   }
 
@@ -517,10 +522,10 @@ void BrowserModule::Navigate(const GURL& url_reference) {
   on_error_retry_timer_.Stop();
   waiting_for_error_retry_ = false;
 
-  // Navigations aren't allowed if the app is suspended. If this is the case,
+  // Navigations aren't allowed if the app is frozen. If this is the case,
   // simply set the pending navigate url, which will cause the navigation to
   // occur when Cobalt resumes, and return.
-  if (application_state_ == base::kApplicationStateSuspended) {
+  if (application_state_ == base::kApplicationStateFrozen) {
     pending_navigate_url_ = url;
     return;
   }
@@ -563,22 +568,25 @@ void BrowserModule::Navigate(const GURL& url_reference) {
   DestroySplashScreen(base::TimeDelta());
   if (options_.enable_splash_screen_on_reloads ||
       main_web_module_generation_ == 1) {
-    base::Optional<std::string> key = SplashScreenCache::GetKeyForStartUrl(url);
+    base::Optional<std::string> topic = SetSplashScreenTopicFallback(url);
+    splash_screen_cache_->SetUrl(url, topic);
+
     if (fallback_splash_screen_url_ ||
-        (key && splash_screen_cache_->IsSplashScreenCached(*key))) {
+        splash_screen_cache_->IsSplashScreenCached()) {
       splash_screen_.reset(new SplashScreen(
           application_state_,
           base::Bind(&BrowserModule::QueueOnSplashScreenRenderTreeProduced,
                      base::Unretained(this)),
           network_module_, viewport_size, GetResourceProvider(),
-          kLayoutMaxRefreshFrequencyInHz, fallback_splash_screen_url_, url,
+          kLayoutMaxRefreshFrequencyInHz, fallback_splash_screen_url_,
           splash_screen_cache_.get(),
-          base::Bind(&BrowserModule::DestroySplashScreen, weak_this_)));
+          base::Bind(&BrowserModule::DestroySplashScreen, weak_this_),
+          base::Bind(&BrowserModule::OnMaybeFreeze, base::Unretained(this))));
       lifecycle_observers_.AddObserver(splash_screen_.get());
     }
   }
 
-  // Create new WebModule.
+// Create new WebModule.
 #if !defined(COBALT_FORCE_CSP)
   options_.web_module_options.csp_insecure_allowed_token =
       dom::CspDelegateFactory::GetInsecureAllowedToken();
@@ -606,11 +614,6 @@ void BrowserModule::Navigate(const GURL& url_reference) {
     options.camera_3d = input_device_manager_->camera_3d();
   }
 
-  float video_pixel_ratio = 1.0f;
-  if (system_window_) {
-    video_pixel_ratio = system_window_->GetVideoPixelRatio();
-  }
-
   // Make sure that automem has been run before creating the WebModule, so that
   // we use properly configured options for all parameters.
   DCHECK(auto_mem_);
@@ -623,9 +626,9 @@ void BrowserModule::Navigate(const GURL& url_reference) {
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
           switches::kWaitForWebDebugger)) {
     int wait_for_generation =
-        SbStringAToI(base::CommandLine::ForCurrentProcess()
-                         ->GetSwitchValueASCII(switches::kWaitForWebDebugger)
-                         .c_str());
+        atoi(base::CommandLine::ForCurrentProcess()
+                 ->GetSwitchValueASCII(switches::kWaitForWebDebugger)
+                 .c_str());
     if (wait_for_generation < 1) wait_for_generation = 1;
     options.wait_for_web_debugger =
         (wait_for_generation == main_web_module_generation_);
@@ -633,6 +636,10 @@ void BrowserModule::Navigate(const GURL& url_reference) {
 
   options.debugger_state = debugger_state.get();
 #endif  // ENABLE_DEBUGGER
+
+  // Pass down this callback from to Web module.
+  options.maybe_freeze_callback =
+      base::Bind(&BrowserModule::OnMaybeFreeze, base::Unretained(this));
 
   web_module_.reset(new WebModule(
       url, application_state_,
@@ -642,11 +649,11 @@ void BrowserModule::Navigate(const GURL& url_reference) {
       base::Bind(&BrowserModule::OnWindowClose, base::Unretained(this)),
       base::Bind(&BrowserModule::OnWindowMinimize, base::Unretained(this)),
       can_play_type_handler_.get(), media_module_.get(), network_module_,
-      viewport_size, video_pixel_ratio, GetResourceProvider(),
-      kLayoutMaxRefreshFrequencyInHz, options));
+      viewport_size, GetResourceProvider(), kLayoutMaxRefreshFrequencyInHz,
+      options));
   lifecycle_observers_.AddObserver(web_module_.get());
-  if (!web_module_recreated_callback_.is_null()) {
-    web_module_recreated_callback_.Run();
+  if (!web_module_created_callback_.is_null()) {
+    web_module_created_callback_.Run();
   }
 
   if (system_window_) {
@@ -701,10 +708,6 @@ void BrowserModule::OnLoad() {
   on_load_event_time_ = base::TimeTicks::Now().ToInternalValue();
 
   web_module_loaded_.Signal();
-
-  if (!web_module_loaded_callback_.is_null()) {
-    web_module_loaded_callback_.Run();
-  }
 }
 
 bool BrowserModule::WaitForLoad(const base::TimeDelta& timeout) {
@@ -720,7 +723,8 @@ void BrowserModule::RequestScreenshotToFile(
   TRACE_EVENT0("cobalt::browser", "BrowserModule::RequestScreenshotToFile()");
   DCHECK(screen_shot_writer_);
 
-  scoped_refptr<render_tree::Node> render_tree = GetLastSubmissionAnimated();
+  scoped_refptr<render_tree::Node> render_tree =
+      web_module_->DoSynchronousLayoutAndGetRenderTree();
   if (!render_tree) {
     LOG(WARNING) << "Unable to get animated render tree";
     return;
@@ -737,7 +741,8 @@ void BrowserModule::RequestScreenshotToMemory(
   TRACE_EVENT0("cobalt::browser", "BrowserModule::RequestScreenshotToMemory()");
   DCHECK(screen_shot_writer_);
 
-  scoped_refptr<render_tree::Node> render_tree = GetLastSubmissionAnimated();
+  scoped_refptr<render_tree::Node> render_tree =
+      web_module_->DoSynchronousLayoutAndGetRenderTree();
   if (!render_tree) {
     LOG(WARNING) << "Unable to get animated render tree";
     return;
@@ -747,30 +752,17 @@ void BrowserModule::RequestScreenshotToMemory(
                                                  clip_rect, screenshot_ready);
 }
 
-scoped_refptr<render_tree::Node> BrowserModule::GetLastSubmissionAnimated() {
-  DCHECK(main_web_module_layer_);
-  base::Optional<renderer::Submission> last_submission =
-      main_web_module_layer_->GetCurrentSubmission();
-  if (!last_submission) {
-    LOG(WARNING) << "Unable to find last submission.";
-    return nullptr;
-  }
-  DCHECK(last_submission->render_tree);
-
-  render_tree::animations::AnimateNode* animate_node =
-      base::polymorphic_downcast<render_tree::animations::AnimateNode*>(
-          last_submission->render_tree.get());
-  render_tree::animations::AnimateNode::AnimateResults results =
-      animate_node->Apply(last_submission->time_offset);
-
-  return results.animated->source();
-}
-
 void BrowserModule::ProcessRenderTreeSubmissionQueue() {
   TRACE_EVENT0("cobalt::browser",
                "BrowserModule::ProcessRenderTreeSubmissionQueue()");
   DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
-  render_tree_submission_queue_.ProcessAll();
+  // If the app is preloaded, clear the render tree queue to avoid unnecessary
+  // rendering overhead.
+  if (application_state_ == base::kApplicationStateConcealed) {
+    render_tree_submission_queue_.ClearAll();
+  } else {
+    render_tree_submission_queue_.ProcessAll();
+  }
 }
 
 void BrowserModule::QueueOnRenderTreeProduced(
@@ -817,7 +809,7 @@ void BrowserModule::OnRenderTreeProduced(
       splash_screen_->Shutdown();
     }
   }
-  if (application_state_ == base::kApplicationStatePreloading) {
+  if (application_state_ == base::kApplicationStateConcealed) {
     layout_results.on_rasterized_callback.Run();
     return;
   }
@@ -848,7 +840,7 @@ void BrowserModule::OnSplashScreenRenderTreeProduced(
                "BrowserModule::OnSplashScreenRenderTreeProduced()");
   DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
 
-  if (application_state_ == base::kApplicationStatePreloading ||
+  if (application_state_ == base::kApplicationStateConcealed ||
       !splash_screen_) {
     return;
   }
@@ -908,7 +900,7 @@ void BrowserModule::OnQrCodeOverlayRenderTreeProduced(
   DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
   DCHECK(qr_overlay_info_layer_);
 
-  if (application_state_ == base::kApplicationStatePreloading) {
+  if (application_state_ == base::kApplicationStateConcealed) {
     return;
   }
 
@@ -933,33 +925,28 @@ void BrowserModule::OnWindowMinimize() {
     return;
   }
 #endif
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
+#if SB_API_VERSION >= 13
   SbSystemRequestConceal();
 #else
   SbSystemRequestSuspend();
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
+#endif  // SB_API_VERSION >= 13
 }
 
-#if SB_API_VERSION >= 8
-void BrowserModule::OnWindowSizeChanged(const ViewportSize& viewport_size,
-                                        float video_pixel_ratio) {
+void BrowserModule::OnWindowSizeChanged(const ViewportSize& viewport_size) {
   if (web_module_) {
-    web_module_->SetSize(viewport_size, video_pixel_ratio);
+    web_module_->SetSize(viewport_size);
   }
 #if defined(ENABLE_DEBUGGER)
   if (debug_console_) {
-    debug_console_->web_module().SetSize(viewport_size, video_pixel_ratio);
+    debug_console_->web_module().SetSize(viewport_size);
   }
 #endif  // defined(ENABLE_DEBUGGER)
   if (splash_screen_) {
-    splash_screen_->web_module().SetSize(viewport_size, video_pixel_ratio);
+    splash_screen_->web_module().SetSize(viewport_size);
   }
 
   return;
 }
-#endif  // SB_API_VERSION >= 8
 
 #if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
 void BrowserModule::OnOnScreenKeyboardShown(
@@ -1002,7 +989,6 @@ void BrowserModule::OnOnScreenKeyboardBlurred(
   }
 }
 
-#if SB_API_VERSION >= 11
 void BrowserModule::OnOnScreenKeyboardSuggestionsUpdated(
     const base::OnScreenKeyboardSuggestionsUpdatedEvent* event) {
   DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
@@ -1011,7 +997,6 @@ void BrowserModule::OnOnScreenKeyboardSuggestionsUpdated(
     web_module_->InjectOnScreenKeyboardSuggestionsUpdatedEvent(event->ticket());
   }
 }
-#endif  // SB_API_VERSION >= 11
 #endif  // SB_API_VERSION >= 12 ||
         // SB_HAS(ON_SCREEN_KEYBOARD)
 
@@ -1023,6 +1008,16 @@ void BrowserModule::OnCaptionSettingsChanged(
   }
 }
 #endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
+
+#if SB_API_VERSION >= 13
+void BrowserModule::OnDateTimeConfigurationChanged(
+    const base::DateTimeConfigurationChangedEvent* event) {
+  icu::TimeZone::adoptDefault(icu::TimeZone::detectHostTimeZone());
+  if (web_module_) {
+    web_module_->UpdateDateTimeConfiguration();
+  }
+}
+#endif
 
 #if defined(ENABLE_DEBUGGER)
 void BrowserModule::OnFuzzerToggle(const std::string& message) {
@@ -1090,7 +1085,7 @@ void BrowserModule::OnDebugConsoleRenderTreeProduced(
   TRACE_EVENT0("cobalt::browser",
                "BrowserModule::OnDebugConsoleRenderTreeProduced()");
   DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
-  if (application_state_ == base::kApplicationStatePreloading) {
+  if (application_state_ == base::kApplicationStateConcealed) {
     return;
   }
 
@@ -1191,6 +1186,18 @@ void BrowserModule::OnWheelEventProduced(base::Token type,
 
   DCHECK(web_module_);
   web_module_->InjectWheelEvent(type, event);
+}
+
+void BrowserModule::OnWindowOnOnlineEvent(const base::Event* event) {
+  if (web_module_) {
+    web_module_->InjectWindowOnOnlineEvent(event);
+  }
+}
+
+void BrowserModule::OnWindowOnOfflineEvent(const base::Event* event) {
+  if (web_module_) {
+    web_module_->InjectWindowOnOfflineEvent(event);
+  }
 }
 
 void BrowserModule::InjectKeyEventToMainWebModule(
@@ -1320,8 +1327,7 @@ bool BrowserModule::FilterKeyEvent(base::Token type,
 
 bool BrowserModule::FilterKeyEventForHotkeys(
     base::Token type, const dom::KeyboardEventInit& event) {
-#if !defined(ENABLE_DEBUGGER)
-#else
+#if defined(ENABLE_DEBUGGER)
   if (event.key_code() == dom::keycode::kF1 ||
       (event.ctrl_key() && event.key_code() == dom::keycode::kO)) {
     if (type == base::Tokens::keydown()) {
@@ -1336,14 +1342,12 @@ bool BrowserModule::FilterKeyEventForHotkeys(
     }
   } else if (event.ctrl_key() && event.key_code() == dom::keycode::kS) {
     if (type == base::Tokens::keydown()) {
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
+#if SB_API_VERSION >= 13
       SbSystemRequestConceal();
 #else
       // Ctrl+S suspends Cobalt.
       SbSystemRequestSuspend();
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
+#endif  // SB_API_VERSION >= 13
     }
     return false;
   }
@@ -1463,67 +1467,54 @@ void BrowserModule::SetProxy(const std::string& proxy_rules) {
   network_module_->SetProxy(proxy_rules);
 }
 
-void BrowserModule::Start() {
-  TRACE_EVENT0("cobalt::browser", "BrowserModule::Start()");
-  DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
-  DCHECK(application_state_ == base::kApplicationStatePreloading);
-
-  SuspendInternal(true /*is_start*/);
-  StartOrResumeInternalPreStateUpdate(true /*is_start*/);
-
-  application_state_ = base::kApplicationStateStarted;
-
-  StartOrResumeInternalPostStateUpdate();
-}
-
-void BrowserModule::Pause() {
-  TRACE_EVENT0("cobalt::browser", "BrowserModule::Pause()");
+void BrowserModule::Blur() {
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::Blur()");
   DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
   DCHECK(application_state_ == base::kApplicationStateStarted);
-  FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_, Pause());
-  application_state_ = base::kApplicationStatePaused;
+  application_state_ = base::kApplicationStateBlurred;
+  FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_, Blur());
 }
 
-void BrowserModule::Unpause() {
-  TRACE_EVENT0("cobalt::browser", "BrowserModule::Unpause()");
+void BrowserModule::Conceal() {
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::Conceal()");
   DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
-  DCHECK(application_state_ == base::kApplicationStatePaused);
-  FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_, Unpause());
+  DCHECK(application_state_ == base::kApplicationStateBlurred);
+  application_state_ = base::kApplicationStateConcealed;
+  ConcealInternal();
+  OnMaybeFreeze();
+}
+
+void BrowserModule::Focus() {
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::Focus()");
+  DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
+  DCHECK(application_state_ == base::kApplicationStateBlurred);
+  FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_, Focus());
   application_state_ = base::kApplicationStateStarted;
 }
 
-void BrowserModule::Suspend() {
-  TRACE_EVENT0("cobalt::browser", "BrowserModule::Suspend()");
+void BrowserModule::Freeze() {
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::Freeze()");
   DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
-  DCHECK(application_state_ == base::kApplicationStatePaused ||
-         application_state_ == base::kApplicationStatePreloading);
-
-  SuspendInternal(false /*is_start*/);
-
-  application_state_ = base::kApplicationStateSuspended;
+  DCHECK(application_state_ == base::kApplicationStateConcealed);
+  application_state_ = base::kApplicationStateFrozen;
+  FreezeInternal();
 }
 
-void BrowserModule::Resume() {
-  TRACE_EVENT0("cobalt::browser", "BrowserModule::Resume()");
+void BrowserModule::Reveal() {
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::Reveal()");
   DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
-  // This is temporary for Cobalt black box tests, will be removed
-  // with Cobalt Concealed mode changes.
-  if (application_state_ == base::kApplicationStatePreloading) {
-    Start();
-    Pause();
-    return;
-  }
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
-  DCHECK(application_state_ == base::kApplicationStateSuspended);
+  DCHECK(application_state_ == base::kApplicationStateConcealed);
+  application_state_ = base::kApplicationStateBlurred;
+  RevealInternal();
+}
 
-  StartOrResumeInternalPreStateUpdate(false /*is_start*/);
-
-  application_state_ = base::kApplicationStatePaused;
-
-  StartOrResumeInternalPostStateUpdate();
+void BrowserModule::Unfreeze() {
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::Unfreeze()");
+  DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
+  DCHECK(application_state_ == base::kApplicationStateFrozen);
+  application_state_ = base::kApplicationStateConcealed;
+  UnfreezeInternal();
+  NavigatePendingURL();
 }
 
 void BrowserModule::ReduceMemory() {
@@ -1617,30 +1608,65 @@ void BrowserModule::OnPollForRenderTimeout(const GURL& url) {
 #endif
 
 render_tree::ResourceProvider* BrowserModule::GetResourceProvider() {
-  if (!renderer_module_) {
-    if (resource_provider_stub_) {
-      DCHECK(application_state_ == base::kApplicationStatePreloading);
-      return &(resource_provider_stub_.value());
-    }
-
-    return NULL;
+  if (application_state_ == base::kApplicationStateConcealed) {
+    DCHECK(resource_provider_stub_);
+    return &(resource_provider_stub_.value());
   }
 
-  return renderer_module_->resource_provider();
+  if (renderer_module_) {
+    return renderer_module_->resource_provider();
+  }
+
+  return nullptr;
+}
+
+void BrowserModule::InitializeComponents() {
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::InitializeComponents()");
+  InstantiateRendererModule();
+
+  if (media_module_) {
+#if SB_API_VERSION >= 13
+    media_module_->UpdateSystemWindowAndResourceProvider(system_window_.get(),
+                                                         GetResourceProvider());
+#else
+    media_module_->Resume(GetResourceProvider());
+#endif  // SB_API_VERSION >= 13
+  } else {
+    options_.media_module_options.allow_resume_after_suspend =
+        SbSystemSupportsResume();
+    media_module_.reset(new media::MediaModule(system_window_.get(),
+                                               GetResourceProvider(),
+                                               options_.media_module_options));
+
+    if (web_module_) {
+      web_module_->SetCamera3D(input_device_manager_->camera_3d());
+      web_module_->SetMediaModule(media_module_.get());
+    }
+  }
+
+  if (web_module_) {
+    web_module_->GetUiNavRoot()->SetContainerWindow(
+        system_window_->GetSbWindow());
+  }
 }
 
 void BrowserModule::InitializeSystemWindow() {
   TRACE_EVENT0("cobalt::browser", "BrowserModule::InitializeSystemWindow()");
-  resource_provider_stub_ = base::nullopt;
   DCHECK(!system_window_);
-  base::Optional<math::Size> maybe_size;
-  if (options_.requested_viewport_size) {
-    maybe_size = options_.requested_viewport_size->width_height();
+  if (media_module_) {
+    system_window_.reset(
+        new system_window::SystemWindow(event_dispatcher_, window_size_));
+  } else {
+    base::Optional<math::Size> maybe_size;
+    if (options_.requested_viewport_size) {
+      maybe_size = options_.requested_viewport_size->width_height();
+    }
+    system_window_.reset(
+        new system_window::SystemWindow(event_dispatcher_, maybe_size));
+
+    // Reapply automem settings now that we may have a different viewport size.
+    ApplyAutoMemSettings();
   }
-  system_window_.reset(
-      new system_window::SystemWindow(event_dispatcher_, maybe_size));
-  // Reapply automem settings now that we may have a different viewport size.
-  ApplyAutoMemSettings();
 
   input_device_manager_ = input::InputDeviceManager::CreateFromWindow(
       base::Bind(&BrowserModule::OnKeyEventProduced, base::Unretained(this)),
@@ -1653,20 +1679,8 @@ void BrowserModule::InitializeSystemWindow() {
 #endif  // SB_API_VERSION >= 12 ||
       // SB_HAS(ON_SCREEN_KEYBOARD)
       system_window_.get());
-  InstantiateRendererModule();
 
-  options_.media_module_options.allow_resume_after_suspend =
-      SbSystemSupportsResume();
-  media_module_.reset(new media::MediaModule(system_window_.get(),
-                                             GetResourceProvider(),
-                                             options_.media_module_options));
-
-  if (web_module_) {
-    web_module_->SetCamera3D(input_device_manager_->camera_3d());
-    web_module_->SetWebMediaPlayerFactory(media_module_.get());
-    web_module_->GetUiNavRoot()->SetContainerWindow(
-        system_window_->GetSbWindow());
-  }
+  InitializeComponents();
 }
 
 void BrowserModule::InstantiateRendererModule() {
@@ -1689,39 +1703,24 @@ void BrowserModule::DestroyRendererModule() {
   renderer_module_.reset();
 }
 
-void BrowserModule::UpdateScreenSize() {
-  ViewportSize size = GetViewportSize();
-  float video_pixel_ratio = system_window_->GetVideoPixelRatio();
-#if defined(ENABLE_DEBUGGER)
-  if (debug_console_) {
-    debug_console_->SetSize(size, video_pixel_ratio);
-  }
-#endif  // defined(ENABLE_DEBUGGER)
-
-  if (splash_screen_) {
-    splash_screen_->SetSize(size, video_pixel_ratio);
-  }
-
-  if (web_module_) {
-    web_module_->SetSize(size, video_pixel_ratio);
-  }
-
-  if (qr_code_overlay_) {
-    qr_code_overlay_->SetSize(size.width_height());
+void BrowserModule::FreezeMediaModule() {
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::FreezeMediaModule()");
+  if (media_module_) {
+    media_module_->Suspend();
   }
 }
 
-void BrowserModule::SuspendInternal(bool is_start) {
-  TRACE_EVENT1("cobalt::browser", "BrowserModule::SuspendInternal", "is_start",
-               is_start ? "true" : "false");
-  // First suspend all our web modules which implies that they will release
-  // their resource provider and all resources created through it.
-  if (is_start) {
-    FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_, Prestart());
-  } else {
-    FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_, Suspend());
+void BrowserModule::NavigatePendingURL() {
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::NavigatePendingURL()");
+  // If there's a navigation that's pending, then attempt to navigate to its
+  // specified URL now, unless we're still waiting for an error retry.
+  if (pending_navigate_url_.is_valid() && !waiting_for_error_retry_) {
+    Navigate(pending_navigate_url_);
   }
+}
 
+void BrowserModule::ResetResources() {
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::ResetResources()");
   if (qr_code_overlay_) {
     qr_code_overlay_->SetResourceProvider(NULL);
   }
@@ -1740,51 +1739,123 @@ void BrowserModule::SuspendInternal(bool is_start) {
   if (qr_overlay_info_layer_) {
     qr_overlay_info_layer_->Reset();
   }
+}
 
-  if (media_module_) {
-    media_module_->Suspend();
+void BrowserModule::UpdateScreenSize() {
+  ViewportSize size = GetViewportSize();
+#if defined(ENABLE_DEBUGGER)
+  if (debug_console_) {
+    debug_console_->SetSize(size);
   }
+#endif  // defined(ENABLE_DEBUGGER)
+
+  if (splash_screen_) {
+    splash_screen_->SetSize(size);
+  }
+
+  if (web_module_) {
+    web_module_->SetSize(size);
+  }
+
+  if (qr_code_overlay_) {
+    qr_code_overlay_->SetSize(size.width_height());
+  }
+}
+
+void BrowserModule::ConcealInternal() {
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::ConcealInternal()");
+  FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_,
+                    Conceal(GetResourceProvider()));
+
+  ResetResources();
 
   if (renderer_module_) {
     // Destroy the renderer module into so that it releases all its graphical
     // resources.
     DestroyRendererModule();
   }
+
+  if (media_module_) {
+    DCHECK(system_window_);
+    window_size_ = system_window_->GetWindowSize();
+#if SB_API_VERSION >= 13
+    input_device_manager_.reset();
+    system_window_.reset();
+    media_module_->UpdateSystemWindowAndResourceProvider(NULL,
+                                                         GetResourceProvider());
+#endif  // SB_API_VERSION >= 13
+  }
 }
 
-void BrowserModule::StartOrResumeInternalPreStateUpdate(bool is_start) {
-  TRACE_EVENT1("cobalt::browser",
-               "BrowserModule::StartOrResumeInternalPreStateUpdate", "is_start",
-               is_start ? "true" : "false");
+void BrowserModule::FreezeInternal() {
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::FreezeInternal()");
+  FreezeMediaModule();
+  // First freeze all our web modules which implies that they will release
+  // their resource provider and all resources created through it.
+  FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_, Freeze());
+}
+
+void BrowserModule::RevealInternal() {
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::RevealInternal()");
+  DCHECK(!renderer_module_);
   if (!system_window_) {
     InitializeSystemWindow();
   } else {
-    InstantiateRendererModule();
-    media_module_->Resume(GetResourceProvider());
+    InitializeComponents();
   }
+
+  DCHECK(system_window_);
+  window_size_ = system_window_->GetWindowSize();
 
   // Propagate the current screen size.
   UpdateScreenSize();
 
-  if (is_start) {
-    FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_,
-                      Start(GetResourceProvider()));
-  } else {
-    FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_,
-                      Resume(GetResourceProvider()));
-  }
+  // Set resource provider right after render module initialized.
+  FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_,
+                    Reveal(GetResourceProvider()));
+
   if (qr_code_overlay_) {
     qr_code_overlay_->SetResourceProvider(GetResourceProvider());
   }
 }
 
-void BrowserModule::StartOrResumeInternalPostStateUpdate() {
-  TRACE_EVENT0("cobalt::browser",
-               "BrowserModule::StartOrResumeInternalPostStateUpdate");
-  // If there's a navigation that's pending, then attempt to navigate to its
-  // specified URL now, unless we're still waiting for an error retry.
-  if (pending_navigate_url_.is_valid() && !waiting_for_error_retry_) {
-    Navigate(pending_navigate_url_);
+void BrowserModule::UnfreezeInternal() {
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::UnfreezeInternal()");
+// Set the Stub resource provider to media module and to web module
+// at Concealed state.
+#if SB_API_VERSION >= 13
+  media_module_->Resume(GetResourceProvider());
+#endif  // SB_API_VERSION >= 13
+
+  FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_,
+                    Unfreeze(GetResourceProvider()));
+}
+
+void BrowserModule::OnMaybeFreeze() {
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::MaybeFreeze()");
+  if (base::MessageLoop::current() != self_message_loop_) {
+    self_message_loop_->task_runner()->PostTask(
+        FROM_HERE,
+        base::Bind(&BrowserModule::OnMaybeFreeze, base::Unretained(this)));
+    return;
+  }
+
+  bool splash_screen_ready_to_freeze =
+      splash_screen_ ? splash_screen_->IsReadyToFreeze() : true;
+#if defined(ENABLE_DEBUGGER)
+  bool debug_console_ready_to_freeze =
+      debug_console_ ? debug_console_->IsReadyToFreeze() : true;
+#endif  // defined(ENABLE_DEBUGGER)
+  bool web_module_ready_to_freeze = web_module_->IsReadyToFreeze();
+  if (splash_screen_ready_to_freeze &&
+#if defined(ENABLE_DEBUGGER)
+      debug_console_ready_to_freeze &&
+#endif  // defined(ENABLE_DEBUGGER)
+      web_module_ready_to_freeze &&
+      application_state_ == base::kApplicationStateConcealed) {
+#if SB_API_VERSION >= 13
+    SbSystemRequestFreeze();
+#endif  // SB_API_VERSION >= 13
   }
 }
 
@@ -1794,8 +1865,11 @@ ViewportSize BrowserModule::GetViewportSize() {
     math::Size target_size = renderer_module_->render_target_size();
     // ...but get the diagonal from one of the other modules.
     float diagonal_inches = 0;
+    float device_pixel_ratio = 1.0f;
     if (system_window_) {
       diagonal_inches = system_window_->GetDiagonalSizeInches();
+      device_pixel_ratio = system_window_->GetDevicePixelRatio();
+
       // For those platforms that can have a main window size smaller than the
       // render target size, the system_window_ size (if exists) should be
       // trusted over the renderer_module_ render target size.
@@ -1806,9 +1880,12 @@ ViewportSize BrowserModule::GetViewportSize() {
       }
     } else if (options_.requested_viewport_size) {
       diagonal_inches = options_.requested_viewport_size->diagonal_inches();
+      device_pixel_ratio =
+          options_.requested_viewport_size->device_pixel_ratio();
     }
 
-    ViewportSize v(target_size.width(), target_size.height(), diagonal_inches);
+    ViewportSize v(target_size.width(), target_size.height(), diagonal_inches,
+                   device_pixel_ratio);
     return v;
   }
 
@@ -1816,7 +1893,8 @@ ViewportSize BrowserModule::GetViewportSize() {
   if (system_window_) {
     math::Size size = system_window_->GetWindowSize();
     ViewportSize v(size.width(), size.height(),
-                   system_window_->GetDiagonalSizeInches());
+                   system_window_->GetDiagonalSizeInches(),
+                   system_window_->GetDevicePixelRatio());
     return v;
   }
 
@@ -1830,7 +1908,7 @@ ViewportSize BrowserModule::GetViewportSize() {
 
   // No window and no viewport size was requested, so we return a conservative
   // default.
-  ViewportSize view_size(1280, 720, 0);
+  ViewportSize view_size(1280, 720);
   return view_size;
 }
 
@@ -1902,6 +1980,10 @@ void BrowserModule::GetHeapStatisticsCallback(
 }
 
 void BrowserModule::SubmitCurrentRenderTreeToRenderer() {
+  if (web_module_) {
+    web_module_->GetUiNavRoot()->PerformQueuedUpdates();
+  }
+
   if (!renderer_module_) {
     return;
   }
@@ -1918,6 +2000,65 @@ SbWindow BrowserModule::GetSbWindow() {
     return NULL;
   }
   return system_window_->GetSbWindow();
+}
+
+base::Optional<std::string> BrowserModule::SetSplashScreenTopicFallback(
+    const GURL& url) {
+  std::map<std::string, std::string> url_param_map;
+  // If this is the initial startup, use topic within deeplink, if specified.
+  if (main_web_module_generation_ == 1) {
+    GetParamMap(GetInitialDeepLink(), url_param_map);
+  }
+  // If this is not the initial startup, there was no deeplink specified, or
+  // the deeplink did not have a topic, check the current url for a topic.
+  if (url_param_map["topic"].empty()) {
+    GetParamMap(url.query(), url_param_map);
+  }
+  std::string splash_topic = url_param_map["topic"];
+  // If a topic was found, check whether a fallback url was specified.
+  if (!splash_topic.empty()) {
+    GURL splash_url = options_.fallback_splash_screen_topic_map[splash_topic];
+    if (!splash_url.spec().empty()) {
+      // Update fallback splash screen url to topic-specific URL.
+      fallback_splash_screen_url_ = splash_url;
+    }
+    return base::Optional<std::string>(splash_topic);
+  }
+  return base::Optional<std::string>();
+}
+
+void BrowserModule::GetParamMap(const std::string& url,
+                                std::map<std::string, std::string>& map) {
+  bool next_is_option = true;
+  bool next_is_value = false;
+  std::string option = "";
+  base::StringTokenizer tokenizer(url, "&=");
+  tokenizer.set_options(base::StringTokenizer::RETURN_DELIMS);
+
+  while (tokenizer.GetNext()) {
+    if (tokenizer.token_is_delim()) {
+      switch (*tokenizer.token_begin()) {
+        case '&':
+          next_is_option = true;
+          break;
+        case '=':
+          next_is_value = true;
+          break;
+      }
+    } else {
+      std::string token = tokenizer.token();
+      if (next_is_value && !option.empty()) {
+        // Overwrite previous value when an option appears more than once.
+        map[option] = token;
+      }
+      option = "";
+      if (next_is_option) {
+        option = token;
+      }
+      next_is_option = false;
+      next_is_value = false;
+    }
+  }
 }
 
 }  // namespace browser

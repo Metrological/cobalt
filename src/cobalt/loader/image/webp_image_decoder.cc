@@ -26,8 +26,10 @@ namespace loader {
 namespace image {
 
 WEBPImageDecoder::WEBPImageDecoder(
-    render_tree::ResourceProvider* resource_provider)
-    : ImageDataDecoder(resource_provider), internal_decoder_(NULL) {
+    render_tree::ResourceProvider* resource_provider,
+    const base::DebuggerHooks& debugger_hooks)
+    : ImageDataDecoder(resource_provider, debugger_hooks),
+      internal_decoder_(NULL) {
   TRACK_MEMORY_SCOPE("Rendering");
   TRACE_EVENT0("cobalt::loader::image", "WEBPImageDecoder::WEBPImageDecoder()");
   // Initialize the configuration as empty.
@@ -59,7 +61,7 @@ size_t WEBPImageDecoder::DecodeChunkInternal(const uint8* data,
     if (config_.input.has_animation) {
       animated_webp_image_ = new AnimatedWebPImage(
           math::Size(config_.input.width, config_.input.height),
-          !!config_.input.has_alpha, resource_provider());
+          !!config_.input.has_alpha, resource_provider(), debugger_hooks());
     } else {
       decoded_image_data_ = AllocateImageData(
           math::Size(config_.input.width, config_.input.height),
@@ -183,13 +185,7 @@ bool WEBPImageDecoder::CreateInternalDecoder() {
   config_.output.u.RGBA.stride = image_data_descriptor.pitch_in_bytes;
   config_.output.u.RGBA.size = image_data_descriptor.pitch_in_bytes *
                                image_data_descriptor.size.height();
-#if SB_HAS_QUIRK(GL_MAP_BUFFER_MEMORY_IS_SLOW_TO_READ)
-  // The webp decoder will allocate a main memory output buffer if it has to
-  // read from the output buffer.
-  config_.output.is_external_memory = 2;
-#else   // SB_HAS_QUIRK(GL_MAP_BUFFER_MEMORY_IS_SLOW_TO_READ)
   config_.output.is_external_memory = 1;
-#endif  // SB_HAS_QUIRK(GL_MAP_BUFFER_MEMORY_IS_SLOW_TO_READ)
   // Instantiate a new incremental decoder object with the requested
   // configuration.
   internal_decoder_ = WebPIDecode(NULL, 0, &config_);

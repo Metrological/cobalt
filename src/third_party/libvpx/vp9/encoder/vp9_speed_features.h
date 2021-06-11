@@ -8,8 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef VP9_ENCODER_VP9_SPEED_FEATURES_H_
-#define VP9_ENCODER_VP9_SPEED_FEATURES_H_
+#ifndef VPX_VP9_ENCODER_VP9_SPEED_FEATURES_H_
+#define VPX_VP9_ENCODER_VP9_SPEED_FEATURES_H_
 
 #include "vp9/common/vp9_enums.h"
 
@@ -18,17 +18,14 @@ extern "C" {
 #endif
 
 enum {
-  INTRA_ALL       = (1 << DC_PRED) |
-                    (1 << V_PRED) | (1 << H_PRED) |
-                    (1 << D45_PRED) | (1 << D135_PRED) |
-                    (1 << D117_PRED) | (1 << D153_PRED) |
-                    (1 << D207_PRED) | (1 << D63_PRED) |
-                    (1 << TM_PRED),
-  INTRA_DC        = (1 << DC_PRED),
-  INTRA_DC_TM     = (1 << DC_PRED) | (1 << TM_PRED),
-  INTRA_DC_H_V    = (1 << DC_PRED) | (1 << V_PRED) | (1 << H_PRED),
-  INTRA_DC_TM_H_V = (1 << DC_PRED) | (1 << TM_PRED) | (1 << V_PRED) |
-                    (1 << H_PRED)
+  INTRA_ALL = (1 << DC_PRED) | (1 << V_PRED) | (1 << H_PRED) | (1 << D45_PRED) |
+              (1 << D135_PRED) | (1 << D117_PRED) | (1 << D153_PRED) |
+              (1 << D207_PRED) | (1 << D63_PRED) | (1 << TM_PRED),
+  INTRA_DC = (1 << DC_PRED),
+  INTRA_DC_TM = (1 << DC_PRED) | (1 << TM_PRED),
+  INTRA_DC_H_V = (1 << DC_PRED) | (1 << V_PRED) | (1 << H_PRED),
+  INTRA_DC_TM_H_V =
+      (1 << DC_PRED) | (1 << TM_PRED) | (1 << V_PRED) | (1 << H_PRED)
 };
 
 enum {
@@ -42,20 +39,15 @@ enum {
 };
 
 enum {
-  DISABLE_ALL_INTER_SPLIT   = (1 << THR_COMP_GA) |
-                              (1 << THR_COMP_LA) |
-                              (1 << THR_ALTR) |
-                              (1 << THR_GOLD) |
-                              (1 << THR_LAST),
+  DISABLE_ALL_INTER_SPLIT = (1 << THR_COMP_GA) | (1 << THR_COMP_LA) |
+                            (1 << THR_ALTR) | (1 << THR_GOLD) | (1 << THR_LAST),
 
-  DISABLE_ALL_SPLIT         = (1 << THR_INTRA) | DISABLE_ALL_INTER_SPLIT,
+  DISABLE_ALL_SPLIT = (1 << THR_INTRA) | DISABLE_ALL_INTER_SPLIT,
 
-  DISABLE_COMPOUND_SPLIT    = (1 << THR_COMP_GA) | (1 << THR_COMP_LA),
+  DISABLE_COMPOUND_SPLIT = (1 << THR_COMP_GA) | (1 << THR_COMP_LA),
 
-  LAST_AND_INTRA_SPLIT_ONLY = (1 << THR_COMP_GA) |
-                              (1 << THR_COMP_LA) |
-                              (1 << THR_ALTR) |
-                              (1 << THR_GOLD)
+  LAST_AND_INTRA_SPLIT_ONLY = (1 << THR_COMP_GA) | (1 << THR_COMP_LA) |
+                              (1 << THR_ALTR) | (1 << THR_GOLD)
 };
 
 typedef enum {
@@ -65,7 +57,8 @@ typedef enum {
   BIGDIA = 3,
   SQUARE = 4,
   FAST_HEX = 5,
-  FAST_DIAMOND = 6
+  FAST_DIAMOND = 6,
+  MESH = 7
 } SEARCH_METHODS;
 
 typedef enum {
@@ -75,8 +68,10 @@ typedef enum {
   ALLOW_RECODE_KFMAXBW = 1,
   // Allow recode only for KF/ARF/GF frames.
   ALLOW_RECODE_KFARFGF = 2,
+  // Allow recode for ARF/GF/KF and first normal frame in each group.
+  ALLOW_RECODE_FIRST = 3,
   // Allow recode for all frames based on bitrate constraints.
-  ALLOW_RECODE = 3,
+  ALLOW_RECODE = 4,
 } RECODE_LOOP_TYPE;
 
 typedef enum {
@@ -141,20 +136,23 @@ typedef enum {
 } INTERP_FILTER_MASK;
 
 typedef enum {
-  // Search partitions using RD/NONRD criterion
+  // Search partitions using RD/NONRD criterion.
   SEARCH_PARTITION,
 
-  // Always use a fixed size partition
+  // Always use a fixed size partition.
   FIXED_PARTITION,
 
   REFERENCE_PARTITION,
 
   // Use an arbitrary partitioning scheme based on source variance within
-  // a 64X64 SB
+  // a 64X64 SB.
   VAR_BASED_PARTITION,
 
-  // Use non-fixed partitions based on source variance
-  SOURCE_VAR_BASED_PARTITION
+  // Use non-fixed partitions based on source variance.
+  SOURCE_VAR_BASED_PARTITION,
+
+  // Make partition decisions with machine learning models.
+  ML_BASED_PARTITION
 } PARTITION_SEARCH_TYPE;
 
 typedef enum {
@@ -166,6 +164,19 @@ typedef enum {
   // The rest are not updated at all.
   ONE_LOOP_REDUCED = 1
 } FAST_COEFF_UPDATE;
+
+typedef enum { EIGHTH_PEL, QUARTER_PEL, HALF_PEL, FULL_PEL } SUBPEL_FORCE_STOP;
+
+typedef struct ADAPT_SUBPEL_FORCE_STOP {
+  // Threshold for full pixel motion vector;
+  int mv_thresh;
+
+  // subpel_force_stop if full pixel MV is below the threshold.
+  SUBPEL_FORCE_STOP force_stop_below;
+
+  // subpel_force_stop if full pixel MV is equal to or above the threshold.
+  SUBPEL_FORCE_STOP force_stop_above;
+} ADAPT_SUBPEL_FORCE_STOP;
 
 typedef struct MV_SPEED_FEATURES {
   // Motion search method (Diamond, NSTEP, Hex, Big Diamond, Square, etc).
@@ -185,19 +196,26 @@ typedef struct MV_SPEED_FEATURES {
   // the same process. Along the way it skips many diagonals.
   SUBPEL_SEARCH_METHODS subpel_search_method;
 
-  // Maximum number of steps in logarithmic subpel search before giving up.
-  int subpel_iters_per_step;
+  // Subpel MV search level. Can take values 0 - 2. Higher values mean more
+  // extensive subpel search.
+  int subpel_search_level;
 
-  // Control when to stop subpel search:
-  // 0: Full subpel search.
-  // 1: Stop at quarter pixel.
-  // 2: Stop at half pixel.
-  // 3: Stop at full pixel.
-  int subpel_force_stop;
+  // When to stop subpel motion search.
+  SUBPEL_FORCE_STOP subpel_force_stop;
+
+  // If it's enabled, different subpel_force_stop will be used for different MV.
+  int enable_adaptive_subpel_force_stop;
+
+  ADAPT_SUBPEL_FORCE_STOP adapt_subpel_force_stop;
 
   // This variable sets the step_param used in full pel motion search.
   int fullpel_search_step_param;
 } MV_SPEED_FEATURES;
+
+typedef struct PARTITION_SEARCH_BREAKOUT_THR {
+  int64_t dist;
+  int rate;
+} PARTITION_SEARCH_BREAKOUT_THR;
 
 #define MAX_MESH_STEP 4
 
@@ -205,6 +223,28 @@ typedef struct MESH_PATTERN {
   int range;
   int interval;
 } MESH_PATTERN;
+
+typedef enum {
+  // No reaction to rate control on a detected slide/scene change.
+  NO_DETECTION = 0,
+
+  // Set to larger Q (max_q set by user) based only on the
+  // detected slide/scene change and current/past Q.
+  FAST_DETECTION_MAXQ = 1,
+
+  // Based on (first pass) encoded frame, if large frame size is detected
+  // then set to higher Q for the second re-encode. This involves 2 pass
+  // encoding on slide change, so slower than 1, but more accurate for
+  // detecting overshoot.
+  RE_ENCODE_MAXQ = 2
+} OVERSHOOT_DETECTION_CBR_RT;
+
+typedef enum {
+  USE_2_TAPS = 0,
+  USE_4_TAPS,
+  USE_8_TAPS,
+  USE_8_TAPS_SHARP,
+} SUBPEL_SEARCH_TYPE;
 
 typedef struct SPEED_FEATURES {
   MV_SPEED_FEATURES mv;
@@ -232,7 +272,12 @@ typedef struct SPEED_FEATURES {
 
   // This variable is used to cap the maximum number of times we skip testing a
   // mode to be evaluated. A high value means we will be faster.
+  // Turned off when (row_mt_bit_exact == 1 && adaptive_rd_thresh_row_mt == 0).
   int adaptive_rd_thresh;
+
+  // Flag to use adaptive_rd_thresh when row-mt it enabled, only for non-rd
+  // pickmode.
+  int adaptive_rd_thresh_row_mt;
 
   // Enables skipping the reconstruction step (idct, recon) in the
   // intermediate steps assuming the last frame didn't have too many intra
@@ -246,6 +291,22 @@ typedef struct SPEED_FEATURES {
   // Coefficient probability model approximation step size
   int coeff_prob_appx_step;
 
+  // Enable uniform quantizer followed by trellis coefficient optimization
+  int allow_quant_coeff_opt;
+  double quant_opt_thresh;
+
+  // Enable asymptotic closed-loop encoding decision for key frame and
+  // alternate reference frames.
+  int allow_acl;
+
+  // Temporal dependency model based encoding mode optimization
+  int enable_tpl_model;
+
+  // Use transform domain distortion. Use pixel domain distortion in speed 0
+  // and certain situations in higher speed to improve the RD model precision.
+  int allow_txfm_domain_distortion;
+  double tx_domain_thresh;
+
   // The threshold is to determine how slow the motino is, it is used when
   // use_lastframe_partitioning is set to LAST_FRAME_PARTITION_LOW_MOTION
   MOTION_THRESHOLD lf_motion_threshold;
@@ -254,6 +315,9 @@ typedef struct SPEED_FEATURES {
   // between options like full rd, largest for prediction size, largest
   // for intra and model coefs for the rest.
   TX_SIZE_SEARCH_METHOD tx_size_search_method;
+
+  // How many levels of tx size to search, starting from the largest.
+  int tx_size_search_depth;
 
   // Low precision 32x32 fdct keeps everything in 16 bits and thus is less
   // precise but significantly faster than the non lp version.
@@ -276,9 +340,14 @@ typedef struct SPEED_FEATURES {
   // rd than partition type split.
   int less_rectangular_check;
 
-  // Disable testing non square partitions. (eg 16x32)
+  // Disable testing non square partitions(eg 16x32) for block sizes larger than
+  // use_square_only_thresh_high or smaller than use_square_only_thresh_low.
   int use_square_partition_only;
-  BLOCK_SIZE use_square_only_threshold;
+  BLOCK_SIZE use_square_only_thresh_high;
+  BLOCK_SIZE use_square_only_thresh_low;
+
+  // Prune reference frames for rectangular partitions.
+  int prune_ref_frame_for_rect_partitions;
 
   // Sets min and max partition sizes for this 64x64 region based on the
   // same 64x64 in last encoded frame, and the left and above neighbor.
@@ -310,14 +379,11 @@ typedef struct SPEED_FEATURES {
   // point for this motion search and limits the search range around it.
   int adaptive_motion_search;
 
-  // Flag for allowing some use of exhaustive searches;
-  int allow_exhaustive_searches;
+  // Do extra full pixel motion search to obtain better motion vector.
+  int enhanced_full_pixel_motion_search;
 
   // Threshold for allowing exhaistive motion search.
   int exhaustive_searches_thresh;
-
-  // Maximum number of exhaustive searches for a frame.
-  int max_exaustive_pct;
 
   // Pattern to be used for any exhaustive mesh searches.
   MESH_PATTERN mesh_patterns[MAX_MESH_STEP];
@@ -400,7 +466,8 @@ typedef struct SPEED_FEATURES {
 
   // This feature controls the tolerence vs target used in deciding whether to
   // recode a frame. It has no meaning if recode is disabled.
-  int recode_tolerance;
+  int recode_tolerance_low;
+  int recode_tolerance_high;
 
   // This variable controls the maximum block size where intra blocks can be
   // used in inter frames.
@@ -434,8 +501,29 @@ typedef struct SPEED_FEATURES {
   INTERP_FILTER_MASK interp_filter_search_mask;
 
   // Partition search early breakout thresholds.
-  int64_t partition_search_breakout_dist_thr;
-  int partition_search_breakout_rate_thr;
+  PARTITION_SEARCH_BREAKOUT_THR partition_search_breakout_thr;
+
+  struct {
+    // Use ML-based partition search early breakout.
+    int search_breakout;
+    // Higher values mean more aggressiveness for partition search breakout that
+    // results in better encoding  speed but worse compression performance.
+    float search_breakout_thresh[3];
+
+    // Machine-learning based partition search early termination
+    int search_early_termination;
+
+    // Machine-learning based partition search pruning using prediction residue
+    // variance.
+    int var_pruning;
+
+    // Threshold values used for ML based rectangular partition search pruning.
+    // If < 0, the feature is turned off.
+    // Higher values mean more aggressiveness to skip rectangular partition
+    // search that results in better encoding speed but worse coding
+    // performance.
+    int prune_rect_thresh[4];
+  } rd_ml_partition;
 
   // Allow skipping partition search for still image frame
   int allow_partition_search_skip;
@@ -448,21 +536,93 @@ typedef struct SPEED_FEATURES {
   int short_circuit_flat_blocks;
 
   // Skip a number of expensive mode evaluations for blocks with very low
-  // temporal variance.
-  // 1: Skip golden non-zeromv and ALL INTRA for bsize >= 32x32.
+  // temporal variance. If the low temporal variance flag is set for a block,
+  // do the following:
+  // 1: Skip all golden modes and ALL INTRA for bsize >= 32x32.
   // 2: Skip golden non-zeromv and newmv-last for bsize >= 16x16, skip ALL
   // INTRA for bsize >= 32x32 and vert/horz INTRA for bsize 16x16, 16x32 and
   // 32x16.
+  // 3: Same as (2), but also skip golden zeromv.
   int short_circuit_low_temp_var;
+
+  // Limits the rd-threshold update for early exit for the newmv-last mode,
+  // for non-rd mode.
+  int limit_newmv_early_exit;
+
+  // Adds a bias against golden reference, for non-rd mode.
+  int bias_golden;
+
+  // Bias to use base mv and skip 1/4 subpel search when use base mv in
+  // enhancement layer.
+  int base_mv_aggressive;
+
+  // Global flag to enable partition copy from the previous frame.
+  int copy_partition_flag;
+
+  // Compute the source sad for every superblock of the frame,
+  // prior to encoding the frame, to be used to bypass some encoder decisions.
+  int use_source_sad;
+
+  int use_simple_block_yrd;
+
+  // If source sad of superblock is high (> adapt_partition_thresh), will switch
+  // from VARIANCE_PARTITION to REFERENCE_PARTITION (which selects partition
+  // based on the nonrd-pickmode).
+  int adapt_partition_source_sad;
+  int adapt_partition_thresh;
+
+  // Enable use of alt-refs in 1 pass VBR.
+  int use_altref_onepass;
+
+  // Enable use of compound prediction, for nonrd_pickmode with nonzero lag.
+  int use_compound_nonrd_pickmode;
+
+  // Always use nonrd_pick_intra for all block sizes on keyframes.
+  int nonrd_keyframe;
+
+  // For SVC: enables use of partition from lower spatial resolution.
+  int svc_use_lowres_part;
+
+  // Flag to indicate process for handling overshoot on slide/scene change,
+  // for real-time CBR mode.
+  OVERSHOOT_DETECTION_CBR_RT overshoot_detection_cbr_rt;
+
+  // Disable partitioning of 16x16 blocks.
+  int disable_16x16part_nonkey;
+
+  // Allow for disabling golden reference.
+  int disable_golden_ref;
+
+  // Allow sub-pixel search to use interpolation filters with different taps in
+  // order to achieve accurate motion search result.
+  SUBPEL_SEARCH_TYPE use_accurate_subpel_search;
+
+  // Search method used by temporal filtering in full_pixel_motion_search.
+  SEARCH_METHODS temporal_filter_search_method;
+
+  // Use machine learning based partition search.
+  int nonrd_use_ml_partition;
+
+  // Multiplier for base thresold for variance partitioning.
+  int variance_part_thresh_mult;
+
+  // Force subpel motion filter to always use SMOOTH_FILTER.
+  int force_smooth_interpol;
+
+  // For real-time mode: force DC only under intra search when content
+  // does not have high souce SAD.
+  int rt_intra_dc_only_low_content;
 } SPEED_FEATURES;
 
 struct VP9_COMP;
 
-void vp9_set_speed_features_framesize_independent(struct VP9_COMP *cpi);
-void vp9_set_speed_features_framesize_dependent(struct VP9_COMP *cpi);
+void vp9_set_speed_features_framesize_independent(struct VP9_COMP *cpi,
+                                                  int speed);
+void vp9_set_speed_features_framesize_dependent(struct VP9_COMP *cpi,
+                                                int speed);
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif
 
-#endif  // VP9_ENCODER_VP9_SPEED_FEATURES_H_
+#endif  // VPX_VP9_ENCODER_VP9_SPEED_FEATURES_H_

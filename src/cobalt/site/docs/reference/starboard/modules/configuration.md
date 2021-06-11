@@ -38,11 +38,6 @@ array.
 
 Determines a compile-time capability of the system.
 
-### SB_CAN_MEDIA_USE_STARBOARD_PIPELINE ###
-
-Specifies whether the starboard media pipeline components (SbPlayerPipeline and
-StarboardDecryptor) are used. Set to 0 means they are not used.
-
 ### SB_COMPILE_ASSERT(expr, msg) ###
 
 Will cause a compiler error with `msg` if `expr` is false. `msg` must be a valid
@@ -57,11 +52,6 @@ will trigger a compiler warning when referenced.
 
 SB_DEPRECATED_EXTERNAL(...) annotates the function as deprecated for external
 clients, but not deprecated for starboard.
-
-### SB_DISALLOW_COPY_AND_ASSIGN(TypeName) ###
-
-A macro to disallow the copy constructor and operator= functions This should be
-used in the private: declarations for a class
 
 ### SB_EXPERIMENTAL_API_VERSION ###
 
@@ -83,52 +73,16 @@ header available.
 
 Whether the current platform has 64-bit atomic operations.
 
-### SB_HAS_AC3_AUDIO_API_VERSION ###
+### SB_HAS_GLES2 ###
 
-Add support for audio in ac3.
-
-### SB_HAS_AV1_VERSION ###
-
-Replace kSbMediaVideoCodecVp10 by kSbMediaVideoCodecAv1. kSbMediaVideoCodecVp10
-in media.h is replaced by kSbMediaVideoCodecAv1.
-
-### SB_HAS_DRM_KEY_STATUSES ###
-
-Legal values for SB_PREFERRED_RGBA_BYTE_ORDER are defined in this file above as
-SB_PREFERRED_RGBA_BYTE_ORDER_*. If your platform uses GLES, you should set this
-to SB_PREFERRED_RGBA_BYTE_ORDER_RGBA.
-
-### SB_HAS_GRAPHICS ###
-
-Specifies whether this platform has any kind of supported graphics system.
+Specifies whether this platform has a performant OpenGL ES 2 implementation,
+which allows client applications to use GL rendering paths. Derived from the gyp
+variable `gl_type` gl_type which indicates what kind of GL implementation is
+available.
 
 ### SB_HAS_QUIRK(SB_FEATURE) ###
 
 Determines at compile-time whether this platform has a quirk.
-
-### SB_HAS_SCREEN_DIAGONAL_API_VERSION ###
-
-Adds support for allowing the platform to override its screen diagonal length
-via SbWindowGetDiagonalSizeInInches().
-
-### SB_HAS_STARTUP_URL_SIGNING_VERSION ###
-
-Add support for startup url signing by adding
-kSbSystemPropertyCertificationScope and
-kSbSystemPropertyBase64EncodedCertificationSecret system property enums to
-system.h.
-
-### SB_HAS_STD_UNORDERED_HASH_API_VERSION ###
-
-Add support for using C++11 standard unordered maps and sets. By setting
-SB_HAS_STD_UNORDERED_HASH to 1, a platform can be configured to use C++11
-standard hash table implementations, specifically, using: . std::unordered_map<>
-for base::hash_map<>, and . std::unordered_multimap<> for base::hash_multimap<>,
-and . std::unordered_set<> for base::hash_set<>, and . std::unordered_multiset<>
-for base::hash_multiset<>. When SB_HAS_STD_UNORDERED_HASH is used, it is no
-longer necessary to specify SB_HAS_LONG_LONG_HASH, SB_HAS_STRING_HASH,
-SB_HAS_HASH_USING, SB_HAS_HASH_VALUE, SB_HAS_HASH_WARNING, SB_HASH_MAP_INCLUDE,
-SB_HASH_NAMESPACE, or SB_HASH_SET_INCLUDE.
 
 ### SB_INT64_C(x) ###
 
@@ -138,10 +92,6 @@ Declare numeric literals of signed 64-bit type.
 
 Determines at compile-time an inherent aspect of this platform.
 
-### SB_IS_LITTLE_ENDIAN ###
-
-Whether the current platform is little endian.
-
 ### SB_LIKELY(x) ###
 
 Macro for hinting that an expression is likely to be true.
@@ -150,13 +100,6 @@ Macro for hinting that an expression is likely to be true.
 
 The maximum API version allowed by this version of the Starboard headers,
 inclusive.
-
-### SB_MEDIA_EOTF_CHECK_SUPPORT_VERSION ###
-
-Add SbMediaTransferId* argument `eotf` to SbMediaIsVideoSupported, so the
-platform may indicate support of resolution, bitrate, fps, and codec conditioned
-on eotf. Also, remove the function SbMediaIsTransferCharacteristicsSupported
-which is no longer necessary.
 
 ### SB_MINIMUM_API_VERSION ###
 
@@ -168,17 +111,12 @@ inclusive.
 Macro to annotate a function as noreturn, which signals to the compiler that the
 function cannot return.
 
-### SB_OVERRIDE ###
-
-Declares a function as overriding a virtual function on compilers that support
-it.
-
 ### SB_PREFERRED_RGBA_BYTE_ORDER_RGBA ###
 
-An enumeration of values for the SB_PREFERRED_RGBA_BYTE_ORDER configuration
-variable. Setting this up properly means avoiding slow color swizzles when
-passing pixel data from one library to another. Note that these definitions are
-in byte-order and so are endianness-independent.
+An enumeration of values for the kSbPreferredByteOrder configuration variable.
+Setting this up properly means avoiding slow color swizzles when passing pixel
+data from one library to another. Note that these definitions are in byte-order
+and so are endianness-independent.
 
 ### SB_PRINTF_FORMAT(format_param, dots_param) ###
 
@@ -200,9 +138,14 @@ uncommented when an API version is a release candidate.
 
 Include the platform-specific configuration. This macro is set by GYP in
 starboard_base_target.gypi and passed in on the command line for all targets and
-all configurations.Makes a pointer-typed parameter restricted so that the
+all configurations. Makes a pointer-typed parameter restricted so that the
 compiler can make certain optimizations because it knows the pointers are
 unique.
+
+### SB_SIZE_OF(DATATYPE) ###
+
+Determines at compile-time the size of a data type, or 0 if the data type that
+was specified was invalid.
 
 ### SB_STRINGIFY(x) ###
 
@@ -215,6 +158,11 @@ Declare numeric literals of unsigned 64-bit type.
 ### SB_UNLIKELY(x) ###
 
 Macro for hinting that an expression is likely to be false.
+
+### SB_UNREFERENCED_PARAMETER(x) ###
+
+Trivially references a parameter that is otherwise unreferenced, preventing a
+compiler warning on some platforms.
 
 ### SB_WARN_UNUSED_RESULT ###
 

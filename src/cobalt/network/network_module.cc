@@ -68,7 +68,7 @@ NetworkModule::~NetworkModule() {
 
   // This will run the above task, and then stop the thread.
   thread_.reset(NULL);
-#if !defined(OS_STARBOARD)
+#if !defined(STARBOARD)
   object_watch_multiplexer_.reset(NULL);
 #endif
   network_system_.reset(NULL);
@@ -90,16 +90,17 @@ void NetworkModule::SetProxy(const std::string& custom_proxy_rules) {
                             custom_proxy_rules));
 }
 
-void NetworkModule::DisableQuic() {
+void NetworkModule::SetEnableQuic(bool enable_quic) {
   task_runner()->PostTask(
-      FROM_HERE, base::Bind(&URLRequestContext::DisableQuic,
-                            base::Unretained(url_request_context_.get())));
+      FROM_HERE,
+      base::Bind(&URLRequestContext::SetEnableQuic,
+                 base::Unretained(url_request_context_.get()), enable_quic));
 }
 
 void NetworkModule::Initialize(const std::string& user_agent_string,
                                base::EventDispatcher* event_dispatcher) {
   thread_.reset(new base::Thread("NetworkModule"));
-#if !defined(OS_STARBOARD)
+#if !defined(STARBOARD)
   object_watch_multiplexer_.reset(new base::ObjectWatchMultiplexer());
 #endif
   network_system_ = NetworkSystem::Create(event_dispatcher);
@@ -114,6 +115,12 @@ void NetworkModule::Initialize(const std::string& user_agent_string,
         command_line->GetSwitchValueASCII(switches::kUserAgent);
     http_user_agent_settings_.reset(new net::StaticHttpUserAgentSettings(
         options_.preferred_language, custom_user_agent));
+  }
+
+  if (command_line->HasSwitch(switches::kMaxNetworkDelay)) {
+    base::StringToInt64(
+        command_line->GetSwitchValueASCII(switches::kMaxNetworkDelay),
+        &options_.max_network_delay);
   }
 
 #if defined(ENABLE_NETWORK_LOGGING)
@@ -141,16 +148,7 @@ void NetworkModule::Initialize(const std::string& user_agent_string,
   base::Thread::Options thread_options;
   thread_options.message_loop_type = base::MessageLoop::TYPE_IO;
   thread_options.stack_size = 256 * 1024;
-  // Thread priority is set to LOW (background) due to the following
-  // constraints:
-  // (1) Setting to high could result in an increase in unresponsiveness
-  //     and input latency on single-core devices.
-  // (2) Setting to normal results in choppy video playback performance
-  //     on lower-end devices.
-  // It was found with some testing that BACKGROUND priority gives the
-  // desired performance on low-end devices without impacting the more
-  // capable devices.
-  thread_options.priority = base::ThreadPriority::BACKGROUND;
+  thread_options.priority = base::ThreadPriority::NORMAL;
   thread_->StartWithOptions(thread_options);
 
   base::WaitableEvent creation_event(

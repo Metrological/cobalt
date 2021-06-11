@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// For platforms that define SB_HAS_CONCEALED_STATE
+// For SB_API_VERSION >= 13
 //
 // Module Overview: Starboard Event module
 //
@@ -89,7 +89,7 @@
 // Note that the application is always expected to transition through |BLURRED|,
 // |CONCEALED| to |FROZEN| before receiving |Stop| or being killed.
 //
-// For platforms that do not define SB_HAS_CONCEALED_STATE
+// For SB_API_VERSION < 13
 //
 // Module Overview: Starboard Event module
 //
@@ -176,8 +176,7 @@ extern "C" {
 // system. Each event is accompanied by a void* data argument, and each event
 // must define the type of the value pointed to by that data argument, if any.
 typedef enum SbEventType {
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
+#if SB_API_VERSION >= 13
   // Applications should perform initialization and prepare to react to
   // subsequent events, but must not initialize any graphics resources (through
   // GL or SbBlitter). The intent of this event is to allow the application to
@@ -216,7 +215,7 @@ typedef enum SbEventType {
   // The operating system will put the application into the Concealed state
   // after this event is handled. The application is expected to be made
   // invisible, but background tasks can still be running, such as audio
-  // playback, or updating of recommandations. Can only be received after a
+  // playback, or updating of recommendations. Can only be received after a
   // Blur or Reveal event. The only events that should be dispatched after
   // a Conceal event are Freeze or Reveal. On some platforms, the process may
   // also be killed after Conceal without a Freeze event.
@@ -250,7 +249,7 @@ typedef enum SbEventType {
   // event is handled. Can only be received after a Freeze event, in the
   // FROZEN state. No data argument.
   kSbEventTypeStop,
-# else
+#else
   // Applications should perform initialization and prepare to react to
   // subsequent events, but must not initialize any graphics resources (through
   // GL or SbBlitter). The intent of this event is to allow the application to
@@ -263,7 +262,7 @@ typedef enum SbEventType {
   // SbEventStartData is passed as the data argument.
   //
   // The system may send |kSbEventTypeSuspend| in |PRELOADING| if it wants to
-  // push the app into a lower resource consumption state. Applications can alo
+  // push the app into a lower resource consumption state. Applications can also
   // call SbSystemRequestSuspend() when they are done preloading to request
   // this.
   kSbEventTypePreload,
@@ -311,8 +310,7 @@ typedef enum SbEventType {
   // event is handled. Can only be received after a Suspend event, in the
   // SUSPENDED state. No data argument.
   kSbEventTypeStop,
-  #endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
+#endif  // SB_API_VERSION >= 13
 
   // A user input event, including keyboard, mouse, gesture, or something else.
   // SbInputData (from input.h) is passed as the data argument.
@@ -335,21 +333,6 @@ typedef enum SbEventType {
   // No data argument.
   kSbEventTypeVerticalSync,
 
-#if SB_API_VERSION < 11
-  // The platform has detected a network disconnection. The platform should make
-  // a best effort to send an event of this type when the network disconnects,
-  // but there are likely to be cases where the platform cannot detect the
-  // disconnection (e.g. if the connection is via a powered hub which becomes
-  // disconnected), so the current network state cannot always be inferred from
-  // the sequence of Connect/Disconnect events.
-  kSbEventTypeNetworkDisconnect,
-
-  // The platform has detected a network connection. This event may be sent at
-  // application start-up, and should always be sent if the network reconnects
-  // since a disconnection event was sent.
-  kSbEventTypeNetworkConnect,
-#endif  // SB_API_VERSION < 11
-
   // An event type reserved for scheduled callbacks. It will only be sent in
   // response to an application call to SbEventSchedule(), and it will call the
   // callback directly, so SbEventHandle should never receive this event
@@ -360,12 +343,17 @@ typedef enum SbEventType {
   // query the accessibility settings using the appropriate APIs to get the
   // new settings. Note this excludes captions settings changes, which
   // causes kSbEventTypeAccessibilityCaptionSettingsChanged to fire. If the
-  // starboard version has kSbEventTypeAccessiblityTextToSpeechSettingsChanged,
-  // then that event should be used to signal text-to-speech settings changes
-  // instead; platforms using older starboard versions should use
-  // kSbEventTypeAccessiblitySettingsChanged for text-to-speech settings
+  // starboard version has
+  // kSbEventTypeAccessib(i)lityTextToSpeechSettingsChanged, then that event
+  // should be used to signal text-to-speech settings changes instead; platforms
+  // using older starboard versions should use
+  // kSbEventTypeAccessib(i)litySettingsChanged for text-to-speech settings
   // changes.
+#if SB_API_VERSION >= 13
+  kSbEventTypeAccessibilitySettingsChanged,
+#else
   kSbEventTypeAccessiblitySettingsChanged,
+#endif  // SB_API_VERSION >= 13
 
   // An optional event that platforms may send to indicate that the application
   // may soon be terminated (or crash) due to low memory availability. The
@@ -374,11 +362,10 @@ typedef enum SbEventType {
   // to respond to or handle this event, it is only advisory.
   kSbEventTypeLowMemory,
 
-#if SB_API_VERSION >= 8
   // The size or position of a SbWindow has changed. The data is
   // SbEventWindowSizeChangedData.
   kSbEventTypeWindowSizeChanged,
-#endif  // SB_API_VERSION >= 8
+
 #if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   // The platform has shown the on screen keyboard. This event is triggered by
   // the system or by the application's OnScreenKeyboard show method. The event
@@ -416,7 +403,6 @@ typedef enum SbEventType {
   // kSbEventOnScreenKeyboardInvalidTicket.
   kSbEventTypeOnScreenKeyboardBlurred,
 
-#if SB_API_VERSION >= 11
   // The platform has updated the on screen keyboard suggestions. This event is
   // triggered by the system or by the application's OnScreenKeyboard update
   // suggestions method. The event has int data representing a ticket. The
@@ -426,7 +412,6 @@ typedef enum SbEventType {
   // SbWindowUpdateOnScreenKeyboardSuggestions. System-triggered events have
   // ticket value kSbEventOnScreenKeyboardInvalidTicket.
   kSbEventTypeOnScreenKeyboardSuggestionsUpdated,
-#endif  // SB_API_VERSION >= 11
 
 #endif  // SB_API_VERSION >= 12 ||
         // SB_HAS(ON_SCREEN_KEYBOARD)
@@ -438,8 +423,35 @@ typedef enum SbEventType {
 
 #if SB_API_VERSION >= 12
   // The platform's text-to-speech settings have changed.
+#if SB_API_VERSION >= 13
+  kSbEventTypeAccessibilityTextToSpeechSettingsChanged,
+#else
   kSbEventTypeAccessiblityTextToSpeechSettingsChanged,
+#endif  // SB_API_VERSION >= 13
 #endif  // SB_API_VERSION >= 12
+
+#if SB_API_VERSION >= 13
+  // The platform has detected a network disconnection. There are likely to
+  // be cases where the platform cannot detect the disconnection but the
+  // platform should make a best effort to send an event of this type when
+  // the network disconnects. This event is used to implement
+  // window.onoffline DOM event.
+  kSbEventTypeOsNetworkDisconnected,
+
+  // The platform has detected a network connection. There are likely to
+  // be cases where the platform cannot detect the connection but the
+  // platform should make a best effort to send an event of this type when
+  // the device is just connected to the internet. This event is used
+  // to implement window.ononline DOM event.
+  kSbEventTypeOsNetworkConnected,
+#endif  // SB_API_VERSION >= SB_EXPERIMENTAL_API_VERSION
+
+#if SB_API_VERSION >= 13
+  // The platform has detected a date and/or time configuration change (such
+  // as a change in the timezone setting). This should trigger the application
+  // to re-query the relevant APIs to update the date and time.
+  kSbEventDateTimeConfigurationChanged,
+#endif  // SB_API_VERSION >= 13
 } SbEventType;
 
 // Structure representing a Starboard event and its data.
@@ -470,13 +482,11 @@ typedef struct SbEventStartData {
   const char* link;
 } SbEventStartData;
 
-#if SB_API_VERSION >= 8
 // Event data for kSbEventTypeWindowSizeChanged events.
 typedef struct SbEventWindowSizeChangedData {
   SbWindow window;
   SbWindowSize size;
 } SbEventWindowSizeChangedData;
-#endif  // SB_API_VERSION >= 8
 
 #define kSbEventIdInvalid (SbEventId)0
 

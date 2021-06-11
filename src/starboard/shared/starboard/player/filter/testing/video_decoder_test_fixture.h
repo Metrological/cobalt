@@ -86,7 +86,11 @@ class VideoDecoderTestFixture {
                           SbPlayerOutputMode output_mode,
                           bool using_stub_decoder);
 
-  ~VideoDecoderTestFixture() { video_decoder_->Reset(); }
+  ~VideoDecoderTestFixture() {
+    if (video_decoder_) {
+      video_decoder_->Reset();
+    }
+  }
 
   void Initialize();
 
@@ -111,7 +115,7 @@ class VideoDecoderTestFixture {
 
   void AssertValidDecodeTargetWhenSupported();
 
-  // This has to be called when the decoder is just initialized/reseted or when
+  // This has to be called when the decoder is just initialized/reset or when
   // status is |kNeedMoreInput|.
   void WriteSingleInput(size_t index);
 

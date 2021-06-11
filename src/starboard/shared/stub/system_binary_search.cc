@@ -14,6 +14,7 @@
 
 #include "starboard/system.h"
 
+#if SB_API_VERSION < 13
 void* SbSystemBinarySearch(const void* key,
                            const void* base,
                            size_t element_count,
@@ -21,3 +22,4 @@ void* SbSystemBinarySearch(const void* key,
                            SbSystemComparator comparator) {
   return NULL;
 }
+#endif  // SB_API_VERSION < 13

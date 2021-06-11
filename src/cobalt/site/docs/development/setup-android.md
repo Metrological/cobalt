@@ -8,20 +8,34 @@ device. The package being built here is referred to as CoAT (Cobalt on Android T
 
 ## Preliminary Setup
 
-1.  Download 'depot_tools', which is used to build the Cobalt code. An easy
-    option is to put them in `~/depot_tools`. Clone the tools, by running the
-    following command:
+<aside class="note">
+<b>Note:</b> Before proceeding further, refer to the documentation for <a href="setup-linux.md">"Set up your environment - Linux"</a>. Complete the section **Set up your workstation**, then return and complete the following steps.
+</aside>
+
+1.  Additional build dependencies may need to be installed:
+    ```
+    sudo apt-get install python python-pip
+    ```
+
+    If `python-pip` is not available via your package manager, you can install `pip` following [recommended instructions](https://pip.pypa.io/en/stable/installing/) from the official Python guide.
+
+    There are also some Python module requirements:
 
     ```
-    cd ~/
-    git clone https://cobalt.googlesource.com/depot_tools
+    python -m pip install requests
     ```
 
-1.  Add your 'depot_tools' directory to the end of your PATH variable. We
-    recommend adding something like this to your `.bashrc` or `.profile` file:
+1.  Install ccache to support build acceleration. ccache is automatically used
+    when available, otherwise defaults to unaccelerated building:
 
     ```
-    PATH=${PATH}:/path/to/depot_tools
+    $ sudo apt-get install ccache
+    ```
+
+    We recommend adjusting the cache size as needed to increase cache hits:
+
+    ```
+    $ ccache --max-size=20G
     ```
 
 1.  Download and install [Android Studio](https://developer.android.com/studio/).
@@ -66,9 +80,6 @@ Go ahead and click 'yes' to open the SDK manager to install the following:
          directory will already exist since you've already run gyp_cobalt for an
          android target, so you'll see a warning in the setup wizard that an SDK
          was detected, which is okay.
-          * The path may also be `$HOME/cobalt-toolchains/AndroidSdk` if you
-            previously had an older environment configured on your machine -
-            this is okay.
         *  Select both `Android SDK` and `Android SDK Platform` (whatever
            current version is presented should be fine)
     *   On the `SDK Platforms` tab select:
@@ -175,10 +186,6 @@ Go ahead and click 'yes' to open the SDK manager to install the following:
     project checked in at `starboard/android/apk`.
 1.  In the sidebar on the left, you should see `app` appear as bolded top-level
     item.  If you don't see this, restart Android Studio.
-1.  If you didn't install your Cobalt depot_tools in the standard location
-    (`$HOME/depot_tools`), then make `starboard/android/apk/app/.cobaltrc` and
-    set the `DEPOT_TOOLS` envvar to the path to where you installed them (or
-    make a symlink in the standard location to where you have them).
 1.  To run the app and attach the debugger: Run -> Debug 'app' (or
     <img src="/images/android-debug-icon.png" style="display: inline;"></img>
     in the toolbar)

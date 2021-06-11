@@ -15,6 +15,7 @@
 #include "starboard/shared/starboard/player/filter/audio_renderer_internal_impl.h"
 
 #include <algorithm>
+#include <string>
 
 #include "starboard/memory.h"
 #include "starboard/shared/starboard/media/media_util.h"
@@ -261,7 +262,6 @@ void AudioRendererImpl::Seek(SbTime seek_to_time) {
   offset_in_frames_on_sink_thread_ = 0;
   frames_consumed_on_sink_thread_ = 0;
   silence_frames_written_after_eos_on_sink_thread_ = 0;
-  silence_frames_consumed_on_sink_thread_ = 0;
 
   if (first_input_written_) {
     decoder_->Reset();
@@ -279,10 +279,12 @@ void AudioRendererImpl::Seek(SbTime seek_to_time) {
 
 SbTime AudioRendererImpl::GetCurrentMediaTime(bool* is_playing,
                                               bool* is_eos_played,
-                                              bool* is_underflow) {
+                                              bool* is_underflow,
+                                              double* playback_rate) {
   SB_DCHECK(is_playing);
   SB_DCHECK(is_eos_played);
   SB_DCHECK(is_underflow);
+  SB_DCHECK(playback_rate);
 
   SbTime media_time = 0;
   SbTimeMonotonic now = -1;
@@ -298,6 +300,7 @@ SbTime AudioRendererImpl::GetCurrentMediaTime(bool* is_playing,
     *is_underflow = underflow_;
 
     if (seeking_ || !decoder_sample_rate_) {
+      *playback_rate = playback_rate_;
       return seeking_to_time_;
     }
 
@@ -323,7 +326,7 @@ SbTime AudioRendererImpl::GetCurrentMediaTime(bool* is_playing,
         elasped_since_last_set * samples_per_second / kSbTimeSecond;
     frames_played =
         audio_frame_tracker_.GetFutureFramesPlayedAdjustedToPlaybackRate(
-            elapsed_frames);
+            elapsed_frames, playback_rate);
     media_time =
         seeking_to_time_ + frames_played * kSbTimeSecond / samples_per_second;
     if (media_time < last_media_time_) {
@@ -392,16 +395,30 @@ void AudioRendererImpl::GetSourceStatus(int* frames_in_buffer,
 
   if (*is_eos_reached && *frames_in_buffer < max_cached_frames_) {
     // Fill silence frames on EOS to ensure keep the audio sink playing.
-    auto start_offset =
-        (*offset_in_frames + *frames_in_buffer) % max_cached_frames_;
-    auto silence_frames_to_write = max_cached_frames_ - start_offset;
-    SB_DCHECK(start_offset >= 0);
-    SB_DCHECK(silence_frames_to_write >= 0);
-    SB_DCHECK(start_offset + silence_frames_to_write <= max_cached_frames_);
-    SbMemorySet(frame_buffer_.data() + start_offset * bytes_per_frame_, 0,
-                silence_frames_to_write * bytes_per_frame_);
-    silence_frames_written_after_eos_on_sink_thread_ += silence_frames_to_write;
-    *frames_in_buffer += silence_frames_to_write;
+    if (max_cached_frames_ - *frames_in_buffer >
+        silence_frames_written_after_eos_on_sink_thread_) {
+      auto silence_frames_to_write =
+          max_cached_frames_ - *frames_in_buffer -
+          silence_frames_written_after_eos_on_sink_thread_;
+      auto start_offset = (*offset_in_frames + *frames_in_buffer +
+                           silence_frames_written_after_eos_on_sink_thread_) %
+                          max_cached_frames_;
+
+      if (silence_frames_to_write <= max_cached_frames_ - start_offset) {
+        SbMemorySet(frame_buffer_.data() + start_offset * bytes_per_frame_, 0,
+                    silence_frames_to_write * bytes_per_frame_);
+      } else {
+        SbMemorySet(frame_buffer_.data() + start_offset * bytes_per_frame_, 0,
+                    (max_cached_frames_ - start_offset) * bytes_per_frame_);
+        SbMemorySet(
+            frame_buffer_.data(), 0,
+            (silence_frames_to_write - max_cached_frames_ + start_offset) *
+                bytes_per_frame_);
+      }
+      silence_frames_written_after_eos_on_sink_thread_ +=
+          silence_frames_to_write;
+    }
+    *frames_in_buffer = max_cached_frames_;
   }
 }
 
@@ -433,15 +450,16 @@ void AudioRendererImpl::ConsumeFrames(int frames_consumed,
   }
 }
 
-void AudioRendererImpl::OnError(bool capability_changed) {
+void AudioRendererImpl::OnError(bool capability_changed,
+                                const std::string& error_message) {
   SB_DCHECK(error_cb_);
   if (capability_changed) {
-    error_cb_(kSbPlayerErrorCapabilityChanged, "failed to start audio sink");
+    error_cb_(kSbPlayerErrorCapabilityChanged, error_message);
   } else {
     // Send |kSbPlayerErrorDecode| on fatal audio sink error.  The error code
     // will be mapped into MediaError eventually, and there is no corresponding
     // error code in MediaError for audio sink error anyway.
-    error_cb_(kSbPlayerErrorDecode, "failed to start audio sink");
+    error_cb_(kSbPlayerErrorDecode, error_message);
   }
 }
 
@@ -450,8 +468,8 @@ void AudioRendererImpl::UpdateVariablesOnSinkThread_Locked(
   mutex_.DCheckAcquired();
 
   if (frames_consumed_on_sink_thread_ > 0) {
-    SB_DCHECK(total_frames_consumed_by_sink_ + frames_consumed_on_sink_thread_ +
-                  silence_frames_consumed_on_sink_thread_ <=
+    SB_DCHECK(total_frames_consumed_by_sink_ +
+                  frames_consumed_on_sink_thread_ <=
               total_frames_sent_to_sink_ +
                   silence_frames_written_after_eos_on_sink_thread_);
     auto non_silence_frames_consumed =
@@ -464,16 +482,12 @@ void AudioRendererImpl::UpdateVariablesOnSinkThread_Locked(
       frames_consumed_set_at_ = system_time_on_consume_frames;
     }
     consume_frames_called_ = true;
-    silence_frames_consumed_on_sink_thread_ =
-        frames_consumed_on_sink_thread_ - non_silence_frames_consumed;
     frames_consumed_on_sink_thread_ = 0;
   }
 
   is_eos_reached_on_sink_thread_ = eos_state_ >= kEOSSentToSink;
   frames_in_buffer_on_sink_thread_ = static_cast<int>(
-      total_frames_sent_to_sink_ +
-      silence_frames_written_after_eos_on_sink_thread_ -
-      total_frames_consumed_by_sink_ - silence_frames_consumed_on_sink_thread_);
+      total_frames_sent_to_sink_ - total_frames_consumed_by_sink_);
   underflow_ |=
       frames_in_buffer_on_sink_thread_ < kFramesInBufferBeginUnderflow;
   if (is_eos_reached_on_sink_thread_ ||
@@ -481,9 +495,8 @@ void AudioRendererImpl::UpdateVariablesOnSinkThread_Locked(
     underflow_ = false;
   }
   is_playing_on_sink_thread_ = !paused_ && !seeking_ && !underflow_;
-  offset_in_frames_on_sink_thread_ = (total_frames_consumed_by_sink_ +
-                                      silence_frames_consumed_on_sink_thread_) %
-                                     max_cached_frames_;
+  offset_in_frames_on_sink_thread_ =
+      total_frames_consumed_by_sink_ % max_cached_frames_;
 
   if (IsEndOfStreamPlayed_Locked() && !ended_cb_called_) {
     ended_cb_called_ = true;
@@ -521,7 +534,7 @@ void AudioRendererImpl::OnFirstOutput(
 
   // TODO: Support planar only audio sink.
   audio_renderer_sink_->Start(
-      channels_, destination_sample_rate, sink_sample_type_,
+      seeking_to_time_, channels_, destination_sample_rate, sink_sample_type_,
       kSbMediaAudioFrameStorageTypeInterleaved,
       reinterpret_cast<SbAudioSinkFrameBuffers>(frame_buffers_),
       max_cached_frames_, this);

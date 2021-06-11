@@ -42,6 +42,10 @@ class H5vccUpdater : public script::Wrappable {
 
   std::string GetUpdateStatus() const;
 
+  void ResetInstallations();
+
+  uint16 GetInstallationIndex() const;
+
 #else
   H5vccUpdater() {}
 #endif

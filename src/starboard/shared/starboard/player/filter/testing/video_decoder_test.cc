@@ -99,11 +99,7 @@ TEST_P(VideoDecoderTest, OutputModeSupported) {
     kSbMediaVideoCodecMpeg2,
     kSbMediaVideoCodecTheora,
     kSbMediaVideoCodecVc1,
-#if SB_API_VERSION < 11
-    kSbMediaVideoCodecVp10,
-#else   // SB_API_VERSION < 11
     kSbMediaVideoCodecAv1,
-#endif  // SB_API_VERSION < 11
     kSbMediaVideoCodecVp8,
     kSbMediaVideoCodecVp9
   };
@@ -139,11 +135,7 @@ TEST_P(VideoDecoderTest, ThreeMoreDecoders) {
     kSbMediaVideoCodecMpeg2,
     kSbMediaVideoCodecTheora,
     kSbMediaVideoCodecVc1,
-#if SB_API_VERSION < 11
-    kSbMediaVideoCodecVp10,
-#else   // SB_API_VERSION < 11
     kSbMediaVideoCodecAv1,
-#endif  // SB_API_VERSION < 11
     kSbMediaVideoCodecVp8,
     kSbMediaVideoCodecVp9
   };
@@ -161,9 +153,7 @@ TEST_P(VideoDecoderTest, ThreeMoreDecoders) {
 
         for (int i = 0; i < kDecodersToCreate; ++i) {
           SbMediaAudioSampleInfo dummy_audio_sample_info = {
-#if SB_API_VERSION >= 11
             kSbMediaAudioCodecNone
-#endif  // SB_API_VERSION >= 11
           };
           PlayerComponents::Factory::CreationParameters creation_parameters(
               fixture_.dmp_reader().video_codec(),
@@ -343,6 +333,10 @@ TEST_P(VideoDecoderTest, ResetAfterInput) {
           *continue_process = false;
           return;
         }
+        if (fixture_.GetDecodedFramesCount() >=
+            fixture_.video_decoder()->GetMaxNumberOfCachedFrames()) {
+          fixture_.PopDecodedFrame();
+        }
         *continue_process = event.status != Status::kBufferFull;
       });
   ASSERT_FALSE(error_occurred);
@@ -362,6 +356,10 @@ TEST_P(VideoDecoderTest, MultipleResets) {
             error_occurred = true;
             *continue_process = false;
             return;
+          }
+          if (fixture_.GetDecodedFramesCount() >=
+              fixture_.video_decoder()->GetMaxNumberOfCachedFrames()) {
+            fixture_.PopDecodedFrame();
           }
           *continue_process = event.status != Status::kBufferFull;
         });

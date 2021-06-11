@@ -8,6 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <memory>
+
 #include "third_party/googletest/src/include/gtest/gtest.h"
 
 #include "test/codec_factory.h"
@@ -29,7 +31,7 @@ struct EncodePerfTestVideo {
 };
 
 const EncodePerfTestVideo kVP9EncodePerfTestVectors[] = {
-  {"niklas_1280_720_30.y4m", 1280, 720, 600, 10},
+  { "niklas_1280_720_30.y4m", 1280, 720, 600, 10 },
 };
 
 struct EncodeParameters {
@@ -45,10 +47,10 @@ struct EncodeParameters {
 };
 
 const EncodeParameters kVP9EncodeParameterSet[] = {
-  {0, 0, 0, 1, 0, VPX_CR_STUDIO_RANGE, VPX_CS_BT_601, { 0, 0 }},
-  {0, 0, 0, 0, 0, VPX_CR_FULL_RANGE, VPX_CS_BT_709, { 0, 0 }},
-  {0, 0, 1, 0, 0, VPX_CR_FULL_RANGE, VPX_CS_BT_2020, { 0, 0 }},
-  {0, 2, 0, 0, 1, VPX_CR_STUDIO_RANGE, VPX_CS_UNKNOWN, { 640, 480 }},
+  { 0, 0, 0, 1, 0, VPX_CR_STUDIO_RANGE, VPX_CS_BT_601, { 0, 0 } },
+  { 0, 0, 0, 0, 0, VPX_CR_FULL_RANGE, VPX_CS_BT_709, { 0, 0 } },
+  { 0, 0, 1, 0, 0, VPX_CR_FULL_RANGE, VPX_CS_BT_2020, { 0, 0 } },
+  { 0, 2, 0, 0, 1, VPX_CR_STUDIO_RANGE, VPX_CS_UNKNOWN, { 640, 480 } },
   // TODO(JBB): Test profiles (requires more work).
 };
 
@@ -74,7 +76,7 @@ class VpxEncoderParmsGetToDecoder
 
   virtual void PreEncodeFrameHook(::libvpx_test::VideoSource *video,
                                   ::libvpx_test::Encoder *encoder) {
-    if (video->frame() == 1) {
+    if (video->frame() == 0) {
       encoder->Control(VP9E_SET_COLOR_SPACE, encode_parms.cs);
       encoder->Control(VP9E_SET_COLOR_RANGE, encode_parms.color_range);
       encoder->Control(VP9E_SET_LOSSLESS, encode_parms.lossless);
@@ -87,8 +89,9 @@ class VpxEncoderParmsGetToDecoder
       encoder->Control(VP8E_SET_ARNR_MAXFRAMES, 7);
       encoder->Control(VP8E_SET_ARNR_STRENGTH, 5);
       encoder->Control(VP8E_SET_ARNR_TYPE, 3);
-      if (encode_parms.render_size[0] > 0 && encode_parms.render_size[1] > 0)
+      if (encode_parms.render_size[0] > 0 && encode_parms.render_size[1] > 0) {
         encoder->Control(VP9E_SET_RENDER_SIZE, encode_parms.render_size);
+      }
     }
   }
 
@@ -98,9 +101,7 @@ class VpxEncoderParmsGetToDecoder
     vpx_codec_ctx_t *const vp9_decoder = decoder->GetDecoder();
     vpx_codec_alg_priv_t *const priv =
         reinterpret_cast<vpx_codec_alg_priv_t *>(vp9_decoder->priv);
-    FrameWorkerData *const worker_data =
-        reinterpret_cast<FrameWorkerData *>(priv->frame_workers[0].data1);
-    VP9_COMMON *const common = &worker_data->pbi->common;
+    VP9_COMMON *const common = &priv->pbi->common;
 
     if (encode_parms.lossless) {
       EXPECT_EQ(0, common->base_qindex);
@@ -139,15 +140,14 @@ class VpxEncoderParmsGetToDecoder
 TEST_P(VpxEncoderParmsGetToDecoder, BitstreamParms) {
   init_flags_ = VPX_CODEC_USE_PSNR;
 
-  libvpx_test::VideoSource *const video =
-      new libvpx_test::Y4mVideoSource(test_video_.name, 0, test_video_.frames);
-  ASSERT_TRUE(video != NULL);
+  std::unique_ptr<libvpx_test::VideoSource> video(
+      new libvpx_test::Y4mVideoSource(test_video_.name, 0, test_video_.frames));
+  ASSERT_NE(video.get(), nullptr);
 
-  ASSERT_NO_FATAL_FAILURE(RunLoop(video));
-  delete video;
+  ASSERT_NO_FATAL_FAILURE(RunLoop(video.get()));
 }
 
-VP9_INSTANTIATE_TEST_CASE(VpxEncoderParmsGetToDecoder,
-                          ::testing::ValuesIn(kVP9EncodeParameterSet),
-                          ::testing::ValuesIn(kVP9EncodePerfTestVectors));
+VP9_INSTANTIATE_TEST_SUITE(VpxEncoderParmsGetToDecoder,
+                           ::testing::ValuesIn(kVP9EncodeParameterSet),
+                           ::testing::ValuesIn(kVP9EncodePerfTestVectors));
 }  // namespace

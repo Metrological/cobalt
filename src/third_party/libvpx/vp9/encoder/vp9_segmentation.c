@@ -8,8 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-
 #include <limits.h>
+#include <math.h>
 
 #include "vpx_mem/vpx_mem.h"
 
@@ -31,8 +31,7 @@ void vp9_disable_segmentation(struct segmentation *seg) {
   seg->update_data = 0;
 }
 
-void vp9_set_segment_data(struct segmentation *seg,
-                          signed char *feature_data,
+void vp9_set_segment_data(struct segmentation *seg, signed char *feature_data,
                           unsigned char abs_delta) {
   seg->abs_delta = abs_delta;
 
@@ -46,6 +45,59 @@ void vp9_disable_segfeature(struct segmentation *seg, int segment_id,
 void vp9_clear_segdata(struct segmentation *seg, int segment_id,
                        SEG_LVL_FEATURES feature_id) {
   seg->feature_data[segment_id][feature_id] = 0;
+}
+
+void vp9_psnr_aq_mode_setup(struct segmentation *seg) {
+  int i;
+
+  vp9_enable_segmentation(seg);
+  vp9_clearall_segfeatures(seg);
+  seg->abs_delta = SEGMENT_DELTADATA;
+
+  for (i = 0; i < MAX_SEGMENTS; ++i) {
+    vp9_set_segdata(seg, i, SEG_LVL_ALT_Q, 2 * (i - (MAX_SEGMENTS / 2)));
+    vp9_enable_segfeature(seg, i, SEG_LVL_ALT_Q);
+  }
+}
+
+void vp9_perceptual_aq_mode_setup(struct VP9_COMP *cpi,
+                                  struct segmentation *seg) {
+  const VP9_COMMON *cm = &cpi->common;
+  const int seg_counts = cpi->kmeans_ctr_num;
+  const int base_qindex = cm->base_qindex;
+  const double base_qstep = vp9_convert_qindex_to_q(base_qindex, cm->bit_depth);
+  const double mid_ctr = cpi->kmeans_ctr_ls[seg_counts / 2];
+  const double var_diff_scale = 4.0;
+  int i;
+
+  assert(seg_counts <= MAX_SEGMENTS);
+
+  vp9_enable_segmentation(seg);
+  vp9_clearall_segfeatures(seg);
+  seg->abs_delta = SEGMENT_DELTADATA;
+
+  for (i = 0; i < seg_counts / 2; ++i) {
+    double wiener_var_diff = mid_ctr - cpi->kmeans_ctr_ls[i];
+    double target_qstep = base_qstep / (1.0 + wiener_var_diff / var_diff_scale);
+    int target_qindex = vp9_convert_q_to_qindex(target_qstep, cm->bit_depth);
+    assert(wiener_var_diff >= 0.0);
+
+    vp9_set_segdata(seg, i, SEG_LVL_ALT_Q, target_qindex - base_qindex);
+    vp9_enable_segfeature(seg, i, SEG_LVL_ALT_Q);
+  }
+
+  vp9_set_segdata(seg, i, SEG_LVL_ALT_Q, 0);
+  vp9_enable_segfeature(seg, i, SEG_LVL_ALT_Q);
+
+  for (; i < seg_counts; ++i) {
+    double wiener_var_diff = cpi->kmeans_ctr_ls[i] - mid_ctr;
+    double target_qstep = base_qstep * (1.0 + wiener_var_diff / var_diff_scale);
+    int target_qindex = vp9_convert_q_to_qindex(target_qstep, cm->bit_depth);
+    assert(wiener_var_diff >= 0.0);
+
+    vp9_set_segdata(seg, i, SEG_LVL_ALT_Q, target_qindex - base_qindex);
+    vp9_enable_segfeature(seg, i, SEG_LVL_ALT_Q);
+  }
 }
 
 // Based on set of segment counts calculate a probability tree
@@ -75,13 +127,11 @@ static int cost_segmap(int *segcounts, vpx_prob *probs) {
   const int c4567 = c45 + c67;
 
   // Cost the top node of the tree
-  int cost = c0123 * vp9_cost_zero(probs[0]) +
-             c4567 * vp9_cost_one(probs[0]);
+  int cost = c0123 * vp9_cost_zero(probs[0]) + c4567 * vp9_cost_one(probs[0]);
 
   // Cost subsequent levels
   if (c0123 > 0) {
-    cost += c01 * vp9_cost_zero(probs[1]) +
-            c23 * vp9_cost_one(probs[1]);
+    cost += c01 * vp9_cost_zero(probs[1]) + c23 * vp9_cost_one(probs[1]);
 
     if (c01 > 0)
       cost += segcounts[0] * vp9_cost_zero(probs[3]) +
@@ -92,8 +142,7 @@ static int cost_segmap(int *segcounts, vpx_prob *probs) {
   }
 
   if (c4567 > 0) {
-    cost += c45 * vp9_cost_zero(probs[2]) +
-            c67 * vp9_cost_one(probs[2]);
+    cost += c45 * vp9_cost_zero(probs[2]) + c67 * vp9_cost_one(probs[2]);
 
     if (c45 > 0)
       cost += segcounts[4] * vp9_cost_zero(probs[5]) +
@@ -110,12 +159,11 @@ static void count_segs(const VP9_COMMON *cm, MACROBLOCKD *xd,
                        const TileInfo *tile, MODE_INFO **mi,
                        int *no_pred_segcounts,
                        int (*temporal_predictor_count)[2],
-                       int *t_unpred_seg_counts,
-                       int bw, int bh, int mi_row, int mi_col) {
+                       int *t_unpred_seg_counts, int bw, int bh, int mi_row,
+                       int mi_col) {
   int segment_id;
 
-  if (mi_row >= cm->mi_rows || mi_col >= cm->mi_cols)
-    return;
+  if (mi_row >= cm->mi_rows || mi_col >= cm->mi_cols) return;
 
   xd->mi = mi;
   segment_id = xd->mi[0]->segment_id;
@@ -129,8 +177,8 @@ static void count_segs(const VP9_COMMON *cm, MACROBLOCKD *xd,
   if (cm->frame_type != KEY_FRAME) {
     const BLOCK_SIZE bsize = xd->mi[0]->sb_type;
     // Test to see if the segment id matches the predicted value.
-    const int pred_segment_id = get_segment_id(cm, cm->last_frame_seg_map,
-                                               bsize, mi_row, mi_col);
+    const int pred_segment_id =
+        get_segment_id(cm, cm->last_frame_seg_map, bsize, mi_row, mi_col);
     const int pred_flag = pred_segment_id == segment_id;
     const int pred_context = vp9_get_pred_context_seg_id(xd);
 
@@ -140,8 +188,7 @@ static void count_segs(const VP9_COMMON *cm, MACROBLOCKD *xd,
     temporal_predictor_count[pred_context][pred_flag]++;
 
     // Update the "unpredicted" segment count
-    if (!pred_flag)
-      t_unpred_seg_counts[segment_id]++;
+    if (!pred_flag) t_unpred_seg_counts[segment_id]++;
   }
 }
 
@@ -149,15 +196,13 @@ static void count_segs_sb(const VP9_COMMON *cm, MACROBLOCKD *xd,
                           const TileInfo *tile, MODE_INFO **mi,
                           int *no_pred_segcounts,
                           int (*temporal_predictor_count)[2],
-                          int *t_unpred_seg_counts,
-                          int mi_row, int mi_col,
+                          int *t_unpred_seg_counts, int mi_row, int mi_col,
                           BLOCK_SIZE bsize) {
   const int mis = cm->mi_stride;
   int bw, bh;
   const int bs = num_8x8_blocks_wide_lookup[bsize], hbs = bs / 2;
 
-  if (mi_row >= cm->mi_rows || mi_col >= cm->mi_cols)
-    return;
+  if (mi_row >= cm->mi_rows || mi_col >= cm->mi_cols) return;
 
   bw = num_8x8_blocks_wide_lookup[mi[0]->sb_type];
   bh = num_8x8_blocks_high_lookup[mi[0]->sb_type];
@@ -174,9 +219,9 @@ static void count_segs_sb(const VP9_COMMON *cm, MACROBLOCKD *xd,
   } else if (bw < bs && bh == bs) {
     count_segs(cm, xd, tile, mi, no_pred_segcounts, temporal_predictor_count,
                t_unpred_seg_counts, hbs, bs, mi_row, mi_col);
-    count_segs(cm, xd, tile, mi + hbs,
-               no_pred_segcounts, temporal_predictor_count, t_unpred_seg_counts,
-               hbs, bs, mi_row, mi_col + hbs);
+    count_segs(cm, xd, tile, mi + hbs, no_pred_segcounts,
+               temporal_predictor_count, t_unpred_seg_counts, hbs, bs, mi_row,
+               mi_col + hbs);
   } else {
     const BLOCK_SIZE subsize = subsize_lookup[PARTITION_SPLIT][bsize];
     int n;
@@ -187,9 +232,8 @@ static void count_segs_sb(const VP9_COMMON *cm, MACROBLOCKD *xd,
       const int mi_dc = hbs * (n & 1);
       const int mi_dr = hbs * (n >> 1);
 
-      count_segs_sb(cm, xd, tile, &mi[mi_dr * mis + mi_dc],
-                    no_pred_segcounts, temporal_predictor_count,
-                    t_unpred_seg_counts,
+      count_segs_sb(cm, xd, tile, &mi[mi_dr * mis + mi_dc], no_pred_segcounts,
+                    temporal_predictor_count, t_unpred_seg_counts,
                     mi_row + mi_dr, mi_col + mi_dc, subsize);
     }
   }
@@ -230,8 +274,8 @@ void vp9_choose_segmap_coding_method(VP9_COMMON *cm, MACROBLOCKD *xd) {
       for (mi_col = tile.mi_col_start; mi_col < tile.mi_col_end;
            mi_col += 8, mi += 8)
         count_segs_sb(cm, xd, &tile, mi, no_pred_segcounts,
-                      temporal_predictor_count, t_unpred_seg_counts,
-                      mi_row, mi_col, BLOCK_64X64);
+                      temporal_predictor_count, t_unpred_seg_counts, mi_row,
+                      mi_col, BLOCK_64X64);
     }
   }
 

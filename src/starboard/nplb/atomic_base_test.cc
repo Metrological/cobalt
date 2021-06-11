@@ -68,7 +68,8 @@ class TestThread {
 
   SbThread thread_;
 
-  SB_DISALLOW_COPY_AND_ASSIGN(TestThread);
+  TestThread(const TestThread&) = delete;
+  void operator=(const TestThread&) = delete;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -234,7 +235,7 @@ TYPED_TEST(AtomicIntegralTest, IncrementAndDecrement_SingleThread) {
 // Multithreaded tests.
 ///////////////////////////////////////////////////////////////////////////////
 
-// A thread that will execute compare_exhange_strong() and write out a result
+// A thread that will execute compare_exchange_strong() and write out a result
 // to a shared output.
 template <typename AtomicT>
 class CompareExchangeThread : public TestThread {

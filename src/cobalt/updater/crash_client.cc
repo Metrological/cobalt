@@ -13,7 +13,7 @@
 #include "base/path_service.h"
 #include "base/strings/string_util.h"
 #include "build/build_config.h"
-#include "cobalt/updater/util.h"
+#include "cobalt/updater/utils.h"
 #include "third_party/crashpad/crashpad/client/crash_report_database.h"
 #include "third_party/crashpad/crashpad/client/crashpad_client.h"
 #include "third_party/crashpad/crashpad/client/prune_crash_reports.h"
@@ -56,7 +56,7 @@ bool CrashClient::InitializeDatabaseOnly() {
   base::PathService::Get(base::FILE_EXE, &handler_path);
 
   base::FilePath database_path;
-  if (!GetProductDirectory(&database_path)) {
+  if (!CreateProductDirectory(&database_path)) {
     LOG(ERROR) << "Failed to get the database path.";
     return false;
   }

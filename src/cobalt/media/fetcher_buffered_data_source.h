@@ -38,8 +38,7 @@
 namespace cobalt {
 namespace media {
 
-// TODO: This class requires a large block of memory.  Consider to
-// use ShellBufferFactory for its memory if possible to avoid possible OOM.
+// TODO: This class requires a large block of memory.
 
 // A BufferedDataSource based on net::URLFetcher that can be used to retrieve
 // progressive videos from both local and network sources.
@@ -66,7 +65,7 @@ class FetcherBufferedDataSource : public BufferedDataSource,
   FetcherBufferedDataSource(
       const scoped_refptr<base::SingleThreadTaskRunner>& task_runner,
       const GURL& url, const csp::SecurityCallback& security_callback,
-      network::NetworkModule* network_module, loader::RequestMode requset_mode,
+      network::NetworkModule* network_module, loader::RequestMode request_mode,
       loader::Origin origin);
   ~FetcherBufferedDataSource() override;
 

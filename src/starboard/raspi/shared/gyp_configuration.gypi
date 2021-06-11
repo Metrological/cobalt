@@ -29,9 +29,6 @@
       '-O2',
     ],
     'compiler_flags': [
-      # We'll pretend not to be Linux, but Starboard instead.
-      '-U__linux__',
-
       # Force char to be signed.
       '-fsigned-char',
 
@@ -69,6 +66,7 @@
       '-I<(sysroot)/opt/vc/include',
       '-I<(sysroot)/opt/vc/include/interface/vcos/pthreads',
       '-I<(sysroot)/opt/vc/include/interface/vmcs_host/linux',
+      '-I<(sysroot)/usr/include/arm-linux-gnueabihf',
     ],
     'linker_flags': [
       '--sysroot=<(sysroot)',
@@ -76,19 +74,13 @@
       # libraries.
       '-L<(sysroot)/opt/vc/lib',
       '-Wl,-rpath=<(sysroot)/opt/vc/lib',
-
-      # We don't wrap these symbols, but this ensures that they aren't
-      # linked in.
-      '-Wl,--wrap=malloc',
-      '-Wl,--wrap=calloc',
-      '-Wl,--wrap=realloc',
-      '-Wl,--wrap=memalign',
-      '-Wl,--wrap=reallocalign',
-      '-Wl,--wrap=free',
-      '-Wl,--wrap=strdup',
-      '-Wl,--wrap=malloc_usable_size',
-      '-Wl,--wrap=malloc_stats_fast',
-      '-Wl,--wrap=__cxa_demangle',
+      '-L<(sysroot)/usr/lib/arm-linux-gnueabihf',
+      '-Wl,-rpath=<(sysroot)/usr/lib/arm-linux-gnueabihf',
+      '-L<(sysroot)/lib/arm-linux-gnueabihf',
+      '-Wl,-rpath=<(sysroot)/lib/arm-linux-gnueabihf',
+      # Cleanup unused sections
+      '-Wl,-gc-sections',
+      '-Wl,--unresolved-symbols=ignore-in-shared-libs',
     ],
     'compiler_flags_debug': [
       '-O0',
@@ -107,9 +99,15 @@
     ],
     'compiler_flags_qa_size': [
       '-Os',
+      # Compile symbols in separate sections
+      '-ffunction-sections',
+      '-fdata-sections',
     ],
     'compiler_flags_qa_speed': [
       '-O2',
+      # Compile symbols in separate sections
+      '-ffunction-sections',
+      '-fdata-sections',
     ],
     'compiler_flags_cc_qa': [
       '-fno-rtti',
@@ -119,9 +117,15 @@
     ],
     'compiler_flags_gold_size': [
       '-Os',
+      # Compile symbols in separate sections
+      '-ffunction-sections',
+      '-fdata-sections',
     ],
     'compiler_flags_gold_speed': [
       '-O2',
+      # Compile symbols in separate sections
+      '-ffunction-sections',
+      '-fdata-sections',
     ],
     'compiler_flags_cc_gold': [
       '-fno-rtti',
@@ -131,14 +135,18 @@
       '-lavcodec',
       '-lavformat',
       '-lavutil',
-      '-lEGL',
-      '-lGLESv2',
+      '-l:libpthread.so.0',
       '-lpthread',
       '-lrt',
       '-lopenmaxil',
       '-lbcm_host',
       '-lvcos',
       '-lvchiq_arm',
+      '-lbrcmGLESv2',
+      '-lbrcmEGL',
+      # Static libs must be last, to avoid __dlopen linker errors
+      '-lEGL_static',
+      '-lGLESv2_static',
     ],
     'conditions': [
       ['cobalt_fastbuild==0', {
@@ -168,7 +176,7 @@
       '-std=c11',
     ],
     'cflags_cc': [
-      '-std=gnu++11',
+      '-std=gnu++14',
       '-Wno-literal-suffix',
     ],
     'target_conditions': [
@@ -183,6 +191,8 @@
           '-Wno-maybe-uninitialized',
           # Turn warnings into errors.
           '-Werror',
+          '-Wno-expansion-to-defined',
+          '-Wno-implicit-fallthrough',
         ],
       },{
         'cflags': [

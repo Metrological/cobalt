@@ -28,12 +28,13 @@ const int num_tests = 10;
 TEST(VP9, TestBitIO) {
   ACMRandom rnd(ACMRandom::DeterministicSeed());
   for (int n = 0; n < num_tests; ++n) {
-    for (int method = 0; method <= 7; ++method) {   // we generate various proba
+    for (int method = 0; method <= 7; ++method) {  // we generate various proba
       const int kBitsToTest = 1000;
       uint8_t probas[kBitsToTest];
 
       for (int i = 0; i < kBitsToTest; ++i) {
         const int parity = i & 1;
+        /* clang-format off */
         probas[i] =
           (method == 0) ? 0 : (method == 1) ? 255 :
           (method == 2) ? 128 :
@@ -44,6 +45,7 @@ TEST(VP9, TestBitIO) {
             (method == 6) ?
             (parity ? rnd(64) : 255 - rnd(64)) :
             (parity ? rnd(32) : 255 - rnd(32));
+        /* clang-format on */
       }
       for (int bit_method = 0; bit_method <= 3; ++bit_method) {
         const int random_seed = 6432;
@@ -64,12 +66,15 @@ TEST(VP9, TestBitIO) {
         }
 
         vpx_stop_encode(&bw);
+        // vpx_reader_fill() may read into uninitialized data that
+        // isn't used meaningfully, but may trigger an MSan warning.
+        memset(bw_buffer + bw.pos, 0, sizeof(BD_VALUE) - 1);
 
         // First bit should be zero
         GTEST_ASSERT_EQ(bw_buffer[0] & 0x80, 0);
 
         vpx_reader br;
-        vpx_reader_init(&br, bw_buffer, kBufferSize, NULL, NULL);
+        vpx_reader_init(&br, bw_buffer, kBufferSize, nullptr, nullptr);
         bit_rnd.Reset(random_seed);
         for (int i = 0; i < kBitsToTest; ++i) {
           if (bit_method == 2) {
@@ -79,8 +84,7 @@ TEST(VP9, TestBitIO) {
           }
           GTEST_ASSERT_EQ(vpx_read(&br, probas[i]), bit)
               << "pos: " << i << " / " << kBitsToTest
-              << " bit_method: " << bit_method
-              << " method: " << method;
+              << " bit_method: " << bit_method << " method: " << method;
         }
       }
     }

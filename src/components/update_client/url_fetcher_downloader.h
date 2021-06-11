@@ -15,9 +15,10 @@
 #include "base/threading/thread_checker.h"
 #include "base/time/time.h"
 #include "components/update_client/crx_downloader.h"
+#include "components/update_client/update_client_errors.h"
 
-#if defined(OS_STARBOARD)
-#include "cobalt/extension/installation_manager.h"
+#if defined(STARBOARD)
+#include "components/update_client/cobalt_slot_management.h"
 #endif
 
 namespace update_client {
@@ -28,9 +29,14 @@ class NetworkFetcherFactory;
 // Implements a CRX downloader using a NetworkFetcher object.
 class UrlFetcherDownloader : public CrxDownloader {
  public:
+#if defined(STARBOARD)
+  UrlFetcherDownloader(std::unique_ptr<CrxDownloader> successor,
+                       scoped_refptr<Configurator> config);
+#else
   UrlFetcherDownloader(
       std::unique_ptr<CrxDownloader> successor,
       scoped_refptr<NetworkFetcherFactory> network_fetcher_factory);
+#endif
   ~UrlFetcherDownloader() override;
 
  private:
@@ -39,6 +45,11 @@ class UrlFetcherDownloader : public CrxDownloader {
 
   void CreateDownloadDir();
   void StartURLFetch(const GURL& url);
+
+#if defined(STARBOARD)
+  void SelectSlot(const GURL& url);
+  void ConfirmSlot(const GURL& url);
+#endif
   void OnNetworkFetcherComplete(base::FilePath file_path,
                                 int net_error,
                                 int64_t content_size);
@@ -46,6 +57,10 @@ class UrlFetcherDownloader : public CrxDownloader {
                          int response_code,
                          int64_t content_length);
   void OnDownloadProgress(int64_t content_length);
+  void ReportDownloadFailure(const GURL& url);
+#if defined(STARBOARD)
+  void ReportDownloadFailure(const GURL& url, CrxDownloaderError error);
+#endif
 
   THREAD_CHECKER(thread_checker_);
 
@@ -61,8 +76,9 @@ class UrlFetcherDownloader : public CrxDownloader {
   int response_code_ = -1;
   int64_t total_bytes_ = -1;
 
-#if defined(OS_STARBOARD)
-  int installation_index_ = IM_EXT_INVALID_INDEX;
+#if defined(STARBOARD)
+  CobaltSlotManagement cobalt_slot_management_;
+  scoped_refptr<Configurator> config_;
 #endif
 
   DISALLOW_COPY_AND_ASSIGN(UrlFetcherDownloader);

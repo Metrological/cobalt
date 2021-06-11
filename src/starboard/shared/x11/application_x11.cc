@@ -35,11 +35,16 @@
 #include "starboard/key.h"
 #include "starboard/memory.h"
 #include "starboard/player.h"
+#include "starboard/shared/linux/system_network_status.h"
 #include "starboard/shared/posix/time_internal.h"
 #include "starboard/shared/starboard/audio_sink/audio_sink_internal.h"
 #include "starboard/shared/starboard/player/filter/cpu_video_frame.h"
 #include "starboard/shared/x11/window_internal.h"
 #include "starboard/time.h"
+
+namespace {
+const char kTouchscreenPointerSwitch[] = "touchscreen_pointer";
+}
 
 namespace starboard {
 namespace shared {
@@ -694,15 +699,16 @@ using shared::starboard::player::filter::CpuVideoFrame;
 ApplicationX11::ApplicationX11()
     : wake_up_atom_(None),
       wm_delete_atom_(None),
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
+#if SB_API_VERSION >= 13
       wm_change_state_atom_(None),
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
+#endif  // SB_API_VERSION >= 13
       composite_event_id_(kSbEventIdInvalid),
       display_(NULL),
       paste_buffer_key_release_pending_(false) {
   SbAudioSinkPrivate::Initialize();
+#if SB_API_VERSION >= 13
+  NetworkNotifier::GetOrCreateInstance();
+#endif
 }
 
 ApplicationX11::~ApplicationX11() {
@@ -720,6 +726,7 @@ SbWindow ApplicationX11::CreateWindow(const SbWindowOptions* options) {
     // evdev input will be sent to the first created window only.
     dev_input_.reset(DevInput::Create(window, ConnectionNumber(display_)));
   }
+  touchscreen_pointer_ = GetCommandLine()->HasSwitch(kTouchscreenPointerSwitch);
   return window;
 }
 
@@ -893,7 +900,7 @@ void ApplicationX11::Teardown() {
 }
 
 bool ApplicationX11::MayHaveSystemEvents() {
-  return display_;
+  return display_ && !windows_.empty();
 }
 
 shared::starboard::Application::Event*
@@ -954,11 +961,9 @@ bool ApplicationX11::EnsureX() {
 
   wake_up_atom_ = XInternAtom(display_, "WakeUpAtom", 0);
   wm_delete_atom_ = XInternAtom(display_, "WM_DELETE_WINDOW", True);
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
+#if SB_API_VERSION >= 13
   wm_change_state_atom_ = XInternAtom(display_, "WM_CHANGE_STATE", True);
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
+#endif  // SB_API_VERSION >= 13
 
   Composite();
 
@@ -977,11 +982,9 @@ void ApplicationX11::StopX() {
   display_ = NULL;
   wake_up_atom_ = None;
   wm_delete_atom_ = None;
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
+#if SB_API_VERSION >= 13
   wm_change_state_atom_ = None;
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
+#endif  // SB_API_VERSION >= 13
 }
 
 shared::starboard::Application::Event* ApplicationX11::GetPendingEvent() {
@@ -1195,8 +1198,7 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
         return NULL;
       }
 
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
+#if SB_API_VERSION >= 13
       if (client_message->message_type == wm_change_state_atom_) {
         SB_DLOG(INFO) << "Received WM_CHANGE_STATE message.";
         if (x_event->xclient.data.l[0] == IconicState) {
@@ -1207,8 +1209,7 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
           return NULL;
         }
       }
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
+#endif  // SB_API_VERSION >= 13
 
       // Unknown event, ignore.
       return NULL;
@@ -1273,7 +1274,8 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
       data->key = XButtonEventToSbKey(x_button_event);
       data->type =
           is_press_event ? kSbInputEventTypePress : kSbInputEventTypeUnpress;
-      data->device_type = kSbInputDeviceTypeMouse;
+      data->device_type = touchscreen_pointer_ ? kSbInputDeviceTypeTouchScreen
+                                               : kSbInputDeviceTypeMouse;
       if (is_wheel_event) {
         data->pressure = NAN;
         data->size = {NAN, NAN};
@@ -1299,16 +1301,21 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
       data->size = {NAN, NAN};
       data->tilt = {NAN, NAN};
       data->type = kSbInputEventTypeMove;
-      data->device_type = kSbInputDeviceTypeMouse;
+      data->device_type = touchscreen_pointer_ ? kSbInputDeviceTypeTouchScreen
+                                               : kSbInputDeviceTypeMouse;
       data->device_id = kMouseDeviceId;
       data->key_modifiers = XEventStateToSbKeyModifiers(x_motion_event->state);
       data->position.x = x_motion_event->x;
       data->position.y = x_motion_event->y;
+      if (touchscreen_pointer_ && !data->key_modifiers) {
+        // For touch screens, only report motion events when a button is
+        // pressed.
+        return NULL;
+      }
       return new Event(kSbEventTypeInput, data.release(),
                        &DeleteDestructor<SbInputData>);
     }
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
+#if SB_API_VERSION >= 13
     case FocusIn: {
       Focus(NULL, NULL);
       return NULL;
@@ -1326,10 +1333,8 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
       Pause(NULL, NULL);
       return NULL;
     }
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
+#endif  // SB_API_VERSION >= 13
     case ConfigureNotify: {
-#if SB_API_VERSION >= 8
       XConfigureEvent* x_configure_event =
           reinterpret_cast<XConfigureEvent*>(x_event);
       scoped_ptr<SbEventWindowSizeChangedData> data(
@@ -1349,9 +1354,6 @@ shared::starboard::Application::Event* ApplicationX11::XEventToEvent(
       data->window->unhandled_resize = false;
       return new Event(kSbEventTypeWindowSizeChanged, data.release(),
                        &DeleteDestructor<SbInputData>);
-#else   // SB_API_VERSION >= 8
-      return NULL;
-#endif  // SB_API_VERSION >= 8
     }
     case SelectionNotify: {
       XSelectionEvent* x_selection_event =

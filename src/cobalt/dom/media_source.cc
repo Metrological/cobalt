@@ -45,6 +45,7 @@
 #include "cobalt/dom/media_source.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -56,7 +57,6 @@
 #include "cobalt/dom/dom_settings.h"
 #include "cobalt/dom/event.h"
 #include "cobalt/media/base/pipeline_status.h"
-#include "starboard/double.h"
 #include "starboard/media.h"
 
 namespace cobalt {
@@ -99,7 +99,7 @@ double MediaSource::duration(script::ExceptionState* exception_state) const {
 
 void MediaSource::set_duration(double duration,
                                script::ExceptionState* exception_state) {
-  if (duration < 0.0 || SbDoubleIsNan(duration)) {
+  if (duration < 0.0 || std::isnan(duration)) {
     DOMException::Raise(DOMException::kIndexSizeErr, exception_state);
     return;
   }
@@ -269,10 +269,8 @@ bool MediaSource::IsTypeSupported(script::EnvironmentSettings* settings,
   DOMSettings* dom_settings =
       base::polymorphic_downcast<DOMSettings*>(settings);
   DCHECK(dom_settings->can_play_type_handler());
-  const bool kIsProgressive = false;
   SbMediaSupportType support_type =
-      dom_settings->can_play_type_handler()->CanPlayType(type.c_str(), "",
-                                                         kIsProgressive);
+      dom_settings->can_play_type_handler()->CanPlayAdaptive(type.c_str(), "");
   if (support_type == kSbMediaSupportTypeNotSupported) {
     LOG(INFO) << "MediaSource::IsTypeSupported(" << type
               << ") -> not supported/false";

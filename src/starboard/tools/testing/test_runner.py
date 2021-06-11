@@ -17,7 +17,6 @@
 """Cross-platform unit test runner."""
 
 import argparse
-import cStringIO
 import logging
 import os
 import re
@@ -28,6 +27,7 @@ import threading
 import traceback
 
 import _env  # pylint: disable=unused-import, relative-import
+import cStringIO
 from starboard.tools import abstract_launcher
 from starboard.tools import build
 from starboard.tools import command_line
@@ -43,6 +43,7 @@ _TESTS_PASSED_REGEX = re.compile(r"^\[  PASSED  \] (.*) tests?")
 _TESTS_FAILED_REGEX = re.compile(r"^\[  FAILED  \] (.*) tests?, listed below:")
 _SINGLE_TEST_FAILED_REGEX = re.compile(r"^\[  FAILED  \] (.*)")
 
+_CRASHPAD_TARGET = "crashpad_handler"
 _LOADER_TARGET = "elf_loader_sandbox"
 
 
@@ -217,7 +218,8 @@ class TestRunner(object):
                application_name=None,
                dry_run=False,
                xml_output_dir=None,
-               log_xml_results=False):
+               log_xml_results=False,
+               launcher_args=None):
     self.platform = platform
     self.config = config
     self.loader_platform = loader_platform
@@ -226,6 +228,7 @@ class TestRunner(object):
     self.target_params = target_params
     self.out_directory = out_directory
     self.loader_out_directory = loader_out_directory
+    self.launcher_args = launcher_args
     if not self.out_directory:
       self.out_directory = paths.BuildOutputDirectory(self.platform,
                                                       self.config)
@@ -335,6 +338,7 @@ class TestRunner(object):
     return final_targets
 
   def _GetTestFilters(self):
+    """Get test filters for a given platform and configuration."""
     filters = self._platform_config.GetTestFilters()
     app_filters = self._app_config.GetTestFilters()
     if app_filters:
@@ -347,10 +351,10 @@ class TestRunner(object):
       loader_platform_config = build.GetPlatformConfig(self.loader_platform)
       loader_app_config = loader_platform_config.GetApplicationConfiguration(
           self.application_name)
-      for filter in (loader_platform_config.GetTestFilters() +
-                     loader_app_config.GetTestFilters()):
-        if filter not in filters:
-          filters.append(filter)
+      for filter_ in (loader_platform_config.GetTestFilters() +
+                      loader_app_config.GetTestFilters()):
+        if filter_ not in filters:
+          filters.append(filter_)
     return filters
 
   def _GetAllTestEnvVariables(self):
@@ -413,6 +417,9 @@ class TestRunner(object):
                    xml_output_path)
       test_params.append("--gtest_output=xml:%s" % (xml_output_path))
 
+    # Turn off color codes from output to make it easy to parse
+    test_params.append("--gtest_color=no")
+
     test_params.extend(self.target_params)
     if self.dry_run:
       test_params.extend(["--gtest_list_tests"])
@@ -429,7 +436,8 @@ class TestRunner(object):
         env_variables=env,
         loader_platform=self.loader_platform,
         loader_config=self.loader_config,
-        loader_out_directory=self.loader_out_directory)
+        loader_out_directory=self.loader_out_directory,
+        launcher_args=self.launcher_args)
 
     test_reader = TestLineReader(read_pipe)
     test_launcher = TestLauncher(launcher)
@@ -546,10 +554,10 @@ class TestRunner(object):
     total_flaky_failed_count = 0
     total_filtered_count = 0
 
-    print  # Explicit print for empty formatting line.
+    print()  # Explicit print for empty formatting line.
     logging.info("TEST RUN COMPLETE.")
     if results:
-      print  # Explicit print for empty formatting line.
+      print()  # Explicit print for empty formatting line.
 
     # If the number of run tests from a test binary cannot be
     # determined, assume an error occurred while running it.
@@ -593,7 +601,7 @@ class TestRunner(object):
             # Sometimes the returned test "name" includes information about the
             # parameter that was passed to it. This needs to be stripped off.
             retry_result = self._RunTest(target_name, test_case.split(",")[0])
-            print  # Explicit print for empty formatting line.
+            print()  # Explicit print for empty formatting line.
             if retry_result[2] == 1:
               flaky_passed_tests.append(test_case)
               logging.info("%s succeeded on run #%d!\n", test_case, retry + 2)
@@ -705,10 +713,13 @@ class TestRunner(object):
       # The loader is not built with the same platform configuration as our
       # tests so we need to build it separately.
       if self.loader_platform:
-        build_tests.BuildTargets([_LOADER_TARGET], self.loader_out_directory,
-                                 self.dry_run, extra_flags)
-      build_tests.BuildTargets(self.test_targets, self.out_directory,
-                               self.dry_run, extra_flags)
+        build_tests.BuildTargets(
+            [_LOADER_TARGET, _CRASHPAD_TARGET], self.loader_out_directory,
+            self.dry_run,
+            extra_flags + [os.getenv("TEST_RUNNER_PLATFORM_BUILD_FLAGS", "")])
+      build_tests.BuildTargets(
+          self.test_targets, self.out_directory, self.dry_run,
+          extra_flags + [os.getenv("TEST_RUNNER_BUILD_FLAGS", "")])
 
     except subprocess.CalledProcessError as e:
       result = False
@@ -824,6 +835,13 @@ def main():
       action="store_true",
       help="If set, results will be logged in xml format after all tests are"
       " complete. --xml_output_dir will be ignored.")
+  arg_parser.add_argument(
+      "-w",
+      "--launcher_args",
+      help="Pass space-separated arguments to control launcher behaviour. "
+      "Arguments are platform specific and may not be implemented for all "
+      "platforms. Common arguments are:\n\t'noinstall' - skip install steps "
+      "before running the test\n\t'systools' - use system-installed tools.")
   args = arg_parser.parse_args()
 
   if (args.loader_platform and not args.loader_config or
@@ -837,12 +855,19 @@ def main():
   if args.target_params:
     target_params = args.target_params.split(" ")
 
+  launcher_args = []
+  if args.launcher_args:
+    launcher_args = args.launcher_args.split(" ")
+
+  if args.dry_run:
+    launcher_args.append(abstract_launcher.ARG_DRYRUN)
+
   runner = TestRunner(args.platform, args.config, args.loader_platform,
                       args.loader_config, args.device_id, args.target_name,
                       target_params, args.out_directory,
                       args.loader_out_directory, args.platform_tests_only,
                       args.application_name, args.dry_run, args.xml_output_dir,
-                      args.log_xml_results)
+                      args.log_xml_results, launcher_args)
 
   def Abort(signum, frame):
     del signum, frame  # Unused.

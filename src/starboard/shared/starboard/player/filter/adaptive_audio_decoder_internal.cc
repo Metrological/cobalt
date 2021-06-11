@@ -17,6 +17,7 @@
 #include "starboard/audio_sink.h"
 #include "starboard/common/log.h"
 #include "starboard/common/reset_and_return.h"
+#include "starboard/shared/starboard/media/media_util.h"
 #include "starboard/shared/starboard/player/decoded_audio_internal.h"
 
 namespace starboard {
@@ -27,42 +28,13 @@ namespace filter {
 
 using common::ResetAndReturn;
 
-#if SB_API_VERSION >= 11
-int GetDefaultSupportedAudioSamplesPerSecond() {
-  const int kDefaultOutputSamplesPerSecond = 48000;
-  return SbAudioSinkGetNearestSupportedSampleFrequency(
-      kDefaultOutputSamplesPerSecond);
-}
-
-bool IsResetDecoderNecessary(const SbMediaAudioSampleInfo& current_info,
-                             const SbMediaAudioSampleInfo& new_info) {
-  if (current_info.codec != new_info.codec) {
-    return true;
-  }
-  if (current_info.samples_per_second != new_info.samples_per_second) {
-    return true;
-  }
-  if (current_info.number_of_channels != new_info.number_of_channels) {
-    return true;
-  }
-  if (current_info.audio_specific_config_size !=
-      new_info.audio_specific_config_size) {
-    return true;
-  }
-  if (SbMemoryCompare(current_info.audio_specific_config,
-                      new_info.audio_specific_config,
-                      current_info.audio_specific_config_size) != 0) {
-    return true;
-  }
-  return false;
-}
-
 AdaptiveAudioDecoder::AdaptiveAudioDecoder(
     const SbMediaAudioSampleInfo& audio_sample_info,
     SbDrmSystem drm_system,
     const AudioDecoderCreator& audio_decoder_creator,
     const OutputFormatAdjustmentCallback& output_adjustment_callback)
-    : drm_system_(drm_system),
+    : initial_audio_sample_info_(audio_sample_info),
+      drm_system_(drm_system),
       audio_decoder_creator_(audio_decoder_creator),
       output_adjustment_callback_(output_adjustment_callback),
       output_number_of_channels_(audio_sample_info.number_of_channels) {
@@ -107,8 +79,8 @@ void AdaptiveAudioDecoder::Decode(
     }
     return;
   }
-  if (IsResetDecoderNecessary(input_audio_sample_info_,
-                              input_buffer->audio_sample_info())) {
+  if (starboard::media::IsAudioSampleInfoSubstantiallyDifferent(
+          input_audio_sample_info_, input_buffer->audio_sample_info())) {
     flushing_ = true;
     pending_input_buffer_ = input_buffer;
     pending_consumed_cb_ = consumed_cb;
@@ -153,7 +125,7 @@ scoped_refptr<DecodedAudio> AdaptiveAudioDecoder::Read(
   SB_DCHECK(first_output_received_ || ret->is_end_of_stream());
   *samples_per_second = first_output_received_
                             ? output_samples_per_second_
-                            : GetDefaultSupportedAudioSamplesPerSecond();
+                            : initial_audio_sample_info_.samples_per_second;
   return ret;
 }
 
@@ -202,6 +174,10 @@ void AdaptiveAudioDecoder::TeardownAudioDecoder() {
 }
 
 void AdaptiveAudioDecoder::OnDecoderOutput() {
+  if (!BelongsToCurrentThread()) {
+    Schedule(std::bind(&AdaptiveAudioDecoder::OnDecoderOutput, this));
+    return;
+  }
   SB_DCHECK(BelongsToCurrentThread());
   SB_DCHECK(output_cb_);
 
@@ -280,7 +256,6 @@ void AdaptiveAudioDecoder::OnDecoderOutput() {
     Schedule(output_cb_);
   }
 }
-#endif  // SB_API_VERSION >= 11
 
 }  // namespace filter
 }  // namespace player

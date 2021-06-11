@@ -110,16 +110,13 @@ const char kInputFuzzerHelp[] =
 
 const char kMemoryTracker[] = "memory_tracker";
 const char kMemoryTrackerHelp[] =
-    "Enables memory tracking by installing the memory tracker on startup.";
+    "Enables memory tracking by installing the memory tracker on startup. Run "
+    "--memory_tracker=help for more info.";
 
 const char kMinCompatibilityVersion[] = "min_compatibility_version";
 const char kMinCompatibilityVersionHelp[] =
     "The minimum version of Cobalt that will be checked during compatibility "
     "validations.";
-
-const char kMinLogLevel[] = "min_log_level";
-const char kMinLogLevelHelp[] =
-    "Set the minimum logging level: info|warning|error|fatal.";
 
 const char kNullSavegame[] = "null_savegame";
 const char kNullSavegameHelp[] =
@@ -208,6 +205,9 @@ const char kDisableOnScreenKeyboardHelp[] =
 
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
 
+const char kMinLogLevel[] = "min_log_level";
+const char kMinLogLevelHelp[] =
+    "Set the minimum logging level: info|warning|error|fatal.";
 const char kDisableJavaScriptJit[] = "disable_javascript_jit";
 const char kDisableJavaScriptJitHelp[] =
     "Specifies that javascript jit should be disabled.";
@@ -224,6 +224,12 @@ const char kDisableTimerResolutionLimitHelp[] =
     "minimum resolution of 20us.  By specifying this flag, the limit will be "
     "removed and the resolution will be 1us (or larger depending on the "
     "platform.";
+
+const char kDisableUpdaterModule[] = "disable_updater_module";
+const char kDisableUpdaterModuleHelp[] =
+    "Disables the Cobalt Evergreen UpdaterModule which is responsible for "
+    "downloading and installing new Cobalt updates. Passing the flag is "
+    "equivalent to opting out from further updates.";
 
 const char kEncodedImageCacheSizeInBytes[] =
     "encoded_image_cache_size_in_bytes";
@@ -390,6 +396,17 @@ const char kFallbackSplashScreenURLHelp[] =
     "no value is set, the URL in gyp_configuration.gypi or base.gypi will be "
     "used.";
 
+const char kFallbackSplashScreenTopics[] = "fallback_splash_screen_topics";
+const char kFallbackSplashScreenTopicsHelp[] =
+    "Setting this switch defines a mapping of URL 'topics' to splash screen "
+    "URLs or filenames that Cobalt will use in the absence of a web cache, "
+    "(for example, music=music_splash_screen.html&foo=file:///bar.html). If a "
+    "URL is given it should match the format of 'fallback_splash_screen_url'. "
+    "A given filename should exist in the same directory as "
+    "'fallback_splash_screen_url'. If no fallback url exists for the topic of "
+    "the URL used to launch Cobalt, then the value of "
+    "'fallback_splash_screen_url' will be used.";
+
 const char kVersion[] = "version";
 const char kVersionHelp[] = "Prints the current version of Cobalt";
 
@@ -406,7 +423,7 @@ const char kVideoPlaybackRateMultiplierHelp[] =
 
 std::string HelpMessage() {
   std::string help_message;
-  std::map<const char*, const char*> help_map {
+  std::map<std::string, const char*> help_map {
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
     {kDebugConsoleMode, kDebugConsoleModeHelp},
         {kDevServersListenIp, kDevServersListenIpHelp},
@@ -426,7 +443,7 @@ std::string HelpMessage() {
         {kIgnoreCertificateErrors, kIgnoreCertificateErrorsHelp},
         {kInputFuzzer, kInputFuzzerHelp}, {kMemoryTracker, kMemoryTrackerHelp},
         {kMinCompatibilityVersion, kMinCompatibilityVersionHelp},
-        {kMinLogLevel, kMinLogLevelHelp}, {kNullSavegame, kNullSavegameHelp},
+        {kNullSavegame, kNullSavegameHelp},
         {kDisablePartialLayout, kDisablePartialLayoutHelp}, {kProd, kProdHelp},
         {kRequireCSP, kRequireCSPHelp},
         {kRequireHTTPSLocation, kRequireHTTPSLocationHelp},
@@ -442,10 +459,10 @@ std::string HelpMessage() {
 #endif  // SB_API_VERSION >= 12 ||
         // SB_HAS(ON_SCREEN_KEYBOARD)
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
-
         {kDisableJavaScriptJit, kDisableJavaScriptJitHelp},
         {kDisableMapToMesh, kDisableMapToMeshHelp},
         {kDisableTimerResolutionLimit, kDisableTimerResolutionLimitHelp},
+        {kDisableUpdaterModule, kDisableUpdaterModuleHelp},
         {kEncodedImageCacheSizeInBytes, kEncodedImageCacheSizeInBytesHelp},
         {kForceMigrationForStoragePartitioning,
          kForceMigrationForStoragePartitioningHelp},
@@ -457,6 +474,7 @@ std::string HelpMessage() {
         {kLocalStoragePartitionUrl, kLocalStoragePartitionUrlHelp},
         {kMaxCobaltCpuUsage, kMaxCobaltCpuUsageHelp},
         {kMaxCobaltGpuUsage, kMaxCobaltGpuUsageHelp},
+        {kMinLogLevel, kMinLogLevelHelp},
         {kOffscreenTargetCacheSizeInBytes,
          kOffscreenTargetCacheSizeInBytesHelp},
         {kOmitDeviceAuthenticationQueryParameters,

@@ -58,7 +58,12 @@ class Pipeline {
       RasterizationCompleteCallback;
 
   enum ShutdownClearMode {
-    kClearToBlack,
+    // Query CobaltExtensionGraphicsApi's ShouldClearFrameOnShutdown for
+    // shutdown behavior.
+    kClearAccordingToPlatform,
+
+    // Do not clear regardless of what CobaltExtensionGraphicsApi's
+    // ShouldClearFrameOnShutdown specifies.
     kNoClear,
   };
 
@@ -186,7 +191,7 @@ class Pipeline {
   void FrameStatsOnFlushCallback(
       const base::CValCollectionTimerStatsFlushResults& flush_results);
 
-  // Resets the submission queue, effecitvely emptying it and restarting it
+  // Resets the submission queue, effectively emptying it and restarting it
   // with the configuration specified by |current_timeline_info_| applied to it.
   void ResetSubmissionQueue();
 

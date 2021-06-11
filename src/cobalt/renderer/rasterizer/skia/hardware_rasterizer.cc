@@ -40,11 +40,11 @@
 #include "third_party/glm/glm/mat3x3.hpp"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/include/core/SkSurface.h"
+#include "third_party/skia/include/gpu/gl/GrGLInterface.h"
 #include "third_party/skia/include/gpu/GrBackendSurface.h"
 #include "third_party/skia/include/gpu/GrContext.h"
 #include "third_party/skia/include/gpu/GrContextOptions.h"
 #include "third_party/skia/include/gpu/GrTexture.h"
-#include "third_party/skia/include/gpu/gl/GrGLInterface.h"
 #include "third_party/skia/src/gpu/GrRenderTarget.h"
 #include "third_party/skia/src/gpu/GrResourceProvider.h"
 
@@ -153,13 +153,6 @@ namespace {
 
 SkSurfaceProps GetRenderTargetSurfaceProps(bool force_deterministic_rendering) {
   uint32_t flags = 0;
-  if (!force_deterministic_rendering) {
-    // Distance field fonts are known to result in non-deterministic graphical
-    // output since the output depends on the size of the glyph that enters the
-    // atlas first (which would get re-used for similarly but unequal sized
-    // subsequent glyphs).
-    flags = SkSurfaceProps::kUseDistanceFieldFonts_Flag;
-  }
   return SkSurfaceProps(flags, SkSurfaceProps::kLegacyFontHost_InitType);
 }
 
@@ -213,7 +206,7 @@ glm::mat4 GetFallbackTextureModelViewProjectionMatrix(
       destination_rect.height() / canvas_size.height(), 0, 0, 0, 0, 1, 0,
       destination_rect.x(), destination_rect.y(), 0, 1);
 
-  // Since these matrices are applied in LIFO order, read the followin inlined
+  // Since these matrices are applied in LIFO order, read the following inlined
   // comments in reverse order.
   glm::mat4 result =
       // Flip the y axis depending on the destination surface's origin.
@@ -232,6 +225,21 @@ glm::mat4 GetFallbackTextureModelViewProjectionMatrix(
       gl_norm_coords_to_skia_canvas_coords;
 
   return result;
+}
+
+glm::mat4 ScaleMatrixFor360VideoAdjustment(const SkISize& canvas_size,
+                           const SkIRect& canvas_boundsi) {
+  glm::mat4 scale_matrix(
+      static_cast<float>(canvas_boundsi.width()) / canvas_size.width(), 0, 0, 0,
+      0, static_cast<float>(canvas_boundsi.height()) / canvas_size.height(), 0,
+      0, 0, 0, 1, 0,
+      (canvas_boundsi.width() - canvas_size.width()) /
+          static_cast<float>(canvas_size.width()),
+      (canvas_size.width() - canvas_boundsi.width()) /
+          static_cast<float>(canvas_size.width()),
+      0, 1);
+
+  return scale_matrix;
 }
 
 // Accommodate for the fact that for some image formats, like UYVY, our texture
@@ -303,7 +311,7 @@ egl::TexturedMeshRenderer::Image::Texture GetTextureFromHardwareFrontendImage(
     // y-axis before passing it on to a GL renderer.
     math::Size image_size(image->GetSize());
     result.content_region = math::Rect::RoundFromRectF(math::RectF(
-        image_size.width() * local_transform.Get(0, 2) /
+        -image_size.width() * local_transform.Get(0, 2) /
             local_transform.Get(0, 0),
         image_size.height() *
             (1 + local_transform.Get(1, 2) / local_transform.Get(1, 1)),
@@ -541,6 +549,7 @@ void HardwareRasterizer::Impl::RenderTextureWithMeshFilterEGL(
   image->EnsureInitialized();
 
   SkISize canvas_size = draw_state->render_target->getBaseLayerSize();
+  SkIRect canvas_boundsi = draw_state->render_target->getDeviceClipBounds();
 
   // Flush the Skia draw state to ensure that all previously issued Skia calls
   // are rendered so that the following draw command will appear in the correct
@@ -557,6 +566,7 @@ void HardwareRasterizer::Impl::RenderTextureWithMeshFilterEGL(
 
   glm::mat4 model_view_projection_matrix =
       ModelViewMatrixSurfaceOriginAdjustment(*current_surface_origin_) *
+      ScaleMatrixFor360VideoAdjustment(canvas_size, canvas_boundsi) *
       draw_state->transform_3d;
 
   SetupGLStateForImageRender(image,

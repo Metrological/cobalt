@@ -17,8 +17,8 @@
 namespace {
 
 // Check if any pixel in a 16x16 macroblock varies between frames.
-int CheckMb(const vpx_image_t &current, const vpx_image_t &previous,
-            int mb_r, int mb_c) {
+int CheckMb(const vpx_image_t &current, const vpx_image_t &previous, int mb_r,
+            int mb_c) {
   for (int plane = 0; plane < 3; plane++) {
     int r = 16 * mb_r;
     int c0 = 16 * mb_c;
@@ -37,8 +37,9 @@ int CheckMb(const vpx_image_t &current, const vpx_image_t &previous,
     for (; r < r_top; ++r) {
       for (int c = c0; c < c_top; ++c) {
         if (current.planes[plane][current.stride[plane] * r + c] !=
-            previous.planes[plane][previous.stride[plane] * r + c])
+            previous.planes[plane][previous.stride[plane] * r + c]) {
           return 1;
+        }
       }
     }
   }
@@ -73,13 +74,13 @@ class ActiveMapRefreshTest
                                   ::libvpx_test::Encoder *encoder) {
     ::libvpx_test::Y4mVideoSource *y4m_video =
         static_cast<libvpx_test::Y4mVideoSource *>(video);
-    if (video->frame() == 1) {
+    if (video->frame() == 0) {
       encoder->Control(VP8E_SET_CPUUSED, cpu_used_);
       encoder->Control(VP9E_SET_AQ_MODE, kAqModeCyclicRefresh);
     } else if (video->frame() >= 2 && video->img()) {
       vpx_image_t *current = video->img();
       vpx_image_t *previous = y4m_holder_->img();
-      ASSERT_TRUE(previous != NULL);
+      ASSERT_NE(previous, nullptr);
       vpx_active_map_t map = vpx_active_map_t();
       const int width = static_cast<int>(current->d_w);
       const int height = static_cast<int>(current->d_h);
@@ -121,7 +122,7 @@ TEST_P(ActiveMapRefreshTest, Test) {
   ASSERT_NO_FATAL_FAILURE(RunLoop(&video));
 }
 
-VP9_INSTANTIATE_TEST_CASE(ActiveMapRefreshTest,
-                          ::testing::Values(::libvpx_test::kRealTime),
-                          ::testing::Range(5, 6));
+VP9_INSTANTIATE_TEST_SUITE(ActiveMapRefreshTest,
+                           ::testing::Values(::libvpx_test::kRealTime),
+                           ::testing::Range(5, 6));
 }  // namespace

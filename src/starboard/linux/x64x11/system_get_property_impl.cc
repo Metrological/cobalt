@@ -44,8 +44,8 @@ bool CopyStringAndTestIfSuccess(char* out_value,
 }
 
 bool GetSystemProperty(SbSystemPropertyId property_id,
-                         char* out_value,
-                         int value_length) {
+                       char* out_value,
+                       int value_length) {
   if (!out_value || !value_length) {
     return false;
   }
@@ -56,10 +56,10 @@ bool GetSystemProperty(SbSystemPropertyId property_id,
     case kSbSystemPropertyFirmwareVersion:
     case kSbSystemPropertyModelName:
     case kSbSystemPropertyModelYear:
-#if SB_API_VERSION >= 11
-    case kSbSystemPropertyOriginalDesignManufacturerName:
+#if SB_API_VERSION >= 12
+    case kSbSystemPropertySystemIntegratorName:
 #else
-    case kSbSystemPropertyNetworkOperatorName:
+    case kSbSystemPropertyOriginalDesignManufacturerName:
 #endif
     case kSbSystemPropertySpeechApiKey:
       return false;
@@ -71,19 +71,12 @@ bool GetSystemProperty(SbSystemPropertyId property_id,
     case kSbSystemPropertyPlatformName:
       return CopyStringAndTestIfSuccess(out_value, value_length, kPlatformName);
 
-#if SB_API_VERSION >= 11
     case kSbSystemPropertyCertificationScope:
       if (kCertificationScope[0] == '\0')
         return false;
       return CopyStringAndTestIfSuccess(out_value, value_length,
                                         kCertificationScope);
 
-    case kSbSystemPropertyBase64EncodedCertificationSecret:
-      if (kBase64EncodedCertificationSecret[0] == '\0')
-        return false;
-      return CopyStringAndTestIfSuccess(out_value, value_length,
-                                        kBase64EncodedCertificationSecret);
-#endif  // SB_API_VERSION >= 11
 
     default:
       SB_DLOG(WARNING) << __FUNCTION__

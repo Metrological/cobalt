@@ -30,10 +30,14 @@
         'condition_variable.h',
         'configuration_defaults.cc',
         'configuration_defaults.h',
+        'file.cc',
+        'file.h',
         'flat_map.h',
         'locked_ptr.h',
         'log.cc',
         'log.h',
+        'media.cc',
+        'media.h',
         'move.h',
         'murmurhash2.cc',
         'murmurhash2.h',
@@ -69,14 +73,10 @@
 
         'experimental/concurrency_debug.cc',
         'experimental/concurrency_debug.h',
+
+        '<(DEPTH)/starboard/shared/media_session/playback_state.cc',
+        '<(DEPTH)/starboard/shared/media_session/playback_state.h',
       ],
-      'conditions': [
-        ['custom_media_session_client==0', {
-          'sources': [
-            '<(DEPTH)/starboard/shared/media_session/stub_playback_state.cc',
-           ],
-        }],
-      ]
     },
   ],
 }

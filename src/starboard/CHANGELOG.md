@@ -14,8 +14,96 @@ A description of all changes currently in the experimental Starboard version
 can be found in the comments of the "Experimental Feature Defines" section of
 [configuration.h](configuration.h).
 
+## Version 13
+### Changed lifecycle events to add support for a concealed state.
+
+* The *Pause* event is renamed to *Blur*.
+* The *Unpause* event is renamed to *Focus*.
+* The *Suspend* event is replaced by *Conceal* and *Freeze*.
+* The *Resume* event is replaced by *Unfreeze* and *Reveal*.
+
+Most platforms should only need to replace 'Pause' with 'Blur', 'Unpause' with
+'Focus', 'Suspend' with 'Freeze', and 'Resume' with 'Reveal'.
+
+Since there is no longer a special *Preloading* state, applications should no
+longer use the *Start* event when a preloaded application is brought to the
+foreground. Instead, the same event(s) used for backgrounded applications
+(*Concealed* or *Frozen*) should be used.
+
+See `cobalt/doc/lifecycle.md` for more details.
+
+### Added network connectivity events and function.
+
+Added `kSbEventTypeOsNetworkDisconnected` and `kSbEventTypeOsNetworkConnected`
+so the platform can provide hints to the application of network connectivity
+changes.
+
+Added function `SbSystemNetworkIsDisconnected()` to allow the application to
+query the network connectivity status.
+
+### Added an event for date/time configuration changes.
+
+If the platform detects a change in the date/time configuration (e.g. timezone
+change), then it should send the new `kSbEventDateTimeConfigurationChanged`
+event.
+
+### Deprected speech recognizer API.
+
+The `starboard/speech_recognizer.h` APIs have been deprecated -- even for
+platforms that define SB_HAS(SPEECH_RECOGNIZER). Instead, the application is
+expected to use the `starboard/microphone.h` APIs.
+
+### Updated platform-based UI navigation API.
+
+Added functions to direct the platform's UI engine to maintain focus on an item
+for a specific time before allowing focus to change. Also added a function to
+perform a batch of UI updates so that UI changes are atomic.
+
+Functionality for a few existing APIs were clarified without changing the API
+itself.
+
+### Fixed spelling on accessibility events.
+
+Changed `kSbEventTypeAccessiblityTextToSpeechSettingsChanged` to
+`kSbEventTypeAccessibilityTextToSpeechSettingsChanged`.
+
+Changed `kSbEventTypeAccessiblitySettingsChanged` to
+`kSbEventTypeAccessibilitySettingsChanged`.
+
+### Deprecated some starboard macros.
+
+The following macros have been removed:
+
+* `SB_TRUE`
+* `SB_FALSE`
+* `SB_OVERRIDE`
+* `SB_DISALLOW_COPY_AND_ASSIGN`
+
+### Deprecated some standalone starboard functions.
+
+The following starboard functions have been removed:
+
+* `SbCharacterIsAlphanumeric`
+* `SbCharacterIsDigit`
+* `SbCharacterIsHexDigit`
+* `SbCharacterIsSpace`
+* `SbCharacterIsUpper`
+* `SbCharacterToLower`
+* `SbCharacterToUpper`
+* `SbDoubleAbsolute`
+* `SbDoubleExponent`
+* `SbDoubleFloor`
+* `SbDoubleIsFinite`
+* `SbDoubleIsNan`
+* `SbStringParseDouble`
+* `SbStringParseSignedInteger`
+* `SbStringParseUInt64`
+* `SbStringParseUnsignedInteger`
+* `SbSystemBinarySearch`
+* `SbSystemSort`
+
 ## Version 12
-###  Add support for platform-based UI navigation.
+### Add support for platform-based UI navigation.
 
 The system can be disabled by implementing the function
 `SbUiNavGetInterface()` to return `false`.  Platform-based UI navigation
@@ -208,6 +296,13 @@ SbMediaIsAudioSupported().
 
 ### Enables a test that checks that Opus is supported.
 
+### Add `kSbSystemPropertySystemIntegratorName`
+
+This change also deprecates `kSbSystemPropertyOriginalDesignManufacturerName`.
+The `kSbSystemPropertySystemIntegratorName` value will represent the corporate
+entity responsible for submitting the device to YouTube certification and for
+the device maintenance/updates.
+
 ### Deprecated the Blitter API.
 
 Blitter API is no longer supported on any platform. Use the OpenGL ES
@@ -225,7 +320,12 @@ optimizations are used instead.
 ### Deprecated unused enums |kSbPlayerDecoderStateBufferFull| and
 |kSbPlayerDecoderStateDestroyed|.
 
-### Deprecate the |SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING| macro.
+### Deprecated the usage of |SbMediaIsOutputProtected()| and
+|SbMediaSetOutputProtection()|.
+
+### Deprecated the |SB_HAS_QUIRK_SEEK_TO_KEYFRAME| macro.
+
+### Deprecated the |SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING| macro.
 
 ### Deprecated 'cobalt_minimum_frame_time_in_milliseconds'.
 
@@ -248,6 +348,23 @@ If the platform supports text-to-speech settings, it must use the new
 kSbEventTypeAccessiblityTextToSpeechSettingsChanged event to inform the app
 when those settings change. For older starboard versions, use
 kSbEventTypeAccessiblitySettingsChanged instead.
+
+### Add extension to SbMediaCanPlayMimeAndKeySystem() for encryptionScheme.
+
+Now the Starboard implementation may choose to support |key_system| with extra
+attributes, in order to selectively support encryption schemes on particular
+containers or codecs.
+The Starboard implementation needn't support |key_system| with extra attributes
+if it meets the requirements for the default implementation of
+`Navigator.requestMediaKeySystemAccess()`, which assumes that:
+1. When the Widevine DRM system is used, all the encryption schemes ('cenc',
+   'cbcs', 'cbcs-1-9') should be supported across all containers and codecs
+   supported by the platform.
+2. When the PlayReady DRM system is used, only 'cenc' is supported across all
+   containers and codecs supported by the platform.
+
+Please see the comment of `SbMediaCanPlayMimeAndKeySystem()` in `media.h` for
+more details.
 
 ## Version 11
 

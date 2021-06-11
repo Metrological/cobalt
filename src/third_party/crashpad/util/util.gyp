@@ -23,10 +23,12 @@
       'dependencies': [
         '../compat/compat.gyp:crashpad_compat',
         '../third_party/mini_chromium/mini_chromium.gyp:base',
-        '../third_party/zlib/zlib.gyp:zlib',
         '../third_party/lss/lss.gyp:lss',
       ],
-      'defines': [ 'ZLIB_CONST' ],
+      'defines': [
+        'ZLIB_CONST',
+        'CRASHPAD_USE_BORINGSSL',
+      ],
       'include_dirs': [
         '..',
         '<(INTERMEDIATE_DIR)',
@@ -355,7 +357,7 @@
                 '<(INTERMEDIATE_DIR)/util/mach/<(RULE_INPUT_ROOT)Server.h',
               ],
               'action': [
-                'python',
+                'python2',
                 '<@(_inputs)',
                 '<(RULE_INPUT_PATH)',
                 '<@(_outputs)',
@@ -414,9 +416,8 @@
             ],
           },
         }],
-        ['host_os=="linux" or host_os=="android"', {
+        ['target_os=="linux" or target_os=="android"', {
           'sources': [
-            'net/http_transport_socket.cc',
             'process/process_memory_sanitized.cc',
             'process/process_memory_sanitized.h',
           ],
@@ -425,7 +426,7 @@
             'misc/capture_context_linux.S',
           ],
         }],
-        ['host_os!="linux" and host_os!="android"', {
+        ['target_os!="linux" and target_os!="android"', {
           'sources/': [
             ['exclude', '^process/'],
           ],

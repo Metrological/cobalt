@@ -51,10 +51,12 @@ class ImageDecoder : public Decoder {
 
   ImageDecoder(
       render_tree::ResourceProvider* resource_provider,
+      const base::DebuggerHooks& debugger_hooks,
       const ImageAvailableCallback& image_available_callback,
       const loader::Decoder::OnCompleteFunction& load_complete_callback);
   ImageDecoder(
       render_tree::ResourceProvider* resource_provider,
+      const base::DebuggerHooks& debugger_hooks,
       const ImageAvailableCallback& image_available_callback,
       ImageType image_type,
       const loader::Decoder::OnCompleteFunction& load_complete_callback);
@@ -69,7 +71,7 @@ class ImageDecoder : public Decoder {
   void Resume(render_tree::ResourceProvider* resource_provider) override;
 
   // Called when this ImageDecoder's deletion has been posted to a message loop.
-  // This prevents any additional decoding from occuring prior to the decoder
+  // This prevents any additional decoding from occurring prior to the decoder
   // being deleted.
   void SetDeletionPending();
 
@@ -102,6 +104,7 @@ class ImageDecoder : public Decoder {
                                  size_t* consumed_size);
 
   render_tree::ResourceProvider* resource_provider_;
+  const base::DebuggerHooks& debugger_hooks_;
   const ImageAvailableCallback image_available_callback_;
   ImageType image_type_;
   const loader::Decoder::OnCompleteFunction load_complete_callback_;
@@ -114,6 +117,9 @@ class ImageDecoder : public Decoder {
   // Whether or not there is a pending task deleting this decoder on a message
   // loop.
   base::subtle::Atomic32 is_deletion_pending_;
+
+  // Whether or not we use failure image decoder.
+  bool use_failure_image_decoder_ = false;
 };
 
 }  // namespace image

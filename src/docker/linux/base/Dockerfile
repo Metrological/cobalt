@@ -1,12 +1,32 @@
+# Copyright 2021 The Cobalt Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 ARG BASE_OS
-FROM ${BASE_OS:-gcr.io/cloud-marketplace-containers/google/debian9}
+ARG BASE_OS_TAG
+FROM ${BASE_OS:-gcr.io/cloud-marketplace-containers/google/debian9}:${BASE_OS_TAG:-latest}
 
 ENV PYTHONUNBUFFERED 1
 
 # === Install common dependencies
 RUN apt update -qqy \
     && apt install -qqy --no-install-recommends \
-        python-pip python-setuptools python-wheel \
+        python-pip \
+        python-requests \
+        python-setuptools \
+        python-wheel \
+        python3-pip \
+        python3-requests \
         git ccache \
         curl \
     && apt-get clean autoclean \
@@ -15,36 +35,4 @@ RUN apt update -qqy \
     && rm -rf /var/lib/{apt,dpkg,cache,log} \
     && echo "Done"
 
-# === Get Nodejs pinned LTS version via NVM
-ENV NVM_DIR /root/.nvm
-ENV NODE_VERSION 12.17.0
-
-RUN curl --silent -o- https://raw.githubusercontent.com/creationix/nvm/v0.35.3/install.sh | bash
-
-RUN . $NVM_DIR/nvm.sh \
-   && nvm install --lts \
-   && nvm alias default lts/* \
-   && nvm use default
-
-ENV NODE_PATH $NVM_DIR/v$NODE_VERSION/lib/node_modules
-ENV PATH $NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH
-
-# === Install depot_tools
-RUN git clone https://cobalt.googlesource.com/depot_tools /depot_tools
-
-# === Configure common env vars
-ENV PATH="${PATH}:/depot_tools:/root/fake_goma" \
-    OUTDIR=out \
-    DEPOT_TOOLS_UPDATE=0 \
-    NINJA_STATUS="[%f/%t %c/sec] " \
-    CCACHE_DIR=/root/ccache \
-    CCACHE_MAXSIZE=30G
-
-# == Set up gclient and fake Goma with ccache
-COPY ./files/fake_goma /root/fake_goma
-RUN cd /tmp && gclient verify || true \
-    && chmod +x /root/fake_goma/gomacc /root/fake_goma/goma_ctl.py \
-    && mkdir /root/ccache
-
-WORKDIR /code
 CMD ["/usr/bin/python","--version"]

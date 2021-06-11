@@ -51,7 +51,8 @@ class DebugConsole : public LifecycleObserver {
       const cssom::ViewportSize& window_dimensions,
       render_tree::ResourceProvider* resource_provider,
       float layout_refresh_rate,
-      const debug::CreateDebugClientCallback& create_debug_client_callback);
+      const debug::CreateDebugClientCallback& create_debug_client_callback,
+      const base::Closure& maybe_freeze_callback);
   ~DebugConsole();
 
   // Filters a key event.
@@ -89,24 +90,29 @@ class DebugConsole : public LifecycleObserver {
     return (GetMode() != debug::console::kDebugConsoleModeOff);
   }
 
-  void SetSize(const cssom::ViewportSize& window_dimensions,
-               float video_pixel_ratio) {
-    web_module_->SetSize(window_dimensions, video_pixel_ratio);
+  void SetSize(const cssom::ViewportSize& viewport_size) {
+    web_module_->SetSize(viewport_size);
   }
 
   // LifecycleObserver implementation.
-  void Prestart() override { web_module_->Prestart(); }
-  void Start(render_tree::ResourceProvider* resource_provider) override {
-    web_module_->Start(resource_provider);
+  void Blur() override { web_module_->Blur(); }
+  void Conceal(render_tree::ResourceProvider* resource_provider) override {
+    web_module_->Conceal(resource_provider);
   }
-  void Pause() override { web_module_->Pause(); }
-  void Unpause() override { web_module_->Unpause(); }
-  void Suspend() override { web_module_->Suspend(); }
-  void Resume(render_tree::ResourceProvider* resource_provider) override {
-    web_module_->Resume(resource_provider);
+  void Freeze() override { web_module_->Freeze(); }
+  void Unfreeze(render_tree::ResourceProvider* resource_provider) override {
+    web_module_->Unfreeze(resource_provider);
   }
+  void Reveal(render_tree::ResourceProvider* resource_provider) override {
+    web_module_->Reveal(resource_provider);
+  }
+  void Focus() override { web_module_->Focus(); }
 
   void ReduceMemory() { web_module_->ReduceMemory(); }
+
+  bool IsReadyToFreeze() {
+    return web_module_->IsReadyToFreeze();
+  }
 
  private:
   void OnError(const GURL& url, const std::string& error) {

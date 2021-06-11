@@ -17,6 +17,7 @@
 #include "base/i18n/char_iterator.h"
 #include "cobalt/base/unicode/character_values.h"
 
+#include "third_party/icu/source/common/unicode/char16ptr.h"
 #include "third_party/icu/source/common/unicode/ubidi.h"
 
 namespace cobalt {
@@ -93,8 +94,7 @@ int32 Paragraph::AppendCodePoint(CodePoint code_point) {
         // corresponding pop directional isolate will later be added to the
         // text and allows later paragraphs to copy the directional state.
         // http://unicode.org/reports/tr9/#Explicit_Directional_Isolates
-        directional_formatting_stack_.push_back(
-            kLeftToRightDirectionalIsolate);
+        directional_formatting_stack_.push_back(kLeftToRightDirectionalIsolate);
         unicode_text_ += base::unicode::kLeftToRightIsolateCharacter;
         break;
       case kLineFeedCodePoint:
@@ -116,8 +116,7 @@ int32 Paragraph::AppendCodePoint(CodePoint code_point) {
         // corresponding pop directional isolate will later be added to the
         // text and allows later paragraphs to copy the directional state.
         // http://unicode.org/reports/tr9/#Explicit_Directional_Isolates
-        directional_formatting_stack_.push_back(
-            kRightToLeftDirectionalIsolate);
+        directional_formatting_stack_.push_back(kRightToLeftDirectionalIsolate);
         unicode_text_ += base::unicode::kRightToLeftIsolateCharacter;
         break;
     }
@@ -125,17 +124,22 @@ int32 Paragraph::AppendCodePoint(CodePoint code_point) {
   return start_position;
 }
 
-bool Paragraph::FindBreakPosition(const scoped_refptr<dom::FontList>& used_font,
-                                  int32 start_position, int32 end_position,
-                                  LayoutUnit available_width,
-                                  bool should_collapse_trailing_white_space,
-                                  bool allow_overflow,
-                                  Paragraph::BreakPolicy break_policy,
-                                  int32* break_position,
-                                  LayoutUnit* break_width) {
+bool Paragraph::FindBreakPosition(
+    BaseDirection direction, bool should_attempt_to_wrap,
+    const scoped_refptr<dom::FontList>& used_font, int32 start_position,
+    int32 end_position, LayoutUnit available_width,
+    bool should_collapse_trailing_white_space, bool allow_overflow,
+    Paragraph::BreakPolicy break_policy, int32* break_position,
+    LayoutUnit* break_width) {
   DCHECK(is_closed_);
 
-  *break_position = start_position;
+  DCHECK(direction == base_direction_);
+  if (AreInlineAndScriptDirectionsTheSame(direction, start_position) ||
+      should_attempt_to_wrap) {
+    *break_position = start_position;
+  } else {
+    *break_position = end_position;
+  }
   *break_width = LayoutUnit();
 
   // If overflow isn't allowed and there is no available width, then there is
@@ -165,9 +169,10 @@ bool Paragraph::FindBreakPosition(const scoped_refptr<dom::FontList>& used_font,
     // |break_width| will be updated with the position of the last available
     // break position.
     FindIteratorBreakPosition(
-        used_font, line_break_iterator_, start_position, end_position,
-        available_width, should_collapse_trailing_white_space,
-        allow_normal_overflow, break_position, break_width);
+        direction, should_attempt_to_wrap, used_font, line_break_iterator_,
+        start_position, end_position, available_width,
+        should_collapse_trailing_white_space, allow_normal_overflow,
+        break_position, break_width);
   }
 
   // If break word is the break policy, attempt to break unbreakable "words" at
@@ -177,20 +182,39 @@ bool Paragraph::FindBreakPosition(const scoped_refptr<dom::FontList>& used_font,
   if (break_policy == kBreakPolicyBreakWord) {
     // Only continue allowing overflow if the break position has not moved from
     // start, meaning that no normal break positions were found.
-    allow_overflow = allow_overflow && (*break_position == start_position);
+    if (AreInlineAndScriptDirectionsTheSame(direction, start_position) ||
+        should_attempt_to_wrap) {
+      allow_overflow = allow_overflow && (*break_position == start_position);
+    } else {
+      allow_overflow = allow_overflow && (*break_position == end_position);
+    }
 
     // Find the last available break-word break position. |break_position| and
     // |break_width| will be updated with the position of the last available
     // break position. The search begins at the location of the last normal
     // break position that fit within the available width.
-    FindIteratorBreakPosition(
-        used_font, character_break_iterator_, *break_position, end_position,
-        available_width, false, allow_overflow, break_position, break_width);
+    if (AreInlineAndScriptDirectionsTheSame(direction, start_position) ||
+        should_attempt_to_wrap) {
+      FindIteratorBreakPosition(direction, should_attempt_to_wrap, used_font,
+                                character_break_iterator_, *break_position,
+                                end_position, available_width, false,
+                                allow_overflow, break_position, break_width);
+    } else {
+      FindIteratorBreakPosition(direction, should_attempt_to_wrap, used_font,
+                                character_break_iterator_, start_position,
+                                *break_position, available_width, false,
+                                allow_overflow, break_position, break_width);
+    }
   }
 
   // No usable break position was found if the break position has not moved
   // from the start position.
-  return *break_position > start_position;
+  if (AreInlineAndScriptDirectionsTheSame(direction, start_position) ||
+      should_attempt_to_wrap) {
+    return *break_position > start_position;
+  } else {
+    return *break_position < end_position;
+  }
 }
 
 int32 Paragraph::GetNextBreakPosition(int32 position,
@@ -210,7 +234,7 @@ int32 Paragraph::GetPreviousBreakPosition(int32 position,
 bool Paragraph::IsBreakPosition(int32 position, BreakPolicy break_policy) {
   icu::BreakIterator* break_iterator = GetBreakIterator(break_policy);
   break_iterator->setText(unicode_text_);
-  return break_iterator->isBoundary(position) == TRUE;
+  return break_iterator->isBoundary(position) == true;
 }
 
 std::string Paragraph::RetrieveUtf8SubString(int32 start_position,
@@ -241,7 +265,7 @@ std::string Paragraph::RetrieveUtf8SubString(int32 start_position,
 }
 
 const base::char16* Paragraph::GetTextBuffer() const {
-  return unicode_text_.getBuffer();
+  return icu::toUCharPtr(unicode_text_.getBuffer());
 }
 
 const icu::Locale& Paragraph::GetLocale() const { return locale_; }
@@ -266,6 +290,12 @@ int Paragraph::GetBidiLevel(int32 position) const {
 
 bool Paragraph::IsRTL(int32 position) const {
   return (GetBidiLevel(position) % 2) == 1;
+}
+
+bool Paragraph::AreInlineAndScriptDirectionsTheSame(BaseDirection direction,
+                                                    int32 position) const {
+  return ((direction == kLeftToRightBaseDirection && !IsRTL(position)) ||
+          (direction == kRightToLeftBaseDirection && IsRTL(position)));
 }
 
 bool Paragraph::IsCollapsibleWhiteSpace(int32 position) const {
@@ -338,6 +368,7 @@ icu::BreakIterator* Paragraph::GetBreakIterator(BreakPolicy break_policy) {
 }
 
 void Paragraph::FindIteratorBreakPosition(
+    BaseDirection direction, bool should_attempt_to_wrap,
     const scoped_refptr<dom::FontList>& used_font,
     icu::BreakIterator* const break_iterator, int32 start_position,
     int32 end_position, LayoutUnit available_width,
@@ -347,19 +378,37 @@ void Paragraph::FindIteratorBreakPosition(
   // position. Continue until TryIncludeSegmentWithinAvailableWidth() returns
   // false, indicating that no more segments can be included.
   break_iterator->setText(unicode_text_);
-  for (int32 segment_end = break_iterator->following(start_position);
-       segment_end != icu::BreakIterator::DONE && segment_end < end_position;
-       segment_end = break_iterator->next()) {
-    if (!TryIncludeSegmentWithinAvailableWidth(
-            used_font, *break_position, segment_end, available_width,
-            should_collapse_trailing_white_space, &allow_overflow,
-            break_position, break_width)) {
-      break;
+  if (AreInlineAndScriptDirectionsTheSame(direction, start_position) ||
+      should_attempt_to_wrap) {
+    for (int32 segment_end = break_iterator->following(start_position);
+         segment_end != icu::BreakIterator::DONE && segment_end < end_position;
+         segment_end = break_iterator->next()) {
+      if (!TryIncludeSegmentWithinAvailableWidth(
+              direction, should_attempt_to_wrap, used_font, *break_position,
+              segment_end, available_width,
+              should_collapse_trailing_white_space, &allow_overflow,
+              break_position, break_width)) {
+        break;
+      }
+    }
+  } else {
+    for (int32 segment_begin = break_iterator->preceding(end_position);
+         segment_begin != icu::BreakIterator::DONE &&
+         segment_begin > start_position;
+         segment_begin = break_iterator->previous()) {
+      if (!TryIncludeSegmentWithinAvailableWidth(
+              direction, should_attempt_to_wrap, used_font, segment_begin,
+              *break_position, available_width,
+              should_collapse_trailing_white_space, &allow_overflow,
+              break_position, break_width)) {
+        break;
+      }
     }
   }
 }
 
 bool Paragraph::TryIncludeSegmentWithinAvailableWidth(
+    BaseDirection direction, bool should_attempt_to_wrap,
     const scoped_refptr<dom::FontList>& used_font, int32 segment_start,
     int32 segment_end, LayoutUnit available_width,
     bool should_collapse_trailing_white_space, bool* allow_overflow,
@@ -369,8 +418,8 @@ bool Paragraph::TryIncludeSegmentWithinAvailableWidth(
   // is the last usable one. However, if overflow is allowed and no segment has
   // been found, then the first overflowing segment is accepted.
   LayoutUnit segment_width = LayoutUnit(used_font->GetTextWidth(
-      unicode_text_.getBuffer() + segment_start, segment_end - segment_start,
-      IsRTL(segment_start), NULL));
+      icu::toUCharPtr(unicode_text_.getBuffer()) + segment_start,
+      segment_end - segment_start, IsRTL(segment_start), NULL));
 
   // If trailing white space is being collapsed, then it will not be included
   // when determining if the segment can fit within the available width.
@@ -388,7 +437,12 @@ bool Paragraph::TryIncludeSegmentWithinAvailableWidth(
     return false;
   }
 
-  *break_position = segment_end;
+  if (AreInlineAndScriptDirectionsTheSame(direction, segment_start) ||
+      should_attempt_to_wrap) {
+    *break_position = segment_end;
+  } else {
+    *break_position = segment_start;
+  }
   *break_width += segment_width;
 
   if (*allow_overflow) {
@@ -432,7 +486,8 @@ void Paragraph::GenerateBidiLevelRuns() {
     return;
   }
 
-  ubidi_setPara(ubidi.get(), unicode_text_.getBuffer(), unicode_text_.length(),
+  ubidi_setPara(ubidi.get(), icu::toUCharPtr(unicode_text_.getBuffer()),
+                unicode_text_.length(),
                 UBiDiLevel(ConvertBaseDirectionToBidiLevel(base_direction_)),
                 NULL, &error);
   if (U_FAILURE(error)) {

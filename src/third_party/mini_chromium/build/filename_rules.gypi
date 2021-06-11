@@ -4,25 +4,25 @@
 
 {
   'target_conditions': [
-    ['OS!="mac"', {
+    ['"<(target_os)"!="mac"', {
       'sources/': [
         ['exclude', '_(cocoa|mac)(_test)?\\.(h|cc|mm?)$'],
         ['exclude', '(^|/)(cocoa|mac|mach)/'],
       ],
     }],
-    ['OS!="linux"', {
+    ['"<(target_os)"!="linux"', {
       'sources/': [
         ['exclude', '_linux(_test)?\\.(h|cc)$'],
         ['exclude', '(^|/)linux/'],
       ],
     }],
-    ['OS!="android"', {
+    ['"<(target_os)"!="android"', {
       'sources/': [
         ['exclude', '_android(_test)?\\.(h|cc)$'],
         ['exclude', '(^|/)android/'],
       ],
     }],
-    ['OS=="win"', {
+    ['"<(target_os)"=="win"', {
       'sources/': [
         ['exclude', '_posix(_test)?\\.(h|cc)$'],
         ['exclude', '(^|/)posix/'],

@@ -16,6 +16,8 @@
 
 #include <math.h>
 
+#if SB_API_VERSION < 13
 double SbDoubleFloor(double d) {
   return floor(d);
 }
+#endif  // SB_API_VERSION < 13

@@ -16,6 +16,8 @@
 
 #include <ctype.h>
 
+#if SB_API_VERSION < 13
 int SbCharacterToLower(int c) {
   return tolower(c);
 }
+#endif  // SB_API_VERSION < 13

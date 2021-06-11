@@ -34,7 +34,6 @@ namespace starboard {
 namespace player {
 namespace filter {
 
-#if SB_API_VERSION >= 11
 class AdaptiveAudioDecoder : public AudioDecoder, private JobQueue::JobOwner {
  public:
   typedef std::function<scoped_ptr<filter::AudioDecoder>(
@@ -70,6 +69,7 @@ class AdaptiveAudioDecoder : public AudioDecoder, private JobQueue::JobOwner {
   void TeardownAudioDecoder();
   void OnDecoderOutput();
 
+  const SbMediaAudioSampleInfo initial_audio_sample_info_;
   const SbDrmSystem drm_system_;
   const AudioDecoderCreator audio_decoder_creator_;
   const OutputFormatAdjustmentCallback output_adjustment_callback_;
@@ -93,7 +93,6 @@ class AdaptiveAudioDecoder : public AudioDecoder, private JobQueue::JobOwner {
   bool first_output_received_ = false;
   bool output_format_checked_ = false;
 };
-#endif  // SB_API_VERSION >= 11
 
 }  // namespace filter
 }  // namespace player

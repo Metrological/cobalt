@@ -22,6 +22,7 @@
 #include "base/command_line.h"
 #include "base/macros.h"
 #include "base/message_loop/message_loop.h"
+#include "base/synchronization/lock.h"
 #include "base/threading/thread_checker.h"
 #include "cobalt/account/account_manager.h"
 #include "cobalt/base/event_dispatcher.h"
@@ -49,8 +50,8 @@ namespace browser {
 // loop. This class is not designed to be thread safe.
 class Application {
  public:
-  // The passed in |quit_closure| can be called internally by the Application to
-  // signal that it would like to quit.
+  // The passed in |quit_closure| can be called internally by the Application
+  // to signal that it would like to quit.
   Application(const base::Closure& quit_closure, bool should_preload);
   virtual ~Application();
 
@@ -68,19 +69,15 @@ class Application {
   // Called to handle an application event.
   void OnApplicationEvent(SbEventType event_type);
 
-#if SB_API_VERSION >= 8
   // Called to handle a window size change event.
   void OnWindowSizeChangedEvent(const base::Event* event);
-#endif  // SB_API_VERSION >= 8
 
 #if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   void OnOnScreenKeyboardShownEvent(const base::Event* event);
   void OnOnScreenKeyboardHiddenEvent(const base::Event* event);
   void OnOnScreenKeyboardFocusedEvent(const base::Event* event);
   void OnOnScreenKeyboardBlurredEvent(const base::Event* event);
-#if SB_API_VERSION >= 11
   void OnOnScreenKeyboardSuggestionsUpdatedEvent(const base::Event* event);
-#endif  // SB_API_VERSION >= 11
 #endif  // SB_API_VERSION >= 12 ||
         // SB_HAS(ON_SCREEN_KEYBOARD)
 
@@ -88,8 +85,15 @@ class Application {
   void OnCaptionSettingsChangedEvent(const base::Event* event);
 #endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
 
+  void OnWindowOnOnlineEvent(const base::Event* event);
+  void OnWindowOnOfflineEvent(const base::Event* event);
+
+#if SB_API_VERSION >= 13
+  void OnDateTimeConfigurationChangedEvent(const base::Event* event);
+#endif
+
   // Called when a navigation occurs in the BrowserModule.
-  void WebModuleRecreated();
+  void WebModuleCreated();
 
   // A conduit for system events.
   base::EventDispatcher event_dispatcher_;
@@ -112,22 +116,25 @@ class Application {
   std::unique_ptr<BrowserModule> browser_module_;
 
   // Event callbacks.
-#if SB_API_VERSION >= 8
   base::EventCallback window_size_change_event_callback_;
-#endif  // SB_API_VERSION >= 8
 #if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   base::EventCallback on_screen_keyboard_shown_event_callback_;
   base::EventCallback on_screen_keyboard_hidden_event_callback_;
   base::EventCallback on_screen_keyboard_focused_event_callback_;
   base::EventCallback on_screen_keyboard_blurred_event_callback_;
-#if SB_API_VERSION >= 11
   base::EventCallback on_screen_keyboard_suggestions_updated_event_callback_;
-#endif  // SB_API_VERSION >= 11
 #endif  // SB_API_VERSION >= 12 ||
         // SB_HAS(ON_SCREEN_KEYBOARD)
 #if SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
   base::EventCallback on_caption_settings_changed_event_callback_;
 #endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
+#if SB_API_VERSION >= SB_NETWORK_EVENT_VERSION
+  base::EventCallback on_window_on_online_event_callback_;
+  base::EventCallback on_window_on_offline_event_callback_;
+#endif
+#if SB_API_VERSION >= 13
+  base::EventCallback on_date_time_configuration_changed_event_callback_;
+#endif
 
   // Thread checkers to ensure that callbacks for network and application events
   // always occur on the same thread.
@@ -146,8 +153,6 @@ class Application {
 #endif
 
  private:
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
   enum AppStatus {
     kUninitializedAppStatus,
     kRunningAppStatus,
@@ -158,19 +163,6 @@ class Application {
     kQuitAppStatus,
     kShutDownAppStatus,
   };
-#else
-  enum AppStatus {
-    kUninitializedAppStatus,
-    kPreloadingAppStatus,
-    kRunningAppStatus,
-    kPausedAppStatus,
-    kSuspendedAppStatus,
-    kWillQuitAppStatus,
-    kQuitAppStatus,
-    kShutDownAppStatus,
-  };
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
 
   enum NetworkStatus {
     kDisconnectedNetworkStatus,
@@ -209,16 +201,6 @@ class Application {
   static ssize_t available_memory_;
   static int64 lifetime_in_ms_;
 
-  static AppStatus app_status_;
-  static int app_suspend_count_;
-  static int app_resume_count_;
-  static int app_pause_count_;
-  static int app_unpause_count_;
-
-  static NetworkStatus network_status_;
-  static int network_connect_count_;
-  static int network_disconnect_count_;
-
   CValStats c_val_stats_;
 
   base::RepeatingTimer stats_update_timer_;
@@ -234,17 +216,28 @@ class Application {
   void OnMemoryTrackerCommand(const std::string& message);
 #endif  // defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
 
-  // The latest link received before the Web Module is loaded is stored here.
-  std::string early_deep_link_;
+  // Deep links are stored here until they are reported consumed.
+  std::string unconsumed_deep_link_;
 
-  // Dispach events for early deeplink. This should be called once the Web
-  // Module is loaded.
-  void DispatchEarlyDeepLink();
+  // Lock for access to unconsumed_deep_link_ from different threads.
+  base::Lock unconsumed_deep_link_lock_;
+
+  // Called when deep links are consumed.
+  void OnDeepLinkConsumedCallback(const std::string& link);
+
+  // Dispatch events for deep links.
+  void DispatchDeepLink(const char* link);
+  void DispatchDeepLinkIfNotConsumed();
 
   DISALLOW_COPY_AND_ASSIGN(Application);
 };
 
 }  // namespace browser
 }  // namespace cobalt
+
+
+extern "C" {
+SB_IMPORT const char* GetCobaltUserAgentString();
+}
 
 #endif  // COBALT_BROWSER_APPLICATION_H_

@@ -8,8 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef VP9_ENCODER_NOISE_ESTIMATE_H_
-#define VP9_ENCODER_NOISE_ESTIMATE_H_
+#ifndef VPX_VP9_ENCODER_VP9_NOISE_ESTIMATE_H_
+#define VPX_VP9_ENCODER_VP9_NOISE_ESTIMATE_H_
 
 #include "vp9/encoder/vp9_block.h"
 #include "vp9/encoder/vp9_skin_detection.h"
@@ -23,18 +23,16 @@
 extern "C" {
 #endif
 
-typedef enum noise_level {
-  kLowLow,
-  kLow,
-  kMedium,
-  kHigh
-} NOISE_LEVEL;
+#define MAX_VAR_HIST_BINS 20
+
+typedef enum noise_level { kLowLow, kLow, kMedium, kHigh } NOISE_LEVEL;
 
 typedef struct noise_estimate {
   int enabled;
   NOISE_LEVEL level;
   int value;
   int thresh;
+  int adapt_thresh;
   int count;
   int last_w;
   int last_h;
@@ -43,9 +41,7 @@ typedef struct noise_estimate {
 
 struct VP9_COMP;
 
-void vp9_noise_estimate_init(NOISE_ESTIMATE *const ne,
-                             int width,
-                             int height);
+void vp9_noise_estimate_init(NOISE_ESTIMATE *const ne, int width, int height);
 
 NOISE_LEVEL vp9_noise_estimate_extract_level(NOISE_ESTIMATE *const ne);
 
@@ -55,4 +51,4 @@ void vp9_update_noise_estimate(struct VP9_COMP *const cpi);
 }  // extern "C"
 #endif
 
-#endif  // VP9_ENCODER_NOISE_ESTIMATE_H_
+#endif  // VPX_VP9_ENCODER_VP9_NOISE_ESTIMATE_H_

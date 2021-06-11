@@ -15,6 +15,8 @@
 #ifndef STARBOARD_ELF_LOADER_PROGRAM_TABLE_H_
 #define STARBOARD_ELF_LOADER_PROGRAM_TABLE_H_
 
+#include <vector>
+
 #include "starboard/elf_loader/elf.h"
 #include "starboard/elf_loader/file.h"
 
@@ -76,6 +78,8 @@ class ProgramTable {
   Phdr* phdr_table_;
   Addr phdr_size_;
 
+  std::vector<uint8_t> build_id_;
+
   // First page of reserved address space.
   void* load_start_;
 
@@ -86,7 +90,8 @@ class ProgramTable {
   // from the ELF file are offsets from this address.
   Addr base_memory_address_;
 
-  SB_DISALLOW_COPY_AND_ASSIGN(ProgramTable);
+  ProgramTable(const ProgramTable&) = delete;
+  void operator=(const ProgramTable&) = delete;
 };
 
 }  // namespace elf_loader

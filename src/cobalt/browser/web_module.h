@@ -50,7 +50,7 @@
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/math/size.h"
 #include "cobalt/media/can_play_type_handler.h"
-#include "cobalt/media/web_media_player_factory.h"
+#include "cobalt/media/media_module.h"
 #include "cobalt/network/network_module.h"
 #include "cobalt/render_tree/node.h"
 #include "cobalt/render_tree/resource_provider.h"
@@ -80,7 +80,7 @@ namespace browser {
 // when it calls the on_render_tree_produced_ callback (provided upon
 // construction).
 // At creation, the WebModule starts a dedicated thread, on which a private
-// implementation object is construted that manages all internal components.
+// implementation object is constructed that manages all internal components.
 // All methods of the WebModule post tasks to the implementation object on that
 // thread, so all internal functions are executed synchronously with respect to
 // each other.
@@ -136,11 +136,11 @@ class WebModule : public LifecycleObserver {
 
     // If true, Cobalt will log a warning each time it parses a non-async
     // <script> tag inlined in HTML.  Cobalt has a known issue where if it is
-    // paused or suspended while loading inlined <script> tags, it will abort
+    // blurred or frozen while loading inlined <script> tags, it will abort
     // the script fetch and silently fail without any follow up actions.  It is
     // recommended that production code always avoid non-async <script> tags
     // inlined in HTML.  This is likely not an issue for tests, however, where
-    // we control the suspend/resume activities, so this flag can be used in
+    // we control the freeze/unfreeze activities, so this flag can be used in
     // these cases to disable the warning.
     bool enable_inline_script_warnings = true;
 
@@ -186,7 +186,7 @@ class WebModule : public LifecycleObserver {
     base::ThreadPriority loader_thread_priority =
         base::ThreadPriority::BACKGROUND;
 
-    // Specifies the priority tha the web module's animated image decoding
+    // Specifies the priority that the web module's animated image decoding
     // thread will be assigned. This thread is responsible for decoding,
     // blending and constructing individual frames from animated images. The
     // default value is base::ThreadPriority::BACKGROUND.
@@ -207,8 +207,8 @@ class WebModule : public LifecycleObserver {
     bool enable_image_animations = true;
 
     // Whether or not to retain the remote typeface cache when the app enters
-    // the suspend state.
-    bool should_retain_remote_typeface_cache_on_suspend = false;
+    // the frozen state.
+    bool should_retain_remote_typeface_cache_on_freeze = false;
 
     // The language and script to use with fonts. If left empty, then the
     // language-script combination provided by base::GetSystemLanguageScript()
@@ -270,6 +270,11 @@ class WebModule : public LifecycleObserver {
     // there is no state to restore.
     debug::backend::DebuggerState* debugger_state = nullptr;
 #endif  // defined(ENABLE_DEBUGGER)
+
+    // This callback is for checking the mediasession actions transitions. When
+    // there is no playback during Concealed state, we should provide a chance
+    // for Cobalt to freeze.
+    base::Closure maybe_freeze_callback;
   };
 
   typedef layout::LayoutManager::LayoutResults LayoutResults;
@@ -287,10 +292,9 @@ class WebModule : public LifecycleObserver {
             const CloseCallback& window_close_callback,
             const base::Closure& window_minimize_callback,
             media::CanPlayTypeHandler* can_play_type_handler,
-            media::WebMediaPlayerFactory* web_media_player_factory,
+            media::MediaModule* media_module,
             network::NetworkModule* network_module,
             const cssom::ViewportSize& window_dimensions,
-            float video_pixel_ratio,
             render_tree::ResourceProvider* resource_provider,
             float layout_refresh_rate, const Options& options);
   ~WebModule();
@@ -308,13 +312,14 @@ class WebModule : public LifecycleObserver {
   void InjectOnScreenKeyboardFocusedEvent(int ticket);
   // Injects an on screen keyboard blurred event into the web module.
   void InjectOnScreenKeyboardBlurredEvent(int ticket);
-#if SB_API_VERSION >= 11
   // Injects an on screen keyboard suggestions updated event into the web
   // module.
   void InjectOnScreenKeyboardSuggestionsUpdatedEvent(int ticket);
-#endif  // SB_API_VERSION >= 11
 #endif  // SB_API_VERSION >= 12 ||
         // SB_HAS(ON_SCREEN_KEYBOARD)
+
+  void InjectWindowOnOnlineEvent(const base::Event* event);
+  void InjectWindowOnOfflineEvent(const base::Event* event);
 
   // Injects a keyboard event into the web module. The value for type
   // represents the event name, for example 'keydown' or 'keyup'.
@@ -335,6 +340,9 @@ class WebModule : public LifecycleObserver {
   void InjectBeforeUnloadEvent();
 
   void InjectCaptionSettingsChangedEvent();
+
+  // Update the date/time configuration of relevant web modules.
+  void UpdateDateTimeConfiguration();
 
   // Executes Javascript code in this web module.  The calling thread will
   // block until the JavaScript has executed and the output results are
@@ -361,15 +369,13 @@ class WebModule : public LifecycleObserver {
   std::unique_ptr<debug::backend::DebuggerState> FreezeDebugger();
 #endif  // ENABLE_DEBUGGER
 
-  // Sets the size and pixel ratio of this web module, possibly causing relayout
-  // and re-render with the new parameters. Does nothing if the parameters are
-  // not different from the current parameters.
-  void SetSize(const cssom::ViewportSize& view_port_size,
-               float video_pixel_ratio);
+  // Sets the size of this web module, possibly causing relayout and re-render
+  // with the new parameters. Does nothing if the parameters are not different
+  // from the current parameters.
+  void SetSize(const cssom::ViewportSize& viewport_size);
 
   void SetCamera3D(const scoped_refptr<input::Camera3D>& camera_3d);
-  void SetWebMediaPlayerFactory(
-      media::WebMediaPlayerFactory* web_media_player_factory);
+  void SetMediaModule(media::MediaModule* media_module);
   void SetImageCacheCapacity(int64_t bytes);
   void SetRemoteTypefaceCacheCapacity(int64_t bytes);
 
@@ -380,12 +386,12 @@ class WebModule : public LifecycleObserver {
   }
 
   // LifecycleObserver implementation
-  void Prestart() override;
-  void Start(render_tree::ResourceProvider* resource_provider) override;
-  void Pause() override;
-  void Unpause() override;
-  void Suspend() override;
-  void Resume(render_tree::ResourceProvider* resource_provider) override;
+  void Blur() override;
+  void Conceal(render_tree::ResourceProvider* resource_provider) override;
+  void Freeze() override;
+  void Unfreeze(render_tree::ResourceProvider* resource_provider) override;
+  void Reveal(render_tree::ResourceProvider* resource_provider) override;
+  void Focus() override;
 
   // Attempt to reduce overall memory consumption. Called in response to a
   // system indication that memory usage is nearing a critical level.
@@ -399,6 +405,11 @@ class WebModule : public LifecycleObserver {
   void RequestJavaScriptHeapStatistics(
       const JavaScriptHeapStatisticsCallback& callback);
 
+  // Indicate the web module is ready to freeze.
+  bool IsReadyToFreeze();
+
+  scoped_refptr<render_tree::Node> DoSynchronousLayoutAndGetRenderTree();
+
  private:
   // Data required to construct a WebModule, initialized in the constructor and
   // passed to |Initialize|.
@@ -411,9 +422,9 @@ class WebModule : public LifecycleObserver {
         const CloseCallback& window_close_callback,
         const base::Closure& window_minimize_callback,
         media::CanPlayTypeHandler* can_play_type_handler,
-        media::WebMediaPlayerFactory* web_media_player_factory,
+        media::MediaModule* media_module,
         network::NetworkModule* network_module,
-        const cssom::ViewportSize& window_dimensions, float video_pixel_ratio,
+        const cssom::ViewportSize& window_dimensions,
         render_tree::ResourceProvider* resource_provider,
         int dom_max_element_depth, float layout_refresh_rate,
         const scoped_refptr<ui_navigation::NavItem>& ui_nav_root,
@@ -425,10 +436,9 @@ class WebModule : public LifecycleObserver {
           window_close_callback(window_close_callback),
           window_minimize_callback(window_minimize_callback),
           can_play_type_handler(can_play_type_handler),
-          web_media_player_factory(web_media_player_factory),
+          media_module(media_module),
           network_module(network_module),
           window_dimensions(window_dimensions),
-          video_pixel_ratio(video_pixel_ratio),
           resource_provider(resource_provider),
           dom_max_element_depth(dom_max_element_depth),
           layout_refresh_rate(layout_refresh_rate),
@@ -442,10 +452,9 @@ class WebModule : public LifecycleObserver {
     const CloseCallback& window_close_callback;
     const base::Closure& window_minimize_callback;
     media::CanPlayTypeHandler* can_play_type_handler;
-    media::WebMediaPlayerFactory* web_media_player_factory;
+    media::MediaModule* media_module;
     network::NetworkModule* network_module;
     cssom::ViewportSize window_dimensions;
-    float video_pixel_ratio;
     render_tree::ResourceProvider* resource_provider;
     int dom_max_element_depth;
     float layout_refresh_rate;

@@ -21,6 +21,7 @@
 #include "base/trace_event/trace_event.h"
 #include "cobalt/configuration/configuration.h"
 #include "cobalt/loader/image/dummy_gif_image_decoder.h"
+#include "cobalt/loader/image/failure_image_decoder.h"
 #include "cobalt/loader/image/image_decoder_starboard.h"
 #include "cobalt/loader/image/jpeg_image_decoder.h"
 #include "cobalt/loader/image/lottie_animation_decoder.h"
@@ -28,6 +29,7 @@
 #include "cobalt/loader/image/stub_image_decoder.h"
 #include "cobalt/loader/image/webp_image_decoder.h"
 #include "cobalt/loader/switches.h"
+#include "cobalt/render_tree/resource_provider_stub.h"
 #include "net/base/mime_util.h"
 #include "net/http/http_status_code.h"
 #include "starboard/configuration.h"
@@ -71,13 +73,21 @@ ImageDecoder::ImageType DetermineImageType(const uint8* header) {
   }
 }
 
+// Returns true if the ResourceProvider is ResourceProviderStub.
+bool IsResourceProviderStub(render_tree::ResourceProvider* resource_provider) {
+  return resource_provider->GetTypeId() ==
+         base::GetTypeId<render_tree::ResourceProviderStub>();
+}
+
 }  // namespace
 
 ImageDecoder::ImageDecoder(
     render_tree::ResourceProvider* resource_provider,
+    const base::DebuggerHooks& debugger_hooks,
     const ImageAvailableCallback& image_available_callback,
     const loader::Decoder::OnCompleteFunction& load_complete_callback)
     : resource_provider_(resource_provider),
+      debugger_hooks_(debugger_hooks),
       image_available_callback_(image_available_callback),
       image_type_(kImageTypeInvalid),
       load_complete_callback_(load_complete_callback),
@@ -88,10 +98,12 @@ ImageDecoder::ImageDecoder(
 
 ImageDecoder::ImageDecoder(
     render_tree::ResourceProvider* resource_provider,
+    const base::DebuggerHooks& debugger_hooks,
     const ImageAvailableCallback& image_available_callback,
     ImageType image_type,
     const loader::Decoder::OnCompleteFunction& load_complete_callback)
     : resource_provider_(resource_provider),
+      debugger_hooks_(debugger_hooks),
       image_available_callback_(image_available_callback),
       image_type_(image_type),
       load_complete_callback_(load_complete_callback),
@@ -215,7 +227,11 @@ void ImageDecoder::Resume(render_tree::ResourceProvider* resource_provider) {
   DCHECK_EQ(state_, kSuspended);
   DCHECK(!resource_provider_);
   DCHECK(resource_provider);
-
+  if (IsResourceProviderStub(resource_provider)) {
+    use_failure_image_decoder_ = true;
+  } else {
+    use_failure_image_decoder_ = false;
+  }
   state_ = kWaitingForHeader;
   resource_provider_ = resource_provider;
 }
@@ -258,7 +274,7 @@ void ImageDecoder::DecodeChunkInternal(const uint8* input_bytes, size_t size) {
 }
 
 namespace {
-#if SB_HAS(GRAPHICS) && !SB_IS(EVERGREEN)
+
 const char* GetMimeTypeFromImageType(ImageDecoder::ImageType image_type) {
   switch (image_type) {
     case ImageDecoder::kImageTypeJPEG:
@@ -281,7 +297,8 @@ const char* GetMimeTypeFromImageType(ImageDecoder::ImageType image_type) {
 // If |mime_type| is empty, |image_type| will be used to deduce the mime type.
 std::unique_ptr<ImageDataDecoder> MaybeCreateStarboardDecoder(
     const std::string& mime_type, ImageDecoder::ImageType image_type,
-    render_tree::ResourceProvider* resource_provider) {
+    render_tree::ResourceProvider* resource_provider,
+    const base::DebuggerHooks& debugger_hooks) {
   // clang-format off
   const SbDecodeTargetFormat kPreferredFormats[] = {
       kSbDecodeTargetFormat1PlaneRGBA,
@@ -314,35 +331,39 @@ std::unique_ptr<ImageDataDecoder> MaybeCreateStarboardDecoder(
     if (SbDecodeTargetIsFormatValid(format) &&
         resource_provider->SupportsSbDecodeTarget()) {
       return std::unique_ptr<ImageDataDecoder>(new ImageDecoderStarboard(
-          resource_provider, mime_type_c_string, format));
+          resource_provider, debugger_hooks, mime_type_c_string, format));
     }
   }
   return std::unique_ptr<ImageDataDecoder>();
 }
-#endif  // SB_HAS(GRAPHICS) && !SB_IS(EVERGREEN)
 
 std::unique_ptr<ImageDataDecoder> CreateImageDecoderFromImageType(
     ImageDecoder::ImageType image_type,
-    render_tree::ResourceProvider* resource_provider) {
+    render_tree::ResourceProvider* resource_provider,
+    const base::DebuggerHooks& debugger_hooks, bool use_failure_image_decoder) {
   // Call different types of decoders by matching the image signature.
   if (s_use_stub_image_decoder) {
     return std::unique_ptr<ImageDataDecoder>(
-        new StubImageDecoder(resource_provider));
+        new StubImageDecoder(resource_provider, debugger_hooks));
+  } else if (use_failure_image_decoder) {
+    return std::unique_ptr<ImageDataDecoder>(
+        new FailureImageDecoder(resource_provider, debugger_hooks));
   } else if (image_type == ImageDecoder::kImageTypeJPEG) {
-    return std::unique_ptr<ImageDataDecoder>(new JPEGImageDecoder(
-        resource_provider, ImageDecoder::AllowDecodingToMultiPlane()));
+    return std::unique_ptr<ImageDataDecoder>(
+        new JPEGImageDecoder(resource_provider, debugger_hooks,
+                             ImageDecoder::AllowDecodingToMultiPlane()));
   } else if (image_type == ImageDecoder::kImageTypePNG) {
     return std::unique_ptr<ImageDataDecoder>(
-        new PNGImageDecoder(resource_provider));
+        new PNGImageDecoder(resource_provider, debugger_hooks));
   } else if (image_type == ImageDecoder::kImageTypeWebP) {
     return std::unique_ptr<ImageDataDecoder>(
-        new WEBPImageDecoder(resource_provider));
+        new WEBPImageDecoder(resource_provider, debugger_hooks));
   } else if (image_type == ImageDecoder::kImageTypeGIF) {
     return std::unique_ptr<ImageDataDecoder>(
-        new DummyGIFImageDecoder(resource_provider));
+        new DummyGIFImageDecoder(resource_provider, debugger_hooks));
   } else if (image_type == ImageDecoder::kImageTypeJSON) {
     return std::unique_ptr<ImageDataDecoder>(
-        new LottieAnimationDecoder(resource_provider));
+        new LottieAnimationDecoder(resource_provider, debugger_hooks));
   } else {
     return std::unique_ptr<ImageDataDecoder>();
   }
@@ -368,14 +389,13 @@ bool ImageDecoder::InitializeInternalDecoder(const uint8* input_bytes,
     image_type_ = DetermineImageType(signature_cache_.data);
   }
 
-// TODO: Remove the EVERGREEN check once the EGL wiring is ready.
-#if SB_HAS(GRAPHICS) && !SB_IS(EVERGREEN)
-  decoder_ =
-      MaybeCreateStarboardDecoder(mime_type_, image_type_, resource_provider_);
-#endif  // SB_HAS(GRAPHICS) && !SB_IS(EVERGREEN)
+  decoder_ = MaybeCreateStarboardDecoder(mime_type_, image_type_,
+                                         resource_provider_, debugger_hooks_);
 
   if (!decoder_) {
-    decoder_ = CreateImageDecoderFromImageType(image_type_, resource_provider_);
+    decoder_ = CreateImageDecoderFromImageType(image_type_, resource_provider_,
+                                               debugger_hooks_,
+                                               use_failure_image_decoder_);
   }
 
   if (!decoder_) {
@@ -408,7 +428,7 @@ bool ImageDecoder::AllowDecodingToMultiPlane() {
                       ->CobaltRasterizerType()) == "direct-gles";
 #elif SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
   bool allow_image_decoding_to_multi_plane = true;
-#else  // SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
+#else   // SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
   bool allow_image_decoding_to_multi_plane = false;
 #endif  // SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
 

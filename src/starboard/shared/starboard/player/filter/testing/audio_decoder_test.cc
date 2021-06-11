@@ -19,13 +19,13 @@
 #include <map>
 
 #include "starboard/common/condition_variable.h"
+#include "starboard/common/media.h"
 #include "starboard/common/mutex.h"
 #include "starboard/common/scoped_ptr.h"
 #include "starboard/configuration_constants.h"
 #include "starboard/media.h"
 #include "starboard/memory.h"
 #include "starboard/shared/starboard/media/media_support_internal.h"
-#include "starboard/shared/starboard/media/media_util.h"
 #include "starboard/shared/starboard/player/decoded_audio_internal.h"
 #include "starboard/shared/starboard/player/filter/player_components.h"
 #include "starboard/shared/starboard/player/filter/stub_player_components_factory.h"
@@ -127,7 +127,7 @@ class AudioDecoderTest
     return std::bind(&AudioDecoderTest::OnConsumed, this);
   }
 
-  // This has to be called when the decoder is just initialized/reseted or when
+  // This has to be called when the decoder is just initialized/reset or when
   // OnConsumed() is called.
   void WriteSingleInput(size_t index) {
     ASSERT_TRUE(can_accept_more_input_);
@@ -300,16 +300,8 @@ class AudioDecoderTest
   scoped_refptr<InputBuffer> GetAudioInputBuffer(size_t index) {
     auto player_sample_info =
         dmp_reader_.GetPlayerSampleInfo(kSbMediaTypeAudio, index);
-#if SB_API_VERSION >= 11
     auto input_buffer = new InputBuffer(StubDeallocateSampleFunc, nullptr,
                                         nullptr, player_sample_info);
-#else   // SB_API_VERSION >= 11
-    SbMediaAudioSampleInfo audio_sample_info =
-        dmp_reader_.GetAudioSampleInfo(index);
-    auto input_buffer =
-        new InputBuffer(kSbMediaTypeAudio, StubDeallocateSampleFunc, nullptr,
-                        nullptr, player_sample_info, &audio_sample_info);
-#endif  // SB_API_VERSION >= 11
     auto iter = invalid_inputs_.find(index);
     if (iter != invalid_inputs_.end()) {
       std::vector<uint8_t> content(input_buffer->size(), iter->second);
@@ -440,9 +432,7 @@ TEST_P(AudioDecoderTest, InvalidCodec) {
                            : kSbMediaAudioCodecAac;
   auto audio_sample_info = dmp_reader_.audio_sample_info();
 
-#if SB_API_VERSION >= 11
   audio_sample_info.codec = invalid_codec;
-#endif  // SB_API_VERSION >= 11
 
   CreateComponents(invalid_codec, audio_sample_info, &audio_decoder_,
                    &audio_renderer_sink_);
@@ -588,8 +578,6 @@ TEST_P(AudioDecoderTest, MultipleInputs) {
   ASSERT_NO_FATAL_FAILURE(AssertInvalidOutputFormat());
 }
 
-#if SB_API_VERSION >= 11
-
 TEST_P(AudioDecoderTest, LimitedInput) {
   SbTime duration = kSbTimeSecond / 2;
   SbMediaSetAudioWriteDuration(duration);
@@ -639,19 +627,17 @@ TEST_P(AudioDecoderTest, ContinuedLimitedInput) {
   ASSERT_NO_FATAL_FAILURE(DrainOutputs());
   SbTime elapsed = SbTimeGetMonotonicNow() - start;
   SB_LOG(INFO) << "Decoding " << dmp_reader_.number_of_audio_buffers() << " au "
-               << " of " << media::GetCodecName(dmp_reader_.audio_codec())
+               << " of " << GetMediaAudioCodecName(dmp_reader_.audio_codec())
                << " takes " << elapsed << " microseconds.";
 
   ASSERT_TRUE(last_decoded_audio_);
   ASSERT_NO_FATAL_FAILURE(AssertInvalidOutputFormat());
 }
 
-#endif  // SB_API_VERSION >= 11
-
-INSTANTIATE_TEST_CASE_P(AudioDecoderTests,
-                        AudioDecoderTest,
-                        Combine(ValuesIn(GetSupportedAudioTestFiles(true)),
-                                Bool()));
+INSTANTIATE_TEST_CASE_P(
+    AudioDecoderTests,
+    AudioDecoderTest,
+    Combine(ValuesIn(GetSupportedAudioTestFiles(true, true)), Bool()));
 
 }  // namespace
 }  // namespace testing

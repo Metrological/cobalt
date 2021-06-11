@@ -16,9 +16,6 @@
 
 #include "starboard/client_porting/icu_init/icu_init.h"
 
-#include <unicode/putil.h>
-#include <unicode/udata.h>
-
 #include <string>
 #include <vector>
 
@@ -28,6 +25,8 @@
 #include "starboard/file.h"
 #include "starboard/once.h"
 #include "starboard/system.h"
+#include "third_party/icu/source/common/unicode/putil.h"
+#include "third_party/icu/source/common/unicode/udata.h"
 
 namespace {
 
@@ -63,17 +62,11 @@ void Initialize() {
     SbLogFormatF("Using icu tables from: %s\n", data_path.c_str());
   }
 #endif
-  data_path += kSbFileSepString;
-#if U_IS_BIG_ENDIAN
-  data_path += "icudt56b";
-#else
-  data_path += "icudt56l";
-#endif
   // set this as the data directory.
   u_setDataDirectory(data_path.c_str());
 
   UErrorCode err = U_ZERO_ERROR;
-  udata_setFileAccess(UDATA_FILES_FIRST, &err);
+  udata_setFileAccess(UDATA_PACKAGES_FIRST, &err);
   SB_DCHECK(err <= U_ZERO_ERROR);
 }
 

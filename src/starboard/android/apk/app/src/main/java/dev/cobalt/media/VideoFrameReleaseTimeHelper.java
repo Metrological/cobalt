@@ -29,7 +29,6 @@
 
 package dev.cobalt.media;
 
-import android.content.Context;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Message;
@@ -73,20 +72,9 @@ public final class VideoFrameReleaseTimeHelper {
    * default display's vsync signal.
    */
   @SuppressWarnings("unused")
-  public VideoFrameReleaseTimeHelper() {
-    this(DISPLAY_REFRESH_RATE_UNKNOWN);
-  }
-
-  /**
-   * Constructs an instance that smooths frame release timestamps and aligns them with the default
-   * display's vsync signal.
-   *
-   * @param context A context from which information about the default display can be retrieved.
-   */
-  @SuppressWarnings("unused")
   @UsedByNative
-  public VideoFrameReleaseTimeHelper(Context context) {
-    this(getDefaultDisplayRefreshRate(context));
+  public VideoFrameReleaseTimeHelper() {
+    this(getDefaultDisplayRefreshRate());
   }
 
   private VideoFrameReleaseTimeHelper(double defaultDisplayRefreshRate) {
@@ -221,11 +209,9 @@ public final class VideoFrameReleaseTimeHelper {
     return snappedAfterDiff < snappedBeforeDiff ? snappedAfterNs : snappedBeforeNs;
   }
 
-  private static double getDefaultDisplayRefreshRate(Context context) {
-    Display defaultDisplay = DisplayUtil.getDefaultDisplay(context);
-    return defaultDisplay != null
-        ?  defaultDisplay.getRefreshRate()
-        : DISPLAY_REFRESH_RATE_UNKNOWN;
+  private static double getDefaultDisplayRefreshRate() {
+    Display defaultDisplay = DisplayUtil.getDefaultDisplay();
+    return defaultDisplay != null ? defaultDisplay.getRefreshRate() : DISPLAY_REFRESH_RATE_UNKNOWN;
   }
 
   /**

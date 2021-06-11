@@ -123,13 +123,14 @@ class LogMessageVoidify {
 #define SB_LAZY_STREAM(stream, condition) \
   !(condition) ? (void)0 : ::starboard::logging::LogMessageVoidify() & (stream)
 
-#if SB_LOGGING_IS_OFFICIAL_BUILD
-#define SB_LOG_IS_ON(severity)                        \
-  (::starboard::logging::SB_LOG_##severity >=         \
-   ::starboard::logging::SB_LOG_FATAL)                \
-      ? ((::starboard::logging::SB_LOG_##severity) >= \
-         ::starboard::logging::GetMinLogLevel())      \
-      : false
+#if SB_LOGGING_IS_OFFICIAL_BUILD && !SB_IS(EVERGREEN) && \
+    !SB_IS(EVERGREEN_COMPATIBLE)
+#define SB_LOG_IS_ON(severity)                         \
+  ((::starboard::logging::SB_LOG_##severity >=         \
+    ::starboard::logging::SB_LOG_FATAL)                \
+       ? ((::starboard::logging::SB_LOG_##severity) >= \
+          ::starboard::logging::GetMinLogLevel())      \
+       : false)
 #else  // SB_LOGGING_IS_OFFICIAL_BUILD
 #define SB_LOG_IS_ON(severity)                  \
   ((::starboard::logging::SB_LOG_##severity) >= \
@@ -206,7 +207,7 @@ class LogMessageVoidify {
 
 }  // extern "C++"
 
-#else   // !__cplusplus
+#else  // !__cplusplus
 
 // Provide a very small subset for straight-C users.
 #define SB_NOTIMPLEMENTED_IN(X) "Not implemented reached in " #X

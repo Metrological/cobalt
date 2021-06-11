@@ -31,7 +31,6 @@
 #include "cobalt/dom_parser/parser.h"
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/loader/loader_factory.h"
-#include "cobalt/media_session/media_session.h"
 #include "cobalt/script/global_environment.h"
 #include "cobalt/script/javascript_engine.h"
 #include "cobalt/script/source_code.h"
@@ -64,15 +63,15 @@ class CustomEventTest : public ::testing::Test {
         css_parser_(css_parser::Parser::Create()),
         dom_parser_(new dom_parser::Parser(mock_error_callback_)),
         fetcher_factory_(new loader::FetcherFactory(NULL)),
-        loader_factory_(
-            new loader::LoaderFactory("Test", fetcher_factory_.get(), NULL, 0,
-                                      base::ThreadPriority::DEFAULT)),
+        loader_factory_(new loader::LoaderFactory(
+            "Test", fetcher_factory_.get(), NULL, null_debugger_hooks_, 0,
+            base::ThreadPriority::DEFAULT)),
         local_storage_database_(NULL),
         url_("about:blank") {
     engine_ = script::JavaScriptEngine::CreateEngine();
     global_environment_ = engine_->CreateGlobalEnvironment();
     window_ = new Window(
-        environment_settings_.get(), ViewportSize(1920, 1080), 1.f,
+        environment_settings_.get(), ViewportSize(1920, 1080),
         base::kApplicationStateStarted, css_parser_.get(), dom_parser_.get(),
         fetcher_factory_.get(), loader_factory_.get(), NULL, NULL, NULL, NULL,
         NULL, NULL, &local_storage_database_, NULL, NULL, NULL, NULL,
@@ -84,7 +83,7 @@ class CustomEventTest : public ::testing::Test {
         kCspEnforcementEnable, base::Closure() /* csp_policy_changed */,
         base::Closure() /* ran_animation_frame_callbacks */,
         dom::Window::CloseCallback() /* window_close */,
-        base::Closure() /* window_minimize */, NULL, NULL, NULL,
+        base::Closure() /* window_minimize */, NULL, NULL,
         dom::Window::OnStartDispatchEventCallback(),
         dom::Window::OnStopDispatchEventCallback(),
         dom::ScreenshotManager::ProvideScreenshotFunctionCallback(), NULL);
@@ -96,6 +95,7 @@ class CustomEventTest : public ::testing::Test {
 
  private:
   base::MessageLoop message_loop_;
+  base::NullDebuggerHooks null_debugger_hooks_;
   std::unique_ptr<script::JavaScriptEngine> engine_;
   const std::unique_ptr<testing::StubEnvironmentSettings> environment_settings_;
   scoped_refptr<script::GlobalEnvironment> global_environment_;

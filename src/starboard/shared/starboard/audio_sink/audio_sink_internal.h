@@ -18,6 +18,7 @@
 #include "starboard/audio_sink.h"
 
 #include <functional>
+#include <string>
 
 #include "starboard/configuration.h"
 #include "starboard/shared/internal_only.h"
@@ -25,9 +26,11 @@
 struct SbAudioSinkPrivate {
 #if SB_API_VERSION >= 12
   // When |capability_changed| is true, it hints that the error is caused by a
-  // a transisent capability on the platform.  The app should retry playback to
+  // a transient capability on the platform.  The app should retry playback to
   // recover from the error.
-  typedef void (*ErrorFunc)(bool capability_changed, void* context);
+  typedef void (*ErrorFunc)(bool capability_changed,
+                            const std::string& error_message,
+                            void* context);
 #endif  // SB_API_VERSION >= 12
 
   typedef std::function<
@@ -83,13 +86,38 @@ struct SbAudioSinkPrivate {
   // Fallback. If Fallback is not enabled, then returns NULL.
   static Type* GetPreferredType();
 
+  static SbAudioSink Create(
+      int channels,
+      int sampling_frequency_hz,
+      SbMediaAudioSampleType audio_sample_type,
+      SbMediaAudioFrameStorageType audio_frame_storage_type,
+      SbAudioSinkFrameBuffers frame_buffers,
+      int frame_buffers_size_in_frames,
+      SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
+      ConsumeFramesFunc consume_frames_func,
+#if SB_API_VERSION >= 12
+      ErrorFunc error_func,
+#endif  // SB_API_VERSION >= 12
+      void* context);
+
+  static SbAudioSink Create(
+      int channels,
+      int sampling_frequency_hz,
+      SbMediaAudioSampleType audio_sample_type,
+      SbMediaAudioFrameStorageType audio_frame_storage_type,
+      SbAudioSinkFrameBuffers frame_buffers,
+      int frame_buffers_size_in_frames,
+      SbAudioSinkUpdateSourceStatusFunc update_source_status_func,
+      SbAudioSinkConsumeFramesFunc sb_consume_frames_func,
+#if SB_API_VERSION >= 12
+      ErrorFunc error_func,
+#endif  // SB_API_VERSION >= 12
+      void* context);
+
   // Individual implementation has to provide implementation of the following
   // functions, which will be called inside Initialize() and TearDown().
   static void PlatformInitialize();
   static void PlatformTearDown();
-
-  static ConsumeFramesFunc GetConsumeFramesFunc(
-      SbAudioSinkConsumeFramesFunc sb_consume_frames_func);
 };
 
 #endif  // STARBOARD_SHARED_STARBOARD_AUDIO_SINK_AUDIO_SINK_INTERNAL_H_

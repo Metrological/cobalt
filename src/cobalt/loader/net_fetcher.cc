@@ -23,14 +23,14 @@
 #include "cobalt/loader/url_fetcher_string_writer.h"
 #include "cobalt/network/network_module.h"
 #include "net/url_request/url_fetcher.h"
-#if defined(OS_STARBOARD)
+#if defined(STARBOARD)
 #include "starboard/configuration.h"
 #if SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
 #define HANDLE_CORE_DUMP
 #include "base/lazy_instance.h"
 #include STARBOARD_CORE_DUMP_HANDLER_INCLUDE
 #endif  // SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
-#endif  // OS_STARBOARD
+#endif  // defined(STARBOARD)
 
 namespace cobalt {
 namespace loader {
@@ -222,6 +222,11 @@ void NetFetcher::OnURLFetchDownloadProgress(const net::URLFetcher* source,
     handler()->OnReceivedPassed(
         this, std::unique_ptr<std::string>(new std::string(std::move(data))));
   }
+}
+
+void NetFetcher::ReportLoadTimingInfo(
+    const net::LoadTimingInfo& timing_info) {
+  handler()->SetLoadTimingInfo(timing_info);
 }
 
 NetFetcher::~NetFetcher() {

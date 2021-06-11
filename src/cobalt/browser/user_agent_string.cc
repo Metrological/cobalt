@@ -28,7 +28,7 @@
 #include "starboard/common/string.h"
 #include "starboard/system.h"
 #if SB_IS(EVERGREEN)
-#include "cobalt/updater/util.h"
+#include "cobalt/updater/utils.h"
 #endif
 
 namespace cobalt {
@@ -118,12 +118,13 @@ UserAgentPlatformInfo GetUserAgentPlatformInfoFromSystem() {
   // Fill platform info if it is a hardware TV device.
   SbSystemDeviceType device_type = SbSystemGetDeviceType();
 
-  // Original Design Manufacturer (ODM)
-#if SB_API_VERSION >= 11
-  result = SbSystemGetProperty(kSbSystemPropertyOriginalDesignManufacturerName,
-                               value, kSystemPropertyMaxLength);
+#if SB_API_VERSION >= 12
+  // System Integrator
+  result = SbSystemGetProperty(kSbSystemPropertySystemIntegratorName, value,
+                               kSystemPropertyMaxLength);
 #else
-  result = SbSystemGetProperty(kSbSystemPropertyNetworkOperatorName,
+  // Original Design Manufacturer (ODM)
+  result = SbSystemGetProperty(kSbSystemPropertyOriginalDesignManufacturerName,
                                value, kSystemPropertyMaxLength);
 #endif
   if (result) {
@@ -151,13 +152,11 @@ UserAgentPlatformInfo GetUserAgentPlatformInfoFromSystem() {
 #error Unknown build configuration.
 #endif
 
-#if SB_API_VERSION >= 5
   result = SbSystemGetProperty(kSbSystemPropertyUserAgentAuxField, value,
                                kSystemPropertyMaxLength);
   if (result) {
     platform_info.aux_field = value;
   }
-#endif  // SB_API_VERSION >= 5
 
   // Device Type
   platform_info.device_type = device_type;
@@ -220,10 +219,15 @@ std::string CreateUserAgentString(const UserAgentPlatformInfo& platform_info) {
   std::string os_name_and_version = platform_info.os_name_and_version;
 
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
-  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
-  if (command_line->HasSwitch(switches::kUserAgentOsNameVersion)) {
-    os_name_and_version =
-        command_line->GetSwitchValueASCII(switches::kUserAgentOsNameVersion);
+  // Because we add Cobalt's user agent string to Crashpad before we actually
+  // start Cobalt, the command line won't be initialized when we first try to
+  // get the user agent string.
+  if (base::CommandLine::InitializedForCurrentProcess()) {
+    base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+    if (command_line->HasSwitch(switches::kUserAgentOsNameVersion)) {
+      os_name_and_version =
+          command_line->GetSwitchValueASCII(switches::kUserAgentOsNameVersion);
+    }
   }
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
 
@@ -251,7 +255,7 @@ std::string CreateUserAgentString(const UserAgentPlatformInfo& platform_info) {
 
 // Evergreen version
 #if SB_IS(EVERGREEN)
-  const std::string evergreen_version = updater::GetEvergreenVersion();
+  const std::string evergreen_version = updater::GetCurrentEvergreenVersion();
   if (!evergreen_version.empty()) {
     base::StringAppendF(&user_agent, " Evergreen/%s",
                         evergreen_version.c_str());

@@ -24,7 +24,9 @@
       'conditions': [
         ['sb_evergreen == 1', {
           'dependencies': [
+            '<(DEPTH)/starboard/client_porting/cwrappers/cwrappers.gyp:cwrappers',
             '<(DEPTH)/starboard/client_porting/eztime/eztime.gyp:eztime',
+            '<(DEPTH)/starboard/elf_loader/sabi_string.gyp:sabi_string',
             '<(DEPTH)/starboard/starboard_headers_only.gyp:starboard_headers_only',
             '<(DEPTH)/third_party/llvm-project/compiler-rt/compiler-rt.gyp:compiler_rt',
             '<(DEPTH)/third_party/llvm-project/libcxx/libcxx.gyp:cxx',
@@ -37,13 +39,14 @@
             'starboard_full',
           ],
         }],
-       ],
+      ],
     },
     {
       'target_name': 'starboard_full',
       'type': 'none',
       'dependencies': [
         '<(DEPTH)/<(starboard_path)/starboard_platform.gyp:starboard_platform',
+        '<(DEPTH)/starboard/client_porting/cwrappers/cwrappers.gyp:cwrappers',
         '<(DEPTH)/starboard/client_porting/eztime/eztime.gyp:eztime',
         '<(DEPTH)/starboard/starboard_headers_only.gyp:starboard_headers_only',
         'common/common.gyp:common',
@@ -52,6 +55,15 @@
         '<(DEPTH)/<(starboard_path)/starboard_platform.gyp:starboard_platform',
       ],
       'conditions': [
+        ['sb_evergreen_compatible == 1', {
+          'dependencies': [
+            '<(DEPTH)/third_party/crashpad/wrapper/wrapper.gyp:crashpad_wrapper',
+          ],
+        }, {
+          'dependencies': [
+            '<(DEPTH)/third_party/crashpad/wrapper/wrapper.gyp:crashpad_wrapper_stub',
+          ],
+        }],
         ['final_executable_type=="shared_library"', {
           'all_dependent_settings': {
             'target_conditions': [

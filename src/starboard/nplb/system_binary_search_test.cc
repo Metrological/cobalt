@@ -19,6 +19,8 @@
 #include "starboard/system.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
+#if SB_API_VERSION < 13
+
 namespace starboard {
 namespace nplb {
 namespace {
@@ -42,3 +44,5 @@ TEST(SbSystemBinarySearchTest, SunnyDayLetters) {
 }  // namespace
 }  // namespace nplb
 }  // namespace starboard
+
+#endif  // #if SB_API_VERSION < 13

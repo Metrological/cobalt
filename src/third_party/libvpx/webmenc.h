@@ -7,8 +7,8 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
-#ifndef WEBMENC_H_
-#define WEBMENC_H_
+#ifndef VPX_WEBMENC_H_
+#define VPX_WEBMENC_H_
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,9 +39,7 @@ typedef enum stereo_format {
 
 void write_webm_file_header(struct WebmOutputContext *webm_ctx,
                             const vpx_codec_enc_cfg_t *cfg,
-                            const struct vpx_rational *fps,
-                            stereo_format_t stereo_fmt,
-                            unsigned int fourcc,
+                            stereo_format_t stereo_fmt, unsigned int fourcc,
                             const struct VpxRational *par);
 
 void write_webm_block(struct WebmOutputContext *webm_ctx,
@@ -54,4 +52,4 @@ void write_webm_file_footer(struct WebmOutputContext *webm_ctx);
 }  // extern "C"
 #endif
 
-#endif  // WEBMENC_H_
+#endif  // VPX_WEBMENC_H_

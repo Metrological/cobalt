@@ -16,6 +16,7 @@
 #define STARBOARD_SHARED_STARBOARD_PLAYER_FILTER_AUDIO_RENDERER_INTERNAL_IMPL_H_
 
 #include <functional>
+#include <string>
 #include <vector>
 
 #include "starboard/atomic.h"
@@ -92,7 +93,8 @@ class AudioRendererImpl : public AudioRenderer,
   void Seek(SbTime seek_to_time) override;
   SbTime GetCurrentMediaTime(bool* is_playing,
                              bool* is_eos_played,
-                             bool* is_underflow) override;
+                             bool* is_underflow,
+                             double* playback_rate) override;
 
  private:
   enum EOSState {
@@ -137,7 +139,8 @@ class AudioRendererImpl : public AudioRenderer,
                        bool* is_playing,
                        bool* is_eos_reached) override;
   void ConsumeFrames(int frames_consumed, SbTime frames_consumed_at) override;
-  void OnError(bool capability_changed) override;
+  void OnError(bool capability_changed,
+               const std::string& error_message) override;
 
   void UpdateVariablesOnSinkThread_Locked(SbTime system_time_on_consume_frames);
 
@@ -185,7 +188,6 @@ class AudioRendererImpl : public AudioRenderer,
   int64_t frames_consumed_on_sink_thread_ = 0;
   SbTime frames_consumed_set_at_on_sink_thread_ = 0;
   int64_t silence_frames_written_after_eos_on_sink_thread_ = 0;
-  int64_t silence_frames_consumed_on_sink_thread_ = 0;
 
 #if SB_LOG_MEDIA_TIME_STATS
   SbTime system_and_media_time_offset_ = -1;

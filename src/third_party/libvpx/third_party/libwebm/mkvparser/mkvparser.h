@@ -22,7 +22,7 @@ class IMkvReader {
   virtual int Length(long long* total, long long* available) = 0;
 
  protected:
-  virtual ~IMkvReader();
+  virtual ~IMkvReader() {}
 };
 
 template <typename Type>
@@ -473,6 +473,34 @@ struct Colour {
   MasteringMetadata* mastering_metadata;
 };
 
+struct Projection {
+  enum ProjectionType {
+    kTypeNotPresent = -1,
+    kRectangular = 0,
+    kEquirectangular = 1,
+    kCubeMap = 2,
+    kMesh = 3,
+  };
+  static const float kValueNotPresent;
+  Projection()
+      : type(kTypeNotPresent),
+        private_data(NULL),
+        private_data_length(0),
+        pose_yaw(kValueNotPresent),
+        pose_pitch(kValueNotPresent),
+        pose_roll(kValueNotPresent) {}
+  ~Projection() { delete[] private_data; }
+  static bool Parse(IMkvReader* reader, long long element_start,
+                    long long element_size, Projection** projection);
+
+  ProjectionType type;
+  unsigned char* private_data;
+  size_t private_data_length;
+  float pose_yaw;
+  float pose_pitch;
+  float pose_roll;
+};
+
 class VideoTrack : public Track {
   VideoTrack(const VideoTrack&);
   VideoTrack& operator=(const VideoTrack&);
@@ -497,6 +525,10 @@ class VideoTrack : public Track {
 
   Colour* GetColour() const;
 
+  Projection* GetProjection() const;
+
+  const char* GetColourSpace() const { return m_colour_space; }
+
  private:
   long long m_width;
   long long m_height;
@@ -504,10 +536,11 @@ class VideoTrack : public Track {
   long long m_display_height;
   long long m_display_unit;
   long long m_stereo_mode;
-
+  char* m_colour_space;
   double m_rate;
 
   Colour* m_colour;
+  Projection* m_projection;
 };
 
 class AudioTrack : public Track {
@@ -813,6 +846,8 @@ class SeekHead {
   long Parse();
 
   struct Entry {
+    Entry();
+
     // the SeekHead entry payload
     long long id;
     long long pos;

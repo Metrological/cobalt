@@ -15,7 +15,8 @@
 #include "starboard/character.h"
 
 #include <ctype.h>
-
+#if SB_API_VERSION < 13
 bool SbCharacterIsSpace(int c) {
   return isspace(c);
 }
+#endif  // SB_API_VERSION < 13

@@ -34,17 +34,6 @@
       '-lrt',
     ],
 
-    'compiler_flags': [
-      # We'll pretend not to be Linux, but Starboard instead.
-      '-U__linux__',
-    ],
-
-    # Using an inner scope for 'variables' so that it can be made a default
-    # (and so overridden elsewhere), but yet still used immediately in this
-    # file.
-    'variables': {
-      'use_dlmalloc_allocator%': 0,
-    },
     'conditions': [
       ['sb_evergreen != 1', {
         # TODO: allow starboard_platform to use system libc/libc++ in the
@@ -64,6 +53,26 @@
       '__STDC_FORMAT_MACROS', # so that we get PRI*
       # Enable GNU extensions to get prototypes like ffsl.
       '_GNU_SOURCE=1',
+    ],
+    'conditions': [
+      ['cobalt_config == "debug"', {
+        'defines': [
+          # Enable debug mode for the C++ standard library.
+          # https://gcc.gnu.org/onlinedocs/libstdc%2B%2B/manual/debug_mode_using.html
+          # https://libcxx.llvm.org/docs/DesignDocs/DebugMode.html
+          '_GLIBCXX_DEBUG',
+          '_LIBCPP_DEBUG=1',
+        ],
+      }],
+      ['cobalt_config == "devel"', {
+        'defines': [
+          # Enable debug mode for the C++ standard library.
+          # https://gcc.gnu.org/onlinedocs/libstdc%2B%2B/manual/debug_mode_using.html
+          # https://libcxx.llvm.org/docs/DesignDocs/DebugMode.html
+          '_GLIBCXX_DEBUG',
+          '_LIBCPP_DEBUG=0',
+        ],
+      }],
     ],
   }, # end of target_defaults
 }

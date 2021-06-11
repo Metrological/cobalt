@@ -11,8 +11,14 @@
     {
       'target_name': 'base',
       'type': 'static_library',
+      'include_dirs!': [
+        '<(DEPTH)',
+      ],
       'include_dirs': [
         '..',
+      ],
+      'cflags': [
+        '-isystem../..',
       ],
       'link_settings': {
         'conditions': [
@@ -37,6 +43,7 @@
         'atomicops_internals_atomicword_compat.h',
         'atomicops_internals_portable.h',
         'auto_reset.h',
+        'base_wrapper.h',
         'bit_cast.h',
         'compiler_specific.h',
         'debug/alias.cc',
@@ -132,8 +139,14 @@
         '../build/build_config.h',
       ],
       'direct_dependent_settings': {
+        'include_dirs!': [
+          '<(DEPTH)',
+        ],
         'include_dirs': [
           '..',
+        ],
+        'cflags': [
+          '-isystem../..',
         ],
       },
     },

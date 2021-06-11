@@ -28,29 +28,8 @@
 // Any system headers listed here that are not provided by the platform will be
 // emulated in starboard/types.h.
 
-// Whether the current platform provides the standard header stdarg.h.
-#define SB_HAS_STDARG_H 1
-
-// Whether the current platform provides the standard header stdbool.h.
-#define SB_HAS_STDBOOL_H 1
-
-// Whether the current platform provides the standard header stddef.h.
-#define SB_HAS_STDDEF_H 1
-
-// Whether the current platform provides the standard header stdint.h.
-#define SB_HAS_STDINT_H 1
-
-// Whether the current platform provides the standard header inttypes.h.
-#define SB_HAS_INTTYPES_H 1
-
 // Whether the current platform provides the standard header sys/types.h.
 #define SB_HAS_SYS_TYPES_H 1
-
-// Whether the current platform provides the standard header limits.h.
-#define SB_HAS_LIMITS_H 1
-
-// Whether the current platform provides the standard header float.h.
-#define SB_HAS_FLOAT_H 1
 
 // Whether the current platform provides ssize_t.
 #define SB_HAS_SSIZE_T 1
@@ -64,12 +43,10 @@
 #define SB_IS_WCHAR_T_UTF16 1
 #endif
 
-// Chrome only defines these two if ARMEL or MIPSEL are defined.
+// Chrome only defines this for ARMEL.
 #if defined(__ARMEL__)
 // Chrome has an exclusion for iOS here, we should too when we support iOS.
 #define SB_IS_WCHAR_T_UNSIGNED 1
-#elif defined(__MIPSEL__)
-#define SB_IS_WCHAR_T_SIGNED 1
 #endif
 
 // --- Attribute Configuration -----------------------------------------------
@@ -126,9 +103,6 @@
 
 // The location to include hash_set on this platform.
 #define SB_HASH_SET_INCLUDE <ext/hash_set>
-
-// Define this to how this platform copies varargs blocks.
-#define SB_VA_COPY(dest, source) va_copy(dest, source)
 
 // --- Filesystem Configuration ----------------------------------------------
 
@@ -216,13 +190,24 @@
 #endif
 // --- I/O Configuration -----------------------------------------------------
 
-// Whether the current platform has speech recognizer.
-#define SB_HAS_SPEECH_RECOGNIZER 0
-
 // Whether the current platform has speech synthesis.
 #define SB_HAS_SPEECH_SYNTHESIS 0
 
 // --- Media Configuration ---------------------------------------------------
+
+#if SB_API_VERSION < 12
+// Allow ac3 and ec3 support
+#define SB_HAS_AC3_AUDIO 1
+#endif  // SB_API_VERSION < 12
+
+#if SB_API_VERSION < 12
+// Specifies whether this platform updates audio frames asynchronously.  In such
+// case an extra parameter will be added to |SbAudioSinkConsumeFramesFunc| to
+// indicate the absolute time that the consumed audio frames are reported.
+// Check document for |SbAudioSinkConsumeFramesFunc| in audio_sink.h for more
+// details.
+#define SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING 0
+#endif  // SB_API_VERSION <  12
 
 #if SB_API_VERSION < 12
 // The maximum audio bitrate the platform can decode.  The following value
@@ -245,24 +230,10 @@
 #endif  // SB_API_VERSION < 12
 
 #if SB_API_VERSION < 12
-// Specifies whether this platform updates audio frames asynchronously.  In such
-// case an extra parameter will be added to |SbAudioSinkConsumeFramesFunc| to
-// indicate the absolute time that the consumed audio frames are reported.
-// Check document for |SbAudioSinkConsumeFramesFunc| in audio_sink.h for more
-// details.
-#define SB_HAS_ASYNC_AUDIO_FRAMES_REPORTING 0
-#endif  // SB_API_VERSION <  12
-
-#if SB_API_VERSION < 12
 // Specifies the stack size for threads created inside media stack.  Set to 0 to
 // use the default thread stack size.  Set to non-zero to explicitly set the
 // stack size for media stack threads.
 #define SB_MEDIA_THREAD_STACK_SIZE 0U
-#endif  // SB_API_VERSION < 12
-
-#if SB_API_VERSION < 12
-// Allow ac3 and ec3 support
-#define SB_HAS_AC3_AUDIO 1
 #endif  // SB_API_VERSION < 12
 
 // --- Decoder-only Params ---
@@ -277,24 +248,6 @@
 #if SB_API_VERSION < 12
 // Specifies how video frame buffers must be aligned on this platform.
 #define SB_MEDIA_VIDEO_FRAME_ALIGNMENT 256U
-#endif  // SB_API_VERSION < 12
-
-#if SB_API_VERSION < 12
-// The encoded video frames are compressed in different ways, their decoding
-// time can vary a lot.  Occasionally a single frame can take longer time to
-// decode than the average time per frame.  The player has to cache some frames
-// to account for such inconsistency.  The number of frames being cached are
-// controlled by the following two macros.
-//
-// Specify the number of video frames to be cached before the playback starts.
-// Note that set this value too large may increase the playback start delay.
-#define SB_MEDIA_MAXIMUM_VIDEO_PREROLL_FRAMES 4
-#endif  // SB_API_VERSION < 12
-
-#if SB_API_VERSION < 12
-// Specify the number of video frames to be cached during playback.  A large
-// value leads to more stable fps but also causes the app to use more memory.
-#define SB_MEDIA_MAXIMUM_VIDEO_FRAMES 12
 #endif  // SB_API_VERSION < 12
 
 // --- Memory Configuration --------------------------------------------------
@@ -365,7 +318,7 @@
 #if SB_API_VERSION < 12
 // Defines the maximum number of simultaneous threads for this platform. Some
 // platforms require sharing thread handles with other kinds of system handles,
-// like mutexes, so we want to keep this managable.
+// like mutexes, so we want to keep this manageable.
 #define SB_MAX_THREADS 90
 #endif  // SB_API_VERSION < 12
 

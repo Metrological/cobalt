@@ -8,8 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef VP9_ENCODER_VP9_ENCODEMB_H_
-#define VP9_ENCODER_VP9_ENCODEMB_H_
+#ifndef VPX_VP9_ENCODER_VP9_ENCODEMB_H_
+#define VPX_VP9_ENCODER_VP9_ENCODEMB_H_
 
 #include "./vpx_config.h"
 #include "vp9/encoder/vp9_block.h"
@@ -20,22 +20,32 @@ extern "C" {
 
 struct encode_b_args {
   MACROBLOCK *x;
-  struct optimize_ctx *ctx;
+  int enable_coeff_opt;
+  ENTROPY_CONTEXT *ta;
+  ENTROPY_CONTEXT *tl;
   int8_t *skip;
+#if CONFIG_MISMATCH_DEBUG
+  int mi_row;
+  int mi_col;
+  int output_enabled;
+#endif
 };
-void vp9_encode_sb(MACROBLOCK *x, BLOCK_SIZE bsize);
+int vp9_optimize_b(MACROBLOCK *mb, int plane, int block, TX_SIZE tx_size,
+                   int ctx);
+void vp9_encode_sb(MACROBLOCK *x, BLOCK_SIZE bsize, int mi_row, int mi_col,
+                   int output_enabled);
 void vp9_encode_sby_pass1(MACROBLOCK *x, BLOCK_SIZE bsize);
-void vp9_xform_quant_fp(MACROBLOCK *x, int plane, int block,
+void vp9_xform_quant_fp(MACROBLOCK *x, int plane, int block, int row, int col,
                         BLOCK_SIZE plane_bsize, TX_SIZE tx_size);
-void vp9_xform_quant_dc(MACROBLOCK *x, int plane, int block,
+void vp9_xform_quant_dc(MACROBLOCK *x, int plane, int block, int row, int col,
                         BLOCK_SIZE plane_bsize, TX_SIZE tx_size);
-void vp9_xform_quant(MACROBLOCK *x, int plane, int block,
+void vp9_xform_quant(MACROBLOCK *x, int plane, int block, int row, int col,
                      BLOCK_SIZE plane_bsize, TX_SIZE tx_size);
 
 void vp9_subtract_plane(MACROBLOCK *x, BLOCK_SIZE bsize, int plane);
 
-void vp9_encode_block_intra(int plane, int block, BLOCK_SIZE plane_bsize,
-                            TX_SIZE tx_size, void *arg);
+void vp9_encode_block_intra(int plane, int block, int row, int col,
+                            BLOCK_SIZE plane_bsize, TX_SIZE tx_size, void *arg);
 
 void vp9_encode_intra_block_plane(MACROBLOCK *x, BLOCK_SIZE bsize, int plane,
                                   int enable_optimize_b);
@@ -44,4 +54,4 @@ void vp9_encode_intra_block_plane(MACROBLOCK *x, BLOCK_SIZE bsize, int plane,
 }  // extern "C"
 #endif
 
-#endif  // VP9_ENCODER_VP9_ENCODEMB_H_
+#endif  // VPX_VP9_ENCODER_VP9_ENCODEMB_H_

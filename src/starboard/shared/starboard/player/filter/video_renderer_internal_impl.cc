@@ -182,7 +182,8 @@ void VideoRendererImpl::Seek(SbTime seek_to_time) {
   buffering_state_ = kWaitForBuffer;
 #endif  // SB_PLAYER_FILTER_ENABLE_STATE_CHECK
 
-  algorithm_->Reset();  // This is also guarded by sink_frames_mutex_.
+  // This is also guarded by |sink_frames_mutex_|.
+  algorithm_->Seek(seek_to_time);
 }
 
 bool VideoRendererImpl::CanAcceptMoreData() const {
@@ -405,8 +406,9 @@ void VideoRendererImpl::CheckForFrameLag(SbTime last_decoded_frame_timestamp) {
   bool is_playing;
   bool is_eos_played;
   bool is_underflow;
+  double playback_rate;
   SbTime media_time = media_time_provider_->GetCurrentMediaTime(
-      &is_playing, &is_eos_played, &is_underflow);
+      &is_playing, &is_eos_played, &is_underflow, &playback_rate);
   if (is_eos_played) {
     return;
   }

@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "base/compiler_specific.h"
@@ -44,6 +45,7 @@
 #include "cobalt/dom/pseudo_element.h"
 #include "cobalt/loader/image/image_cache.h"
 #include "cobalt/ui_navigation/nav_item.h"
+#include "starboard/time.h"
 
 namespace cobalt {
 namespace dom {
@@ -60,6 +62,7 @@ class HTMLHeadingElement;
 class HTMLHtmlElement;
 class HTMLImageElement;
 class HTMLLinkElement;
+class HTMLMediaElement;
 class HTMLMetaElement;
 class HTMLParagraphElement;
 class HTMLScriptElement;
@@ -220,6 +223,7 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   virtual scoped_refptr<HTMLImageElement> AsHTMLImageElement();
   virtual scoped_refptr<HTMLLinkElement> AsHTMLLinkElement();
   virtual scoped_refptr<HTMLMetaElement> AsHTMLMetaElement();
+  virtual scoped_refptr<HTMLMediaElement> AsHTMLMediaElement();
   virtual scoped_refptr<HTMLParagraphElement> AsHTMLParagraphElement();
   virtual scoped_refptr<HTMLScriptElement> AsHTMLScriptElement();
   virtual scoped_refptr<HTMLSpanElement> AsHTMLSpanElement();
@@ -301,6 +305,11 @@ class HTMLElement : public Element, public cssom::MutationObserver {
       const base::TimeDelta& style_change_event_time,
       AncestorsAreDisplayed ancestor_is_displayed);
 
+  // Collecting HTML media element.
+  void CollectHTMLMediaElementsRecursively(
+      std::vector<HTMLMediaElement*>* html_media_elements,
+      int current_element_depth);
+
   void MarkNotDisplayedOnNodeAndDescendants() override;
   void PurgeCachedBackgroundImagesOfNodeAndDescendants() override;
   void InvalidateComputedStylesOfNodeAndDescendants() override;
@@ -345,7 +354,7 @@ class HTMLElement : public Element, public cssom::MutationObserver {
 
   // Returns whether the element can be designated by a pointer.
   //   https://www.w3.org/TR/SVG11/interact.html#PointerEventsProperty
-  bool CanbeDesignatedByPointerIfDisplayed() const;
+  bool CanBeDesignatedByPointerIfDisplayed() const;
 
   // Returns true if this node and all of its ancestors do NOT have display set
   // to 'none'.
@@ -355,6 +364,10 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   const scoped_refptr<ui_navigation::NavItem>& GetUiNavItem() const {
     return ui_nav_item_;
   }
+
+  // Update the UI navigation system to focus on the relevant navigation item
+  // for this HTML element (if any).
+  void UpdateUiNavigationFocus();
 
   // Returns true if the element is the root element as defined in
   // https://www.w3.org/TR/html50/semantics.html#the-root-element.
@@ -380,6 +393,9 @@ class HTMLElement : public Element, public cssom::MutationObserver {
                       const std::string& value) override;
   void OnRemoveAttribute(const std::string& name) override;
 
+    // Create Performance Resource Timing entry for background image.
+  void GetLoadTimingInfoAndCreateResourceTiming();
+
   // HTMLElement keeps a pointer to the dom stat tracker to ensure that it can
   // make stat updates even after its weak pointer to its document has been
   // deleted. This is protected because some derived classes need access to it.
@@ -403,6 +419,9 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   // Update the cached value of tabindex.
   void SetTabIndex(const std::string& value);
 
+  // Update cached UI navigation focus duration.
+  void SetUiNavFocusDuration(const std::string& value);
+
   // Invalidate the matching rules and rule matching state in this element and
   // its descendants. In the case where this is the the initial invalidation,
   // it will also invalidate the rule matching state of its siblings.
@@ -412,7 +431,8 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   void ClearRuleMatchingStateInternal(bool invalidate_descendants);
 
   // Update the UI navigation item type for this element.
-  void UpdateUiNavigationType();
+  void UpdateUiNavigation();
+  void ReleaseUiNavigationItem();
 
   // Clear the list of active background images, and notify the animated image
   // tracker to stop the animations.
@@ -433,9 +453,9 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   void InvalidateLayoutBoxes();
 
   // Handle UI navigation events.
-  void OnUiNavBlur();
-  void OnUiNavFocus();
-  void OnUiNavScroll();
+  void OnUiNavBlur(SbTimeMonotonic time);
+  void OnUiNavFocus(SbTimeMonotonic time);
+  void OnUiNavScroll(SbTimeMonotonic time);
 
   bool locked_for_focus_;
 
@@ -508,11 +528,16 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   // boxes without requiring a new layout.
   scoped_refptr<ui_navigation::NavItem> ui_nav_item_;
 
-  // This temporary flag is used to avoid a cycle on focus changes. When the
-  // HTML element receives focus, it must inform the UI navigation item. When
-  // the UI navigation item receives focus (either by calling SetFocus or by an
-  // update from the UI engine), it will tell the HTML element it was focused.
-  bool ui_nav_focusing_ = false;
+  // Specify how long focus should remain on this navigation item once it
+  // becomes focused.
+  base::Optional<float> ui_nav_focus_duration_;
+
+  // Signal whether the UI navigation item may need to be updated.
+  bool ui_nav_needs_update_ = false;
+
+  // Thread checker ensures all calls to DOM element are made from the same
+  // thread that it is created in.
+  THREAD_CHECKER(thread_checker_);
 
   // HTMLElement is a friend of Animatable so that animatable can insert and
   // remove animations into HTMLElement's set of animations.

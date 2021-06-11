@@ -27,11 +27,15 @@
         'configuration.cc',
         'configuration.h',
         'configuration_constants.cc',
+        'font.cc',
+        'font.h',
+        'javascript_cache.h',
+        'javascript_cache.cc',
         'main.cc',
         'system_get_extensions.cc',
         'thread_types_public.h',
         # Include private stubs, if present.
-        '<!@(python "<(DEPTH)/starboard/tools/find_private_files.py" "<(DEPTH)" "shared/stub/*.cc")',
+        '<!@pymod_do_main(starboard.build.gyp_functions file_glob <(DEPTH)/starboard/private/shared/stub *.cc)',
       ],
       'defines': [
         # This must be defined when building Starboard, and must not when

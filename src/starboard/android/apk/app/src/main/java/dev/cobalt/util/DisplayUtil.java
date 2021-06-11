@@ -15,9 +15,9 @@
 package dev.cobalt.util;
 
 import android.content.Context;
-import android.content.res.Resources;
 import android.util.DisplayMetrics;
 import android.util.Size;
+import android.util.SizeF;
 import android.view.Display;
 import android.view.WindowManager;
 import androidx.annotation.Nullable;
@@ -28,11 +28,40 @@ public class DisplayUtil {
 
   private DisplayUtil() {}
 
+  private static Display defaultDisplay;
+
+  /** Returns the physical pixels per inch of the screen in the X and Y dimensions. */
+  public static SizeF getDisplayDpi() {
+    DisplayMetrics metrics = getDisplayMetrics();
+    return new SizeF(metrics.xdpi, metrics.ydpi);
+  }
+
+  /** Returns the default display associated with a context. */
+  @Nullable
+  public static Display getDefaultDisplay() {
+    synchronized (DisplayUtil.class) {
+      if (defaultDisplay != null && !defaultDisplay.isValid()) {
+        return null;
+      }
+
+      return defaultDisplay;
+    }
+  }
+
+  /** Cache the default display, this will be triggered when a NativeActivity starts. */
+  public static void cacheDefaultDisplay(Context context) {
+    Display display = getDisplayFromContext(context);
+    synchronized (DisplayUtil.class) {
+      defaultDisplay = display;
+    }
+  }
+
   /**
-   * Returns the default display associated with a context.
+   * Returns the default display associated with a context. When API Level >= 30, pass {@link
+   * android.app.Activity} for the context parameter.
    */
   @Nullable
-  public static Display getDefaultDisplay(Context context) {
+  public static Display getDisplayFromContext(Context context) {
     if (context == null) {
       return null;
     }
@@ -59,31 +88,31 @@ public class DisplayUtil {
   /**
    * Returns the size of the physical display size in pixels.
    *
-   * <p>This differs from {@link #getSystemDisplaySize(Context)} because it only uses
-   * {@link DisplayMetrics}.
+   * <p>This differs from {@link #getSystemDisplaySize()} because it only uses {@link
+   * DisplayMetrics}.
    */
-  public static Size getDisplaySize(Context context) {
-    DisplayMetrics metrics = getDisplayMetrics(context);
+  public static Size getDisplaySize() {
+    DisplayMetrics metrics = getDisplayMetrics();
     return new Size(metrics.widthPixels, metrics.heightPixels);
   }
 
   /**
    * Returns the size of the current physical display size in pixels.
    *
-   * <p>This differs from {@link #getDisplaySize(Context)} because it allows the
-   * system property "sys.display-size" to override {@link DisplayMetrics}.
+   * <p>This differs from {@link #getDisplaySize()} because it allows the system property
+   * "sys.display-size" to override {@link DisplayMetrics}.
    */
-  public static Size getSystemDisplaySize(Context context) {
+  public static Size getSystemDisplaySize() {
     Size widthAndHeightPx = getSystemDisplayWidthAndHeightPxInternal();
     if (widthAndHeightPx == null) {
-      widthAndHeightPx = getDisplaySize(context);
+      widthAndHeightPx = getDisplaySize();
     }
     return widthAndHeightPx;
   }
 
   /**
-   * Returns the size of the current physical display size in pixels.
-   * or {@code null} if unavailable.
+   * Returns the size of the current physical display size in pixels. or {@code null} if
+   * unavailable.
    */
   private static Size getSystemDisplayWidthAndHeightPxInternal() {
     final String displaySize = SystemPropertiesHelper.getString("sys.display-size");
@@ -103,11 +132,13 @@ public class DisplayUtil {
 
   private static DisplayMetrics cachedDisplayMetrics = null;
 
-  private static DisplayMetrics getDisplayMetrics(Context context) {
-    Resources.getSystem().getDisplayMetrics();
+  private static DisplayMetrics getDisplayMetrics() {
     if (cachedDisplayMetrics == null) {
       cachedDisplayMetrics = new DisplayMetrics();
-      getDefaultDisplay(context).getRealMetrics(cachedDisplayMetrics);
+      Display display = getDefaultDisplay();
+      if (display != null) {
+        display.getRealMetrics(cachedDisplayMetrics);
+      }
     }
     return cachedDisplayMetrics;
   }

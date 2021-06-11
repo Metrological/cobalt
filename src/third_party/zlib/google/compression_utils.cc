@@ -12,7 +12,7 @@
 
 #include "third_party/zlib/google/compression_utils_portable.h"
 
-#if defined(OS_STARBOARD)
+#if defined(STARBOARD)
 #include "starboard/client_porting/poem/stdio_poem.h"
 #endif
 
@@ -46,7 +46,7 @@ bool GzipCompress(base::StringPiece input, std::string* output) {
   const uLongf input_size = static_cast<uLongf>(input.size());
 
   uLongf compressed_data_size =
-      zlib_internal::GZipExpectedCompressedSize(input_size);
+      zlib_internal::GzipExpectedCompressedSize(input_size);
 
   Bytef* compressed_data;
   if (!base::UncheckedMalloc(compressed_data_size,

@@ -23,6 +23,7 @@
 #include "cobalt/dom/event.h"
 #include "cobalt/dom/html_element.h"
 #include "cobalt/dom/html_html_element.h"
+#include "cobalt/dom/lottie_player.h"
 #include "cobalt/dom/mouse_event.h"
 #include "cobalt/dom/mouse_event_init.h"
 #include "cobalt/dom/pointer_event.h"
@@ -52,7 +53,6 @@ scoped_refptr<dom::HTMLElement> TopmostEventTarget::FindTopmostEventTarget(
   ConsiderElement(html_element_, coordinate);
   box_ = NULL;
   render_sequence_.clear();
-  document->SetIndicatedElement(html_element_);
   scoped_refptr<dom::HTMLElement> topmost_element;
   topmost_element.swap(html_element_);
   DCHECK(!html_element_);
@@ -95,7 +95,7 @@ void TopmostEventTarget::ConsiderElement(dom::Element* element,
     }
 
     scoped_refptr<dom::HTMLElement> html_element = element->AsHTMLElement();
-    if (html_element && html_element->CanbeDesignatedByPointerIfDisplayed()) {
+    if (html_element && html_element->CanBeDesignatedByPointerIfDisplayed()) {
       ConsiderBoxes(html_element, layout_boxes, element_coordinate);
     }
   }
@@ -130,52 +130,80 @@ void TopmostEventTarget::ConsiderBoxes(
 }
 
 namespace {
-void SendStateChangeEvents(bool is_pointer_event,
-                           scoped_refptr<dom::HTMLElement> previous_element,
-                           scoped_refptr<dom::HTMLElement> target_element,
-                           dom::PointerEventInit* event_init) {
+// Return the nearest common ancestor of previous_element and target_element
+scoped_refptr<dom::Element> GetNearestCommonAncestor(
+    scoped_refptr<dom::HTMLElement> previous_element,
+    scoped_refptr<dom::HTMLElement> target_element) {
+  scoped_refptr<dom::Element> nearest_common_ancestor;
+  if (previous_element == target_element) {
+    nearest_common_ancestor = target_element;
+  } else {
+    if (previous_element && target_element) {
+      // Find the nearest common ancestor, if there is any.
+      dom::Document* previous_document = previous_element->node_document();
+      // The elements only have a common ancestor if they are both in the same
+      // document.
+      if (previous_document &&
+          previous_document == target_element->node_document()) {
+        // The nearest ancestor of the target element that is already
+        // designated is the nearest common ancestor of it and the previous
+        // element.
+        nearest_common_ancestor = target_element;
+        while (nearest_common_ancestor &&
+               nearest_common_ancestor->AsHTMLElement() &&
+               !nearest_common_ancestor->AsHTMLElement()->IsDesignated()) {
+          nearest_common_ancestor = nearest_common_ancestor->parent_element();
+        }
+      }
+    }
+  }
+  return nearest_common_ancestor;
+}
+
+void SendStateChangeLeaveEvents(
+    bool is_pointer_event, scoped_refptr<dom::HTMLElement> previous_element,
+    scoped_refptr<dom::HTMLElement> target_element,
+    scoped_refptr<dom::Element> nearest_common_ancestor,
+    dom::PointerEventInit* event_init) {
   // Send enter/leave/over/out (status change) events when needed.
   if (previous_element != target_element) {
     const scoped_refptr<dom::Window>& view = event_init->view();
 
-    // The enter/leave status change events apply to all ancestors up to the
-    // nearest common ancestor between the previous and current element.
-    scoped_refptr<dom::Element> nearest_common_ancestor;
-
     // Send out and leave events.
     if (previous_element) {
+      // LottiePlayer elements may change playback state.
+      if (previous_element->AsLottiePlayer()) {
+        previous_element->AsLottiePlayer()->OnUnHover();
+      }
+
+      dom::Document* previous_document = previous_element->node_document();
+
       event_init->set_related_target(target_element);
       if (is_pointer_event) {
         previous_element->DispatchEvent(new dom::PointerEvent(
             base::Tokens::pointerout(), view, *event_init));
-      }
-      previous_element->DispatchEvent(
-          new dom::MouseEvent(base::Tokens::mouseout(), view, *event_init));
-
-      // Find the nearest common ancestor, if there is any.
-      dom::Document* previous_document = previous_element->node_document();
-      if (previous_document) {
-        if (target_element &&
-            previous_document == target_element->node_document()) {
-          // The nearest ancestor of the current element that is already
-          // designated is the nearest common ancestor of it and the previous
-          // element.
-          nearest_common_ancestor = target_element;
-          while (nearest_common_ancestor &&
-                 nearest_common_ancestor->AsHTMLElement() &&
-                 !nearest_common_ancestor->AsHTMLElement()->IsDesignated()) {
-            nearest_common_ancestor = nearest_common_ancestor->parent_element();
-          }
-        }
-
-        for (scoped_refptr<dom::Element> element = previous_element;
-             element && element != nearest_common_ancestor;
-             element = element->parent_element()) {
-          if (is_pointer_event) {
+        if (previous_document) {
+          for (scoped_refptr<dom::Element> element = previous_element;
+               element && element != nearest_common_ancestor;
+               element = element->parent_element()) {
+            DCHECK(element->AsHTMLElement()->IsDesignated());
             element->DispatchEvent(new dom::PointerEvent(
                 base::Tokens::pointerleave(), dom::Event::kNotBubbles,
                 dom::Event::kNotCancelable, view, *event_init));
           }
+        }
+      }
+
+      // Send compatibility mapping mouse events for state changes.
+      //   https://www.w3.org/TR/pointerevents/#mapping-for-devices-that-do-not-support-hover
+      previous_element->DispatchEvent(
+          new dom::MouseEvent(base::Tokens::mouseout(), view, *event_init));
+
+      if (previous_document) {
+        for (scoped_refptr<dom::Element> element = previous_element;
+             element && element != nearest_common_ancestor;
+             element = element->parent_element()) {
+          DCHECK(element->AsHTMLElement()->IsDesignated());
           element->DispatchEvent(new dom::MouseEvent(
               base::Tokens::mouseleave(), dom::Event::kNotBubbles,
               dom::Event::kNotCancelable, view, *event_init));
@@ -187,25 +215,45 @@ void SendStateChangeEvents(bool is_pointer_event,
         }
       }
     }
+  }
+}
+
+void SendStateChangeEnterEvents(
+    bool is_pointer_event, scoped_refptr<dom::HTMLElement> previous_element,
+    scoped_refptr<dom::HTMLElement> target_element,
+    scoped_refptr<dom::Element> nearest_common_ancestor,
+    dom::PointerEventInit* event_init) {
+  // Send enter/leave/over/out (status change) events when needed.
+  if (previous_element != target_element) {
+    const scoped_refptr<dom::Window>& view = event_init->view();
 
     // Send over and enter events.
     if (target_element) {
+      // LottiePlayer elements may change playback state.
+      if (target_element->AsLottiePlayer()) {
+        target_element->AsLottiePlayer()->OnHover();
+      }
+
       event_init->set_related_target(previous_element);
       if (is_pointer_event) {
         target_element->DispatchEvent(new dom::PointerEvent(
             base::Tokens::pointerover(), view, *event_init));
-      }
-      target_element->DispatchEvent(
-          new dom::MouseEvent(base::Tokens::mouseover(), view, *event_init));
-
-      for (scoped_refptr<dom::Element> element = target_element;
-           element != nearest_common_ancestor;
-           element = element->parent_element()) {
-        if (is_pointer_event) {
+        for (scoped_refptr<dom::Element> element = target_element;
+             element && element != nearest_common_ancestor;
+             element = element->parent_element()) {
           element->DispatchEvent(new dom::PointerEvent(
               base::Tokens::pointerenter(), dom::Event::kNotBubbles,
               dom::Event::kNotCancelable, view, *event_init));
         }
+      }
+
+      // Send compatibility mapping mouse events for state changes.
+      //   https://www.w3.org/TR/pointerevents/#mapping-for-devices-that-do-not-support-hover
+      target_element->DispatchEvent(
+          new dom::MouseEvent(base::Tokens::mouseover(), view, *event_init));
+      for (scoped_refptr<dom::Element> element = target_element;
+           element && element != nearest_common_ancestor;
+           element = element->parent_element()) {
         element->DispatchEvent(new dom::MouseEvent(
             base::Tokens::mouseenter(), dom::Event::kNotBubbles,
             dom::Event::kNotCancelable, view, *event_init));
@@ -357,6 +405,18 @@ void TopmostEventTarget::MaybeSendPointerEvents(
     target_element = FindTopmostEventTarget(view->document(), coordinate);
   }
 
+  scoped_refptr<dom::HTMLElement> previous_html_element(
+      previous_html_element_weak_);
+
+  // The enter/leave status change events apply to all ancestors up to the
+  // nearest common ancestor between the previous and current element.
+  scoped_refptr<dom::Element> nearest_common_ancestor(
+      GetNearestCommonAncestor(previous_html_element, target_element));
+
+  SendStateChangeLeaveEvents(pointer_event, previous_html_element,
+                             target_element, nearest_common_ancestor,
+                             &event_init);
+
   if (target_element) {
     target_element->DispatchEvent(event);
   }
@@ -379,26 +439,42 @@ void TopmostEventTarget::MaybeSendPointerEvents(
     }
   }
 
-  if (target_element && !is_touchpad_event) {
-    // Send the click event if needed, which is not prevented by canceling the
-    // pointerdown event.
-    //   https://www.w3.org/TR/uievents/#event-type-click
-    //   https://www.w3.org/TR/pointerevents/#compatibility-mapping-with-mouse-events
-    if (event_init.button() == 0 &&
-        ((mouse_event->type() == base::Tokens::pointerup()) ||
-         (mouse_event->type() == base::Tokens::mouseup()))) {
+  if (event_init.button() == 0 &&
+      ((mouse_event->type() == base::Tokens::pointerup()) ||
+       (mouse_event->type() == base::Tokens::mouseup()))) {
+    // This is an 'up' event for the last pressed button indicating that no
+    // more buttons are pressed.
+    if (target_element && !is_touchpad_event) {
+      // Send the click event if needed, which is not prevented by cancelling
+      // the pointerdown event.
+      //   https://www.w3.org/TR/uievents/#event-type-click
+      //   https://www.w3.org/TR/pointerevents/#compatibility-mapping-with-mouse-events
       target_element->DispatchEvent(
           new dom::MouseEvent(base::Tokens::click(), view, event_init));
     }
+    if (target_element && (pointer_event->pointer_type() != "mouse")) {
+      // If it's not a mouse event, then releasing the last button means
+      // that there is no longer an indicated element.
+      dom::Document* document = target_element->node_document();
+      if (document) {
+        document->SetIndicatedElement(NULL);
+        target_element = NULL;
+      }
+    }
   }
 
-  scoped_refptr<dom::HTMLElement> previous_html_element(
-      previous_html_element_weak_);
-
-  SendStateChangeEvents(pointer_event, previous_html_element, target_element,
-                        &event_init);
+  SendStateChangeEnterEvents(pointer_event, previous_html_element,
+                             target_element, nearest_common_ancestor,
+                             &event_init);
 
   if (target_element) {
+    // Touchpad input never indicates document elements.
+    if (!is_touchpad_event) {
+      dom::Document* document = target_element->node_document();
+      if (document) {
+        document->SetIndicatedElement(target_element);
+      }
+    }
     previous_html_element_weak_ = base::AsWeakPtr(target_element.get());
   } else {
     previous_html_element_weak_.reset();

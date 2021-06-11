@@ -97,8 +97,7 @@ void BaseEventHandler(const SbEvent* event) {
       g_at_exit = NULL;
       break;
     }
-#if SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION || \
-    SB_HAS(CONCEALED_STATE)
+#if SB_API_VERSION >= 13
     case kSbEventTypeBlur:
     case kSbEventTypeFocus:
     case kSbEventTypeConceal:
@@ -110,38 +109,44 @@ void BaseEventHandler(const SbEvent* event) {
     case kSbEventTypeUnpause:
     case kSbEventTypeSuspend:
     case kSbEventTypeResume:
-#endif  // SB_API_VERSION >= SB_ADD_CONCEALED_STATE_SUPPORT_VERSION ||
-        // SB_HAS(CONCEALED_STATE)
+#endif  // SB_API_VERSION >= 13
     case kSbEventTypeInput:
     case kSbEventTypeUser:
     case kSbEventTypeLink:
     case kSbEventTypeVerticalSync:
-#if SB_API_VERSION < 11
-    case kSbEventTypeNetworkDisconnect:
-    case kSbEventTypeNetworkConnect:
-#endif  // SB_API_VERSION < 11
     case kSbEventTypeScheduled:
+#if SB_API_VERSION >= 13
+    case kSbEventTypeAccessibilitySettingsChanged:
+#else
     case kSbEventTypeAccessiblitySettingsChanged:
+#endif  // SB_API_VERSION >= 13
     case kSbEventTypeLowMemory:
-#if SB_API_VERSION >= 8
     case kSbEventTypeWindowSizeChanged:
-#endif  // SB_API_VERSION >= 8
 #if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
     case kSbEventTypeOnScreenKeyboardShown:
     case kSbEventTypeOnScreenKeyboardHidden:
     case kSbEventTypeOnScreenKeyboardFocused:
     case kSbEventTypeOnScreenKeyboardBlurred:
-#if SB_API_VERSION >= 11
     case kSbEventTypeOnScreenKeyboardSuggestionsUpdated:
-#endif  // SB_API_VERSION >= 11
 #endif  // SB_API_VERSION >= 12 ||
         // SB_HAS(ON_SCREEN_KEYBOARD)
 #if SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
     case kSbEventTypeAccessibilityCaptionSettingsChanged:
 #endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
 #if SB_API_VERSION >= 12
+#if SB_API_VERSION >= 13
+    case kSbEventTypeAccessibilityTextToSpeechSettingsChanged:
+#else
     case kSbEventTypeAccessiblityTextToSpeechSettingsChanged:
+#endif  // SB_API_VERSION >= 13
 #endif  // SB_API_VERSION >= 12
+#if SB_API_VERSION >= 13
+    case kSbEventTypeOsNetworkDisconnected:
+    case kSbEventTypeOsNetworkConnected:
+#endif
+#if SB_API_VERSION >= 13
+    case kSbEventDateTimeConfigurationChanged:
+#endif
       event_function(event);
       break;
   }

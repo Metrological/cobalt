@@ -7,8 +7,8 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
-#ifndef VP8_ENCODER_LOOKAHEAD_H_
-#define VP8_ENCODER_LOOKAHEAD_H_
+#ifndef VPX_VP8_ENCODER_LOOKAHEAD_H_
+#define VPX_VP8_ENCODER_LOOKAHEAD_H_
 #include "vpx_scale/yv12config.h"
 #include "vpx/vpx_integer.h"
 
@@ -16,14 +16,12 @@
 extern "C" {
 #endif
 
-struct lookahead_entry
-{
-    YV12_BUFFER_CONFIG  img;
-    int64_t             ts_start;
-    int64_t             ts_end;
-    unsigned int        flags;
+struct lookahead_entry {
+  YV12_BUFFER_CONFIG img;
+  int64_t ts_start;
+  int64_t ts_end;
+  unsigned int flags;
 };
-
 
 struct lookahead_ctx;
 
@@ -34,17 +32,14 @@ struct lookahead_ctx;
  *
  *
  */
-struct lookahead_ctx* vp8_lookahead_init(unsigned int width,
+struct lookahead_ctx *vp8_lookahead_init(unsigned int width,
                                          unsigned int height,
-                                         unsigned int depth
-                                         );
-
+                                         unsigned int depth);
 
 /**\brief Destroys the lookahead stage
  *
  */
 void vp8_lookahead_destroy(struct lookahead_ctx *ctx);
-
 
 /**\brief Enqueue a source buffer
  *
@@ -61,14 +56,9 @@ void vp8_lookahead_destroy(struct lookahead_ctx *ctx);
  * \param[in] flags       Flags set on this frame
  * \param[in] active_map  Map that specifies which macroblock is active
  */
-int
-vp8_lookahead_push(struct lookahead_ctx *ctx,
-                   YV12_BUFFER_CONFIG   *src,
-                   int64_t               ts_start,
-                   int64_t               ts_end,
-                   unsigned int          flags,
-                   unsigned char        *active_map);
-
+int vp8_lookahead_push(struct lookahead_ctx *ctx, YV12_BUFFER_CONFIG *src,
+                       int64_t ts_start, int64_t ts_end, unsigned int flags,
+                       unsigned char *active_map);
 
 /**\brief Get the next source buffer to encode
  *
@@ -81,13 +71,10 @@ vp8_lookahead_push(struct lookahead_ctx *ctx,
  * \retval NULL, if drain not set and queue not of the configured depth
  *
  */
-struct lookahead_entry*
-vp8_lookahead_pop(struct lookahead_ctx *ctx,
-                  int                   drain);
+struct lookahead_entry *vp8_lookahead_pop(struct lookahead_ctx *ctx, int drain);
 
-
-#define PEEK_FORWARD   1
-#define PEEK_BACKWARD -1
+#define PEEK_FORWARD 1
+#define PEEK_BACKWARD (-1)
 /**\brief Get a future source buffer to encode
  *
  * \param[in] ctx       Pointer to the lookahead context
@@ -96,22 +83,17 @@ vp8_lookahead_pop(struct lookahead_ctx *ctx,
  * \retval NULL, if no buffer exists at the specified index
  *
  */
-struct lookahead_entry*
-vp8_lookahead_peek(struct lookahead_ctx *ctx,
-                   unsigned int          index,
-                   int                   direction);
-
+struct lookahead_entry *vp8_lookahead_peek(struct lookahead_ctx *ctx,
+                                           unsigned int index, int direction);
 
 /**\brief Get the number of frames currently in the lookahead queue
  *
  * \param[in] ctx       Pointer to the lookahead context
  */
-unsigned int
-vp8_lookahead_depth(struct lookahead_ctx *ctx);
-
+unsigned int vp8_lookahead_depth(struct lookahead_ctx *ctx);
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif
 
-#endif  // VP8_ENCODER_LOOKAHEAD_H_
+#endif  // VPX_VP8_ENCODER_LOOKAHEAD_H_

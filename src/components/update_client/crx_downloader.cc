@@ -34,11 +34,19 @@ CrxDownloader::DownloadMetrics::DownloadMetrics()
 
 // On Windows, the first downloader in the chain is a background downloader,
 // which uses the BITS service.
+#if defined(STARBOARD)
+std::unique_ptr<CrxDownloader> CrxDownloader::Create(
+    bool is_background_download,
+    scoped_refptr<Configurator> config) {
+  std::unique_ptr<CrxDownloader> url_fetcher_downloader =
+      std::make_unique<UrlFetcherDownloader>(nullptr, config);
+#else
 std::unique_ptr<CrxDownloader> CrxDownloader::Create(
     bool is_background_download,
     scoped_refptr<NetworkFetcherFactory> network_fetcher_factory) {
   std::unique_ptr<CrxDownloader> url_fetcher_downloader =
       std::make_unique<UrlFetcherDownloader>(nullptr, network_fetcher_factory);
+#endif
 
 #if defined(OS_WIN)
   if (is_background_download) {
@@ -160,7 +168,7 @@ void CrxDownloader::VerifyResponse(bool is_handled,
   // handling the error.
   result.error = static_cast<int>(CrxDownloaderError::BAD_HASH);
   download_metrics.error = result.error;
-#if defined(OS_STARBOARD)
+#if defined(STARBOARD)
   base::DeleteFile(result.response, false);
 #else
   DeleteFileAndEmptyParentDirectory(result.response);
@@ -184,29 +192,37 @@ void CrxDownloader::HandleDownloadError(
 
   download_metrics_.push_back(download_metrics);
 
-  // If an error has occured, try the next url if there is any,
-  // or try the successor in the chain if there is any successor.
-  // If this downloader has received a 5xx error for the current url,
-  // as indicated by the |is_handled| flag, remove that url from the list of
-  // urls so the url is never tried again down the chain.
-  if (is_handled) {
-    current_url_ = urls_.erase(current_url_);
-  } else {
-    ++current_url_;
-  }
+#if defined(STARBOARD)
+  if (result.error != static_cast<int>(CrxDownloaderError::SLOT_UNAVAILABLE)) {
+#endif
 
-  // Try downloading from another url from the list.
-  if (current_url_ != urls_.end()) {
-    DoStartDownload(*current_url_);
-    return;
-  }
+    // If an error has occured, try the next url if there is any,
+    // or try the successor in the chain if there is any successor.
+    // If this downloader has received a 5xx error for the current url,
+    // as indicated by the |is_handled| flag, remove that url from the list of
+    // urls so the url is never tried again down the chain.
+    if (is_handled) {
+      current_url_ = urls_.erase(current_url_);
+    } else {
+      ++current_url_;
+    }
 
-  // Try downloading using the next downloader.
-  if (successor_ && !urls_.empty()) {
-    successor_->StartDownload(urls_, expected_hash_,
-                              std::move(download_callback_));
-    return;
+    // Try downloading from another url from the list.
+    if (current_url_ != urls_.end()) {
+      DoStartDownload(*current_url_);
+      return;
+    }
+
+    // Try downloading using the next downloader.
+    if (successor_ && !urls_.empty()) {
+      successor_->StartDownload(urls_, expected_hash_,
+                                std::move(download_callback_));
+      return;
+    }
+
+#if defined(STARBOARD)
   }
+#endif
 
   // The download ends here since there is no url nor downloader to handle this
   // download request further.

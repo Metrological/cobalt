@@ -8,8 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef TEST_TEST_VECTORS_H_
-#define TEST_TEST_VECTORS_H_
+#ifndef VPX_TEST_TEST_VECTORS_H_
+#define VPX_TEST_TEST_VECTORS_H_
 
 #include "./vpx_config.h"
 
@@ -23,10 +23,12 @@ extern const char *const kVP8TestVectors[];
 #if CONFIG_VP9_DECODER
 extern const int kNumVP9TestVectors;
 extern const char *const kVP9TestVectors[];
+extern const int kNumVP9TestVectorsSvc;
+extern const char *const kVP9TestVectorsSvc[];
 extern const int kNumVP9TestVectorsResize;
 extern const char *const kVP9TestVectorsResize[];
 #endif  // CONFIG_VP9_DECODER
 
 }  // namespace libvpx_test
 
-#endif  // TEST_TEST_VECTORS_H_
+#endif  // VPX_TEST_TEST_VECTORS_H_

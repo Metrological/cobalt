@@ -21,52 +21,18 @@
 #ifndef STARBOARD_EVERGREEN_ARM64_CONFIGURATION_PUBLIC_H_
 #define STARBOARD_EVERGREEN_ARM64_CONFIGURATION_PUBLIC_H_
 
-// Configuration parameters that allow the application to make some general
-// compile-time decisions with respect to the the number of cores likely to be
-// available on this platform. For a definitive measure, the application should
-// still call SbSystemGetNumberOfProcessors at runtime.
-
-// Whether the current platform's thread scheduler will automatically balance
-// threads between cores, as opposed to systems where threads will only ever run
-// on the specifically pinned core.
-#define SB_HAS_CROSS_CORE_SCHEDULER 1
-
-// Indicates that there is no support for alignment at greater than 16 bytes for
-// items on the stack.
-#define SB_HAS_QUIRK_DOES_NOT_STACK_ALIGN_OVER_16_BYTES 1
-
-// This quirk is used to fix an issue caused by the rewriting of memset to
-// SbMemorySet in third_party/protobuf/src/google/protobuf/stubs/port.h.
-#define SB_HAS_QUIRK_MEMSET_IN_SYSTEM_HEADERS 1
+// --- Architecture Configuration --------------------------------------------
 
 // --- System Header Configuration -------------------------------------------
 
 // Any system headers listed here that are not provided by the platform will be
 // emulated in starboard/types.h.
 
-// Whether the current platform provides the standard header stdarg.h.
-#define SB_HAS_STDARG_H 1
-
-// Whether the current platform provides the standard header stdbool.h.
-#define SB_HAS_STDBOOL_H 1
-
-// Whether the current platform provides the standard header stddef.h.
-#define SB_HAS_STDDEF_H 1
-
-// Whether the current platform provides the standard header stdint.h.
-#define SB_HAS_STDINT_H 1
-
-// Whether the current platform provides the standard header inttypes.h.
-#define SB_HAS_INTTYPES_H 1
-
-// Whether the current platform provides the standard header limits.h.
-#define SB_HAS_LIMITS_H 1
-
-// Whether the current platform provides the standard header float.h.
-#define SB_HAS_FLOAT_H 1
+// Whether the current platform provides the standard header sys/types.h.
+#define SB_HAS_SYS_TYPES_H 0
 
 // Whether the current platform provides ssize_t.
-#define SB_HAS_SSIZE_T 0
+#define SB_HAS_SSIZE_T 1
 
 // Type detection for wchar_t.
 #if defined(__WCHAR_MAX__) && \
@@ -77,17 +43,11 @@
 #define SB_IS_WCHAR_T_UTF16 1
 #endif
 
-// Chrome only defines these two if ARMEL or MIPSEL are defined.
+// Chrome only defines this for ARMEL.
 #if defined(__ARMEL__)
 // Chrome has an exclusion for iOS here, we should too when we support iOS.
 #define SB_IS_WCHAR_T_UNSIGNED 1
-#elif defined(__MIPSEL__)
-#define SB_IS_WCHAR_T_SIGNED 1
 #endif
-
-// This quirk is used to fix an issue caused by the rewriting of memset to
-// SbMemorySet in third_party/protobuf/src/google/protobuf/stubs/port.h.
-#define SB_HAS_QUIRK_MEMSET_IN_SYSTEM_HEADERS 1
 
 // --- Compiler Configuration ------------------------------------------------
 
@@ -144,9 +104,6 @@
 // The location to include hash_set on this platform.
 #define SB_HASH_SET_INCLUDE <ext/hash_set>
 
-// Define this to how this platform copies varargs blocks.
-#define SB_VA_COPY(dest, source) va_copy(dest, source)
-
 // --- Graphics Configuration ------------------------------------------------
 
 // Specifies whether this platform supports a performant accelerated blitter
@@ -170,9 +127,6 @@
 // Whether the current platform implements the on screen keyboard interface.
 #define SB_HAS_ON_SCREEN_KEYBOARD 0
 
-// Whether the current platform has speech recognizer.
-#define SB_HAS_SPEECH_RECOGNIZER 0
-
 // Whether the current platform has speech synthesis.
 #define SB_HAS_SPEECH_SYNTHESIS 0
 
@@ -180,15 +134,15 @@
 
 // --- Memory Configuration --------------------------------------------------
 
+// Whether this platform can map executable memory. Implies SB_HAS_MMAP. This is
+// required for platforms that want to JIT.
+#define SB_CAN_MAP_EXECUTABLE_MEMORY 1
+
 // Whether this platform has and should use an MMAP function to map physical
 // memory to the virtual address space.
 #if SB_API_VERSION < 12
 #define SB_HAS_MMAP 1
 #endif
-
-// Whether this platform can map executable memory. Implies SB_HAS_MMAP. This is
-// required for platforms that want to JIT.
-#define SB_CAN_MAP_EXECUTABLE_MEMORY 1
 
 // --- Network Configuration -------------------------------------------------
 
@@ -215,5 +169,11 @@
 #if !defined(__GNUC__)
 #error "Evergreen-arm64 builds need a GCC-like compiler (for the moment)."
 #endif
+
+// --- Platform Specific Quirks ----------------------------------------------
+
+// Indicates that there is no support for alignment at greater than 16 bytes for
+// items on the stack.
+#define SB_HAS_QUIRK_DOES_NOT_STACK_ALIGN_OVER_16_BYTES 1
 
 #endif  // STARBOARD_EVERGREEN_ARM64_CONFIGURATION_PUBLIC_H_

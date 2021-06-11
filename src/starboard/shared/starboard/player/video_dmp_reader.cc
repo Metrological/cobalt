@@ -51,8 +51,7 @@ int64_t CalculateAverageBitrate(const std::vector<AccessUnit>& access_units) {
 
 static void DeallocateSampleFunc(SbPlayer player,
                                  void* context,
-                                 const void* sample_buffer) {
-}
+                                 const void* sample_buffer) {}
 
 SbPlayerSampleInfo ConvertToPlayerSampleInfo(
     const VideoDmpReader::AudioAccessUnit& audio_unit) {
@@ -61,12 +60,8 @@ SbPlayerSampleInfo ConvertToPlayerSampleInfo(
   sample_info.buffer_size = static_cast<int>(audio_unit.data().size());
   sample_info.timestamp = audio_unit.timestamp();
   sample_info.drm_info = audio_unit.drm_sample_info();
-#if SB_API_VERSION >= 11
   sample_info.type = kSbMediaTypeAudio;
   sample_info.audio_sample_info = audio_unit.audio_sample_info();
-#else   // SB_API_VERSION >= 11
-  sample_info.video_sample_info = NULL;
-#endif  // SB_API_VERSION >= 11
   return sample_info;
 }
 
@@ -77,12 +72,8 @@ SbPlayerSampleInfo ConvertToPlayerSampleInfo(
   sample_info.buffer_size = static_cast<int>(video_unit.data().size());
   sample_info.timestamp = video_unit.timestamp();
   sample_info.drm_info = video_unit.drm_sample_info();
-#if SB_API_VERSION >= 11
   sample_info.type = kSbMediaTypeVideo;
   sample_info.video_sample_info = video_unit.video_sample_info();
-#else   // SB_API_VERSION >= 11
-  sample_info.video_sample_info = &video_unit.video_sample_info();
-#endif  // SB_API_VERSION >= 11
   return sample_info;
 }
 
@@ -139,6 +130,60 @@ VideoDmpReader::VideoDmpReader(
 }
 
 VideoDmpReader::~VideoDmpReader() {}
+
+std::string VideoDmpReader::audio_mime_type() const {
+  if (dmp_info_.audio_codec == kSbMediaAudioCodecNone) {
+    return "";
+  }
+  std::stringstream ss;
+  switch (dmp_info_.audio_codec) {
+    case kSbMediaAudioCodecAac:
+      ss << "audio/mp4; codecs=\"mp4a.40.2\";";
+      break;
+    case kSbMediaAudioCodecOpus:
+      ss << "audio/webm; codecs=\"opus\";";
+      break;
+    case kSbMediaAudioCodecAc3:
+      ss << "audio/mp4; codecs=\"ac-3\";";
+      break;
+    case kSbMediaAudioCodecEac3:
+      ss << "audio/mp4; codecs=\"ec-3\";";
+      break;
+    default:
+      SB_NOTREACHED();
+  }
+  ss << " channels=" << dmp_info_.audio_sample_info.number_of_channels;
+  return ss.str();
+}
+
+std::string VideoDmpReader::video_mime_type() {
+  if (dmp_info_.video_codec == kSbMediaVideoCodecNone) {
+    return "";
+  }
+  // TODO: Support HDR
+  std::stringstream ss;
+  switch (dmp_info_.video_codec) {
+    case kSbMediaVideoCodecH264:
+      ss << "video/mp4; codecs=\"avc1.4d402a\";";
+      break;
+    case kSbMediaVideoCodecVp9:
+      ss << "video/webm; codecs=\"vp9\";";
+      break;
+    case kSbMediaVideoCodecAv1:
+      ss << "video/mp4; codecs=\"av01.0.08M.08\";";
+      break;
+    default:
+      SB_NOTREACHED();
+  }
+  if (number_of_video_buffers() > 0) {
+    const auto& video_sample_info =
+        GetPlayerSampleInfo(kSbMediaTypeVideo, 0).video_sample_info;
+    ss << "width=" << video_sample_info.frame_width
+       << "; height=" << video_sample_info.frame_height << ";";
+  }
+  ss << " framerate=" << dmp_info_.video_fps;
+  return ss.str();
+}
 
 SbPlayerSampleInfo VideoDmpReader::GetPlayerSampleInfo(SbMediaType type,
                                                        size_t index) {
@@ -246,6 +291,14 @@ void VideoDmpReader::Parse() {
   dmp_info_.video_access_units_size = video_access_units_.size();
   dmp_info_.video_bitrate = CalculateAverageBitrate(video_access_units_);
 
+  // Guestimate the audio duration.
+  if (audio_access_units_.size() > 1) {
+    auto frame_duration =
+        audio_access_units_[audio_access_units_.size() - 1].timestamp() -
+        audio_access_units_[audio_access_units_.size() - 2].timestamp();
+    dmp_info_.audio_duration =
+        audio_access_units_.back().timestamp() + frame_duration;
+  }
   // Guestimate the video fps.
   if (video_access_units_.size() > 1) {
     SbTime first_timestamp = video_access_units_.front().timestamp();
@@ -257,7 +310,20 @@ void VideoDmpReader::Parse() {
       }
     }
     SB_DCHECK(first_timestamp < second_timestamp);
-    dmp_info_.video_fps = kSbTimeSecond / (second_timestamp - first_timestamp);
+    SbTime frame_duration = second_timestamp - first_timestamp;
+    dmp_info_.video_fps = kSbTimeSecond / frame_duration;
+
+    SbTime last_frame_timestamp = video_access_units_.back().timestamp();
+    for (auto it = video_access_units_.rbegin();
+         it != video_access_units_.rend(); it++) {
+      if (it->timestamp() > last_frame_timestamp) {
+        last_frame_timestamp = it->timestamp();
+      }
+      if (it->video_sample_info().is_key_frame) {
+        break;
+      }
+    }
+    dmp_info_.video_duration = last_frame_timestamp + frame_duration;
   }
 }
 

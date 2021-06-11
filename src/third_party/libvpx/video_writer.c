@@ -37,13 +37,15 @@ VpxVideoWriter *vpx_video_writer_open(const char *filename,
   if (container == kContainerIVF) {
     VpxVideoWriter *writer = NULL;
     FILE *const file = fopen(filename, "wb");
-    if (!file)
+    if (!file) {
+      fprintf(stderr, "%s can't be written to.\n", filename);
       return NULL;
-
+    }
     writer = malloc(sizeof(*writer));
-    if (!writer)
+    if (!writer) {
+      fprintf(stderr, "Can't allocate VpxVideoWriter.\n");
       return NULL;
-
+    }
     writer->frame_count = 0;
     writer->info = *info;
     writer->file = file;
@@ -52,7 +54,7 @@ VpxVideoWriter *vpx_video_writer_open(const char *filename,
 
     return writer;
   }
-
+  fprintf(stderr, "VpxVideoWriter supports only IVF.\n");
   return NULL;
 }
 
@@ -67,12 +69,10 @@ void vpx_video_writer_close(VpxVideoWriter *writer) {
   }
 }
 
-int vpx_video_writer_write_frame(VpxVideoWriter *writer,
-                                 const uint8_t *buffer, size_t size,
-                                 int64_t pts) {
+int vpx_video_writer_write_frame(VpxVideoWriter *writer, const uint8_t *buffer,
+                                 size_t size, int64_t pts) {
   ivf_write_frame_header(writer->file, pts, size);
-  if (fwrite(buffer, 1, size, writer->file) != size)
-    return 0;
+  if (fwrite(buffer, 1, size, writer->file) != size) return 0;
 
   ++writer->frame_count;
 

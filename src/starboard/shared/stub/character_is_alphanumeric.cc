@@ -13,7 +13,8 @@
 // limitations under the License.
 
 #include "starboard/character.h"
-
+#if SB_API_VERSION < 13
 bool SbCharacterIsAlphanumeric(int c) {
   return false;
 }
+#endif  // SB_API_VERSION < 13

@@ -20,9 +20,18 @@
       'sources': [
         'checks.h',
         'executable_memory_test.cc',
+        'fonts_test.cc',
         'sabi_test.cc',
-        'storage_test.cc',
         '<(DEPTH)/starboard/common/test_main.cc',
+      ],
+      'conditions': [
+        ['sb_evergreen_compatible_lite!=1', {
+          'sources': [
+            'icu_test.cc',
+            'max_file_name_test.cc',
+            'storage_test.cc',
+          ],
+        }],
       ],
       'dependencies': [
         '<(DEPTH)/starboard/starboard.gyp:starboard',

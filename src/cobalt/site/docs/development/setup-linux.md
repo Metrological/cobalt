@@ -4,45 +4,48 @@ title: "Set up your environment - Linux"
 ---
 
 These instructions explain how Linux users set up their Cobalt development
-environment, fetch a copy of the Cobalt code repository, and build a Cobalt
+environment, clone a copy of the Cobalt code repository, and build a Cobalt
 binary. Note that the binary has a graphical client and must be run locally
 on the machine that you are using to view the client. For example, you cannot
 SSH into another machine and run the binary on that machine.
 
-1.  Choose where you want to put the `depot_tools` directory, which is used
-    by the Cobalt code. An easy option is to put them in `~/depot_tools`.
-    Clone the tools by running the following command:
-
-    ```
-    $ cd ~/
-    $ git clone https://cobalt.googlesource.com/depot_tools
-    ```
-
-1.  Add your `depot_tools` directory to the end of your `PATH` variable.
-    We recommend adding something like this to your `.bashrc` or `.profile`
-    file:
-
-    ```
-    $ PATH=${PATH}:/path/to/depot_tools
-    ```
+## Set up your workstation
 
 1.  Run the following command to install packages needed to build and run
     Cobalt on Linux:
 
     ```
-    $ sudo apt-get install bison build-essential coreutils git gperf \
-           libaom-dev libasound2-dev libavformat-dev libavresample-dev \
-           libdirectfb-dev libdirectfb-extra libpulse-dev \
-           libgl1-mesa-dev libgles2-mesa-dev libvpx-dev libx11-dev \
-           libxcomposite-dev libxcomposite1 libxrender-dev libxrender1 \
-           libxpm-dev m4 python ruby tar xserver-xephyr xz-utils yasm
+    $ sudo apt install -qqy --no-install-recommends pkgconf ninja-build \
+        bison yasm binutils clang libgles2-mesa-dev mesa-common-dev \
+        libpulse-dev libavresample-dev libasound2-dev libxrender-dev \
+        libxcomposite-dev
     ```
 
-1.  Install the latest version of the standard C++ header files (`libstdc++`).
-    For example:
+1.  Install Node.js via `nvm`:
 
     ```
-    sudo apt-get install libstdc++-4.8-dev
+    $ export NVM_DIR=~/.nvm
+    $ export NODE_VERSION=12.17.0
+
+    $ curl --silent -o- https://raw.githubusercontent.com/creationix/nvm/v0.35.3/install.sh | bash
+
+    $ . $NVM_DIR/nvm.sh \
+        && nvm install --lts \
+        && nvm alias default lts/* \
+        && nvm use default
+    ```
+
+1.  Install ccache to support build acceleration. ccache is automatically used
+    when available, otherwise defaults to unaccelerated building:
+
+    ```
+    $ sudo apt install -qqy --no-install-recommends ccache
+    ```
+
+    We recommend adjusting the cache size as needed to increase cache hits:
+
+    ```
+    $ ccache --max-size=20G
     ```
 
 1.  Clone the Cobalt code repository. The following `git` command creates a
@@ -52,13 +55,23 @@ SSH into another machine and run the binary on that machine.
     $ git clone https://cobalt.googlesource.com/cobalt
     ```
 
-1.  Modify your path to include the version of Clang that is downloaded
-    in the next step of the instructions. The next step will return an
-    error if this version of Clang is not in your path before it runs.
+1.  Create a Python 3 virtual environment for working on Cobalt (feel free to use `virtualenvwrapper` instead):
 
     ```
-    $PATH="/path/to/cobalt/src/third_party/llvm-build/Release+Asserts/bin:${PATH}"
+    $ cd cobalt
+    $ python -m venv ~/.virtualenvs/cobalt_dev
+    $ source ~/.virtualenvs/cobalt_dev
+    $ pip install -r requirements.txt
     ```
+
+1.  Install the pre-commit hooks:
+
+    ```
+    $ pre-commit install -t post-checkout -t pre-commit -t pre-push --allow-missing-config
+    $ git checkout -b <my-branch-name> origin/COBALT
+    ```
+
+## Build and Run Cobalt
 
 1.  Build the code by navigating to the `src` directory in your new
     `cobalt` directory and running the following command. You must

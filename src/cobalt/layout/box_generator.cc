@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "base/bind.h"
 #include "base/trace_event/trace_event.h"
@@ -61,11 +62,7 @@ scoped_refptr<render_tree::Image> GetVideoFrame(
   TRACE_EVENT0("cobalt::layout", "GetVideoFrame()");
   SbDecodeTarget decode_target = frame_provider->GetCurrentSbDecodeTarget();
   if (SbDecodeTargetIsValid(decode_target)) {
-#if SB_HAS(GRAPHICS)
     return resource_provider->CreateImageFromSbDecodeTarget(decode_target);
-#else   // SB_HAS(GRAPHICS)
-    return NULL;
-#endif  // SB_HAS(GRAPHICS)
   } else {
     DCHECK(frame_provider);
     return NULL;
@@ -137,6 +134,7 @@ void BoxGenerator::Visit(dom::Element* element) {
            box_iterator != boxes_.end(); ++box_iterator) {
         Box* box = *box_iterator;
         do {
+          box->SetUiNavItem(html_element->GetUiNavItem());
           box->InvalidateParent();
           box = box->GetSplitSibling();
         } while (box != NULL);
@@ -455,6 +453,12 @@ void BoxGenerator::VisitLottiePlayer(dom::LottiePlayer* lottie_player) {
     // This behavior cannot be overridden by setting the "display" property on
     // the descendants.
     //   https://www.w3.org/TR/CSS21/visuren.html#display-prop
+
+    // A LottiePlayer element with "display: none" should potentially trigger
+    // a freeze event.
+    if (!lottie_player->GetProperties().onfreeze_callback.is_null()) {
+      lottie_player->GetProperties().onfreeze_callback.Run();
+    }
     return;
   }
 
@@ -520,9 +524,7 @@ ContainerBoxGenerator::~ContainerBoxGenerator() {
   // boxes in the paragraph.
   // http://unicode.org/reports/tr9/#Terminating_Explicit_Directional_Isolates
   if (has_scoped_directional_isolate_) {
-    (*paragraph_)
-        ->AppendCodePoint(
-            Paragraph::kPopDirectionalIsolateCodePoint);
+    (*paragraph_)->AppendCodePoint(Paragraph::kPopDirectionalIsolateCodePoint);
   }
 
   if (paragraph_scoped_) {
@@ -1055,12 +1057,17 @@ void BoxGenerator::VisitNonReplacedElement(dom::HTMLElement* html_element) {
   container_box_before_split->SetUiNavItem(html_element->GetUiNavItem());
   boxes_.push_back(container_box_before_split);
 
-  BoxIntersectionObserverModule::IntersectionObserverRootVector roots =
-      html_element->GetLayoutIntersectionObserverRoots();
-  BoxIntersectionObserverModule::IntersectionObserverTargetVector targets =
-      html_element->GetLayoutIntersectionObserverTargets();
-  container_box_before_split->AddIntersectionObserverRootsAndTargets(
-      std::move(roots), std::move(targets));
+  // We already handle the case where the Intersection Observer root is the
+  // viewport with the initial containing block in layout.
+  if (html_element !=
+      html_element->node_document()->document_element()->AsHTMLElement()) {
+    BoxIntersectionObserverModule::IntersectionObserverRootVector roots =
+        html_element->GetLayoutIntersectionObserverRoots();
+    BoxIntersectionObserverModule::IntersectionObserverTargetVector targets =
+        html_element->GetLayoutIntersectionObserverTargets();
+    container_box_before_split->AddIntersectionObserverRootsAndTargets(
+        std::move(roots), std::move(targets));
+  }
 
   AppendPseudoElementToLine(html_element, dom::kBeforePseudoElementType);
 
@@ -1099,7 +1106,7 @@ scoped_refptr<web_animations::AnimationSet> GetAnimationsForAnonymousBox(
   const web_animations::AnimationSet::InternalSet& animation_set =
       parent_animations->animations();
   const cssom::PropertyKeyVector& properties_set =
-    cssom::GetInheritedAnimatableProperties();
+      cssom::GetInheritedAnimatableProperties();
 
   // Go through all the parent animations and only add those pertaining to
   // inheritable properties.

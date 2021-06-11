@@ -34,9 +34,16 @@
     'variables': {
       'cobalt_webapi_extension_source_idl_files%': [],
       'cobalt_webapi_extension_generated_header_idl_files%': [],
-      'cobalt_v8_buildtime_snapshot%': 1,
-      'cobalt_v8_enable_embedded_builtins%': 1,
+      # In cross-compiling for modules like V8, we need a gyp flag to tell
+      # that Cobalt is being compiled by MSVC and certain MSVC options should
+      # be specified. This is needed even with 'msvs_settings' since the later
+      # is not used by platforms that only uses MSVC for host build.
+      'cobalt_compiled_by_msvc%': 0,
+      'host_executable_suffix%': '<(EXECUTABLE_SUFFIX)',
+      'disable_v8_pointer_compression%': 0,
     },
+    'host_executable_suffix%': '<(EXECUTABLE_SUFFIX)',
+    'disable_v8_pointer_compression%': 0,
 
     # Whether Cobalt is being built.
     'cobalt': 1,
@@ -131,6 +138,8 @@
     # Build version number.
     'cobalt_version%': '<(BUILD_NUMBER)',
 
+    'cobalt_licenses_platform%': 'default',
+
     # Deprecated. Implement the CobaltExtensionConfigurationApi function
     # CobaltRasterizerType instead.
     # Defines what kind of rasterizer will be used.  This can be adjusted to
@@ -211,14 +220,11 @@
     # Set to 1 to build with DIAL support.
     'in_app_dial%': 0,
 
-    # Set to 1 to enable a custom MediaSessionClient.
-    'custom_media_session_client%': 0,
-
     # Set to 1 to enable H5vccAccountManager.
     'enable_account_manager%': 0,
 
     # Set to 1 to enable H5vccCrashLog.
-    'enable_crash_log%': 0,
+    'enable_crash_log%': 1,
 
     # Set to 1 to enable H5vccSSO (Single Sign On).
     'enable_sso%': 0,
@@ -242,12 +248,10 @@
     # "file:///cobalt/browser/splash_screen/". If '', no file is copied.
     'cobalt_splash_screen_file%': '',
 
-    # Set to "true" to enable v8 snapshot generation at Cobalt build time.
-    'cobalt_v8_buildtime_snapshot%': '<(cobalt_v8_buildtime_snapshot)',
-
     # Some compiler can not compile with raw assembly(.S files) and v8
     # converts asm to inline assembly for these platforms.
-    'cobalt_v8_emit_builtins_as_inline_asm%': 1,
+    'cobalt_v8_emit_builtins_as_inline_asm%': 0,
+    'cobalt_compiled_by_msvc%': 0,
 
     # Deprecated. Implement the CobaltExtensionConfigurationApi function
     # CobaltEnableQuic instead.
@@ -375,16 +379,6 @@
     # should be automatically set.
     'skia_glyph_atlas_width%': '-1',
     'skia_glyph_atlas_height%': '-1',
-
-    # Deprecated. Implement the CobaltExtensionConfigurationApi function
-    # CobaltJsGarbageCollectionThresholdInBytes instead.
-    # Determines the size of garbage collection threshold. After this many
-    # bytes have been allocated, the SpiderMonkey garbage collector will run.
-    # Lowering this has been found to reduce performance and decrease
-    # JavaScript memory usage. For example, we have measured on at least one
-    # platform that performance becomes 7% worse on average in certain cases
-    # when adjusting this number from 8MB to 1MB.
-    'mozjs_garbage_collection_threshold_in_bytes%': -1,
 
     # Max Cobalt CPU usage specifies that the cobalt program should
     # keep it's size below the specified size.
@@ -526,10 +520,6 @@
     # This should be set to 170 for most of the platforms.  But it can be
     # further reduced on systems with extremely low memory.
     'cobalt_media_source_garbage_collection_duration_threshold_in_seconds%': -1,
-
-    'compiler_flags_host': [
-      '-D__LB_HOST__',  # TODO: Is this still needed?
-    ],
 
     'defines_debug': [
       'ALLOCATOR_STATS_TRACKING',
@@ -685,11 +675,6 @@
       ['enable_debugger == 1', {
         'defines': [
           'ENABLE_DEBUGGER',
-        ],
-      }],
-      ['cobalt_v8_buildtime_snapshot == 1', {
-        'defines': [
-          'COBALT_V8_BUILDTIME_SNAPSHOT=1',
         ],
       }],
       ['host_os=="win"', {

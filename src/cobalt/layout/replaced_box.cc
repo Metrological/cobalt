@@ -297,7 +297,7 @@ void AnimateLottie(
   render_tree::LottieAnimation* lottie =
       base::polymorphic_downcast<render_tree::LottieAnimation*>(
           animation.get());
-  lottie->SetProperties(lottie_properties);
+  lottie->BeginRenderFrame(lottie_properties);
   node_builder->animation = lottie;
   node_builder->destination_rect = destination_rect;
   node_builder->animation_time = time_elapsed;
@@ -344,11 +344,14 @@ void ReplacedBox::RenderAndAnimateContent(
       cssom::MapToMeshFunction::ExtractFromFilterList(
           computed_style()->filter());
 
-  if (mtm_filter_function && mtm_filter_function->mesh_spec().mesh_type() !=
-                                 cssom::MapToMeshFunction::kRectangular) {
-    DCHECK(*replaced_box_mode_ == ReplacedBox::ReplacedBoxMode::kVideo)
-        << "We currently do not support punched out video with map-to-mesh "
-           "filters.";
+  // Map-to-mesh is only supported with decode-to-texture videos.
+  const bool supports_mtm =
+      replaced_box_mode_ &&
+      *replaced_box_mode_ == ReplacedBox::ReplacedBoxMode::kVideo;
+
+  if (supports_mtm && mtm_filter_function &&
+      mtm_filter_function->mesh_spec().mesh_type() !=
+          cssom::MapToMeshFunction::kRectangular) {
     RenderAndAnimateContentWithMapToMesh(border_node_builder,
                                          mtm_filter_function);
   } else {

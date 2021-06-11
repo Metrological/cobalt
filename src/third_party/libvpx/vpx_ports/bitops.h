@@ -8,19 +8,18 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef VPX_PORTS_BITOPS_H_
-#define VPX_PORTS_BITOPS_H_
+#ifndef VPX_VPX_PORTS_BITOPS_H_
+#define VPX_VPX_PORTS_BITOPS_H_
 
 #include <assert.h>
 
 #include "vpx_ports/msvc.h"
 
 #ifdef _MSC_VER
-# include <math.h>  // the ceil() definition must precede intrin.h
-# if _MSC_VER > 1310 && (defined(_M_X64) || defined(_M_IX86))
-#  include <intrin.h>
-#  define USE_MSC_INTRINSICS
-# endif
+#if defined(_M_X64) || defined(_M_IX86)
+#include <intrin.h>
+#define USE_MSC_INTRINSICS
+#endif
 #endif
 
 #ifdef __cplusplus
@@ -73,4 +72,4 @@ static INLINE int get_msb(unsigned int n) {
 }  // extern "C"
 #endif
 
-#endif  // VPX_PORTS_BITOPS_H_
+#endif  // VPX_VPX_PORTS_BITOPS_H_

@@ -50,16 +50,10 @@
         'common_clang_flags': [
           '-Werror',
           '-fcolor-diagnostics',
-          # Point to a gcc toolchain that works with this compiler.
-          '--gcc-toolchain=<(GCC_TOOLCHAIN_FOLDER)',
           # Default visibility to hidden, to enable dead stripping.
           '-fvisibility=hidden',
           # Warn for implicit type conversions that may change a value.
           '-Wconversion',
-          '-Wno-c++11-compat',
-          # This (rightfully) complains about 'override', which we use
-          # heavily.
-          '-Wno-c++11-extensions',
           # Warns on switches on enums that cover all enum values but
           # also contain a default: branch. Chrome is full of that.
           '-Wno-covered-switch-default',
@@ -73,18 +67,15 @@
           '-Wno-invalid-offsetof',
           # Suppress 'implicit conversion changes signedness'
           '-Wno-sign-conversion',
-
           # shifting a negative signed value is undefined
           '-Wno-shift-sign-overflow',
-          # Suppress "'&&' within '||'"
-          '-Wno-logical-op-parentheses',
           # Suppress "comparison may be assumed to always evaluate to false"
           '-Wno-tautological-undefined-compare',
           # Suppress "comparison of unsigned enum expression < 0 is always false"
           '-Wno-tautological-compare',
           # Suppress "[type1] has C-linkage specified, but returns user-defined type [type2] which is incompatible with C"
           '-Wno-return-type-c-linkage',
-
+          '-Wno-array-bounds',
           # Suppress "template argument uses unnamed type"
           '-Wno-unnamed-type-template-args',
           # 'this' pointer cannot be NULL...pointer may be assumed
@@ -94,19 +85,19 @@
           '-Wno-inconsistent-missing-override',
           # Triggered by the COMPILE_ASSERT macro.
           '-Wno-unused-local-typedef',
-          # shifting a negative signed value is undefined
-          '-Wno-shift-sign-overflow',
           # Suppress "'&&' within '||'"
           '-Wno-logical-op-parentheses',
-          # Suppress "comparison may be assumed to always evaluate to false"
-          '-Wno-tautological-undefined-compare',
-          # Suppress "comparison of unsigned enum expression < 0 is always false"
-          '-Wno-tautological-compare',
-          # Suppress "[type1] has C-linkage specified, but returns user-defined type [type2] which is incompatible with C"
-          '-Wno-return-type-c-linkage',
           '-Wno-unused-parameter',
           # Suppress warnings about unknown pragmas.
           '-Wno-unknown-pragmas',
+          # Suppress warnings about equality checks within double parentheses.
+          '-Wno-parentheses-equality',
+          # Suppress warnings about unreachable code due to constexpr conditions
+          '-Wno-unreachable-code',
+          # Suppress warnings about values being written but not read before the next write.
+          '-Wno-unused-value',
+          # Suppress warnings related to unused compilation flags in clang.
+          '-Wno-unused-command-line-argument',
         ],
       }],
       ['cobalt_fastbuild==0', {
@@ -133,7 +124,7 @@
       '-std=c99',
     ],
     'cflags_cc': [
-      '-std=c++11',
+      '-std=c++14',
     ],
     'target_conditions': [
       ['sb_pedantic_warnings==1', {

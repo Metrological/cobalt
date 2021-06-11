@@ -2,6 +2,33 @@
 
 This document records all notable changes made to Cobalt since the last release.
 
+## Version 22
+ - **C++14 is required to compile Cobalt 22.**
+   Cobalt code now requires C++14-compatible toolchains to compile. This
+   requirement helps us stay updated with C++ standards and integrate
+   third-party libraries much easier.
+
+ - **SpiderMonkey(mozjs-45) JavaScript Engine library is removed.**
+   As stated last year, V8 should be the choice of JavaScript engine on
+   every platform. SpiderMonkey is now completely removed.
+
+ - **V8 JavaScript Engine is rebased to version v8.8**
+   We rebased V8 from v7.7 in Cobalt 21 to v8.8 in Cobalt 22. V8 8.8 provides a
+   new feature, pointer compression, that reduces JavaScript heap memory usage by
+   60% on 64-bit platforms(arm64 and x64), saving about 5MB on startup and more
+   than 8MB in active sessions. This feature is turned on automatically when a
+   platform uses 64-bit CPU architecture.
+
+ - **window.navigator.onLine property and its change events are added.**
+   To improve user experience during network connect/disconnect situations
+   and enable auto-reconnect, Cobalt added web APIs including Navigator.onLine
+   property and its change events. To enable using the property and events
+   on a platform, the platform's Starboard must implement these new Starboard
+   APIs:
+   SbSystemNetworkIsDisconnected(),
+   kSbEventTypeOsNetworkDisconnected Starboard event,
+   kSbEventTypeOsNetworkConnected Starboard event.
+
 ## Version 21
 
  - **SpiderMonkey(mozjs-45) JavaScript Engine is no longer supported.**
@@ -9,6 +36,11 @@ This document records all notable changes made to Cobalt since the last release.
    compilation ability, please use JIT-less V8 instead. Overriding
    `cobalt_enable_jit` environment variable in `gyp_configuration.py` will
    switch V8 to use JIT-less mode. V8 requires at least Starboard version 10.
+
+ - **Runtime V8 snapshot is no longer supported**
+   V8 has deprecated runtime snapshot and mandated build-time snapshot, Cobalt
+   adopts this change as well. Build-time snapshot greatly improves first
+   startup speed after install and is required for JIT-less mode.
 
  - **scratch_surface_cache_size_in_bytes is removed.**
 
@@ -85,6 +117,69 @@ This document records all notable changes made to Cobalt since the last release.
    In order to support native WOFF2 font loading, we've also updated our FreeType
    version from 2.6.2 to 2.10.2. For a full list of FreeType updates included in
    this change, visit www.freetype.org.
+
+ - **Added support for Lottie animations.**
+
+   Cobalt can now embed and play Lottie animations
+   (https://airbnb.design/lottie/), i.e. animations created in Adobe After
+   Effects and exported to JSON via the Bodymovin plugin. These animations
+   improve the user experience and can readily be incorporated into apps as if
+   they were static images. Cobalt implements a "lottie-player" custom element
+   with a playback API modeled after the Lottie Web Player
+   (https://lottiefiles.com/web-player). In order to support Lottie, Cobalt
+   updated its Skia port from m61 to m79.
+
+ - **Added support for MediaKeySystemMediaCapability.encryptionScheme.**
+
+   Cobalt now supports `MediaKeySystemMediaCapability.encryptionScheme` for
+   `Navigator.requestMediaKeySystemAccess()`. `encryptionScheme` can be 'cenc',
+   'cbcs', or 'cbcs-1-9'.
+   The default implementation assumes that:
+   1. When the Widevine DRM system is used, all the above encryption schemes
+      should be supported across all containers and codecs supported by the
+      platform.
+   2. When the PlayReady DRM system is used, only 'cenc' is supported across all
+      containers and codecs supported by the platform.
+
+   It is possible to customize this behavior via an extension to
+  `SbMediaCanPlayMimeAndKeySystem()`.  Please see the Starboard change log and
+   the comment of `SbMediaCanPlayMimeAndKeySystem()` in `media.h` for more
+   details.
+
+ - **Added support for controlling shutdown behavior of graphics system.**
+
+   Cobalt normally clears the framebuffer to opaque black on suspend or exit.
+   This behavior can now be overridden by implementing the cobalt extension
+   function `CobaltExtensionGraphicsApi::ShouldClearFrameOnShutdown`.
+
+ - **Added support for adjusting colors of 360 videos.**
+
+   Platforms which support 360 videos may adjust the colors of the video frame
+   using `CobaltExtensionGraphicsApi::GetMapToMeshColorAdjustments`.
+
+ - **Added support for rendering the frame with a custom root transform.**
+
+   Platforms can force frame rendering to use a custom root transform by using
+   `CobaltExtensionGraphicsApi::GetRenderRootTransform`. This only impacts
+   rendering; the web app does not know about the custom transform so may not
+   layout elements appropriately.
+
+ - **Added support for javascript code caching.**
+
+   Platforms can provide javascript code caching by implementing
+   CobaltExtensionJavaScriptCacheApi.
+
+
+ - **Added support for UrlFetcher observer.**
+
+   Platforms can implement UrlFetcher observer for performance tracing by
+   implementing CobaltExtensionUrlFetcherObserverApi.
+
+ - **Added support for Cobalt Updater Notification.**
+
+   Platforms can implement CobaltExtensionUpdaterNotificationApi to
+   receive notifications from the Cobalt Evergreen Updater.
+
 
 ## Version 20
 
@@ -428,7 +523,7 @@ This document records all notable changes made to Cobalt since the last release.
  - **Implemented Same Origin Policy and removed navigation whitelist**
 
    - Added Same Origin Policy (SOP) and Cross Origin Resource Sharing (CORS)
-     suport to Cobalt.  In particular, it is added to XHR, script elements,
+     support to Cobalt.  In particular, it is added to XHR, script elements,
      link elements, style elements, media elements and @font-face CSS rules.
    - Removed hardcoded YouTube navigation whitelist in favor of SOP and CSP.
 
@@ -444,7 +539,7 @@ This document records all notable changes made to Cobalt since the last release.
    The Cobalt splash screen is customizable. Documents may use a link element
    with attribute rel="splashscreen" to reference the splash screen which will
    be cached if local cache is implemented on the platform. Additionally
-   fallbacks may be specified via command line parmeter or gypi variable.
+   fallbacks may be specified via command line parameter or gypi variable.
    For more information, see [doc/splash_screen.md](doc/splash_screen.md).
 
  - **Introduce C\+\+11**

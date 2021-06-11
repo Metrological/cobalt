@@ -23,8 +23,22 @@
 extern "C" {
 #endif
 
-#define kCobaltExtensionGraphicsName \
-  "dev.cobalt.extension.Graphics"
+#define kCobaltExtensionGraphicsName "dev.cobalt.extension.Graphics"
+
+// This structure allows post-processing of output colors for 360 videos.
+// Given "rgba" is the color that the pixel shader calculates, this struct
+// allows additional processing in the form of:
+//   final color = rgba0_scale +
+//                 rgba1_scale * rgba +
+//                 rgba2_scale * rgba * rgba +
+//                 rgba3_scale * rgba * rgba * rgba;
+// The final_color is then clamped to the range of [0,1] for each element.
+typedef struct CobaltExtensionGraphicsMapToMeshColorAdjustment {
+  float rgba0_scale[4];  // multiplier for rgba^0
+  float rgba1_scale[4];  // multiplier for rgba^1
+  float rgba2_scale[4];  // multiplier for rgba^2
+  float rgba3_scale[4];  // multiplier for rgba^3
+} CobaltExtensionGraphicsMapToMeshColorAdjustment;
 
 typedef struct CobaltExtensionGraphicsApi {
   // Name should be the string kCobaltExtensionGraphicsName.
@@ -62,6 +76,37 @@ typedef struct CobaltExtensionGraphicsApi {
 
   // Get whether the renderer should support 360 degree video or not.
   bool (*IsMapToMeshEnabled)();
+
+  // The fields below this point were added in version 4 or later.
+
+  // Specify whether the framebuffer should be cleared when the graphics
+  // system is shutdown and color to use for clearing. The graphics system
+  // is shutdown on suspend or exit. The clear color values should be in the
+  // range of [0,1]; color values are only used if this function returns true.
+  //
+  // The default behavior is to clear to opaque black on shutdown unless this
+  // API specifies otherwise.
+  bool (*ShouldClearFrameOnShutdown)(float* clear_color_red,
+                                     float* clear_color_green,
+                                     float* clear_color_blue,
+                                     float* clear_color_alpha);
+
+  // The fields below this point were added in version 5 or later.
+
+  // Use the provided color adjustments for 360 videos if the function returns
+  // true. See declaration of CobaltExtensionGraphicsMapToMeshColorAdjustment
+  // for details.
+  bool (*GetMapToMeshColorAdjustments)(
+      CobaltExtensionGraphicsMapToMeshColorAdjustment* adjustment);
+
+  // This function can be used to insert a custom transform at the root of
+  // rendering. This allows custom scaling, rotating, etc. of the frame. This
+  // only impacts rendering of the frame -- the web app will not know about this
+  // transform, so it may not layout elements appropriately. This function
+  // should return true if a custom transform should be used.
+  bool (*GetRenderRootTransform)(float* m00, float* m01, float* m02, float* m10,
+                                 float* m11, float* m12, float* m20, float* m21,
+                                 float* m22);
 } CobaltExtensionGraphicsApi;
 
 #ifdef __cplusplus

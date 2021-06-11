@@ -19,8 +19,10 @@
 #include <utility>
 
 #include "base/compiler_specific.h"
+#include "base/rand_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
+#include "base/task_runner.h"
 #include "base/time/time.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/base/source_location.h"
@@ -28,6 +30,7 @@
 #include "cobalt/dom/csp_delegate.h"
 #include "cobalt/dom/dom_settings.h"
 #include "cobalt/dom/global_stats.h"
+#include "cobalt/dom/performance.h"
 #include "cobalt/dom/progress_event.h"
 #include "cobalt/dom/window.h"
 #include "cobalt/dom/xml_document.h"
@@ -63,6 +66,9 @@ const char* kResponseTypes[] = {
 const char* kForbiddenMethods[] = {
     "connect", "trace", "track",
 };
+
+// https://www.w3.org/TR/resource-timing-1/#dom-performanceresourcetiming-initiatortype
+const char* kPerformanceResourceTimingInitiatorType = "xmlhttprequest";
 
 bool MethodNameToRequestType(const std::string& method,
                              net::URLFetcher::RequestType* request_type) {
@@ -717,7 +723,7 @@ void XMLHttpRequest::OnURLFetchDownloadProgress(const net::URLFetcher* source,
 
   if (fetch_callback_) {
     std::string downloaded_data;
-    response_body_->GetAndReset(&downloaded_data);
+    response_body_->GetAndResetDataAndDownloadProgress(&downloaded_data);
     script::Handle<script::Uint8Array> data =
         script::Uint8Array::New(settings_->global_environment(),
                                 downloaded_data.data(), downloaded_data.size());
@@ -729,9 +735,13 @@ void XMLHttpRequest::OnURLFetchDownloadProgress(const net::URLFetcher* source,
   const base::TimeDelta elapsed(now - last_progress_time_);
   if (elapsed > base::TimeDelta::FromMilliseconds(kProgressPeriodMs)) {
     last_progress_time_ = now;
-    // TODO: Investigate if we have to fire progress event with 0 loaded bytes
-    // when used as Fetch API.
-    UpdateProgress(response_body_->GetAndResetDownloadProgress());
+    if (fetch_callback_) {
+      // TODO: Investigate if we have to fire progress event with 0 loaded bytes
+      //       when used as Fetch API.
+      UpdateProgress(0);
+    } else {
+      UpdateProgress(response_body_->GetAndResetDownloadProgress());
+    }
   }
 }
 
@@ -746,6 +756,8 @@ void XMLHttpRequest::OnURLFetchComplete(const net::URLFetcher* source) {
       OnRedirect(*source->GetResponseHeaders());
       return;
     }
+    // Create Performance Resource Timing entry after fetch complete.
+    GetLoadTimingInfoAndCreateResourceTiming();
   }
 
   const net::URLRequestStatus& status = source->GetStatus();
@@ -759,7 +771,7 @@ void XMLHttpRequest::OnURLFetchComplete(const net::URLFetcher* source) {
       return;
     }
 
-    // Ensure all fetched data is read and transfered to this XHR. This should
+    // Ensure all fetched data is read and transferred to this XHR. This should
     // only be done for successful and error-free fetches.
     OnURLFetchDownloadProgress(source, 0, 0, 0);
 
@@ -819,7 +831,7 @@ void XMLHttpRequest::OnURLFetchUploadProgress(const net::URLFetcher* source,
   // terminate these subsubsteps.
   // 2. If upload listener flag is set, then fire a progress event named
   // progress on the XMLHttpRequestUpload object with request's body's
-  // transmiteted bytes and request's body's total bytes.
+  // transmitted bytes and request's body's total bytes.
   if (!upload_listener_) {
     return;
   }
@@ -884,7 +896,7 @@ void XMLHttpRequest::OnRedirect(const net::HttpResponseHeaders& headers) {
     HandleRequestError(kNetworkError);
     return;
   }
-  // CORS check for the received resposne
+  // CORS check for the received response
   if (is_cross_origin_) {
     if (!loader::CORSPreflight::CORSCheck(headers, origin_.SerializedOrigin(),
                                           with_credentials_)) {
@@ -1025,7 +1037,7 @@ script::Handle<script::ArrayBuffer> XMLHttpRequest::response_array_buffer() {
     // request is re-opened.
     std::unique_ptr<script::PreallocatedArrayBufferData> downloaded_data(
         new script::PreallocatedArrayBufferData());
-    response_body_->GetAndReset(downloaded_data.get());
+    response_body_->GetAndResetData(downloaded_data.get());
     auto array_buffer = script::ArrayBuffer::New(
         settings_->global_environment(), std::move(downloaded_data));
     response_array_buffer_reference_.reset(
@@ -1101,6 +1113,7 @@ void XMLHttpRequest::StartRequest(const std::string& request_body) {
   network::NetworkModule* network_module =
       settings_->fetcher_factory()->network_module();
   url_fetcher_ = net::URLFetcher::Create(request_url_, method_, this);
+  ++url_fetcher_generation_;
   url_fetcher_->SetRequestContext(network_module->url_request_context_getter());
   if (fetch_callback_) {
     response_body_ = new URLFetcherResponseWriter::Buffer(
@@ -1170,7 +1183,9 @@ void XMLHttpRequest::StartRequest(const std::string& request_body) {
   }
   DLOG_IF(INFO, verbose()) << __FUNCTION__ << *this;
   if (!dopreflight) {
-    url_fetcher_->Start();
+    DCHECK(settings_->network_module());
+    StartURLFetcher(settings_->network_module()->max_network_delay(),
+                    url_fetcher_generation_);
   }
 }
 
@@ -1179,9 +1194,21 @@ void XMLHttpRequest::CORSPreflightErrorCallback() {
 }
 
 void XMLHttpRequest::CORSPreflightSuccessCallback() {
-  if (url_fetcher_) {
-    url_fetcher_->Start();
-  }
+  DCHECK(settings_->network_module());
+  StartURLFetcher(settings_->network_module()->max_network_delay(),
+                  url_fetcher_generation_);
+}
+
+void XMLHttpRequest::ReportLoadTimingInfo(
+    const net::LoadTimingInfo& timing_info) {
+  load_timing_info_ = timing_info;
+}
+
+void XMLHttpRequest::GetLoadTimingInfoAndCreateResourceTiming() {
+  if (settings_->window()->performance() == nullptr) return;
+  settings_->window()->performance()->CreatePerformanceResourceTiming(
+      load_timing_info_, kPerformanceResourceTimingInitiatorType,
+      request_url_.spec());
 }
 
 std::ostream& operator<<(std::ostream& out, const XMLHttpRequest& xhr) {
@@ -1263,6 +1290,30 @@ scoped_refptr<dom::Document> XMLHttpRequest::GetDocumentResponseEntityBody() {
 void XMLHttpRequest::XMLDecoderLoadCompleteCallback(
     const base::Optional<std::string>& error) {
   if (error) has_xml_decoder_error_ = true;
+}
+
+void XMLHttpRequest::StartURLFetcher(const SbTime max_artificial_delay,
+                                     const int url_fetcher_generation) {
+  if (max_artificial_delay > 0) {
+    base::MessageLoop::current()->task_runner()->PostDelayedTask(
+        FROM_HERE,
+        base::Bind(&XMLHttpRequest::StartURLFetcher, this, 0,
+                   url_fetcher_generation_),
+        base::TimeDelta::FromMicroseconds(base::RandUint64() %
+                                          max_artificial_delay));
+    return;
+  }
+
+  // Note: Checking that "url_fetcher_generation_" != "url_fetcher_generation"
+  // is to verify the "url_fetcher_" is currently the same one that was present
+  // upon a delayed url fetch. This works because the incoming parameter
+  // "url_fetcher_generation" will hold the value at the time of the initial
+  // call, and if a delayed binding has waited while a new "url_fetcher_" has
+  // changed state, "url_fetcher_generation_" will have incremented.
+  if (nullptr != url_fetcher_ &&
+      url_fetcher_generation == url_fetcher_generation_) {
+    url_fetcher_->Start();
+  }
 }
 
 }  // namespace xhr

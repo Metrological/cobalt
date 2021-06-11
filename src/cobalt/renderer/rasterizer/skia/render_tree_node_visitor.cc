@@ -18,6 +18,7 @@
 #include <cmath>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "base/trace_event/trace_event.h"
@@ -45,8 +46,6 @@
 #include "cobalt/renderer/rasterizer/skia/font.h"
 #include "cobalt/renderer/rasterizer/skia/glyph_buffer.h"
 #include "cobalt/renderer/rasterizer/skia/image.h"
-#include "cobalt/renderer/rasterizer/skia/skia/src/effects/SkNV122RGBShader.h"
-#include "cobalt/renderer/rasterizer/skia/skia/src/effects/SkYUV2RGBShader.h"
 #include "cobalt/renderer/rasterizer/skia/skottie_animation.h"
 #include "cobalt/renderer/rasterizer/skia/software_image.h"
 #include "third_party/skia/include/core/SkBlendMode.h"
@@ -351,7 +350,7 @@ void RenderTreeNodeVisitor::RenderFilterViaOffscreenSurface(
 
 namespace {
 // Returns true if we permit this source render tree to be rendered under a
-// rounded corners filter mask.  In general we avoid doing this becaue it can
+// rounded corners filter mask.  In general we avoid doing this because it can
 // multiply the number of shaders required by the system, however in some cases
 // we want to do this still because there is a performance advantage.
 bool SourceCanRenderWithRoundedCorners(render_tree::Node* source) {
@@ -439,17 +438,19 @@ void RenderTreeNodeVisitor::Visit(render_tree::FilterNode* filter_node) {
   TRACE_EVENT0("cobalt::renderer", "Visit(FilterNode)");
 
   if (filter_node->data().opacity_filter) {
-    TRACE_EVENT_INSTANT1("cobalt::renderer", "opacity", "opacity",
+    TRACE_EVENT_INSTANT1("cobalt::renderer", "opacity",
+                         TRACE_EVENT_SCOPE_THREAD, "opacity",
                          filter_node->data().opacity_filter->opacity());
   }
   if (filter_node->data().viewport_filter) {
     TRACE_EVENT_INSTANT2(
-        "cobalt::renderer", "viewport", "width",
+        "cobalt::renderer", "viewport", TRACE_EVENT_SCOPE_THREAD, "width",
         filter_node->data().viewport_filter->viewport().width(), "height",
         filter_node->data().viewport_filter->viewport().height());
   }
   if (filter_node->data().blur_filter) {
-    TRACE_EVENT_INSTANT1("cobalt::renderer", "blur", "blur_sigma",
+    TRACE_EVENT_INSTANT1("cobalt::renderer", "blur", TRACE_EVENT_SCOPE_THREAD,
+                         "blur_sigma",
                          filter_node->data().blur_filter->blur_sigma());
   }
 #endif  // ENABLE_RENDER_TREE_VISITOR_TRACING
@@ -532,8 +533,7 @@ namespace {
 // operating in a normalized coordinate system, we must perform some
 // transformations.
 void ConvertLocalTransformMatrixToSkiaShaderFormat(
-    const math::Size& input_size,
-    const math::RectF& output_rect,
+    const math::Size& input_size, const math::RectF& output_rect,
     SkMatrix* local_transform_matrix) {
   // First transform to normalized coordinates, where the input transform
   // specified by local_transform_matrix is expecting to take place.
@@ -668,7 +668,7 @@ void RenderTreeNodeVisitor::Visit(render_tree::ImageNode* image_node) {
   }
 
   // We issue different skia rasterization commands to render the image
-  // depending on whether it's single or multi planed.
+  // depending on whether it's single or multi planned.
   auto& local_transform = image_node->data().local_transform;
 
   scoped_refptr<render_tree::Image> fallback_image;
@@ -1089,10 +1089,10 @@ void DrawSolidNonRoundRectBorder(RenderTreeNodeVisitorDrawState* draw_state,
 
   // Top
   SkPoint top_points[4] = {
-      {rect.x(), rect.y()},                                                 // A
-      {rect.x() + border.left.width, rect.y() + border.top.width},          // E
-      {rect.right() - border.right.width, rect.y() + border.top.width},     // F
-      {rect.right(), rect.y()}};                                            // B
+      {rect.x(), rect.y()},                                              // A
+      {rect.x() + border.left.width, rect.y() + border.top.width},       // E
+      {rect.right() - border.right.width, rect.y() + border.top.width},  // F
+      {rect.right(), rect.y()}};                                         // B
   DrawQuadWithColorIfBorderIsSolid(
       border.top.style, draw_state, border.top.color, top_points,
       border.top.width < kAntiAliasWidthThreshold ? true
@@ -1115,7 +1115,7 @@ void DrawSolidNonRoundRectBorder(RenderTreeNodeVisitorDrawState* draw_state,
       {rect.x(), rect.bottom()},                                            // C
       {rect.right(), rect.bottom()},                                        // D
       {rect.right() - border.right.width,
-       rect.bottom() - border.bottom.width}};                               // H
+       rect.bottom() - border.bottom.width}};  // H
   DrawQuadWithColorIfBorderIsSolid(
       border.bottom.style, draw_state, border.bottom.color, bottom_points,
       border.bottom.width < kAntiAliasWidthThreshold ? true
@@ -1123,11 +1123,11 @@ void DrawSolidNonRoundRectBorder(RenderTreeNodeVisitorDrawState* draw_state,
 
   // Right
   SkPoint right_points[4] = {
-      {rect.right() - border.right.width, rect.y() + border.top.width},     // F
+      {rect.right() - border.right.width, rect.y() + border.top.width},  // F
       {rect.right() - border.right.width,
-       rect.bottom() - border.bottom.width},                                // H
-      {rect.right(), rect.bottom()},                                        // D
-      {rect.right(), rect.y()}};                                            // B
+       rect.bottom() - border.bottom.width},  // H
+      {rect.right(), rect.bottom()},          // D
+      {rect.right(), rect.y()}};              // B
   DrawQuadWithColorIfBorderIsSolid(
       border.right.style, draw_state, border.right.color, right_points,
       border.right.width < kAntiAliasWidthThreshold ? true
@@ -1324,36 +1324,56 @@ void DrawSolidRoundedRectBorderByEdge(
   }
 
   // Top
-  SkPoint top_points[4] = {top_left_outer, top_left_inner,     // A, E
-                           top_right_inner, top_right_outer};  // F, B
-  SetUpDrawStateClipPath(draw_state, top_points);
-  DrawSolidRoundedRectBorderToRenderTarget(draw_state, rect, rounded_corners,
-                                           content_rect, inner_rounded_corners,
-                                           border.top.color);
+  if (border.top.style == render_tree::kBorderStyleSolid) {
+    SkPoint top_points[4] = {top_left_outer, top_left_inner,     // A, E
+                             top_right_inner, top_right_outer};  // F, B
+    SetUpDrawStateClipPath(draw_state, top_points);
+    DrawSolidRoundedRectBorderToRenderTarget(
+        draw_state, rect, rounded_corners, content_rect, inner_rounded_corners,
+        border.top.color);
+  } else {
+    DCHECK_EQ(border.top.style, render_tree::kBorderStyleNone);
+  }
+
 
   // Left
-  SkPoint left_points[4] = {top_left_outer, bottom_left_outer,   // A, C
-                            bottom_left_inner, top_left_inner};  // G, E
-  SetUpDrawStateClipPath(draw_state, left_points);
-  DrawSolidRoundedRectBorderToRenderTarget(draw_state, rect, rounded_corners,
-                                           content_rect, inner_rounded_corners,
-                                           border.left.color);
+  if (border.left.style == render_tree::kBorderStyleSolid) {
+    SkPoint left_points[4] = {top_left_outer, bottom_left_outer,   // A, C
+                              bottom_left_inner, top_left_inner};  // G, E
+    SetUpDrawStateClipPath(draw_state, left_points);
+    DrawSolidRoundedRectBorderToRenderTarget(
+        draw_state, rect, rounded_corners, content_rect, inner_rounded_corners,
+        border.left.color);
+  } else {
+    DCHECK_EQ(border.left.style, render_tree::kBorderStyleNone);
+  }
+
 
   // Bottom
-  SkPoint bottom_points[4] = {bottom_left_inner, bottom_left_outer,     // G, C
-                              bottom_right_outer, bottom_right_inner};  // D, H
-  SetUpDrawStateClipPath(draw_state, bottom_points);
-  DrawSolidRoundedRectBorderToRenderTarget(draw_state, rect, rounded_corners,
-                                           content_rect, inner_rounded_corners,
-                                           border.bottom.color);
+  if (border.bottom.style == render_tree::kBorderStyleSolid) {
+    SkPoint bottom_points[4] = {bottom_left_inner, bottom_left_outer,  // G, C
+                                bottom_right_outer,
+                                bottom_right_inner};  // D, H
+    SetUpDrawStateClipPath(draw_state, bottom_points);
+    DrawSolidRoundedRectBorderToRenderTarget(
+        draw_state, rect, rounded_corners, content_rect, inner_rounded_corners,
+        border.bottom.color);
+  } else {
+    DCHECK_EQ(border.bottom.style, render_tree::kBorderStyleNone);
+  }
+
 
   // Right
-  SkPoint right_points[4] = {top_right_inner, bottom_right_inner,   // F, H
-                             bottom_right_outer, top_right_outer};  // D, B
-  SetUpDrawStateClipPath(draw_state, right_points);
-  DrawSolidRoundedRectBorderToRenderTarget(draw_state, rect, rounded_corners,
-                                           content_rect, inner_rounded_corners,
-                                           border.right.color);
+  if (border.right.style == render_tree::kBorderStyleSolid) {
+    SkPoint right_points[4] = {top_right_inner, bottom_right_inner,   // F, H
+                               bottom_right_outer, top_right_outer};  // D, B
+    SetUpDrawStateClipPath(draw_state, right_points);
+    DrawSolidRoundedRectBorderToRenderTarget(
+        draw_state, rect, rounded_corners, content_rect, inner_rounded_corners,
+        border.right.color);
+  } else {
+    DCHECK_EQ(border.right.style, render_tree::kBorderStyleNone);
+  }
 }
 
 void DrawSolidRoundedRectBorderSoftware(
@@ -1763,8 +1783,9 @@ void RenderTreeNodeVisitor::Visit(render_tree::TextNode* text_node) {
 
       RenderText(
           draw_state_.render_target, text_node->data().glyph_buffer,
-          shadow.color, math::PointAtOffsetFromOrigin(text_node->data().offset +
-                                                      shadow.offset),
+          shadow.color,
+          math::PointAtOffsetFromOrigin(text_node->data().offset +
+                                        shadow.offset),
           shadow.blur_sigma == 0.0f ? blur_zero_sigma : shadow.blur_sigma);
     }
   }

@@ -223,7 +223,7 @@ static SB_C_INLINE int SbStringFormatUnsafeF(char* out_buffer,
                                              ...) {
   va_list arguments;
   va_start(arguments, format);
-  int result = SbStringFormat(out_buffer, UINT_MAX, format, arguments);
+  int result = SbStringFormat(out_buffer, SSIZE_MAX, format, arguments);
   va_end(arguments);
   return result;
 }
@@ -327,6 +327,8 @@ static SB_C_INLINE int SbStringScanF(const char* buffer,
   return result;
 }
 
+#if SB_API_VERSION < 13
+
 // Extracts a string that represents an integer from the beginning of |start|
 // into a signed integer in the given |base|. This function is meant to be a
 // drop-in replacement for |strtol|.
@@ -400,14 +402,10 @@ SB_EXPORT uint64_t SbStringParseUInt64(const char* start,
 //   consumed portion of the string into |out_end|.
 SB_EXPORT double SbStringParseDouble(const char* start, char** out_end);
 
+#endif  // SB_API_VERSION < 13
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
-
-#if defined(__cplusplus) && SB_API_VERSION < 11
-extern "C++" {
-#include "starboard/common/string.h"
-}  // extern "C++"
-#endif  // defined(__cplusplus) && SB_API_VERSION < 11
 
 #endif  // STARBOARD_STRING_H_

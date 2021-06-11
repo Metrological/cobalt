@@ -10,6 +10,7 @@
 
 #include <assert.h>
 
+#include "./vp9_rtcd.h"
 #include "vp9/common/vp9_enums.h"
 #include "vpx_dsp/mips/inv_txfm_msa.h"
 
@@ -74,8 +75,6 @@ void vp9_iht16x16_256_add_msa(const int16_t *input, uint8_t *dst,
                                           (dst + (i << 3)), dst_stride);
       }
       break;
-    default:
-      assert(0);
-      break;
+    default: assert(0); break;
   }
 }

@@ -16,6 +16,7 @@
 
 #include "glimp/gles/context.h"
 
+#include <algorithm>
 #include <string>
 
 #include "glimp/egl/error.h"
@@ -62,6 +63,7 @@ Context::Context(nb::scoped_ptr<ContextImpl> context_impl,
       unpack_alignment_(4),
       unpack_row_length_(0),
       error_(GL_NO_ERROR) {
+  SbAtomicNoBarrier_Store(&has_swapped_buffers_, 0);
   if (share_context != NULL) {
     resource_manager_ = share_context->resource_manager_;
   } else {
@@ -695,6 +697,22 @@ void Context::GenBuffers(GLsizei n, GLuint* buffers) {
     nb::scoped_refptr<Buffer> buffer(new Buffer(buffer_impl.Pass()));
 
     buffers[i] = resource_manager_->RegisterBuffer(buffer);
+  }
+}
+
+void Context::GenBuffersForVideoFrame(GLsizei n, GLuint* buffers) {
+  GLIMP_TRACE_EVENT0(__FUNCTION__);
+  if (n < 0) {
+    SetError(GL_INVALID_VALUE);
+    return;
+  }
+
+  for (GLsizei i = 0; i < n; ++i) {
+    nb::scoped_ptr<BufferImpl> buffer_impl = impl_->CreateBufferForVideoFrame();
+    SB_DCHECK(buffer_impl);
+
+    buffers[i] = resource_manager_->RegisterBuffer(
+        nb::make_scoped_refptr(new Buffer(buffer_impl.Pass())));
   }
 }
 
@@ -1478,8 +1496,7 @@ void Context::TexImage2D(GLenum target,
 
   // The incoming pixel data should be aligned as the client has specified
   // that it will be.
-  SB_DCHECK(nb::IsAligned(nb::AsInteger(pixels),
-                          static_cast<uintptr_t>(unpack_alignment_)));
+  SB_DCHECK(nb::IsAligned(pixels, static_cast<size_t>(unpack_alignment_)));
 
   // Determine pitch taking into account glPixelStorei() settings.
   int pitch_in_bytes = GetPitchForTextureData(width, pixel_format);
@@ -1561,8 +1578,7 @@ void Context::TexSubImage2D(GLenum target,
 
   // The incoming pixel data should be aligned as the client has specified
   // that it will be.
-  SB_DCHECK(nb::IsAligned(nb::AsInteger(pixels),
-                          static_cast<uintptr_t>(unpack_alignment_)));
+  SB_DCHECK(nb::IsAligned(pixels, static_cast<size_t>(unpack_alignment_)));
 
   // Determine pitch taking into account glPixelStorei() settings.
   int pitch_in_bytes = GetPitchForTextureData(width, pixel_format);
@@ -1582,6 +1598,78 @@ void Context::TexSubImage2D(GLenum target,
                                     pitch_in_bytes, pixels)) {
       SetError(GL_OUT_OF_MEMORY);
     }
+  }
+}
+
+void Context::CopyTexSubImage2D(GLenum target,
+                                GLint level,
+                                GLint xoffset,
+                                GLint yoffset,
+                                GLint x,
+                                GLint y,
+                                GLsizei width,
+                                GLsizei height) {
+  GLIMP_TRACE_EVENT0(__FUNCTION__);
+  if (target != GL_TEXTURE_2D) {
+    SB_NOTREACHED() << "Only target=GL_TEXTURE_2D is supported in glimp.";
+    SetError(GL_INVALID_ENUM);
+    return;
+  }
+
+  if (width < 0 || height < 0 || level < 0 || xoffset < 0 || yoffset < 0) {
+    SetError(GL_INVALID_VALUE);
+  }
+
+  nb::scoped_refptr<Texture> texture_object =
+      *GetBoundTextureForTarget(target, active_texture_);
+  if (!texture_object) {
+    // According to the specification, no error is generated if no texture
+    // is bound.
+    //   https://www.khronos.org/opengles/sdk/docs/man/xhtml/glCopyTexSubImage2D.xml
+    return;
+  }
+
+  if (!texture_object->texture_allocated()) {
+    SetError(GL_INVALID_OPERATION);
+    return;
+  }
+
+  if (xoffset + width > texture_object->width() ||
+      yoffset + height > texture_object->height()) {
+    SetError(GL_INVALID_VALUE);
+    return;
+  }
+
+  if (read_framebuffer_->CheckFramebufferStatus() != GL_FRAMEBUFFER_COMPLETE) {
+    SetError(GL_INVALID_FRAMEBUFFER_OPERATION);
+    return;
+  }
+
+  // The pixels in the rectangle are processed exactly as if glReadPixels had
+  // been called with format set to GL_RGBA, but the process stops just after
+  // conversion of RGBA values. Subsequent processing is identical to that
+  // described for glTexSubImage2D.
+  uint8_t pixels[read_framebuffer_->GetWidth() *
+                 read_framebuffer_->GetHeight() *
+                 BytesPerPixel(kPixelFormatRGBA8)];
+  ReadPixels(0, 0, read_framebuffer_->GetWidth(),
+             read_framebuffer_->GetHeight(), GL_RGBA, GL_UNSIGNED_BYTE,
+             &pixels);
+
+  // If any of the pixels within the specified rectangle are outside the
+  // framebuffer associated with the current rendering context, then the values
+  // obtained for those pixels are undefined. Make sure that we only access
+  // pixels within a valid range.
+  x = std::max(0, x);
+  y = std::max(0, y);
+  width = std::min(read_framebuffer_->GetWidth() - x, width);
+  height = std::min(read_framebuffer_->GetHeight() - y, height);
+  int pitch_in_bytes =
+      read_framebuffer_->GetWidth() * BytesPerPixel(kPixelFormatRGBA8);
+  if (!texture_object->UpdateData(
+          level, xoffset, yoffset, width, height, pitch_in_bytes,
+          &pixels[y * pitch_in_bytes + x * BytesPerPixel(kPixelFormatRGBA8)])) {
+    SetError(GL_OUT_OF_MEMORY);
   }
 }
 
@@ -2301,6 +2389,9 @@ void Context::SwapBuffers() {
   if (surface->impl()->IsWindowSurface()) {
     Flush();
     impl_->SwapBuffers(surface);
+    if (!has_swapped_buffers()) {
+      SbAtomicNoBarrier_Increment(&has_swapped_buffers_, 1);
+    }
   }
 }
 
@@ -2403,12 +2494,7 @@ void Context::CompressDrawStateForDrawCall() {
 
 void Context::MarkUsedProgramDirty() {
   GLIMP_TRACE_EVENT0(__FUNCTION__);
-  draw_state_dirty_flags_.used_program_dirty = true;
-  // Switching programs marks all uniforms, samplers and vertex attributes
-  // as being dirty as well, since they are all properties of the program.
-  draw_state_dirty_flags_.vertex_attributes_dirty = true;
-  draw_state_dirty_flags_.textures_dirty = true;
-  draw_state_dirty_flags_.uniforms_dirty.MarkAll();
+  draw_state_dirty_flags_.MarkUsedProgram();
 }
 
 void Context::SetBoundDrawFramebufferToDefault() {
@@ -2451,6 +2537,8 @@ int Context::GetPitchForTextureData(int width, PixelFormat pixel_format) const {
     return nb::AlignUp(s * n * len, a) / s;
   }
 }
+
+SbAtomic32 Context::has_swapped_buffers_ = 0;
 
 }  // namespace gles
 }  // namespace glimp

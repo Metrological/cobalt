@@ -30,14 +30,9 @@ int CobaltSkiaGlyphAtlasWidth() {
 int CobaltSkiaGlyphAtlasHeight() {
   return 2048;
 }
-
-bool CobaltEnableJit() {
-  return true;
-}
-
 const CobaltExtensionConfigurationApi kConfigurationApi = {
     kCobaltExtensionConfigurationName,
-    1,
+    2,
     &common::CobaltUserOnExitStrategyDefault,
     &common::CobaltRenderDirtyRegionOnlyDefault,
     &common::CobaltEglSwapIntervalDefault,
@@ -59,7 +54,8 @@ const CobaltExtensionConfigurationApi kConfigurationApi = {
     &common::CobaltReduceGpuMemoryByDefault,
     &common::CobaltGcZealDefault,
     &common::CobaltRasterizerTypeDefault,
-    &CobaltEnableJit,
+    &common::CobaltEnableJitDefault,
+    &common::CobaltFallbackSplashScreenTopicsDefault,
 };
 
 }  // namespace

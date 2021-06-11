@@ -14,9 +14,7 @@
 
 #include "starboard/shared/libde265/de265_video_decoder.h"
 
-#if SB_API_VERSION >= 11
-#include "starboard/format_string.h"
-#endif  // SB_API_VERSION >= 11
+#include "starboard/common/string.h"
 #include "starboard/linux/shared/decode_target_internal.h"
 #include "starboard/shared/libde265/de265_library_loader.h"
 #include "starboard/string.h"
@@ -106,7 +104,7 @@ void VideoDecoder::Reset() {
     decoder_thread_.reset();
   }
 
-  error_occured_ = false;
+  error_occurred_ = false;
   stream_ended_ = false;
 
   CancelPendingJobs();
@@ -131,7 +129,7 @@ void VideoDecoder::UpdateDecodeTarget_Locked(
 void VideoDecoder::ReportError(const std::string& error_message) {
   SB_DCHECK(decoder_thread_->job_queue()->BelongsToCurrentThread());
 
-  error_occured_ = true;
+  error_occurred_ = true;
   Schedule(std::bind(error_cb_, kSbPlayerErrorDecode, error_message));
 }
 

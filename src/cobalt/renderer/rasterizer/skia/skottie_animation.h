@@ -15,7 +15,9 @@
 #ifndef COBALT_RENDERER_RASTERIZER_SKIA_SKOTTIE_ANIMATION_H_
 #define COBALT_RENDERER_RASTERIZER_SKIA_SKOTTIE_ANIMATION_H_
 
+#include "cobalt/math/size_f.h"
 #include "cobalt/render_tree/lottie_animation.h"
+#include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/modules/skottie/include/Skottie.h"
 
 namespace cobalt {
@@ -23,7 +25,7 @@ namespace renderer {
 namespace rasterizer {
 namespace skia {
 
-// A subclass of render_tree::LottieAnnimation that holds information about
+// A subclass of render_tree::LottieAnimation that holds information about
 // the Skottie animation object associated with the given animation data.
 class SkottieAnimation : public render_tree::LottieAnimation {
  public:
@@ -37,18 +39,25 @@ class SkottieAnimation : public render_tree::LottieAnimation {
 
   bool IsOpaque() const override { return false; }
 
-  void SetProperties(LottieProperties properties) override;
-
-  void SetAnimationTime(base::TimeDelta animate_function_time) override;
+  void SetAnimationTimeInternal(base::TimeDelta animate_function_time) override;
 
   sk_sp<skottie::Animation> GetSkottieAnimation() { return skottie_animation_; }
 
+  // Rendering the lottie animation can be CPU-intensive. To minimize the cost,
+  // the animation can be updated in an offscreen render target only as needed,
+  // then the offscreen target rendered to the screen.
+  void ResetRenderCache() { cached_animation_time_ = base::TimeDelta::Min(); }
+  void UpdateRenderCache(SkCanvas* render_target, const math::SizeF& size);
+
  private:
+  void UpdateAnimationFrameAndAnimateFunctionTimes(
+      base::TimeDelta current_animation_time,
+      base::TimeDelta current_animate_function_time);
+
   sk_sp<skottie::Animation> skottie_animation_;
   math::Size animation_size_;
   uint32 json_size_in_bytes_;
 
-  LottieProperties properties_;
   // |seek_counter_| is used to indicate whether a particular seek has already
   // been processed. When |LottieProperties::seek_counter| is different, then
   // the requested seek should be performed and |seek_counter_| updated to match
@@ -77,7 +86,10 @@ class SkottieAnimation : public render_tree::LottieAnimation {
   base::TimeDelta last_updated_animate_function_time_;
 
   // The most recently updated frame time for |skottie_animation_|.
-  base::TimeDelta current_animation_time_;
+  base::TimeDelta last_updated_animation_time_;
+
+  // This is the animation time used for the last cache update.
+  base::TimeDelta cached_animation_time_;
 };
 
 }  // namespace skia

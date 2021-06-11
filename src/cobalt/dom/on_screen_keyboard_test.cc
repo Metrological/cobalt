@@ -30,7 +30,6 @@
 #include "cobalt/dom_parser/parser.h"
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/loader/loader_factory.h"
-#include "cobalt/media_session/media_session.h"
 #include "cobalt/script/global_environment.h"
 #include "cobalt/script/javascript_engine.h"
 #include "cobalt/script/source_code.h"
@@ -197,16 +196,16 @@ class OnScreenKeyboardTest : public ::testing::Test {
         css_parser_(css_parser::Parser::Create()),
         dom_parser_(new dom_parser::Parser(mock_error_callback_)),
         fetcher_factory_(new loader::FetcherFactory(NULL)),
-        loader_factory_(
-            new loader::LoaderFactory("Test", fetcher_factory_.get(), NULL, 0,
-                                      base::ThreadPriority::DEFAULT)),
+        loader_factory_(new loader::LoaderFactory(
+            "Test", fetcher_factory_.get(), NULL, null_debugger_hooks_, 0,
+            base::ThreadPriority::DEFAULT)),
         local_storage_database_(NULL),
         url_("about:blank"),
         engine_(script::JavaScriptEngine::CreateEngine()),
         global_environment_(engine_->CreateGlobalEnvironment()),
         on_screen_keyboard_bridge_(new OnScreenKeyboardMockBridge()),
         window_(new Window(
-            environment_settings_.get(), ViewportSize(1920, 1080), 1.f,
+            environment_settings_.get(), ViewportSize(1920, 1080),
             base::kApplicationStateStarted, css_parser_.get(),
             dom_parser_.get(), fetcher_factory_.get(), loader_factory_.get(),
             NULL, NULL, NULL, NULL, NULL, NULL, &local_storage_database_, NULL,
@@ -222,7 +221,7 @@ class OnScreenKeyboardTest : public ::testing::Test {
             base::Closure() /* ran_animation_frame_callbacks */,
             dom::Window::CloseCallback() /* window_close */,
             base::Closure() /* window_minimize */,
-            on_screen_keyboard_bridge_.get(), NULL, NULL,
+            on_screen_keyboard_bridge_.get(), NULL,
             dom::Window::OnStartDispatchEventCallback(),
             dom::Window::OnStopDispatchEventCallback(),
             dom::ScreenshotManager::ProvideScreenshotFunctionCallback(),
@@ -263,6 +262,7 @@ class OnScreenKeyboardTest : public ::testing::Test {
 
  private:
   const std::unique_ptr<testing::StubEnvironmentSettings> environment_settings_;
+  base::NullDebuggerHooks null_debugger_hooks_;
   base::MessageLoop message_loop_;
   MockErrorCallback mock_error_callback_;
   std::unique_ptr<css_parser::Parser> css_parser_;
@@ -708,8 +708,7 @@ TEST_F(OnScreenKeyboardTest, KeepFocus) {
   )";
   EXPECT_TRUE(EvaluateScript(script, NULL));
 }
-#else   // SB_API_VERSION >= 12 ||
-   // SB_HAS(ON_SCREEN_KEYBOARD)
+#else   // SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
 TEST_F(OnScreenKeyboardTest, ObjectDoesntExist) {
   std::string result;
 
@@ -738,8 +737,7 @@ TEST_F(OnScreenKeyboardTest, ObjectDoesntExist) {
   EXPECT_TRUE(EvaluateScript(object_script, &result));
   EXPECT_EQ("true", result);
 }
-#endif  // SB_API_VERSION >= 12 ||
-        // SB_HAS(ON_SCREEN_KEYBOARD)
+#endif  // SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
 
 }  // namespace dom
 }  // namespace cobalt

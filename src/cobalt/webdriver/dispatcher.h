@@ -76,8 +76,8 @@ class WebDriverDispatcher {
     };
     // Send the result of the execution of a registered WebDriver command to be
     // sent as a response as described in the spec:
-    // https://code.google.com/p/selenium/wiki/JsonWireProtocol#Responses
-    // https://code.google.com/p/selenium/wiki/JsonWireProtocol#Failed_Commands
+    // https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#Responses
+    // https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#Failed-Commands
     virtual void SendResult(
         const base::Optional<protocol::SessionId>& session_id,
         protocol::Response::StatusCode status_code,
@@ -95,7 +95,7 @@ class WebDriverDispatcher {
     // Some forms of Invalid Requests are detected in the CommandCallback by
     // checking the path variables and command parameters. Invalid requests are
     // described here:
-    // https://code.google.com/p/selenium/wiki/JsonWireProtocol#Invalid_Requests
+    // https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#Invalid-Requests
     //
     // TODO: Invalid requests should be handled before calling the
     //   CommandCallback.
@@ -130,7 +130,7 @@ class WebDriverDispatcher {
     kMatchVariables,
   };
   // Internal structure that manages command mappings for a given URL.
-  // Each Http method can have a DispatchCommmandCallback mapped to it.
+  // Each Http method can have a DispatchCommandCallback mapped to it.
   // The registered path is stored as a tokenized vector of the registered
   // path's components, preserving variable components that start with a colon.
   struct CommandMapping {

@@ -6,12 +6,6 @@ title: "Starboard Module Reference: system.h"
 Defines a broad set of APIs that allow the client application to query build and
 runtime properties of the enclosing system.
 
-## Macros ##
-
-### kSbSystemPlatformErrorInvalid ###
-
-Well-defined value for an invalid `SbSystemPlatformError`.
-
 ## Enums ##
 
 ### SbSystemCapabilityId ###
@@ -124,6 +118,11 @@ Enumeration of special paths that the platform can define.
 *   `kSbSystemPathExecutableFile`
 
     Full path to the executable file.
+*   `kSbSystemPathStorageDirectory`
+
+    Path to a directory for permanent file storage. Both read and write access
+    is required. This is where an app may store its persistent settings. The
+    location should be user agnostic if possible.
 
 ### SbSystemPlatformErrorResponse ###
 
@@ -188,9 +187,10 @@ string generation.
 *   `kSbSystemPropertyModelYear`
 
     The year the device was launched, e.g. "2016".
-*   `kSbSystemPropertyNetworkOperatorName`
+*   `kSbSystemPropertySystemIntegratorName`
 
-    The name of the network operator that owns the target device, if applicable.
+    The corporate entity responsible for submitting the device to YouTube
+    certification and for the device maintenance/updates.
 *   `kSbSystemPropertyPlatformName`
 
     The name of the operating system and platform, suitable for inclusion in a
@@ -236,17 +236,6 @@ A type that can represent a system error code across all Starboard platforms.
 typedef int SbSystemError
 ```
 
-### SbSystemPlatformError ###
-
-Opaque handle returned by `SbSystemRaisePlatformError` that can be passed to
-`SbSystemClearPlatformError`.
-
-#### Definition ####
-
-```
-typedef SbSystemPlatformErrorPrivate* SbSystemPlatformError
-```
-
 ### SbSystemPlatformErrorCallback ###
 
 Type of callback function that may be called in response to an error
@@ -262,26 +251,6 @@ typedef void(* SbSystemPlatformErrorCallback) (SbSystemPlatformErrorResponse res
 ```
 
 ## Functions ##
-
-### SbSystemBinarySearch ###
-
-Binary searches a sorted table `base` of `element_count` objects, each element
-`element_width` bytes in size for an element that `comparator` compares equal to
-`key`.
-
-This function is meant to be a drop-in replacement for `bsearch`.
-
-`key`: The key to search for in the table. `base`: The sorted table of elements
-to be searched. `element_count`: The number of elements in the table.
-`element_width`: The size, in bytes, of each element in the table. `comparator`:
-A value that indicates how the element in the table should compare to the
-specified `key`.
-
-#### Declaration ####
-
-```
-void* SbSystemBinarySearch(const void *key, const void *base, size_t element_count, size_t element_width, SbSystemComparator comparator)
-```
 
 ### SbSystemBreakIntoDebugger ###
 
@@ -302,20 +271,6 @@ Clears the last error set by a Starboard call in the current thread.
 
 ```
 void SbSystemClearLastError()
-```
-
-### SbSystemClearPlatformError ###
-
-Clears a platform error that was previously raised by a call to
-`SbSystemRaisePlatformError`. The platform may use this, for example, to close a
-dialog that was opened in response to the error.
-
-`handle`: The platform error to be cleared.
-
-#### Declaration ####
-
-```
-void SbSystemClearPlatformError(SbSystemPlatformError handle)
 ```
 
 ### SbSystemGetConnectionType ###
@@ -398,32 +353,6 @@ that sandboxed limit.
 
 ```
 int SbSystemGetNumberOfProcessors()
-```
-
-### SbSystemGetPath ###
-
-Retrieves the platform-defined system path specified by `path_id` and places it
-as a zero-terminated string into the user-allocated `out_path` unless it is
-longer than `path_length` - 1. This implementation must be thread-safe.
-
-This function returns `true` if the path is retrieved successfully. It returns
-`false` under any of the following conditions and, in any such case, `out_path`
-is not changed:
-
-*   `path_id` is invalid for this platform
-
-*   `path_length` is too short for the given result
-
-*   `out_path` is NULL
-
-`path_id`: The system path to be retrieved. `out_path`: The platform-defined
-system path specified by `path_id`. `path_length`: The length of the system
-path.
-
-#### Declaration ####
-
-```
-bool SbSystemGetPath(SbSystemPathId path_id, char *out_path, int path_length)
 ```
 
 ### SbSystemGetProperty ###
@@ -588,16 +517,6 @@ to a debugger. The function returns `false` if neither of those cases is true.
 bool SbSystemIsDebuggerAttached()
 ```
 
-### SbSystemPlatformErrorIsValid ###
-
-Checks whether a `SbSystemPlatformError` is valid.
-
-#### Declaration ####
-
-```
-static bool SbSystemPlatformErrorIsValid(SbSystemPlatformError handle)
-```
-
 ### SbSystemRaisePlatformError ###
 
 Cobalt calls this function to notify the platform that an error has occurred in
@@ -605,13 +524,8 @@ the application that the platform may need to handle. The platform is expected
 to then notify the user of the error and to provide a means for any required
 interaction, such as by showing a dialog.
 
-The return value is a handle that may be used in a subsequent call to
-`SbSystemClearPlatformError`. For example, the handle could be used to
-programatically dismiss a dialog that was raised in response to the error. The
-lifetime of the object referenced by the handle is until the user reacts to the
-error or the error is dismissed by a call to SbSystemClearPlatformError,
-whichever happens first. Note that if the platform cannot respond to the error,
-then this function should return `kSbSystemPlatformErrorInvalid`.
+The return value is a boolean. If the platform cannot respond to the error, then
+this function should return `false`, otherwise it should return `true`.
 
 This function may be called from any thread, and it is the platform's
 responsibility to decide how to handle an error received while a previous error
@@ -628,7 +542,7 @@ if it is called.
 #### Declaration ####
 
 ```
-SbSystemPlatformError SbSystemRaisePlatformError(SbSystemPlatformErrorType type, SbSystemPlatformErrorCallback callback, void *user_data)
+bool SbSystemRaisePlatformError(SbSystemPlatformErrorType type, SbSystemPlatformErrorCallback callback, void *user_data)
 ```
 
 ### SbSystemRequestPause ###
@@ -701,16 +615,25 @@ continue to be done, and unrelated system events may be dispatched.
 void SbSystemRequestUnpause()
 ```
 
-### SbSystemSort ###
+### SbSystemSignWithCertificationSecretKey ###
 
-Sorts an array of elements `base`, with `element_count` elements of
-`element_width` bytes each, using `comparator` as the comparison function.
+Computes a HMAC-SHA256 digest of `message` into `digest` using the application's
+certification secret.
 
-This function is meant to be a drop-in replacement for `qsort`.
+This function may be implemented as an alternative to implementing
+SbSystemGetProperty(kSbSystemPropertyBase64EncodedCertificationSecret), however
+both should not be implemented.
 
-`base`: The array of elements to be sorted. `element_count`: The number of
-elements in the array. `element_width`: The size, in bytes, of each element in
-the array. `comparator`: A value that indicates how the array should be sorted.
+The output will be written into `digest`. `digest_size_in_bytes` must be 32 (or
+greater), since 32-bytes will be written into it. Returns false in the case of
+an error, or if it is not implemented. In this case the contents of `digest`
+will be undefined.
+
+#### Declaration ####
+
+```
+bool SbSystemSignWithCertificationSecretKey(const uint8_t *message, size_t message_size_in_bytes, uint8_t *digest, size_t digest_size_in_bytes)
+```
 
 #### Declaration ####
 
@@ -749,4 +672,3 @@ signal-safe on platforms that support signals.
 ```
 bool SbSystemSymbolize(const void *address, char *out_buffer, int buffer_size)
 ```
-

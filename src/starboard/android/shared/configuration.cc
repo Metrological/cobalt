@@ -37,18 +37,18 @@ int CobaltEglSwapInterval() {
   return 0;
 }
 
-bool CobaltEnableJit() {
-  return true;
+bool CobaltEnableQuic() {
+  return 0;
 }
 
 const CobaltExtensionConfigurationApi kConfigurationApi = {
     kCobaltExtensionConfigurationName,
-    1,
+    2,
     &CobaltUserOnExitStrategy,
     &common::CobaltRenderDirtyRegionOnlyDefault,
     &CobaltEglSwapInterval,
     &common::CobaltFallbackSplashScreenUrlDefault,
-    &common::CobaltEnableQuicDefault,
+    &CobaltEnableQuic,
     &common::CobaltSkiaCacheSizeInBytesDefault,
     &common::CobaltOffscreenTargetCacheSizeInBytesDefault,
     &common::CobaltEncodedImageCacheSizeInBytesDefault,
@@ -65,7 +65,8 @@ const CobaltExtensionConfigurationApi kConfigurationApi = {
     &common::CobaltReduceGpuMemoryByDefault,
     &common::CobaltGcZealDefault,
     &common::CobaltRasterizerTypeDefault,
-    &CobaltEnableJit,
+    &common::CobaltEnableJitDefault,
+    &common::CobaltFallbackSplashScreenTopicsDefault,
 };
 
 }  // namespace

@@ -131,6 +131,8 @@
         'minidump/thread_snapshot_minidump.cc',
         'minidump/thread_snapshot_minidump.h',
         'module_snapshot.h',
+        'module_snapshot_evergreen.h',
+        'module_snapshot_evergreen.cc',
         'posix/timezone.cc',
         'posix/timezone.h',
         'process_snapshot.h',
@@ -186,7 +188,7 @@
             ],
           },
         }],
-        ['host_os=="linux" or host_os=="android"', {
+        ['target_os=="linux" or target_os=="android"', {
           'sources!': [
             'capture_memory.cc',
             'capture_memory.h',

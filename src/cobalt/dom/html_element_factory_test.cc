@@ -57,7 +57,7 @@ class HTMLElementFactoryTest : public ::testing::Test {
   HTMLElementFactoryTest()
       : fetcher_factory_(NULL /* network_module */),
         loader_factory_("Test" /* name */, &fetcher_factory_,
-                        NULL /* resource loader */,
+                        NULL /* resource loader */, null_debugger_hooks_,
                         0 /* encoded_image_cache_capacity */,
                         base::ThreadPriority::DEFAULT),
         dom_parser_(new dom_parser::Parser()),
@@ -74,11 +74,13 @@ class HTMLElementFactoryTest : public ::testing::Test {
             NULL /* remote_typeface_cache */, NULL /* mesh_cache */,
             dom_stat_tracker_.get(), "" /* language */,
             base::kApplicationStateStarted,
-            NULL /* synchronous_loader_interrupt */),
+            NULL /* synchronous_loader_interrupt */,
+            NULL /* performance */),
         document_(new Document(&html_element_context_)) {}
   ~HTMLElementFactoryTest() override {}
 
   testing::StubEnvironmentSettings environment_settings_;
+  base::NullDebuggerHooks null_debugger_hooks_;
   loader::FetcherFactory fetcher_factory_;
   loader::LoaderFactory loader_factory_;
   std::unique_ptr<Parser> dom_parser_;

@@ -83,20 +83,6 @@ const uint32_t kSbMediaMaxAudioBitrateInBitsPerSecond = 40 * 1024 * 1024;
 // video.
 const uint32_t kSbMediaMaxVideoBitrateInBitsPerSecond = 200 * 1024 * 1024;
 
-// Specify the number of video frames to be cached during playback.  A large
-// value leads to more stable fps but also causes the app to use more memory.
-const uint32_t kSbMediaMaximumVideoFrames = 12;
-
-// The encoded video frames are compressed in different ways, their decoding
-// time can vary a lot.  Occasionally a single frame can take longer time to
-// decode than the average time per frame.  The player has to cache some frames
-// to account for such inconsistency.  The number of frames being cached are
-// controlled by the following two macros.
-//
-// Specify the number of video frames to be cached before the playback starts.
-// Note that set this value too large may increase the playback start delay.
-const uint32_t kSbMediaMaximumVideoPrerollFrames = 4;
-
 // Specifies how video frame buffers must be aligned on this platform.
 const uint32_t kSbMediaVideoFrameAlignment = 256;
 
@@ -122,7 +108,7 @@ const uint32_t kSbNetworkReceiveBufferSize = 0;
 
 // Defines the maximum number of simultaneous threads for this platform. Some
 // platforms require sharing thread handles with other kinds of system handles,
-// like mutexes, so we want to keep this managable.
+// like mutexes, so we want to keep this manageable.
 const uint32_t kSbMaxThreads = 90;
 
 // The current platform's search path component separator character. When

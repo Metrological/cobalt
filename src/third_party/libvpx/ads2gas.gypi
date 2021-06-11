@@ -45,7 +45,7 @@
       'action': [
         'bash',
         '-c',
-        'cat <(RULE_INPUT_PATH) | perl <(ads2gas_script_dir)/<(ads2gas_script) -chromium > <(shared_generated_dir)/<(RULE_INPUT_ROOT).asm.S',
+        'cat <(RULE_INPUT_PATH) | perl -I /lib/perl5/5.10/ <(ads2gas_script_dir)/<(ads2gas_script) -chromium > <(shared_generated_dir)/<(RULE_INPUT_ROOT).asm.S',
       ],
       'process_outputs_as_sources': 1,
       'message': 'Convert libvpx asm file for ARM <(RULE_INPUT_PATH)',

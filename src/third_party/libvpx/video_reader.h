@@ -8,8 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef VIDEO_READER_H_
-#define VIDEO_READER_H_
+#ifndef VPX_VIDEO_READER_H_
+#define VPX_VIDEO_READER_H_
 
 #include "./video_common.h"
 
@@ -39,8 +39,7 @@ int vpx_video_reader_read_frame(VpxVideoReader *reader);
 
 // Returns the pointer to memory buffer with frame data read by last call to
 // vpx_video_reader_read_frame().
-const uint8_t *vpx_video_reader_get_frame(VpxVideoReader *reader,
-                                          size_t *size);
+const uint8_t *vpx_video_reader_get_frame(VpxVideoReader *reader, size_t *size);
 
 // Fills VpxVideoInfo with information from opened video file.
 const VpxVideoInfo *vpx_video_reader_get_info(VpxVideoReader *reader);
@@ -49,4 +48,4 @@ const VpxVideoInfo *vpx_video_reader_get_info(VpxVideoReader *reader);
 }  // extern "C"
 #endif
 
-#endif  // VIDEO_READER_H_
+#endif  // VPX_VIDEO_READER_H_

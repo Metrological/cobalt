@@ -84,6 +84,9 @@ class HTMLScriptElement : public HTMLElement {
   // From HTMLElement.
   scoped_refptr<HTMLScriptElement> AsHTMLScriptElement() override;
 
+  // Create Performance Resource Timing entry for script element.
+  void GetLoadTimingInfoAndCreateResourceTiming();
+
   DEFINE_WRAPPABLE_TYPE(HTMLScriptElement);
 
  protected:
@@ -154,7 +157,7 @@ class HTMLScriptElement : public HTMLElement {
   loader::RequestMode request_mode_;
 
   // Will be compared with document's origin to derive mute_errors flag
-  // javascript parser takes in to record if the error reqort should be muted
+  // javascript parser takes in to record if the error report should be muted
   // due to cross-origin fetched script.
   loader::Origin fetched_last_url_origin_;
 

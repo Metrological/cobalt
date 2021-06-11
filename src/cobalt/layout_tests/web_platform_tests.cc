@@ -87,11 +87,7 @@ enum TestStatus {
   kNotrun,
 };
 
-enum TestsStatus {
-  kTestsOk = 0,
-  kTestsError,
-  kTestsTimeout
-};
+enum TestsStatus { kTestsOk = 0, kTestsError, kTestsTimeout };
 
 std::string TestStatusToString(int status) {
   switch (status) {
@@ -145,15 +141,20 @@ void Quit(base::RunLoop* run_loop) {
       FROM_HERE, run_loop->QuitClosure());
 }
 
-// Called when layout completes and results have been produced.  We use this
-// signal to stop the WebModule's message loop since our work is done after a
-// layout has been performed.
+// Called upon window.close(), which indicates that the test has finished.
+// We use this signal to stop the WebModule's message loop since our work is
+// done once the window is closed. A timeout will also trigger window.close().
+void WindowCloseCallback(base::RunLoop* run_loop,
+                         base::MessageLoop* message_loop,
+                         base::TimeDelta delta) {
+  message_loop->task_runner()->PostTask(FROM_HERE, base::Bind(Quit, run_loop));
+}
+
+// Called when layout completes.
 void WebModuleOnRenderTreeProducedCallback(
     base::Optional<browser::WebModule::LayoutResults>* out_results,
-    base::RunLoop* run_loop, base::MessageLoop* message_loop,
     const browser::WebModule::LayoutResults& results) {
   out_results->emplace(results.render_tree, results.layout_time);
-  message_loop->task_runner()->PostTask(FROM_HERE, base::Bind(Quit, run_loop));
 }
 
 // This callback, when called, quits a message loop, outputs the error message
@@ -212,14 +213,13 @@ std::string RunWebPlatformTest(const GURL& url, bool* got_results) {
   // Create the WebModule and wait for a layout to occur.
   browser::WebModule web_module(
       url, base::kApplicationStateStarted,
-      base::Bind(&WebModuleOnRenderTreeProducedCallback, &results, &run_loop,
-                 base::MessageLoop::current()),
+      base::Bind(&WebModuleOnRenderTreeProducedCallback, &results),
       base::Bind(&WebModuleErrorCallback, &run_loop,
                  base::MessageLoop::current()),
-      browser::WebModule::CloseCallback() /* window_close_callback */,
+      base::Bind(&WindowCloseCallback, &run_loop, base::MessageLoop::current()),
       base::Closure() /* window_minimize_callback */,
       can_play_type_handler.get(), media_module.get(), &network_module,
-      kDefaultViewportSize, 1.f, &resource_provider, 60.0f, web_module_options);
+      kDefaultViewportSize, &resource_provider, 60.0f, web_module_options);
   run_loop.Run();
   const std::string extract_results =
       "document.getElementById(\"__testharness__results__\").textContent;";
@@ -240,8 +240,8 @@ HarnessResult ParseResults(const std::string& json_results) {
   // Expect that parsing test result succeeded.
   EXPECT_EQ(base::JSONReader::JSON_NO_ERROR, reader.error_code());
   if (!root) {
-    // Unparseable JSON, or empty string.
-    LOG(ERROR) << "Web Platform Tests returned unparseable JSON test result!";
+    // Unparsable JSON, or empty string.
+    LOG(ERROR) << "Web Platform Tests returned unparsable JSON test result!";
     return harness_result;
   }
 
@@ -415,8 +415,23 @@ INSTANTIATE_TEST_CASE_P(html, WebPlatformTest,
                         GetTestName());
 
 INSTANTIATE_TEST_CASE_P(
+    intersection_observer, WebPlatformTest,
+    ::testing::ValuesIn(EnumerateWebPlatformTests("intersection-observer")),
+    GetTestName());
+
+INSTANTIATE_TEST_CASE_P(
     mediasession, WebPlatformTest,
     ::testing::ValuesIn(EnumerateWebPlatformTests("mediasession")),
+    GetTestName());
+
+INSTANTIATE_TEST_CASE_P(
+    performance_timeline, WebPlatformTest,
+    ::testing::ValuesIn(EnumerateWebPlatformTests("performance-timeline")),
+    GetTestName());
+
+INSTANTIATE_TEST_CASE_P(
+    resource_timing, WebPlatformTest,
+    ::testing::ValuesIn(EnumerateWebPlatformTests("resource-timing")),
     GetTestName());
 
 INSTANTIATE_TEST_CASE_P(streams, WebPlatformTest,
@@ -424,11 +439,12 @@ INSTANTIATE_TEST_CASE_P(streams, WebPlatformTest,
                             "streams", "'ReadableStream' in this")),
                         GetTestName());
 
-INSTANTIATE_TEST_CASE_P(webidl, WebPlatformTest,
-    ::testing::ValuesIn(EnumerateWebPlatformTests("WebIDL")),
-    GetTestName());
+INSTANTIATE_TEST_CASE_P(
+    webidl, WebPlatformTest,
+    ::testing::ValuesIn(EnumerateWebPlatformTests("WebIDL")), GetTestName());
 
-INSTANTIATE_TEST_CASE_P(websockets, WebPlatformTest,
+INSTANTIATE_TEST_CASE_P(
+    websockets, WebPlatformTest,
     ::testing::ValuesIn(EnumerateWebPlatformTests("websockets")),
     GetTestName());
 
@@ -436,6 +452,10 @@ INSTANTIATE_TEST_CASE_P(
     web_crypto_api, WebPlatformTest,
     ::testing::ValuesIn(EnumerateWebPlatformTests("WebCryptoAPI")),
     GetTestName());
+
+INSTANTIATE_TEST_CASE_P(
+    encoding, WebPlatformTest,
+    ::testing::ValuesIn(EnumerateWebPlatformTests("encoding")), GetTestName());
 
 #endif  // !defined(COBALT_WIN)
 
