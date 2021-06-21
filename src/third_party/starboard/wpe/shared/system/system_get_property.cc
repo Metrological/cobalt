@@ -145,6 +145,7 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       }
 #endif
     }
+#if SB_API_VERSION < 13
     case kSbSystemPropertyBase64EncodedCertificationSecret: {
 #ifdef HAS_PROVISION
       char property_name[1024];
@@ -167,6 +168,7 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       }
 #endif
     }
+#endif
 #endif  // SB_API_VERSION >= 11
 
     default:
