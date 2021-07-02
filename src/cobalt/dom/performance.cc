@@ -14,6 +14,7 @@
 
 #include "cobalt/dom/performance.h"
 
+#include "base/time/default_clock.h"
 #include "base/time/time.h"
 #include "cobalt/browser/stack_size_constants.h"
 #include "cobalt/dom/memory_info.h"
@@ -22,25 +23,63 @@
 namespace cobalt {
 namespace dom {
 
+namespace {
+
+  base::TimeDelta GetUnixAtZeroMonotonic(const base::Clock* clock,
+                                         const base::TickClock* tick_clock) {
+  base::TimeDelta unix_time_now = clock->Now() - base::Time::UnixEpoch();
+  base::TimeDelta time_since_origin = tick_clock->NowTicks().since_origin();
+  return unix_time_now - time_since_origin;
+}
+
+}
+
 Performance::Performance(script::EnvironmentSettings* settings,
                          const scoped_refptr<base::BasicClock>& clock)
     : EventTarget(settings),
-      timing_(new PerformanceTiming(clock)),
+      time_origin_(base::TimeTicks::Now()),
+      tick_clock_(base::DefaultTickClock::GetInstance()),
+      timing_(new PerformanceTiming(clock, time_origin_)),
       memory_(new MemoryInfo()),
-      time_origin_(base::Time::Now() - base::Time::UnixEpoch()),
+      lifecycle_timing_(
+          new PerformanceLifecycleTiming("lifecycle timing", time_origin_)),
       resource_timing_buffer_size_limit_(
           Performance::kMaxResourceTimingBufferSize),
       resource_timing_buffer_current_size_(0),
       resource_timing_buffer_full_event_pending_flag_(false),
       resource_timing_secondary_buffer_current_size_(0),
       performance_observer_task_queued_flag_(false),
-      add_to_performance_entry_buffer_flag_(false) {}
+      add_to_performance_entry_buffer_flag_(false) {
+  unix_at_zero_monotonic_ = GetUnixAtZeroMonotonic(
+      base::DefaultClock::GetInstance(), tick_clock_);
+  QueuePerformanceEntry(lifecycle_timing_);
+}
+
+// static
+DOMHighResTimeStamp Performance::MonotonicTimeToDOMHighResTimeStamp(
+      base::TimeTicks time_origin,
+      base::TimeTicks monotonic_time) {
+  if (monotonic_time.is_null() || time_origin.is_null())
+    return 0.0;
+  DOMHighResTimeStamp clamped_time =
+      ClampTimeStampMinimumResolution(monotonic_time,
+      Performance::kPerformanceTimerMinResolutionInMicroseconds) -
+      ClampTimeStampMinimumResolution(time_origin,
+      Performance::kPerformanceTimerMinResolutionInMicroseconds);
+
+  return clamped_time;
+}
+
+DOMHighResTimeStamp Performance::MonotonicTimeToDOMHighResTimeStamp(
+    base::TimeTicks monotonic_time) const {
+  return Performance::MonotonicTimeToDOMHighResTimeStamp(time_origin_,
+                                                         monotonic_time);
+}
 
 DOMHighResTimeStamp Performance::Now() const {
-  base::TimeDelta now = base::Time::Now() - base::Time::UnixEpoch();
-  return ConvertTimeDeltaToDOMHighResTimeStamp(
-      now - time_origin_,
-      Performance::kPerformanceTimerMinResolutionInMicroseconds);
+  // Now stores the current high resolution time.
+  //   https://www.w3.org/TR/2019/REC-hr-time-2-20191121/#dfn-current-high-resolution-time
+  return MonotonicTimeToDOMHighResTimeStamp(tick_clock_->NowTicks());
 }
 
 scoped_refptr<PerformanceTiming> Performance::timing() const { return timing_; }
@@ -51,19 +90,20 @@ DOMHighResTimeStamp Performance::time_origin() const {
   // The algorithm for calculating time origin timestamp.
   //   https://www.w3.org/TR/2019/REC-hr-time-2-20191121/#dfn-time-origin-timestamp
   // Assert that global's time origin is not undefined.
-  DCHECK(!time_origin_.is_zero());
+  DCHECK(!time_origin_.is_null());
 
   // Let t1 be the DOMHighResTimeStamp representing the high resolution
   // time at which the global monotonic clock is zero.
-  base::TimeDelta t1 = base::Time::UnixEpoch().ToDeltaSinceWindowsEpoch();
+  base::TimeDelta t1 = unix_at_zero_monotonic_;
 
   // Let t2 be the DOMHighResTimeStamp representing the high resolution
   // time value of the global monotonic clock at global's time origin.
-  base::TimeDelta t2 = time_origin_;
+  base::TimeDelta t2 = time_origin_ - base::TimeTicks();
 
   // Return the sum of t1 and t2.
-  return ConvertTimeDeltaToDOMHighResTimeStamp(
-      t1 + t2, Performance::kPerformanceTimerMinResolutionInMicroseconds);
+  return ClampTimeStampMinimumResolution(
+      t1 + t2,
+      Performance::kPerformanceTimerMinResolutionInMicroseconds);
 }
 
 void Performance::UnregisterPerformanceObserver(
@@ -122,6 +162,7 @@ void Performance::UpdateRegisteredPerformanceObserverOptionsList(
 void Performance::TraceMembers(script::Tracer* tracer) {
   tracer->Trace(timing_);
   tracer->Trace(memory_);
+  tracer->Trace(lifecycle_timing_);
 }
 
 PerformanceEntryList Performance::GetEntries() {
@@ -131,13 +172,13 @@ PerformanceEntryList Performance::GetEntries() {
 PerformanceEntryList Performance::GetEntriesByType(
     const std::string& entry_type) {
   return PerformanceEntryListImpl::GetEntriesByType(performance_entry_buffer_,
-                                                      entry_type);
+                                                    entry_type);
 }
 
 PerformanceEntryList Performance::GetEntriesByName(
     const std::string& name, const base::StringPiece& type) {
   return PerformanceEntryListImpl::GetEntriesByName(performance_entry_buffer_,
-                                                      name, type);
+                                                    name, type);
 }
 
 void Performance::ClearResourceTimings() {
@@ -147,7 +188,9 @@ void Performance::ClearResourceTimings() {
   // entry buffer.
   PerformanceEntryList performance_entry_buffer;
   for (const auto& entry : performance_entry_buffer_) {
-    if (!base::polymorphic_downcast<PerformanceResourceTiming*>(entry.get())) {
+    bool should_be_removed = PerformanceEntry::ToEntryTypeEnum(
+        entry->entry_type()) == PerformanceEntry::kResource;
+    if (!should_be_removed) {
       performance_entry_buffer.push_back(entry);
     }
   }
@@ -369,11 +412,22 @@ void Performance::CreatePerformanceResourceTiming(
   // requestedURL, timingInfo, and cacheMode.
   scoped_refptr<PerformanceResourceTiming> resource_timing(
       new PerformanceResourceTiming(timing_info, initiator_type,
-                                    requested_url, this));
+                                    requested_url, this, time_origin_));
   // 2. Queue entry.
   QueuePerformanceEntry(resource_timing);
   // 3. Add entry to global's performance entry buffer.
   AddPerformanceResourceTimingEntry(resource_timing);
+}
+
+void Performance::SetApplicationState(base::ApplicationState state,
+                                      SbTimeMonotonic timestamp) {
+  lifecycle_timing_->SetApplicationState(state, timestamp);
+}
+
+void Performance::SetApplicationStartOrPreloadTimestamp(
+    bool is_preload, SbTimeMonotonic timestamp) {
+  lifecycle_timing_->SetApplicationStartOrPreloadTimestamp(
+      is_preload, timestamp);
 }
 
 }  // namespace dom

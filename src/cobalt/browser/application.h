@@ -52,11 +52,12 @@ class Application {
  public:
   // The passed in |quit_closure| can be called internally by the Application
   // to signal that it would like to quit.
-  Application(const base::Closure& quit_closure, bool should_preload);
+  Application(const base::Closure& quit_closure, bool should_preload,
+              SbTimeMonotonic timestamp);
   virtual ~Application();
 
   // Start from a preloaded state.
-  void Start();
+  void Start(SbTimeMonotonic timestamp);
   void Quit();
   void HandleStarboardEvent(const SbEvent* event);
 
@@ -67,7 +68,8 @@ class Application {
   void OnNetworkEvent(const base::Event* event);
 
   // Called to handle an application event.
-  void OnApplicationEvent(SbEventType event_type);
+  void OnApplicationEvent(SbEventType event_type,
+                          SbTimeMonotonic timestamp);
 
   // Called to handle a window size change event.
   void OnWindowSizeChangedEvent(const base::Event* event);
@@ -200,6 +202,8 @@ class Application {
 
   static ssize_t available_memory_;
   static int64 lifetime_in_ms_;
+
+  static AppStatus app_status_;
 
   CValStats c_val_stats_;
 
