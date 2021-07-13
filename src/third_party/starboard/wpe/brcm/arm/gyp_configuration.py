@@ -14,10 +14,15 @@
 """Starboard Broadcom platform configuration."""
 
 import os
-from starboard.build import clang
 from starboard.build import platform_configuration
 from starboard.tools import build
 from starboard.tools.testing import test_filter
+from starboard.tools.toolchain import ar
+from starboard.tools.toolchain import bash
+from starboard.tools.toolchain import clang
+from starboard.tools.toolchain import clangxx
+from starboard.tools.toolchain import cp
+from starboard.tools.toolchain import touch
 
 # Use a bogus path instead of None so that anything based on COBALT_STAGING_DIR and
 # COBALT_TOOLCHAIN_PRFIX won't inadvertently end up pointing to something in the root directory,
@@ -62,8 +67,8 @@ class WpePlatformConfig(platform_configuration.PlatformConfiguration):
     env_variables = {}
 
     env_variables.update({
-        'CC': self.toolchain + 'gcc',
-        'CXX': self.toolchain + 'g++',
+        'CC': self.build_accelerator + ' ' + self.toolchain + 'gcc',
+        'CXX': self.build_accelerator + ' ' + self.toolchain + 'g++',
         'CC_host': 'gcc -m32',
         'CXX_host': 'g++ -m32',
     })
@@ -77,6 +82,42 @@ class WpePlatformConfig(platform_configuration.PlatformConfiguration):
     if not os.path.isdir(self.sysroot):
       raise RuntimeError('Wpe builds require COBALT_STAGING_DIR sysroot '
                          'to be a valid directory.')
+
+  def GetTargetToolchain(self, **kwargs):
+    environment_variables = self.GetEnvironmentVariables()
+    cc_path = environment_variables['CC']
+    cxx_path = environment_variables['CXX']
+
+    return [
+        clang.CCompiler(path=cc_path),
+        clang.CxxCompiler(path=cxx_path),
+        clang.AssemblerWithCPreprocessor(path=cc_path),
+        ar.StaticThinLinker(),
+        ar.StaticLinker(),
+        clangxx.ExecutableLinker(path=cxx_path, write_group=True),
+        clangxx.SharedLibraryLinker(path=cxx_path),
+        cp.Copy(),
+        touch.Stamp(),
+        bash.Shell(),
+    ]
+
+  def GetHostToolchain(self, **kwargs):
+    environment_variables = self.GetEnvironmentVariables()
+    cc_path = environment_variables['CC_host']
+    cxx_path = environment_variables['CXX_host']
+
+    return [
+        clang.CCompiler(path=cc_path),
+        clang.CxxCompiler(path=cxx_path),
+        clang.AssemblerWithCPreprocessor(path=cc_path),
+        ar.StaticThinLinker(),
+        ar.StaticLinker(),
+        clangxx.ExecutableLinker(path=cxx_path, write_group=True),
+        clangxx.SharedLibraryLinker(path=cxx_path),
+        cp.Copy(),
+        touch.Stamp(),
+        bash.Shell(),
+    ]
 
   def GetLauncherPath(self):
     """Gets the path to the launcher module for this platform."""
