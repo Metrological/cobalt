@@ -1439,6 +1439,15 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
     ChangePipelineState(GST_STATE_PLAYING);
   }
 
+  if(sample_infos != NULL && sample_infos->drm_info != NULL && sample_infos->drm_info->subsample_mapping != NULL)
+  {
+    const gchar* scheme_type = sample_infos->drm_info->encryption_scheme == kSbDrmEncryptionSchemeAesCtr? "application/x-cenc" : "application/x-cbcs";
+    GstStructure * protection_meta = gst_structure_new(scheme_type,
+                                                "crypt_byte_block", G_TYPE_UINT, sample_infos->drm_info->subsample_mapping->encrypted_byte_count,
+                                                "skip_byte_block", G_TYPE_UINT, sample_infos->drm_info->subsample_mapping->clear_byte_count, NULL);
+    gst_buffer_add_protection_meta(buffer, protection_meta);
+  }
+
   std::string key_str;
   bool keep_samples = false;
   {
