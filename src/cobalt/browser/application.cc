@@ -1115,6 +1115,13 @@ void Application::HandleStarboardEvent(const SbEvent* starboard_event) {
           new base::AccessibilityTextToSpeechSettingsChangedEvent());
       break;
 #endif
+#if SB_HAS(WPE_FRAMEWORK)
+    case kSbEventTypeNavigate: {
+      const char* url = static_cast<const char*>(starboard_event->data);
+      browser_module_->Navigate(GURL(url));
+      break;
+    }
+#endif // SB_HAS(WPE_FRAMEWORK)
     // Explicitly list unhandled cases here so that the compiler can give a
     // warning when a value is added, but not handled.
     case kSbEventTypeInput:
@@ -1200,6 +1207,9 @@ void Application::OnApplicationEvent(SbEventType event_type) {
 #if SB_API_VERSION >= 12
     case kSbEventTypeAccessiblityTextToSpeechSettingsChanged:
 #endif  // SB_API_VERSION >= 12
+#if SB_HAS(WPE_FRAMEWORK)
+    case kSbEventTypeNavigate:
+#endif // SB_HAS(WPE_FRAMEWORK)
 #if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
     case kSbEventTypeOnScreenKeyboardBlurred:
     case kSbEventTypeOnScreenKeyboardFocused:
