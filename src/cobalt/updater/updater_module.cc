@@ -51,6 +51,31 @@ constexpr uint8_t kCobaltPublicKeyHash[] = {
 
 void QuitLoop(base::OnceClosure quit_closure) { std::move(quit_closure).Run(); }
 
+CobaltExtensionUpdaterNotificationState
+ComponentStateToCobaltExtensionUpdaterNotificationState(
+    ComponentState component_state) {
+  switch (component_state) {
+    case ComponentState::kChecking:
+      return kCobaltExtensionUpdaterNotificationStateChecking;
+    case ComponentState::kCanUpdate:
+      return kCobaltExtensionUpdaterNotificationStateUpdateAvailable;
+    case ComponentState::kDownloading:
+      return kCobaltExtensionUpdaterNotificationStateDownloading;
+    case ComponentState::kDownloaded:
+      return kCobaltExtensionUpdaterNotificationStateDownloaded;
+    case ComponentState::kUpdating:
+      return kCobaltExtensionUpdaterNotificationStateInstalling;
+    case ComponentState::kUpdated:
+      return kCobaltExtensionUpdaterNotificationStatekUpdated;
+    case ComponentState::kUpToDate:
+      return kCobaltExtensionUpdaterNotificationStatekUpdated;
+    case ComponentState::kUpdateError:
+      return kCobaltExtensionUpdaterNotificationStatekUpdateFailed;
+    default:
+      return kCobaltExtensionUpdaterNotificationStateNone;
+  }
+}
+
 }  // namespace
 
 namespace cobalt {
@@ -76,6 +101,12 @@ void Observer::OnEvent(Events event, const std::string& id) {
     if (crx_update_item_.state == ComponentState::kUpdateError) {
       status +=
           ", error code is " + std::to_string(crx_update_item_.error_code);
+    }
+    if (updater_notification_ext_ != nullptr) {
+      updater_notification_ext_->UpdaterState(
+          ComponentStateToCobaltExtensionUpdaterNotificationState(
+              crx_update_item_.state),
+          GetCurrentEvergreenVersion().c_str());
     }
   } else {
     status = "No status available";
@@ -143,10 +174,16 @@ void UpdaterModule::Finalize() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   update_client_->RemoveObserver(updater_observer_.get());
   updater_observer_.reset();
+  update_client_->Stop();
   update_client_ = nullptr;
 
-  updater_configurator_->GetPrefService()->CommitPendingWrite(
-      base::BindOnce(&QuitLoop, base::Bind(base::DoNothing::Repeatedly())));
+  if (updater_configurator_ != nullptr) {
+    auto pref_service = updater_configurator_->GetPrefService();
+    if (pref_service != nullptr) {
+      pref_service->CommitPendingWrite(
+          base::BindOnce(&QuitLoop, base::Bind(base::DoNothing::Repeatedly())));
+    }
+  }
 
   updater_configurator_ = nullptr;
 }
@@ -235,17 +272,30 @@ void UpdaterModule::Update() {
       base::TimeDelta::FromHours(kNextUpdateCheckHours));
 }
 
+// The following methods are called by other threads than the updater_thread_.
+
 void UpdaterModule::CompareAndSwapChannelChanged(int old_value, int new_value) {
-  updater_configurator_->CompareAndSwapChannelChanged(old_value, new_value);
+  auto config = updater_configurator_;
+  if (config) config->CompareAndSwapChannelChanged(old_value, new_value);
 }
 
-// The following three methods all called by the main web module thread.
 std::string UpdaterModule::GetUpdaterChannel() const {
-  return updater_configurator_->GetChannel();
+  auto config = updater_configurator_;
+  if (!config) return "";
+
+  return config->GetChannel();
 }
 
 void UpdaterModule::SetUpdaterChannel(const std::string& updater_channel) {
-  updater_configurator_->SetChannel(updater_channel);
+  auto config = updater_configurator_;
+  if (config) config->SetChannel(updater_channel);
+}
+
+std::string UpdaterModule::GetUpdaterStatus() const {
+  auto config = updater_configurator_;
+  if (!config) return "";
+
+  return config->GetUpdaterStatus();
 }
 
 void UpdaterModule::RunUpdateCheck() {

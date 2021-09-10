@@ -247,6 +247,9 @@ class WebModule::Impl {
 
   void CancelSynchronousLoads();
 
+  void DoSynchronousLayoutAndGetRenderTree(
+      scoped_refptr<render_tree::Node>* render_tree);
+
  private:
   class DocumentLoadedObserver;
 
@@ -657,10 +660,7 @@ WebModule::Impl::Impl(const ConstructionData& data)
       web_module_stat_tracker_->dom_stat_tracker(), data.initial_url,
       data.network_module->GetUserAgent(),
       data.network_module->preferred_language(),
-      data.options.font_language_script_override.empty()
-          ? base::GetSystemLanguageScript()
-          : data.options.font_language_script_override,
-      data.options.navigation_callback,
+      base::GetSystemLanguageScript(), data.options.navigation_callback,
       base::Bind(&WebModule::Impl::OnLoadComplete, base::Unretained(this)),
       data.network_module->cookie_jar(), data.network_module->GetPostSender(),
       data.options.require_csp, data.options.csp_enforcement_mode,
@@ -991,6 +991,16 @@ void WebModule::Impl::ProcessOnRenderTreeRasterized(
 
 void WebModule::Impl::CancelSynchronousLoads() {
   synchronous_loader_interrupt_.Signal();
+}
+
+void WebModule::Impl::DoSynchronousLayoutAndGetRenderTree(
+    scoped_refptr<render_tree::Node>* render_tree) {
+  TRACE_EVENT0("cobalt::browser",
+               "WebModule::Impl::DoSynchronousLayoutAndGetRenderTree()");
+  DCHECK(render_tree);
+  scoped_refptr<render_tree::Node> tree =
+      window_->document()->DoSynchronousLayoutAndGetRenderTree();
+  *render_tree = tree;
 }
 
 void WebModule::Impl::OnCspPolicyChanged() {
@@ -1729,6 +1739,24 @@ void WebModule::RequestJavaScriptHeapStatistics(
   message_loop()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&WebModule::Impl::GetJavaScriptHeapStatistics,
                             base::Unretained(impl_.get()), callback));
+}
+
+scoped_refptr<render_tree::Node>
+WebModule::DoSynchronousLayoutAndGetRenderTree() {
+  TRACE_EVENT0("cobalt::browser",
+               "WebModule::DoSynchronousLayoutAndGetRenderTree()");
+  DCHECK(message_loop());
+  DCHECK(impl_);
+  scoped_refptr<render_tree::Node> render_tree;
+  if (base::MessageLoop::current() != message_loop()) {
+    message_loop()->task_runner()->PostBlockingTask(
+        FROM_HERE,
+        base::Bind(&WebModule::Impl::DoSynchronousLayoutAndGetRenderTree,
+                   base::Unretained(impl_.get()), &render_tree));
+  } else {
+    impl_->DoSynchronousLayoutAndGetRenderTree(&render_tree);
+  }
+  return render_tree;
 }
 
 }  // namespace browser

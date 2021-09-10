@@ -18,6 +18,7 @@ import static android.content.Context.AUDIO_SERVICE;
 import static android.media.AudioManager.GET_DEVICES_INPUTS;
 import static dev.cobalt.util.Log.TAG;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
@@ -33,6 +34,7 @@ import android.util.SizeF;
 import android.view.Display;
 import android.view.accessibility.AccessibilityManager;
 import android.view.accessibility.CaptioningManager;
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import dev.cobalt.account.UserAuthorizer;
 import dev.cobalt.libraries.services.clientloginfo.ClientLogInfo;
@@ -320,6 +322,43 @@ public class StarboardBridge {
     return DisplayUtil.getSystemDisplaySize();
   }
 
+  @Nullable
+  private static String getSystemProperty(String name) {
+    try {
+      @SuppressLint("PrivateApi")
+      Class<?> systemProperties = Class.forName("android.os.SystemProperties");
+      Method getMethod = systemProperties.getMethod("get", String.class);
+      return (String) getMethod.invoke(systemProperties, name);
+    } catch (Exception e) {
+      Log.e(TAG, "Failed to read system property " + name, e);
+      return null;
+    }
+  }
+
+  @SuppressWarnings("unused")
+  @UsedByNative
+  Size getDeviceResolution() {
+    String displaySize =
+        android.os.Build.VERSION.SDK_INT < 28
+            ? getSystemProperty("sys.display-size")
+            : getSystemProperty("vendor.display-size");
+
+    if (displaySize == null) {
+      return getDisplaySize();
+    }
+
+    String[] sizes = displaySize.split("x");
+    if (sizes.length != 2) {
+      return getDisplaySize();
+    }
+
+    try {
+      return new Size(Integer.parseInt(sizes[0]), Integer.parseInt(sizes[1]));
+    } catch (NumberFormatException e) {
+      return getDisplaySize();
+    }
+  }
+
   /**
    * Checks if there is no microphone connected to the system.
    *
@@ -537,7 +576,16 @@ public class StarboardBridge {
       return false;
     }
 
-    int[] supportedHdrTypes = defaultDisplay.getHdrCapabilities().getSupportedHdrTypes();
+    Display.HdrCapabilities hdrCapabilities = defaultDisplay.getHdrCapabilities();
+    if (hdrCapabilities == null) {
+      return false;
+    }
+
+    int[] supportedHdrTypes = hdrCapabilities.getSupportedHdrTypes();
+    if (supportedHdrTypes == null) {
+      return false;
+    }
+
     for (int supportedType : supportedHdrTypes) {
       if (supportedType == hdrType) {
         return true;

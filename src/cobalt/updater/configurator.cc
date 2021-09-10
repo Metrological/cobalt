@@ -29,31 +29,6 @@ namespace {
 // Default time constants.
 const int kDelayOneMinute = 60;
 const int kDelayOneHour = kDelayOneMinute * 60;
-const std::set<std::string> valid_channels = {
-    // Default channel for debug/devel builds.
-    "dev",
-    // Channel for dogfooders.
-    "dogfood",
-    // Default channel for gold builds.
-    "prod",
-    // Default channel for qa builds. A gold build can switch to this channel to
-    // get an official qa build.
-    "qa",
-    // Test an update with higher version than prod channel.
-    "test",
-    // Test an update with mismatched sabi.
-    "tmsabi",
-    // Test an update that does nothing.
-    "tnoop",
-    // Test an update that crashes.
-    "tcrash",
-    // Test an update that fails verification.
-    "tfailv",
-    // Test an update that works for one app only.
-    "t1app",
-    // Test a series of continuous updates with two channels.
-    "tseries1", "tseries2",
-};
 
 #if defined(COBALT_BUILD_TYPE_DEBUG) || defined(COBALT_BUILD_TYPE_DEVEL)
 const char kDefaultUpdaterChannel[] = "dev";
@@ -95,6 +70,9 @@ Configurator::Configurator(network::NetworkModule* network_module)
     SetChannel(kDefaultUpdaterChannel);
   } else {
     SetChannel(persisted_channel);
+  }
+  if (network_module != nullptr) {
+    user_agent_string_ = network_module->GetUserAgent();
   }
 }
 Configurator::~Configurator() = default;
@@ -164,6 +142,11 @@ base::flat_map<std::string, std::string> Configurator::ExtraRequestParams()
   params.insert(
       std::make_pair("model", GetDeviceProperty(kSbSystemPropertyModelName)));
 
+  // Original Design manufacturer name
+  params.insert(
+      std::make_pair("manufacturer",
+                     GetDeviceProperty(kSbSystemPropertySystemIntegratorName)));
+
   // Chipset model number
   params.insert(std::make_pair(
       "chipset", GetDeviceProperty(kSbSystemPropertyChipsetModelNumber)));
@@ -175,6 +158,9 @@ base::flat_map<std::string, std::string> Configurator::ExtraRequestParams()
   // Model year
   params.insert(
       std::make_pair("year", GetDeviceProperty(kSbSystemPropertyModelYear)));
+
+  // User Agent String
+  params.insert(std::make_pair("uastring", user_agent_string_));
 
   return params;
 }
@@ -246,14 +232,6 @@ std::string Configurator::GetChannel() const {
 void Configurator::SetChannel(const std::string& updater_channel) {
   base::AutoLock auto_lock(updater_channel_lock_);
   updater_channel_ = updater_channel;
-}
-
-bool Configurator::IsChannelValid(const std::string& channel) {
-  if (!valid_channels.count(channel)) {
-    SetUpdaterStatus(std::string("Invalid channel requested"));
-    return false;
-  }
-  return true;
 }
 
 // The updater status is get by main web module thread and set by the updater

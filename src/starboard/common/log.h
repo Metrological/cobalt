@@ -123,7 +123,8 @@ class LogMessageVoidify {
 #define SB_LAZY_STREAM(stream, condition) \
   !(condition) ? (void)0 : ::starboard::logging::LogMessageVoidify() & (stream)
 
-#if SB_LOGGING_IS_OFFICIAL_BUILD
+#if SB_LOGGING_IS_OFFICIAL_BUILD && !SB_IS(EVERGREEN) && \
+    !SB_IS(EVERGREEN_COMPATIBLE)
 #define SB_LOG_IS_ON(severity)                         \
   ((::starboard::logging::SB_LOG_##severity >=         \
     ::starboard::logging::SB_LOG_FATAL)                \
@@ -167,8 +168,10 @@ class LogMessageVoidify {
 #if SB_LOGGING_IS_OFFICIAL_BUILD || \
     (defined(NDEBUG) && !defined(DCHECK_ALWAYS_ON))
 #define SB_DCHECK(condition) SB_EAT_STREAM_PARAMETERS
+#define SB_DCHECK_ENABLED 0
 #else
 #define SB_DCHECK(condition) SB_CHECK(condition)
+#define SB_DCHECK_ENABLED 1
 #endif
 
 #define SB_DLOG(severity) SB_DLOG_IF(severity, SB_DLOG_IS_ON(severity))
@@ -223,8 +226,10 @@ class LogMessageVoidify {
 #if SB_LOGGING_IS_OFFICIAL_BUILD
 #define SB_NOTIMPLEMENTED()
 #define SB_DCHECK(condition)
+#define SB_DCHECK_ENABLED 0
 #else
 #define SB_DCHECK(condition) SB_CHECK(condition)
+#define SB_DCHECK_ENABLED 1
 #define SB_NOTIMPLEMENTED()                              \
   do {                                                   \
     static int count = 0;                                \

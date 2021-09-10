@@ -291,7 +291,7 @@ class MEDIA_EXPORT SbPlayerPipeline : public Pipeline,
   // Timestamp for the last written audio.
   SbTime timestamp_of_last_written_audio_ = 0;
   // Last media time reported by GetMediaTime().
-  SbTime last_media_time_;
+  SbTime last_media_time_ = 0;
   // Time when we last checked the media time.
   SbTime last_time_media_time_retrieved_ = 0;
   // The maximum video playback capabilities required for the playback.
@@ -852,11 +852,15 @@ void SbPlayerPipeline::CreateUrlPlayer(const std::string& source_url) {
         task_runner_, source_url, window_, this, set_bounds_helper_.get(),
         allow_resume_after_suspend_, *decode_to_texture_output_mode_,
         on_encrypted_media_init_data_encountered_cb_, video_frame_provider_));
-    SetPlaybackRateTask(playback_rate_);
-    SetVolumeTask(volume_);
+    if (player_->IsValid()) {
+      SetPlaybackRateTask(playback_rate_);
+      SetVolumeTask(volume_);
+    } else {
+      player_.reset();
+    }
   }
 
-  if (player_->IsValid()) {
+  if (player_ && player_->IsValid()) {
     base::Closure output_mode_change_cb;
     {
       base::AutoLock auto_lock(lock_);
@@ -867,7 +871,8 @@ void SbPlayerPipeline::CreateUrlPlayer(const std::string& source_url) {
     return;
   }
 
-  player_.reset();
+  DLOG(ERROR) << "SbPlayerPipeline::CreateUrlPlayer failed: "
+                 "player_->IsValid() is false.";
   CallSeekCB(DECODER_ERROR_NOT_SUPPORTED);
 }
 
@@ -937,11 +942,15 @@ void SbPlayerPipeline::CreatePlayer(SbDrmSystem drm_system) {
         set_bounds_helper_.get(), allow_resume_after_suspend_,
         *decode_to_texture_output_mode_, video_frame_provider_,
         max_video_capabilities_));
-    SetPlaybackRateTask(playback_rate_);
-    SetVolumeTask(volume_);
+    if (player_->IsValid()) {
+      SetPlaybackRateTask(playback_rate_);
+      SetVolumeTask(volume_);
+    } else {
+      player_.reset();
+    }
   }
 
-  if (player_->IsValid()) {
+  if (player_ && player_->IsValid()) {
     base::Closure output_mode_change_cb;
     {
       base::AutoLock auto_lock(lock_);
@@ -959,7 +968,8 @@ void SbPlayerPipeline::CreatePlayer(SbDrmSystem drm_system) {
     return;
   }
 
-  player_.reset();
+  DLOG(ERROR) << "SbPlayerPipeline::CreatePlayer failed: "
+                 "player_->IsValid() is false.";
   CallSeekCB(DECODER_ERROR_NOT_SUPPORTED);
 }
 
@@ -1349,6 +1359,20 @@ void SbPlayerPipeline::ResumeTask(base::WaitableEvent* done_event) {
 
   if (player_) {
     player_->Resume();
+    if (!player_->IsValid()) {
+      {
+        base::AutoLock auto_lock(lock_);
+        player_.reset();
+      }
+      // TODO: Determine if CallSeekCB() may be used here, as |seek_cb_| may be
+      // available if the app is suspended before a seek is completed.
+      if (!error_cb_.is_null()) {
+        ResetAndRunIfNotNull(&error_cb_, DECODER_ERROR_NOT_SUPPORTED,
+                             "SbPlayerPipeline::ResumeTask failed: "
+                             "player_->IsValid() is false.");
+      }
+      return;
+    }
   }
 
   suspended_ = false;

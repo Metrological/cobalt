@@ -79,8 +79,6 @@ class Configurator : public update_client::Configurator {
 
   void CompareAndSwapChannelChanged(int old_value, int new_value) override;
 
-  bool IsChannelValid(const std::string& channel);
-
   std::string GetUpdaterStatus() const override;
   void SetUpdaterStatus(const std::string& status) override;
 
@@ -103,6 +101,7 @@ class Configurator : public update_client::Configurator {
   base::Lock updater_status_lock_;
   std::string previous_updater_status_;
   base::Lock previous_updater_status_lock_;
+  std::string user_agent_string_;
 
   DISALLOW_COPY_AND_ASSIGN(Configurator);
 };

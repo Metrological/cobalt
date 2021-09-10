@@ -120,6 +120,7 @@ public class MediaCodecUtil {
     // On the emulator it fails with the log: "storeMetaDataInBuffers failed w/ err -1010"
     codecBlackList.add("OMX.google.vp9.decoder");
 
+    vp9WhiteList.put("Amazon", new HashSet<String>());
     vp9WhiteList.put("Amlogic", new HashSet<String>());
     vp9WhiteList.put("Arcadyan", new HashSet<String>());
     vp9WhiteList.put("arcelik", new HashSet<String>());
@@ -159,6 +160,7 @@ public class MediaCodecUtil {
     vp9WhiteList.put("Xiaomi", new HashSet<String>());
     vp9WhiteList.put("ZTE TV", new HashSet<String>());
 
+    vp9WhiteList.get("Amazon").add("AFTS");
     vp9WhiteList.get("Amlogic").add("p212");
     vp9WhiteList.get("Arcadyan").add("Bouygtel4K");
     vp9WhiteList.get("Arcadyan").add("HMB2213PW22TS");
@@ -397,10 +399,19 @@ public class MediaCodecUtil {
       int frameHeight,
       int bitrate,
       int fps,
-      boolean mustSupportHdr) {
+      boolean mustSupportHdr,
+      boolean mustSupportTunnelMode) {
     FindVideoDecoderResult findVideoDecoderResult =
         findVideoDecoder(
-            mimeType, secure, frameWidth, frameHeight, bitrate, fps, mustSupportHdr, false, false);
+            mimeType,
+            secure,
+            frameWidth,
+            frameHeight,
+            bitrate,
+            fps,
+            mustSupportHdr,
+            false,
+            mustSupportTunnelMode);
     return !findVideoDecoderResult.name.equals("")
         && (!mustSupportHdr || isHdrCapableVideoDecoder(mimeType, findVideoDecoderResult));
   }
@@ -411,8 +422,9 @@ public class MediaCodecUtil {
    */
   @SuppressWarnings("unused")
   @UsedByNative
-  public static boolean hasAudioDecoderFor(String mimeType, int bitrate) {
-    return !findAudioDecoder(mimeType, bitrate).equals("");
+  public static boolean hasAudioDecoderFor(
+      String mimeType, int bitrate, boolean mustSupportTunnelMode) {
+    return !findAudioDecoder(mimeType, bitrate, mustSupportTunnelMode).equals("");
   }
 
   /**
@@ -436,15 +448,6 @@ public class MediaCodecUtil {
     FindVideoDecoderResult findVideoDecoderResult =
         findVideoDecoder(mimeType, false, 0, 0, 0, 0, true, false, false);
     return isHdrCapableVideoDecoder(mimeType, findVideoDecoderResult);
-  }
-
-  /** Determine whether the system support tunneled playback */
-  @SuppressWarnings("unused")
-  @UsedByNative
-  public static boolean hasTunneledCapableDecoder(String mimeType, boolean isSecure) {
-    FindVideoDecoderResult findVideoDecoderResult =
-        findVideoDecoder(mimeType, isSecure, 0, 0, 0, 0, false, false, true);
-    return !findVideoDecoderResult.name.equals("");
   }
 
   /** Determine whether findVideoDecoderResult is capable of playing HDR */
@@ -723,7 +726,8 @@ public class MediaCodecUtil {
    * The same as hasAudioDecoderFor, only return the name of the audio decoder if it is found, and
    * "" otherwise.
    */
-  public static String findAudioDecoder(String mimeType, int bitrate) {
+  public static String findAudioDecoder(
+      String mimeType, int bitrate, boolean requireTunneledPlayback) {
     // Note: MediaCodecList is sorted by the framework such that the best decoders come first.
     for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.ALL_CODECS).getCodecInfos()) {
       if (info.isEncoder()) {
@@ -734,13 +738,21 @@ public class MediaCodecUtil {
           continue;
         }
         String name = info.getName();
-        AudioCapabilities audioCapabilities =
-            info.getCapabilitiesForType(supportedType).getAudioCapabilities();
+        CodecCapabilities codecCapabilities = info.getCapabilitiesForType(supportedType);
+        AudioCapabilities audioCapabilities = codecCapabilities.getAudioCapabilities();
         Range<Integer> bitrateRange =
             Range.create(0, audioCapabilities.getBitrateRange().getUpper());
         if (!bitrateRange.contains(bitrate)) {
           continue;
         }
+        if (requireTunneledPlayback
+            && !codecCapabilities.isFeatureSupported(CodecCapabilities.FEATURE_TunneledPlayback)) {
+          continue;
+        }
+        // TODO: Determine if we can safely check if an audio codec requires the tunneled playback
+        //  feature. i.e., reject when |requireTunneledPlayback| == false
+        //  and codecCapabilities.isFeatureRequired(CodecCapabilities.FEATURE_TunneledPlayback) ==
+        //  true.
         return name;
       }
     }

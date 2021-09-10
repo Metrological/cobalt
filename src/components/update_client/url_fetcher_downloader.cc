@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 #include <stack>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -76,8 +77,7 @@ UrlFetcherDownloader::UrlFetcherDownloader(
     std::unique_ptr<CrxDownloader> successor,
     scoped_refptr<NetworkFetcherFactory> network_fetcher_factory)
     : CrxDownloader(std::move(successor)),
-      network_fetcher_factory_(network_fetcher_factory) {
-}
+      network_fetcher_factory_(network_fetcher_factory) {}
 #endif
 
 UrlFetcherDownloader::~UrlFetcherDownloader() {
@@ -143,6 +143,13 @@ void UrlFetcherDownloader::DoStartDownload(const GURL& url) {
                      base::Unretained(this), url));
 #endif
 }
+
+#if defined(STARBOARD)
+void UrlFetcherDownloader::DoCancelDownload() {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  network_fetcher_->CancelDownloadToFile();
+}
+#endif
 
 void UrlFetcherDownloader::CreateDownloadDir() {
   base::CreateNewTempDirectory(FILE_PATH_LITERAL("chrome_url_fetcher_"),
@@ -230,7 +237,11 @@ void UrlFetcherDownloader::OnNetworkFetcherComplete(base::FilePath file_path,
   // the request and avoid overloading the server in this case.
   // is not accepting requests for the moment.
   int error = -1;
+#if defined(STARBOARD)
+  if (!file_path.empty() && response_code_ == 200 && net_error == 0) {
+#else
   if (!file_path.empty() && response_code_ == 200) {
+#endif
     DCHECK_EQ(0, net_error);
     error = 0;
   } else if (response_code_ != -1) {
