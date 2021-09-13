@@ -84,6 +84,7 @@ struct SbWindowPrivate {
   SbWindowPrivate(const SbWindowOptions* options);
   ~SbWindowPrivate();
 
+  std::string DisplayName();
   void CreateDisplay();
   void DestroyDisplay();
   void PollNextSystemEvent();

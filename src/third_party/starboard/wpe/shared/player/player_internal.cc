@@ -762,9 +762,14 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   static void ElementAdded(GstElement* pipeline,
                            GstElement* element,
                            PlayerImpl* self);
+
+#if defined(SB_NEEDS_VIDEO_OVERLAY_SURFACE)
+#if !defined(WAYLAND_SINK)
   static GstBusSyncReply CreateVideoOverlay(GstBus* bus,
                                             GstMessage* message,
                                             gpointer user_data);
+#endif
+#endif
   bool ChangePipelineState(GstState state) const;
   void DispatchOnWorkerThread(Task* task) const;
   gint64 GetPosition() const;
@@ -911,6 +916,16 @@ PlayerImpl::PlayerImpl(SbPlayer player,
 
 #endif
 
+#if defined(WAYLAND_SINK)
+
+  GstElement* video_sink = gst_element_factory_make("waylandsink",
+      NULL);
+  g_object_set(pipeline_, "video-sink", video_sink, NULL);
+  std::string videoDisplayName = window_->DisplayName() + ":video";
+  g_object_set(video_sink, "window", videoDisplayName.c_str(), NULL);
+
+#endif
+
 #if defined(BRCMVIDEOSINK)
 
   GstElement* video_sink = gst_element_factory_make("brcmvideosink",
@@ -921,7 +936,11 @@ PlayerImpl::PlayerImpl(SbPlayer player,
 
   GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline_));
   bus_watch_id_ = gst_bus_add_watch(bus, &PlayerImpl::BusMessageCallback, this);
+#if defined(SB_NEEDS_VIDEO_OVERLAY_SURFACE)
+#if !defined(WAYLAND_SINK)
   gst_bus_set_sync_handler(bus, &PlayerImpl::CreateVideoOverlay, this, nullptr);
+#endif
+#endif
   gst_object_unref(bus);
 
   video_appsrc_ = gst_element_factory_make("appsrc", "vidsrc");
@@ -1134,6 +1153,8 @@ gboolean PlayerImpl::BusMessageCallback(GstBus* bus,
 }
 
 // static
+#if defined(SB_NEEDS_VIDEO_OVERLAY_SURFACE)
+#if !defined(WAYLAND_SINK)
 GstBusSyncReply PlayerImpl::CreateVideoOverlay(GstBus* bus,
                                                GstMessage* message,
                                                gpointer user_data) {
@@ -1144,11 +1165,13 @@ GstBusSyncReply PlayerImpl::CreateVideoOverlay(GstBus* bus,
   GstVideoOverlay* overlay = GST_VIDEO_OVERLAY(GST_MESSAGE_SRC(message));
   SbWindowPrivate* window_private = self->window_;
   self->video_overlay_ = window_private->CreateVideoOverlay();
-  gst_video_overlay_set_window_handle(overlay,
+  if (self->video_overlay_) {
+      gst_video_overlay_set_window_handle(overlay,
                                       (guintptr)self->video_overlay_->Native());
 
-  self->gst_video_overlay_ = GST_ELEMENT(overlay);
-  GST_INFO("Has video overlay");
+      self->gst_video_overlay_ = GST_ELEMENT(overlay);
+      GST_INFO("Has video overlay");
+  }
   if (!self->pending_bounds_.IsEmpty()) {
     self->SetBounds(0, self->pending_bounds_.x, self->pending_bounds_.y,
                     self->pending_bounds_.w, self->pending_bounds_.h);
@@ -1156,6 +1179,8 @@ GstBusSyncReply PlayerImpl::CreateVideoOverlay(GstBus* bus,
   }
   return GST_BUS_DROP;
 }
+#endif
+#endif
 
 // static
 void* PlayerImpl::ThreadEntryPoint(void* context) {
