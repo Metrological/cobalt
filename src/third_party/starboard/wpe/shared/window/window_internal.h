@@ -84,7 +84,7 @@ struct SbWindowPrivate {
   SbWindowPrivate(const SbWindowOptions* options);
   ~SbWindowPrivate();
 
-  std::string DisplayName();
+  WPEFramework::Compositor::IDisplay* GetDisplay();
   void CreateDisplay();
   void DestroyDisplay();
   void PollNextSystemEvent();
