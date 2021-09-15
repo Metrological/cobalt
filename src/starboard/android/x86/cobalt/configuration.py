@@ -43,18 +43,11 @@ class CobaltAndroidX86Configuration(configuration.CobaltAndroidConfiguration):
           'CSS3FontsLayoutTests/Layout.Test'
           '/synthetic_bolding_should_occur_on_non_bold_font',
       ],
-      'nb_test': [
-          'BidirectionalFitReuseAllocatorTest.FallbackBlockMerge',
-          'BidirectionalFitReuseAllocatorTest.FreeBlockMergingLeft',
-          'BidirectionalFitReuseAllocatorTest.FreeBlockMergingRight',
-          'FirstFitReuseAllocatorTest.FallbackBlockMerge',
-          'FirstFitReuseAllocatorTest.FreeBlockMergingLeft',
-          'FirstFitReuseAllocatorTest.FreeBlockMergingRight',
-      ],
       'net_unittests': [  # Net tests are very unstable on Android L
           test_filter.FILTER_ALL
       ],
       'renderer_test': [
+          'LottieCoveragePixelTest*skottie_matte_blendmode_json',
           'PixelTest.YUV422UYVYImageScaledUpSupport',
           'PixelTest.YUV422UYVYImageScaledAndTranslated',
       ],

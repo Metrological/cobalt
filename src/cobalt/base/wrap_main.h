@@ -27,7 +27,7 @@
 #include "base/run_loop.h"
 #include "build/build_config.h"
 #include "cobalt/base/init_cobalt.h"
-#if defined(OS_STARBOARD)
+#if defined(STARBOARD)
 #include "starboard/event.h"
 #else
 typedef void SbEvent;
@@ -41,7 +41,8 @@ typedef int (*MainFunction)(int argc, char** argv);
 
 // A start-style function.
 typedef void (*StartFunction)(int argc, char** argv, const char* link,
-                              const base::Closure& quit_closure);
+                              const base::Closure& quit_closure,
+                              SbTimeMonotonic timestamp);
 
 // A function type that can be called at shutdown.
 typedef void (*StopFunction)();
@@ -52,7 +53,8 @@ typedef void (*EventFunction)(const SbEvent* event);
 // No-operation function that can be passed into start_function if no start work
 // is needed.
 void NoopStartFunction(int argc, char** argv, const char* link,
-                       const base::Closure& quit_closure) {}
+                       const base::Closure& quit_closure,
+                       SbTimeMonotonic timestamp) {}
 
 // No-operation function that can be passed into event_function if no other
 // event handling work is needed.
@@ -65,7 +67,7 @@ void NoopStopFunction() {}
 }  // namespace wrap_main
 }  // namespace cobalt
 
-#if defined(OS_STARBOARD)
+#if defined(STARBOARD)
 #include "cobalt/base/wrap_main_starboard.h"
 #else
 
@@ -90,7 +92,8 @@ int BaseMain(int argc, char** argv) {
   DCHECK(!message_loop.is_running());
   base::RunLoop run_loop;
 
-  start_function(argc, argv, NULL, run_loop.QuitClosure());
+  start_function(argc, argv, NULL, run_loop.QuitClosure(),
+                 0 /*Invalid timestamp*/);
   run_loop.Run();
   stop_function();
 
@@ -128,6 +131,6 @@ int BaseMain(int argc, char** argv) {
 }  // namespace wrap_main
 }  // namespace cobalt
 
-#endif  // defined(OS_STARBOARD)
+#endif  // defined(STARBOARD)
 
 #endif  // COBALT_BASE_WRAP_MAIN_H_

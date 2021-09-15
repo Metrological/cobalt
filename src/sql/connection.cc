@@ -2,10 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#if defined(STARBOARD)
-#include "starboard/client_porting/poem/string_leaks_poem.h"
-#endif  // defined(STARBOARD)
-
 #include "sql/connection.h"
 
 #include <string.h>
@@ -135,7 +131,7 @@ Connection::~Connection() {
 bool Connection::Open(const base::FilePath& path) {
 #if defined(OS_WIN)
   return OpenInternal(WideToUTF8(path.value()));
-#elif defined(OS_POSIX) || defined(OS_STARBOARD)
+#elif defined(OS_POSIX) || defined(STARBOARD)
   return OpenInternal(path.value());
 #endif
 }

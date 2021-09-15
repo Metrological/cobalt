@@ -199,7 +199,26 @@ void LoaderFactory::Suspend() {
 
   is_suspended_ = true;
   resource_provider_ = NULL;
+  SuspendActiveLoaders();
+}
 
+void LoaderFactory::Resume(render_tree::ResourceProvider* resource_provider) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  DCHECK(resource_provider);
+  DCHECK(is_suspended_);
+
+  is_suspended_ = false;
+  ResumeActiveLoaders(resource_provider);
+}
+
+void LoaderFactory::UpdateResourceProvider(
+    render_tree::ResourceProvider* resource_provider) {
+  DCHECK(resource_provider);
+  SuspendActiveLoaders();
+  ResumeActiveLoaders(resource_provider);
+}
+
+void LoaderFactory::SuspendActiveLoaders() {
   for (LoaderSet::const_iterator iter = active_loaders_.begin();
        iter != active_loaders_.end(); ++iter) {
     (*iter)->Suspend();
@@ -209,17 +228,17 @@ void LoaderFactory::Suspend() {
   load_thread_.message_loop()->task_runner()->WaitForFence();
 }
 
-void LoaderFactory::Resume(render_tree::ResourceProvider* resource_provider) {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  DCHECK(resource_provider);
-
-  is_suspended_ = false;
+void LoaderFactory::ResumeActiveLoaders(
+    render_tree::ResourceProvider* resource_provider) {
   resource_provider_ = resource_provider;
 
   for (LoaderSet::const_iterator iter = active_loaders_.begin();
        iter != active_loaders_.end(); ++iter) {
     (*iter)->Resume(resource_provider);
   }
+
+  // Wait for all loader thread messages to be flushed before returning.
+  load_thread_.message_loop()->task_runner()->WaitForFence();
 }
 
 void LoaderFactory::OnLoaderCreated(Loader* loader) {

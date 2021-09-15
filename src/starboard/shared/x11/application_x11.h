@@ -109,7 +109,7 @@ class ApplicationX11 : public shared::starboard::QueueApplication {
   // Shuts X down.
   void StopX();
 
-  // Retreive the next pending event, such as keypresses from a paste buffer.
+  // Retrieve the next pending event, such as keypresses from a paste buffer.
   // Returns NULL if there are no pending events.
   Event* GetPendingEvent();
 
@@ -122,6 +122,9 @@ class ApplicationX11 : public shared::starboard::QueueApplication {
 
   Atom wake_up_atom_;
   Atom wm_delete_atom_;
+#if SB_API_VERSION >= 13
+  Atom wm_change_state_atom_;
+#endif  // SB_API_VERSION >= 13
 
   SbEventId composite_event_id_;
   Mutex frame_mutex_;

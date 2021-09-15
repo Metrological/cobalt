@@ -34,11 +34,11 @@ void CopyPixelData(uint8_t* destination,
                    int num_rows) {
   if (destination_pitch == source_pitch) {
     // If the pitches are equal, we can do the entire copy in one memcpy().
-    SbMemoryCopy(destination, source, destination_pitch * num_rows);
+    memcpy(destination, source, destination_pitch * num_rows);
   } else {
     // If the pitches are not equal, we must memcpy each row separately.
     for (int i = 0; i < num_rows; ++i) {
-      SbMemoryCopy(destination + i * destination_pitch,
+      memcpy(destination + i * destination_pitch,
                    source + i * source_pitch, bytes_per_row);
     }
   }
@@ -83,7 +83,7 @@ ConvertRowFunction SelectConvertRowFunction(PixelFormat destination_format,
   if (destination_format == source_format) {
     return &RemapPixelChannels<0, 1, 2, 3>;
   } else if (destination_format == kPixelFormatRGBA8 &&
-      source_format == kPixelFormatARGB8) {
+             source_format == kPixelFormatARGB8) {
     return &RemapPixelChannels<1, 2, 3, 0>;
   } else if (destination_format == kPixelFormatRGBA8 &&
              source_format == kPixelFormatBGRA8) {

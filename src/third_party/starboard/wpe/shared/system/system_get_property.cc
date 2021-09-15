@@ -31,9 +31,9 @@ const char kPlatformName[] = "Linux";
 bool CopyStringAndTestIfSuccess(char* out_value,
                                 int value_length,
                                 const char* from_value) {
-  if (SbStringGetLength(from_value) + 1 > value_length)
+  if (strlen(from_value) + 1 > value_length)
     return false;
-  SbStringCopy(out_value, from_value, value_length);
+  strncpy(out_value, from_value, value_length);
   return true;
 }
 
@@ -175,6 +175,7 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       }
 #endif
     }
+#if SB_API_VERSION < 13
     case kSbSystemPropertyBase64EncodedCertificationSecret: {
 #ifdef HAS_PROVISION
       char property_name[1024];
@@ -197,6 +198,7 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       }
 #endif
     }
+#endif
 #endif  // SB_API_VERSION >= 11
 
     default:

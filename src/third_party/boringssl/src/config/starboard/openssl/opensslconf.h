@@ -2,7 +2,6 @@
 /* WARNING: Edited heavily by hand, based on lbshell config. Meant for all
  * starboard platforms. */
 
-#include "starboard/character.h"
 #include "starboard/client_porting/eztime/eztime.h"
 #include "starboard/common/log.h"
 #include "starboard/configuration.h"
@@ -234,46 +233,20 @@
 // Definitions for system calls that may need to be overridden.
 #define OPENSSL_port_abort SbSystemBreakIntoDebugger
 #define OPENSSL_port_assert(x) SB_DCHECK(x)
-#define OPENSSL_port_atoi SbStringAToI
 #define OPENSSL_port_free SbMemoryDeallocate
 #define OPENSSL_port_getenv(x) NULL
 #define OPENSSL_port_gettimeofday EzTimeValueGetNow
 #define OPENSSL_port_gmtime_r EzTimeTExplodeUTC
-#define OPENSSL_port_isalnum SbCharacterIsAlphanumeric
-#define OPENSSL_port_isdigit SbCharacterIsDigit
-#define OPENSSL_port_isspace SbCharacterIsSpace
-#define OPENSSL_port_isupper SbCharacterIsUpper
-#define OPENSSL_port_isxdigit SbCharacterIsHexDigit
 #define OPENSSL_port_malloc SbMemoryAllocate
-#define OPENSSL_port_memchr (unsigned char *)SbMemoryFindByte
-#define OPENSSL_port_memcmp SbMemoryCompare
-#define OPENSSL_port_memcpy SbMemoryCopy
-#define OPENSSL_port_memmove SbMemoryMove
-#define OPENSSL_port_memset SbMemorySet
 #define OPENSSL_port_printf SbLogFormatF
 #define OPENSSL_port_printferr SbLogFormatF
-#define OPENSSL_port_qsort SbSystemSort
 #define OPENSSL_port_realloc SbMemoryReallocate
 #define OPENSSL_port_sscanf SbStringScanF
 #define OPENSSL_port_strcasecmp SbStringCompareNoCase
-#define OPENSSL_port_strcat(d, s) SbStringConcat((d), (s), INT_MAX)
-#define OPENSSL_port_strchr (char *)SbStringFindCharacter
-#define OPENSSL_port_strcmp SbStringCompareAll
-#define OPENSSL_port_strcpy(d, s) SbStringCopy((d), (s), INT_MAX)
 #define OPENSSL_port_strdup SbStringDuplicate
 #define OPENSSL_port_strerror(x) ""
-#define OPENSSL_port_strlen SbStringGetLength
 #define OPENSSL_port_strncasecmp SbStringCompareNoCaseN
-#define OPENSSL_port_strncmp SbStringCompare
-#define OPENSSL_port_strncpy SbStringCopy
-#define OPENSSL_port_strrchr (char *)SbStringFindLastCharacter
-#define OPENSSL_port_strtoul SbStringParseUnsignedInteger
 #define OPENSSL_port_time EzTimeTGetNow
-#define OPENSSL_port_tolower SbCharacterToLower
-#define OPENSSL_port_toupper SbCharacterToUpper
-
-// OPENSSL wrapper functions that aren't defined globally.
-#define OPENSSL_strcmp OPENSSL_port_strcmp
 
 // Variables that need to be ported.
 #define OPENSSL_port_errno SbSystemGetLastError()

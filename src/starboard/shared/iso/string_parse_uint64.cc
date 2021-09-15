@@ -16,6 +16,10 @@
 
 #include <stdlib.h>
 
+#if SB_API_VERSION < 13
+
 uint64_t SbStringParseUInt64(const char* start, char** out_end, int base) {
   return strtoull(start, out_end, base);
 }
+
+#endif  // SB_API_VERSION < 13

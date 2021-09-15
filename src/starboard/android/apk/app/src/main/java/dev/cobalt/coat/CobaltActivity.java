@@ -24,13 +24,16 @@ import android.content.pm.PackageManager.NameNotFoundException;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Pair;
 import android.view.ViewGroup.LayoutParams;
 import android.view.ViewParent;
 import android.widget.FrameLayout;
 import dev.cobalt.media.MediaCodecUtil;
 import dev.cobalt.media.VideoSurfaceView;
+import dev.cobalt.util.DisplayUtil;
 import dev.cobalt.util.Log;
 import dev.cobalt.util.UsedByNative;
+import java.security.Timestamp;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -63,8 +66,15 @@ public abstract class CobaltActivity extends NativeActivity {
 
   private boolean forceCreateNewVideoSurfaceView = false;
 
+  private long timeInNanoseconds;
+
+  private static native void nativeLowMemoryEvent();
+
   @Override
   protected void onCreate(Bundle savedInstanceState) {
+    // Record the application start timestamp.
+    timeInNanoseconds = System.nanoTime();
+
     // To ensure that volume controls adjust the correct stream, make this call
     // early in the app's lifecycle. This connects the volume controls to
     // STREAM_MUSIC whenever the target activity or fragment is visible.
@@ -111,12 +121,15 @@ public abstract class CobaltActivity extends NativeActivity {
   @Override
   protected void onStart() {
     if (!isReleaseBuild()) {
+      getStarboardBridge().getAudioOutputManager().dumpAllOutputDevices();
       MediaCodecUtil.dumpAllDecoders();
     }
     if (forceCreateNewVideoSurfaceView) {
       Log.w(TAG, "Force to create a new video surface.");
       createNewSurfaceView();
     }
+
+    DisplayUtil.cacheDefaultDisplay(this);
 
     getStarboardBridge().onActivityStart(this, keyboardEditor);
     super.onStart();
@@ -213,7 +226,36 @@ public abstract class CobaltActivity extends NativeActivity {
       }
     }
 
+    addCustomProxyArgs(args);
+
     return args.toArray(new String[0]);
+  }
+
+  private static void addCustomProxyArgs(List<String> args) {
+    Pair<String, String> config = detectSystemProxyConfig();
+
+    if (config.first == null || config.second == null) {
+      return;
+    }
+
+    try {
+      int port = Integer.parseInt(config.second);
+      if (port <= 0 || port > 0xFFFF) {
+        return;
+      }
+
+      String customProxy = String.format("--proxy=\"http=http://%s:%d\"", config.first, port);
+      Log.i(TAG, "addCustomProxyArgs: " + customProxy);
+      args.add(customProxy);
+    } catch (NumberFormatException e) {
+      Log.w(TAG, String.format("http.proxyPort: %s is not valid number", config.second), e);
+    }
+  }
+
+  private static Pair<String, String> detectSystemProxyConfig() {
+    String httpHost = System.getProperty("http.proxyHost", null);
+    String httpPort = System.getProperty("http.proxyPort", null);
+    return new Pair<String, String>(httpHost, httpPort);
   }
 
   protected boolean isReleaseBuild() {
@@ -298,5 +340,15 @@ public abstract class CobaltActivity extends NativeActivity {
     } else {
       Log.w(TAG, "Unexpected surface view parent class " + parent.getClass().getName());
     }
+  }
+
+  @Override
+  public void onLowMemory() {
+    super.onLowMemory();
+    nativeLowMemoryEvent();
+  }
+
+  public long getAppStartTimestamp() {
+    return timeInNanoseconds;
   }
 }

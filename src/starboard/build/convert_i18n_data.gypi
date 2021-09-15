@@ -43,7 +43,7 @@
             '<!@pymod_do_main(starboard.build.convert_i18n_data -o <@(output_dir) --outputs <@(xlb_files))',
           ],
           'action': [
-            'python',
+            'python2',
             '<(DEPTH)/starboard/build/convert_i18n_data.py',
             '-o', '<@(output_dir)',
             '<@(xlb_files)',
@@ -51,7 +51,7 @@
         },
       ],
       # Makes collect_deploy_content aware of the directory so that all binaries
-      # dependening on this target will then transitively include i18n.
+      # depending on this target will then transitively include i18n.
       'all_dependent_settings': {
         'variables': {
           'content_deploy_subdirs': [ 'i18n' ]

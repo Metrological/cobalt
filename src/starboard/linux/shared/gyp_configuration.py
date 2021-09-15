@@ -94,6 +94,9 @@ class LinuxConfiguration(platform_configuration.PlatformConfiguration):
         os.path.join(paths.REPOSITORY_ROOT, 'third_party', 'ce_cdm', 'cdm',
                      'include', 'cdm.h'))
 
+    for target, tests in self.__FILTERED_TESTS.iteritems():
+      filters.extend(test_filter.TestFilter(target, test) for test in tests)
+
     if has_cdm:
       return filters
 
@@ -111,3 +114,17 @@ class LinuxConfiguration(platform_configuration.PlatformConfiguration):
           'SbMediaCanPlayMimeAndKeySystem.AnySupportedKeySystems',
       ],
   }
+
+  __FILTERED_TESTS = {  # pylint: disable=invalid-name
+      'player_filter_tests': [
+          # libdav1d crashes when fed invalid data
+          'VideoDecoderTests/VideoDecoderTest.*Invalid*',
+      ],
+  }
+  # Conditionally disables tests that require ipv6
+  if os.getenv('IPV6_AVAILABLE', 1) == '0':
+    __FILTERED_TESTS['nplb'] = [
+        'SbSocketAddressTypes/SbSocketGetInterfaceAddressTest.SunnyDayDestination/1',
+        'SbSocketAddressTypes/SbSocketGetInterfaceAddressTest.SunnyDaySourceForDestination/1',
+        'SbSocketAddressTypes/SbSocketGetInterfaceAddressTest.SunnyDaySourceNotLoopback/1',
+    ]

@@ -53,7 +53,8 @@ class ScopedLocalJavaRef {
  private:
   JT jt_;
 
-  SB_DISALLOW_COPY_AND_ASSIGN(ScopedLocalJavaRef);
+  ScopedLocalJavaRef(const ScopedLocalJavaRef&) = delete;
+  void operator=(const ScopedLocalJavaRef&) = delete;
 };
 
 // Convenience class to manage the lifetime of a local Java ByteBuffer
@@ -72,13 +73,14 @@ class ScopedJavaByteBuffer {
   void CopyInto(const void* source, jint count) {
     SB_DCHECK(!IsNull());
     SB_DCHECK(count >= 0 && count <= capacity());
-    SbMemoryCopy(address(), source, count);
+    memcpy(address(), source, count);
   }
 
  private:
   ScopedLocalJavaRef<jobject> j_byte_buffer_;
 
-  SB_DISALLOW_COPY_AND_ASSIGN(ScopedJavaByteBuffer);
+  ScopedJavaByteBuffer(const ScopedJavaByteBuffer&) = delete;
+  void operator=(const ScopedJavaByteBuffer&) = delete;
 };
 
 }  // namespace shared

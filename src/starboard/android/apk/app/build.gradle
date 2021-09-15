@@ -30,6 +30,8 @@ ext {
             project.hasProperty('cobaltProductDir') ? new File(cobaltProductDir).canonicalPath : ''
     cobaltContentDir =
             project.hasProperty('cobaltContentDir') ? new File(cobaltContentDir).canonicalPath : ''
+    cobaltLibraryDir =
+            project.hasProperty('cobaltLibraryDir') ? new File(cobaltLibraryDir).canonicalPath : ''
     enableVulkan =
             project.hasProperty('enableVulkan') ? enableVulkan : 0
 
@@ -66,7 +68,7 @@ android {
     defaultConfig {
         applicationId "dev.cobalt.coat"
         minSdkVersion 21
-        targetSdkVersion 29
+        targetSdkVersion 30
         versionCode 1
         versionName "${buildId}"
         manifestPlaceholders = [applicationName: "CoAT: ${cobaltTarget}"]
@@ -75,6 +77,7 @@ android {
                 arguments "-DCOBALT_TARGET=${cobaltTarget}"
                 arguments "-DCOBALT_PRODUCT_DIR=${cobaltProductDir}"
                 arguments "-DCOBALT_CONTENT_DIR=${cobaltContentDir}"
+                arguments "-DCOBALT_LIBRARY_DIR=${cobaltLibraryDir}"
                 arguments "-DCOBALT_PLATFORM_DEPLOY=${project.hasProperty('cobaltDeployApk')}"
                 arguments "-DENABLE_VULKAN=${enableVulkan}"
             }

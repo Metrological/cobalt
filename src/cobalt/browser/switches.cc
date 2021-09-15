@@ -110,16 +110,13 @@ const char kInputFuzzerHelp[] =
 
 const char kMemoryTracker[] = "memory_tracker";
 const char kMemoryTrackerHelp[] =
-    "Enables memory tracking by installing the memory tracker on startup.";
+    "Enables memory tracking by installing the memory tracker on startup. Run "
+    "--memory_tracker=help for more info.";
 
 const char kMinCompatibilityVersion[] = "min_compatibility_version";
 const char kMinCompatibilityVersionHelp[] =
     "The minimum version of Cobalt that will be checked during compatibility "
     "validations.";
-
-const char kMinLogLevel[] = "min_log_level";
-const char kMinLogLevelHelp[] =
-    "Set the minimum logging level: info|warning|error|fatal.";
 
 const char kNullSavegame[] = "null_savegame";
 const char kNullSavegameHelp[] =
@@ -178,6 +175,24 @@ const char kUserAgentHelp[] =
     "'network_operator'_'device_type'_'chipset_model_number'_'model_year'/"
     "'firmware_version' ('brand', 'model', 'connection_type') 'aux_field'\".";
 
+const char kUserAgentClientHints[] = "user_agent_client_hints";
+const char kUserAgentClientHintsHelp[] =
+    "Specify custom user agent client hints for device simulations. "
+    "Configure user agent fields in a string delimited by semicolon ';'. "
+    "If semicolon is expected to be in value of any user agent field, "
+    "escape the semicolon by prefixing it with backslash '\\'. "
+    "Empty field value is allowed. "
+    "Example: "
+    "--user_agent_client_hints=\"device_type=GAME;"
+    "os_name_and_version=Linux armeabi-v7a\\; Android 7.1.2;evergreen_type=\" "
+    "The 18 supported UA fields for overriding are: aux_field, brand, "
+    "build_configuration, chipset_model_number, cobalt_build_version_number, "
+    "cobalt_build_version_number, connection_type, device_type, "
+    "evergreen_type,evergreen_version, firmware_version, "
+    "javascript_engine_version, model, model_year, "
+    "original_design_manufacturer, os_name_and_version, starboard_version, "
+    "rasterizer_type";
+
 const char kUserAgentOsNameVersion[] = "user_agent_os_name_version";
 const char kUserAgentOsNameVersionHelp[] =
     "Specifies a custom 'os_name_and_version' user agent field with otherwise "
@@ -208,6 +223,9 @@ const char kDisableOnScreenKeyboardHelp[] =
 
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
 
+const char kMinLogLevel[] = "min_log_level";
+const char kMinLogLevelHelp[] =
+    "Set the minimum logging level: info|warning|error|fatal.";
 const char kDisableJavaScriptJit[] = "disable_javascript_jit";
 const char kDisableJavaScriptJitHelp[] =
     "Specifies that javascript jit should be disabled.";
@@ -224,6 +242,12 @@ const char kDisableTimerResolutionLimitHelp[] =
     "minimum resolution of 20us.  By specifying this flag, the limit will be "
     "removed and the resolution will be 1us (or larger depending on the "
     "platform.";
+
+const char kDisableUpdaterModule[] = "disable_updater_module";
+const char kDisableUpdaterModuleHelp[] =
+    "Disables the Cobalt Evergreen UpdaterModule which is responsible for "
+    "downloading and installing new Cobalt updates. Passing the flag is "
+    "equivalent to opting out from further updates.";
 
 const char kEncodedImageCacheSizeInBytes[] =
     "encoded_image_cache_size_in_bytes";
@@ -266,11 +290,6 @@ const char kInitialURL[] = "url";
 const char kInitialURLHelp[] =
     "Setting this switch defines the startup URL that Cobalt will use.  If no "
     "value is set, a default URL will be used.";
-
-const char kJavaScriptGcThresholdInBytes[] = "javascript_gc_threshold_in_bytes";
-const char kJavaScriptGcThresholdInBytesHelp[] =
-    "Specifies the javascript gc threshold. When this amount of garbage has "
-    "collected then the garbage collector will begin running.";
 
 const char kLocalStoragePartitionUrl[] = "local_storage_partition_url";
 const char kLocalStoragePartitionUrlHelp[] =
@@ -317,11 +336,6 @@ const char kQrCodeOverlayHelp[] =
     " will be displayed in 4 different locations on the screen alternatively,"
     " and the number of locations can be overwritten by specifying it as the "
     " value of the command line parameter, like '--qr_code_overlay=6'.";
-
-const char kReduceCpuMemoryBy[] = "reduce_cpu_memory_by";
-const char kReduceCpuMemoryByHelp[] =
-    "Reduces the cpu-memory of the system by this amount. This causes AutoMem "
-    "to reduce the runtime size of the CPU-Memory caches.";
 
 const char kReduceGpuMemoryBy[] = "reduce_gpu_memory_by";
 const char kReduceGpuMemoryByHelp[] =
@@ -417,7 +431,7 @@ const char kVideoPlaybackRateMultiplierHelp[] =
 
 std::string HelpMessage() {
   std::string help_message;
-  std::map<const char*, const char*> help_map {
+  std::map<std::string, const char*> help_map {
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
     {kDebugConsoleMode, kDebugConsoleModeHelp},
         {kDevServersListenIp, kDevServersListenIpHelp},
@@ -437,7 +451,7 @@ std::string HelpMessage() {
         {kIgnoreCertificateErrors, kIgnoreCertificateErrorsHelp},
         {kInputFuzzer, kInputFuzzerHelp}, {kMemoryTracker, kMemoryTrackerHelp},
         {kMinCompatibilityVersion, kMinCompatibilityVersionHelp},
-        {kMinLogLevel, kMinLogLevelHelp}, {kNullSavegame, kNullSavegameHelp},
+        {kNullSavegame, kNullSavegameHelp},
         {kDisablePartialLayout, kDisablePartialLayoutHelp}, {kProd, kProdHelp},
         {kRequireCSP, kRequireCSPHelp},
         {kRequireHTTPSLocation, kRequireHTTPSLocationHelp},
@@ -445,6 +459,7 @@ std::string HelpMessage() {
         {kStubImageDecoder, kStubImageDecoderHelp},
         {kSuspendFuzzer, kSuspendFuzzerHelp}, {kTimedTrace, kTimedTraceHelp},
         {kUserAgent, kUserAgentHelp},
+        {kUserAgentClientHints, kUserAgentClientHintsHelp},
         {kUserAgentOsNameVersion, kUserAgentOsNameVersionHelp},
         {kUseTTS, kUseTTSHelp}, {kWebDriverListenIp, kWebDriverListenIpHelp},
         {kWebDriverPort, kWebDriverPortHelp},
@@ -453,10 +468,10 @@ std::string HelpMessage() {
 #endif  // SB_API_VERSION >= 12 ||
         // SB_HAS(ON_SCREEN_KEYBOARD)
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
-
         {kDisableJavaScriptJit, kDisableJavaScriptJitHelp},
         {kDisableMapToMesh, kDisableMapToMeshHelp},
         {kDisableTimerResolutionLimit, kDisableTimerResolutionLimitHelp},
+        {kDisableUpdaterModule, kDisableUpdaterModuleHelp},
         {kEncodedImageCacheSizeInBytes, kEncodedImageCacheSizeInBytesHelp},
         {kForceMigrationForStoragePartitioning,
          kForceMigrationForStoragePartitioningHelp},
@@ -464,16 +479,15 @@ std::string HelpMessage() {
         {kHelp, kHelpHelp},
         {kImageCacheSizeInBytes, kImageCacheSizeInBytesHelp},
         {kInitialURL, kInitialURLHelp},
-        {kJavaScriptGcThresholdInBytes, kJavaScriptGcThresholdInBytesHelp},
         {kLocalStoragePartitionUrl, kLocalStoragePartitionUrlHelp},
         {kMaxCobaltCpuUsage, kMaxCobaltCpuUsageHelp},
         {kMaxCobaltGpuUsage, kMaxCobaltGpuUsageHelp},
+        {kMinLogLevel, kMinLogLevelHelp},
         {kOffscreenTargetCacheSizeInBytes,
          kOffscreenTargetCacheSizeInBytesHelp},
         {kOmitDeviceAuthenticationQueryParameters,
          kOmitDeviceAuthenticationQueryParametersHelp},
         {kProxy, kProxyHelp}, {kQrCodeOverlay, kQrCodeOverlayHelp},
-        {kReduceCpuMemoryBy, kReduceCpuMemoryByHelp},
         {kReduceGpuMemoryBy, kReduceGpuMemoryByHelp},
         {kRemoteTypefaceCacheSizeInBytes, kRemoteTypefaceCacheSizeInBytesHelp},
         {kRetainRemoteTypefaceCacheDuringSuspend,

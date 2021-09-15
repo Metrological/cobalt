@@ -30,34 +30,6 @@ performance, build Cobalt in the "gold" configuration.
 **Tags:** *framerate, startup, browse-to-watch, cpu memory, input latency.*
 
 
-### Switch JavaScript Engine to V8
-
-Cobalt supports both SpiderMonkey and V8 as JavaScript engines.  SpiderMonkey
-is the default JavaScript engine since it is the most compatible in that it
-does not require your platform to support Just-In-Time (JIT) compiling.
-However, if your platform supports it, we strongly recommend that you use
-V8, as it has been shown to provide 20-50% speed improvements on JavaScript
-execution across the board.  Note however that V8 has also been found to
-consume around 10MB more memory than SpiderMonkey.
-
-To enable V8, you must modify the `GetVariables()` method in your
-`gyp_configuration.py` file and ensure that the variables dictionary that is
-returned contains the following key/value pair:
-
-```
-{
-  'javascript_engine': 'v8',
-}
-```
-
-Additionally, you must implement the `CobaltExtensionConfigurationApi` such
-that the `CobaltEnableJit()` method returns `true`.
-
-Note also that use of V8 requires Starboard version 10 or higher.
-
-**Tags:** *startup, browse-to-watch, cpu memory, input latency.*
-
-
 ### Framerate throttling
 
 If you're willing to accept a lower framerate, there is potential that
@@ -175,22 +147,6 @@ JavaScript execution (e.g. time must now be spent compiling code).  It is
 recommended that JIT support be left disabled, but you can experiment with
 it by implementing the CobaltExtensionConfigurationApi method
 `CobaltEnableJit()` to return `true` to enable JIT, or `false` to disable it.
-
-**Tags:** *gyp_configuration.gypi, startup, browse-to-watch, input latency,
-           cpu memory.*
-
-
-### Garbage collection trigger threshold
-
-The SpiderMonkey JavaScript engine provides a parameter that describes how
-aggressive it will be at performing garbage collections to reduce memory
-usage.  By lowering this value, garbage collection will occur more often,
-thus reducing performance, but memory usage will be lowered.  We have found
-that performance reductions are modest, so it is not unreasonable to set this
-value to something low like 1MB if your platform is low on memory.  This
-setting can be adjusted by setting the value of
-`mozjs_garbage_collection_threshold_in_bytes` in your `gyp_configuration.gypi`
-file.
 
 **Tags:** *gyp_configuration.gypi, startup, browse-to-watch, input latency,
            cpu memory.*

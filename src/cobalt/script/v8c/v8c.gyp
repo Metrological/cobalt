@@ -13,6 +13,23 @@
 # limitations under the License.
 
 {
+  'target_defaults': {
+    'conditions': [
+        ['(target_arch=="arm64" or target_arch=="x64") and disable_v8_pointer_compression==0', {
+          'defines': [
+            # enables pointer compression on 64 bit platforms for Cobalt.
+            'V8_COMPRESS_POINTERS',
+            'V8_31BIT_SMIS_ON_64BIT_ARCH',
+          ],
+          'all_dependent_settings': {
+            'defines': [
+                'V8_COMPRESS_POINTERS',
+                'V8_31BIT_SMIS_ON_64BIT_ARCH',
+            ],
+          },
+        }],
+    ],
+  },
   'targets': [
     {
       'target_name': 'engine',
@@ -80,22 +97,13 @@
       'dependencies': [
         '<(DEPTH)/cobalt/configuration/configuration.gyp:configuration',
         '<(DEPTH)/cobalt/script/script.gyp:script',
-        '<(DEPTH)/v8/src/v8.gyp:v8',
-        '<(DEPTH)/v8/src/v8.gyp:v8_libplatform',
-        'update_snapshot_time',
+        '<(DEPTH)/third_party/v8/v8.gyp:v8',
+        '<(DEPTH)/third_party/v8/v8.gyp:v8_libplatform',
+        '<(DEPTH)/third_party/v8/v8.gyp:v8_base_without_compiler',
         'embed_v8c_resources_as_header_files',
       ],
       'defines': [
         'ENGINE_SUPPORTS_INT64',
-        # The file name to store our V8 startup snapshot file at.  This is a
-        # serialized representation of a |v8::Isolate| after completing all
-        # tasks prior to creation of the global object (e.g., executing self
-        # hosted JavaScript to implement ECMAScript level features).  This
-        # state is architecture dependent, and in fact, dependent on anything
-        # that could affect JavaScript execution (such as #defines), and thus
-        # must be unique with respect to binary, which is why we build it out
-        # of platform name and configuration.
-        'V8C_INTERNAL_STARTUP_DATA_CACHE_FILE_NAME="<(starboard_platform_name)_<(cobalt_config)_v8_startup_snapshot.bin"',
       ],
       'all_dependent_settings': {
         'defines': [
@@ -116,8 +124,9 @@
         ':engine',
         '<(DEPTH)/cobalt/base/base.gyp:base',
         '<(DEPTH)/cobalt/script/script.gyp:standalone_javascript_runner',
-        '<(DEPTH)/v8/src/v8.gyp:v8',
-        '<(DEPTH)/v8/src/v8.gyp:v8_libplatform',
+        '<(DEPTH)/third_party/v8/v8.gyp:v8',
+        '<(DEPTH)/third_party/v8/v8.gyp:v8_base_without_compiler',
+        '<(DEPTH)/third_party/v8/v8.gyp:v8_libplatform',
       ],
     },
 
@@ -148,7 +157,7 @@
           'outputs': [
             '<(output_path)',
           ],
-          'action': ['python', '<(script_path)', 'V8cEmbeddedResources', '<(output_path)', '<@(_sources)' ],
+          'action': ['python2', '<(script_path)', 'V8cEmbeddedResources', '<(output_path)', '<@(_sources)' ],
           'message': 'Embedding v8c resources in into header file, "<(output_path)".',
         },
       ],
@@ -158,40 +167,5 @@
         ],
       },
     },
-
-    {
-      # snapshot's creation time is to be recorded in the snapshot data file,
-      # its update indicates V8 code change.
-      'target_name': 'update_snapshot_time',
-      'type': 'none',
-      'hard_dependency': 1,
-      'dependencies': [
-        '<(DEPTH)/v8/src/v8.gyp:v8',
-        '<(DEPTH)/v8/src/v8.gyp:v8_initializers',
-        '<(DEPTH)/v8/src/v8.gyp:v8_libplatform',
-      ],
-      'variables': {
-        'touch_script_path': '<(DEPTH)/starboard/build/touch.py',
-        'touch_file_path': '<(DEPTH)/cobalt/script/v8c/isolate_fellowship.cc',
-        'dummy_output_path': '<(SHARED_INTERMEDIATE_DIR)/cobalt/script/v8c/isolate_fellowship_is_touched.stamp',
-      },
-      'actions': [
-        {
-          'action_name': 'update_snapshot_time',
-          'inputs': [
-            '<(touch_script_path)',
-            '<(PRODUCT_DIR)/obj/v8/src/<(STATIC_LIB_PREFIX)v8_initializers<(STATIC_LIB_SUFFIX)',
-            '<(PRODUCT_DIR)/obj/v8/src/<(STATIC_LIB_PREFIX)v8_libplatform<(STATIC_LIB_SUFFIX)',
-          ],
-          'outputs': [
-            '<(dummy_output_path)',
-          ],
-          'action': ['python', '<(touch_script_path)', '<(touch_file_path)', '<(dummy_output_path)',
-          ],
-          'message': 'Updating V8 snapshot creation time.',
-        },
-      ],
-    },
-
   ],
 }

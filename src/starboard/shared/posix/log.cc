@@ -18,18 +18,12 @@
 #include <string.h>
 #include <unistd.h>
 
-#if SB_API_VERSION >= 11
 #include "starboard/shared/starboard/log_mutex.h"
-#endif  // SB_API_VERSION >= 11
 
 void SbLog(SbLogPriority priority, const char* message) {
-#if SB_API_VERSION < 11
-  fprintf(stderr, "%s", message);
-  fflush(stderr);
-#else   // SB_API_VERSION >= 11
+  FILE* stream = priority >= kSbLogPriorityError ? stderr : stdout;
   starboard::shared::starboard::GetLoggingMutex()->Acquire();
-  fprintf(stderr, "%s", message);
-  fflush(stderr);
+  fprintf(stream, "%s", message);
+  fflush(stream);
   starboard::shared::starboard::GetLoggingMutex()->Release();
-#endif  // SB_API_VERSION < 11
 }

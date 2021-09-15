@@ -122,6 +122,7 @@
         'drm_helpers.cc',
         'drm_helpers.h',
         'drm_is_server_certificate_updatable_test.cc',
+        'drm_session_test.cc',
         'drm_update_server_certificate_test.cc',
         'egl_test.cc',
         'extern_c_test.cc',
@@ -129,6 +130,7 @@
         'file_can_open_test.cc',
         'file_close_test.cc',
         'file_delete_recursive_test.cc',
+        'file_delete_test.cc',
         'file_get_info_test.cc',
         'file_get_path_info_test.cc',
         'file_helpers.cc',
@@ -156,6 +158,7 @@
         # files.
         'media_buffer_test.cc',
         'media_can_play_mime_and_key_system_test.cc',
+        'media_configuration_test.cc',
         'memory_align_to_page_size_test.cc',
         'memory_allocate_aligned_test.cc',
         'memory_allocate_test.cc',
@@ -222,12 +225,6 @@
         'socket_waiter_wait_timed_test.cc',
         'socket_waiter_wake_up_test.cc',
         'socket_wrapper_test.cc',
-        'speech_recognizer_cancel_test.cc',
-        'speech_recognizer_create_test.cc',
-        'speech_recognizer_destroy_test.cc',
-        'speech_recognizer_helper.h',
-        'speech_recognizer_start_test.cc',
-        'speech_recognizer_stop_test.cc',
         'speech_synthesis_basic_test.cc',
         'state_machine_test.cc',
         'storage_close_record_test.cc',
@@ -259,6 +256,7 @@
         'system_binary_search_test.cc',
         'system_clear_last_error_test.cc',
         'system_get_error_string_test.cc',
+        'system_get_connection_type_test.cc',
         'system_get_extension_test.cc',
         'system_get_last_error_test.cc',
         'system_get_locale_id_test.cc',
@@ -275,6 +273,7 @@
         'system_has_capability_test.cc',
         'system_hide_splash_screen_test.cc',
         'system_is_debugger_attached_test.cc',
+        'system_network_status_test.cc',
         'system_sort_test.cc',
         'system_sign_with_certification_secret_key_test.cc',
         'system_symbolize_test.cc',
@@ -311,12 +310,14 @@
         'window_get_size_test.cc',
         '<@(sabi_sources)',
         # Include private c headers, if present.
-        '<!@(python "<(DEPTH)/starboard/tools/find_private_files.py" "<(DEPTH)" "nplb/include_all_private.c")',
+        '<!@pymod_do_main(starboard.build.gyp_functions file_glob <(DEPTH)/starboard/private/nplb/ include_all_private.c)',
         # Include private tests, if present.
-        '<!@(python "<(DEPTH)/starboard/tools/find_private_files.py" "<(DEPTH)" "nplb/*_test.cc")',
+        '<!@pymod_do_main(starboard.build.gyp_functions file_glob <(DEPTH)/starboard/private/nplb/ *_test.cc)',
       ],
       'dependencies': [
         '<@(cobalt_platform_dependencies)',
+        '<(DEPTH)/starboard/common/common.gyp:common',
+        '<(DEPTH)/starboard/nplb/compiler_compliance/compiler_compliance.gyp:cpp14_supported',
         '<(DEPTH)/starboard/shared/starboard/media/media.gyp:media_util',
         '<(DEPTH)/starboard/shared/starboard/player/player.gyp:player_copy_test_data',
         '<(DEPTH)/starboard/shared/starboard/player/player.gyp:video_dmp',
@@ -326,15 +327,15 @@
         'copy_nplb_file_tests_data',
       ],
       'conditions': [
-        ['sb_disable_cpp14_audit != 1', {
-          'dependencies': [
-            '<(DEPTH)/starboard/nplb/compiler_compliance/compiler_compliance.gyp:cpp14_supported',
-          ],
-        }],
         ['sb_evergreen != 1', {
           'sources': [
             # Segfaults or causes unresolved symbols for Cobalt Evergreen.
             'media_set_audio_write_duration_test.cc',
+          ],
+        }],
+        ['sb_disable_cpp17_audit == 0', {
+          'dependencies': [
+            '<(DEPTH)/starboard/nplb/compiler_compliance/compiler_compliance.gyp:cpp17_supported',
           ],
         }],
         ['gl_type != "none"', {
@@ -352,7 +353,10 @@
       'type': 'none',
       'variables': {
         'content_test_input_files': [
-          '<(DEPTH)/starboard/nplb/testdata/file_tests/',
+          '<(DEPTH)/starboard/nplb/testdata/file_tests/dir_with_files',
+          '<(DEPTH)/starboard/nplb/testdata/file_tests/dir_with_only_subdir',
+          '<(DEPTH)/starboard/nplb/testdata/file_tests/file01',
+          '<(DEPTH)/starboard/nplb/testdata/file_tests/file_with_long_name_and_contents_for_seek_testing_1234567890',
         ],
         'content_test_output_subdir': 'starboard/nplb/file_tests',
       },

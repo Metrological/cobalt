@@ -1,0 +1,7 @@
+template("test") {
+  executable(target_name) {
+    testonly = true
+    forward_variables_from(invoker, "*", [ "configs" ])
+    configs += invoker.configs
+  }
+}

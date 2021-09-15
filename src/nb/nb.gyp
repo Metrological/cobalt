@@ -15,7 +15,7 @@
 {
   'variables': {
     'variables': {
-      'has_nb_platform': '<!(test -e <(sb_target_platform)/nb_platform.gyp && echo 1 || echo 0)',
+      'has_nb_platform': '<!pymod_do_main(starboard.build.gyp_functions file_exists <(sb_target_platform)/nb_platform.gyp)'
     },
     'nb_dependencies': [],
     'conditions': [
@@ -36,6 +36,7 @@
       'conditions': [
         ['OS=="starboard"', {
           'sources': [
+            'allocator.cc',
             'allocator.h',
             'analytics/memory_tracker.cc',
             'analytics/memory_tracker.h',
@@ -49,7 +50,6 @@
             'bidirectional_fit_reuse_allocator.cc',
             'concurrent_map.h',
             'concurrent_ptr.h',
-            'cpp14oncpp11.h',
             'first_fit_reuse_allocator.h',
             'first_fit_reuse_allocator.cc',
             'fixed_no_free_allocator.cc',
@@ -75,6 +75,7 @@
             'simple_thread.h',
             'simple_profiler.cc',
             'simple_profiler.h',
+            'starboard_aligned_memory_deleter.h',
             'std_allocator.h',
             'string_interner.cc',
             'string_interner.h',

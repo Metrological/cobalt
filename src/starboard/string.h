@@ -29,6 +29,8 @@
 extern "C" {
 #endif
 
+#if SB_API_VERSION < 13
+
 // Returns the length, in characters, of |str|.
 //
 // |str|: A zero-terminated ASCII string.
@@ -111,12 +113,16 @@ SB_EXPORT int SbStringConcatWide(wchar_t* out_destination,
                                  const wchar_t* source,
                                  int destination_size);
 
+#endif  // SB_API_VERSION < 13
+
 // Copies |source| into a buffer that is allocated by this function and that
 // can be freed with SbMemoryDeallocate. This function is meant to be a drop-in
 // replacement for |strdup|.
 //
 // |source|: The string to be copied.
 SB_EXPORT char* SbStringDuplicate(const char* source);
+
+#if SB_API_VERSION < 13
 
 // Finds the first occurrence of a |character| in |str|. The return value is a
 // pointer to the found character in the given string or |NULL| if the
@@ -144,6 +150,8 @@ SB_EXPORT const char* SbStringFindLastCharacter(const char* str,
 // |str1|: The string in which to search for the presence of |str2|.
 // |str2|: The string to locate in |str1|.
 SB_EXPORT const char* SbStringFindString(const char* str1, const char* str2);
+
+#endif  // SB_API_VERSION < 13
 
 // Compares two strings, ignoring differences in case. The return value is:
 // - |< 0| if |string1| is ASCII-betically lower than |string2|.
@@ -258,6 +266,9 @@ static SB_C_INLINE int SbStringFormatWideF(wchar_t* out_buffer,
   return result;
 }
 
+
+#if SB_API_VERSION < 13
+
 // Compares the first |count| characters of two 16-bit character strings.
 // The return value is:
 // - |< 0| if |string1| is ASCII-betically lower than |string2|.
@@ -299,6 +310,8 @@ SB_EXPORT int SbStringCompare(const char* string1,
 // |string2|: The second 8-bit character string to compare.
 SB_EXPORT int SbStringCompareAll(const char* string1, const char* string2);
 
+#endif  // SB_API_VERSION < 13
+
 // Scans |buffer| for |pattern|, placing the extracted values in |arguments|.
 // The return value specifies the number of successfully matched items, which
 // may be |0|.
@@ -326,6 +339,8 @@ static SB_C_INLINE int SbStringScanF(const char* buffer,
   va_end(arguments);
   return result;
 }
+
+#if SB_API_VERSION < 13
 
 // Extracts a string that represents an integer from the beginning of |start|
 // into a signed integer in the given |base|. This function is meant to be a
@@ -400,14 +415,10 @@ SB_EXPORT uint64_t SbStringParseUInt64(const char* start,
 //   consumed portion of the string into |out_end|.
 SB_EXPORT double SbStringParseDouble(const char* start, char** out_end);
 
+#endif  // SB_API_VERSION < 13
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
-
-#if defined(__cplusplus) && SB_API_VERSION < 11
-extern "C++" {
-#include "starboard/common/string.h"
-}  // extern "C++"
-#endif  // defined(__cplusplus) && SB_API_VERSION < 11
 
 #endif  // STARBOARD_STRING_H_

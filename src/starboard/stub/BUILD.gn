@@ -1,4 +1,4 @@
-# Copyright 2017 The Cobalt Authors. All Rights Reserved.
+# Copyright 2021 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,150 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import("//starboard/build/config/fastbuild.gni")
-import("//starboard/build/delegated_config.gni")
-
-# =============================================================================
-# DEFAULT COMPILER CONFIGS
-# =============================================================================
-
-config("compiler_defaults") {
-  cflags = [
-    "-Werror",
-    "-fcolor-diagnostics",
-    # Default visibility to hidden, to enable dead stripping.
-    "-fvisibility=hidden",
-    # Warn for implicit type conversions that may change a value.
-    "-Wconversion",
-    "-Wno-c++11-compat",
-    # This (rightfully) complains about "override", which we use heavily.
-    "-Wno-c++11-extensions",
-    # Warns on switches on enums that cover all enum values but also contain a
-    # default: branch. Chrome is full of that.
-    "-Wno-covered-switch-default",
-    # protobuf uses hash_map.
-    "-Wno-deprecated",
-    "-fno-exceptions",
-    # Don't warn about the "struct foo f = {0};" initialization pattern.
-    "-Wno-missing-field-initializers",
-    # Do not warn for implicit sign conversions.
-    "-Wno-sign-conversion",
-    "-fno-strict-aliasing",  # See http://crbug.com/32204
-    # TODO(pkasting): In C++11 this is legal, so this should be removed when we
-    # change to that.  (This is also why we don't bother fixing all these cases
-    # today.)
-    "-Wno-unnamed-type-template-args",
-    # Triggered by the COMPILE_ASSERT macro.
-    "-Wno-unused-local-typedef",
-    # Do not warn if a function or variable cannot be implicitly
-    # instantiated.
-    "-Wno-undefined-var-template",
-  ]
-
-  defines = [
-    "__STDC_FORMAT_MACROS",
-  ]
-
-  cflags_cc = [
-    "-std=gnu++11",
-  ]
-}
-
-config("compiler_defaults_debug") {
-  cflags = []
-  if (!cobalt_use_fastbuild) {
-    cflags += [ "-g" ]
-  }
-}
-
-config("compiler_defaults_devel") {
-  cflags = []
-  if (!cobalt_use_fastbuild) {
-    cflags += [ "-g" ]
-  }
-}
-
-config("compiler_defaults_qa") {
-  cflags = [
-    "-gline-tables-only",
-  ]
-}
-
-config("compiler_defaults_gold") {
-  cflags = [
-    "-gline-tables-only",
-  ]
-}
-
-# =============================================================================
-# DELEGATED CONFIGS
-# =============================================================================
-
-config("pedantic_warnings") {
-  cflags = [
-    "-Wall",
-    "-Wextra",
-    "-Wunreachable-code",
-  ]
-}
-
-config("no_pedantic_warnings") {
-  cflags = [
-    # "this" pointer cannot be NULL...pointer may be assumed
-    # to always convert to true.
-    "-Wno-undefined-bool-conversion",
-    # Skia doesn't use overrides.
-    "-Wno-inconsistent-missing-override",
-    # Do not warn about unused function params.
-    "-Wno-unused-parameter",
-    # Do not warn for implicit type conversions that may change a value.
-    "-Wno-conversion",
-    # shifting a negative signed value is undefined
-    "-Wno-shift-negative-value",
-    # Width of bit-field exceeds width of its type- value will be truncated
-    "-Wno-bitfield-width",
-  ]
-}
-
-
-delegated_config("optimizations") {
-  path = "//starboard/build/toolchain/linux/config"
-  prefixes = [ "no", "debuggable", "full" ]
-  generate_default = false
-}
-
-config("default_optimizations") {
-  if (cobalt_config == "debug") {
-    configs = [ ":no_optimizations" ]
-  } else {
-    configs = [ ":debuggable_optimizations" ]
-  }
-}
-
-
-delegated_config("rtti") {
-  path = "//starboard/build/toolchain/linux/config"
-  generate_default = false
-}
-
-config("default_rtti") {
-  if (cobalt_config == "debug" || cobalt_config == "devel") {
-    configs = [ ":rtti" ]
-  } else {
-    configs = [ ":no_rtti" ]
-  }
-}
-
-
-config("wexit_time_destructors") {
-  configs = [ "//starboard/build/toolchain/linux/config:wexit_time_destructors" ]
-}
-
-# =============================================================================
-# starboard_platform TARGET
-# =============================================================================
-
 static_library("starboard_platform") {
+  sources = [
+    "application_stub.cc",
+    "application_stub.h",
+    "atomic_public.h",
+    "configuration.cc",
+    "configuration.h",
+    "configuration_constants.cc",
+    "font.cc",
+    "font.h",
+    "javascript_cache.cc",
+    "javascript_cache.h",
+    "main.cc",
+    "system_get_extensions.cc",
+    "thread_types_public.h",
+  ]
+
+  public_deps = [ ":stub_sources" ]
+}
+
+static_library("stub_sources") {
   sources = [
     "//starboard/shared/starboard/application.cc",
     "//starboard/shared/starboard/command_line.cc",
@@ -163,19 +40,17 @@ static_library("starboard_platform") {
     "//starboard/shared/starboard/event_cancel.cc",
     "//starboard/shared/starboard/event_schedule.cc",
     "//starboard/shared/starboard/file_mode_string_to_flags.cc",
-    "//starboard/shared/starboard/player/filter/stub_audio_decoder.cc",
-    "//starboard/shared/starboard/player/filter/stub_audio_decoder.h",
-    "//starboard/shared/starboard/player/filter/stub_player_components_factory.cc",
-    "//starboard/shared/starboard/player/filter/stub_video_decoder.cc",
-    "//starboard/shared/starboard/player/filter/stub_video_decoder.h",
+    "//starboard/shared/starboard/memory.cc",
     "//starboard/shared/starboard/queue_application.cc",
     "//starboard/shared/stub/accessibility_get_caption_settings.cc",
     "//starboard/shared/stub/accessibility_get_display_settings.cc",
     "//starboard/shared/stub/accessibility_get_text_to_speech_settings.cc",
+    "//starboard/shared/stub/accessibility_set_captions_enabled.cc",
     "//starboard/shared/stub/atomic_public.h",
     "//starboard/shared/stub/audio_sink_create.cc",
     "//starboard/shared/stub/audio_sink_destroy.cc",
     "//starboard/shared/stub/audio_sink_get_max_channels.cc",
+    "//starboard/shared/stub/audio_sink_get_min_buffer_size_in_frames.cc",
     "//starboard/shared/stub/audio_sink_get_nearest_supported_sample_frequency.cc",
     "//starboard/shared/stub/audio_sink_is_audio_frame_storage_type_supported.cc",
     "//starboard/shared/stub/audio_sink_is_audio_sample_type_supported.cc",
@@ -194,12 +69,15 @@ static_library("starboard_platform") {
     "//starboard/shared/stub/condition_variable_signal.cc",
     "//starboard/shared/stub/condition_variable_wait.cc",
     "//starboard/shared/stub/condition_variable_wait_timed.cc",
+    "//starboard/shared/stub/cpu_features_get.cc",
     "//starboard/shared/stub/cryptography_create_transformer.cc",
     "//starboard/shared/stub/cryptography_destroy_transformer.cc",
     "//starboard/shared/stub/cryptography_get_tag.cc",
     "//starboard/shared/stub/cryptography_set_authenticated_data.cc",
     "//starboard/shared/stub/cryptography_set_initialization_vector.cc",
     "//starboard/shared/stub/cryptography_transform.cc",
+    "//starboard/shared/stub/decode_target_get_info.cc",
+    "//starboard/shared/stub/decode_target_release.cc",
     "//starboard/shared/stub/directory_can_open.cc",
     "//starboard/shared/stub/directory_close.cc",
     "//starboard/shared/stub/directory_create.cc",
@@ -216,7 +94,6 @@ static_library("starboard_platform") {
     "//starboard/shared/stub/drm_generate_session_update_request.cc",
     "//starboard/shared/stub/drm_get_metrics.cc",
     "//starboard/shared/stub/drm_is_server_certificate_updatable.cc",
-    "//starboard/shared/stub/drm_system_internal.h",
     "//starboard/shared/stub/drm_update_server_certificate.cc",
     "//starboard/shared/stub/drm_update_session.cc",
     "//starboard/shared/stub/file_atomic_replace.cc",
@@ -232,6 +109,8 @@ static_library("starboard_platform") {
     "//starboard/shared/stub/file_seek.cc",
     "//starboard/shared/stub/file_truncate.cc",
     "//starboard/shared/stub/file_write.cc",
+    "//starboard/shared/stub/image_decode.cc",
+    "//starboard/shared/stub/image_is_decode_supported.cc",
     "//starboard/shared/stub/log.cc",
     "//starboard/shared/stub/log_flush.cc",
     "//starboard/shared/stub/log_format.cc",
@@ -240,13 +119,26 @@ static_library("starboard_platform") {
     "//starboard/shared/stub/log_raw_dump_stack.cc",
     "//starboard/shared/stub/log_raw_format.cc",
     "//starboard/shared/stub/media_can_play_mime_and_key_system.cc",
+    "//starboard/shared/stub/media_get_audio_buffer_budget.cc",
     "//starboard/shared/stub/media_get_audio_configuration.cc",
     "//starboard/shared/stub/media_get_audio_output_count.cc",
+    "//starboard/shared/stub/media_get_buffer_alignment.cc",
+    "//starboard/shared/stub/media_get_buffer_allocation_unit.cc",
+    "//starboard/shared/stub/media_get_buffer_garbage_collection_duration_threshold.cc",
+    "//starboard/shared/stub/media_get_buffer_padding.cc",
+    "//starboard/shared/stub/media_get_buffer_storage_type.cc",
+    "//starboard/shared/stub/media_get_initial_buffer_capacity.cc",
+    "//starboard/shared/stub/media_get_max_buffer_capacity.cc",
+    "//starboard/shared/stub/media_get_progressive_buffer_budget.cc",
+    "//starboard/shared/stub/media_get_video_buffer_budget.cc",
     "//starboard/shared/stub/media_is_audio_supported.cc",
+    "//starboard/shared/stub/media_is_buffer_pool_allocate_on_demand.cc",
+    "//starboard/shared/stub/media_is_buffer_using_memory_pool.cc",
     "//starboard/shared/stub/media_is_output_protected.cc",
     "//starboard/shared/stub/media_is_supported.cc",
     "//starboard/shared/stub/media_is_transfer_characteristics_supported.cc",
     "//starboard/shared/stub/media_is_video_supported.cc",
+    "//starboard/shared/stub/media_set_audio_write_duration.cc",
     "//starboard/shared/stub/media_set_output_protection.cc",
     "//starboard/shared/stub/memory_allocate_aligned_unchecked.cc",
     "//starboard/shared/stub/memory_allocate_unchecked.cc",
@@ -259,6 +151,7 @@ static_library("starboard_platform") {
     "//starboard/shared/stub/memory_get_stack_bounds.cc",
     "//starboard/shared/stub/memory_map.cc",
     "//starboard/shared/stub/memory_move.cc",
+    "//starboard/shared/stub/memory_protect.cc",
     "//starboard/shared/stub/memory_reallocate_unchecked.cc",
     "//starboard/shared/stub/memory_set.cc",
     "//starboard/shared/stub/memory_unmap.cc",
@@ -278,12 +171,16 @@ static_library("starboard_platform") {
     "//starboard/shared/stub/player_create.cc",
     "//starboard/shared/stub/player_destroy.cc",
     "//starboard/shared/stub/player_get_current_frame.cc",
+    "//starboard/shared/stub/player_get_info2.cc",
+    "//starboard/shared/stub/player_get_maximum_number_of_samples_per_write.cc",
     "//starboard/shared/stub/player_get_preferred_output_mode.cc",
     "//starboard/shared/stub/player_output_mode_supported.cc",
+    "//starboard/shared/stub/player_seek2.cc",
     "//starboard/shared/stub/player_set_bounds.cc",
     "//starboard/shared/stub/player_set_playback_rate.cc",
     "//starboard/shared/stub/player_set_volume.cc",
     "//starboard/shared/stub/player_write_end_of_stream.cc",
+    "//starboard/shared/stub/player_write_sample2.cc",
     "//starboard/shared/stub/socket_accept.cc",
     "//starboard/shared/stub/socket_bind.cc",
     "//starboard/shared/stub/socket_clear_last_error.cc",
@@ -296,6 +193,7 @@ static_library("starboard_platform") {
     "//starboard/shared/stub/socket_get_local_address.cc",
     "//starboard/shared/stub/socket_is_connected.cc",
     "//starboard/shared/stub/socket_is_connected_and_idle.cc",
+    "//starboard/shared/stub/socket_is_ipv6_supported.cc",
     "//starboard/shared/stub/socket_join_multicast_group.cc",
     "//starboard/shared/stub/socket_listen.cc",
     "//starboard/shared/stub/socket_receive_from.cc",
@@ -315,12 +213,6 @@ static_library("starboard_platform") {
     "//starboard/shared/stub/socket_waiter_wait.cc",
     "//starboard/shared/stub/socket_waiter_wait_timed.cc",
     "//starboard/shared/stub/socket_waiter_wake_up.cc",
-    "//starboard/shared/stub/speech_recognizer_cancel.cc",
-    "//starboard/shared/stub/speech_recognizer_create.cc",
-    "//starboard/shared/stub/speech_recognizer_destroy.cc",
-    "//starboard/shared/stub/speech_recognizer_is_supported.cc",
-    "//starboard/shared/stub/speech_recognizer_start.cc",
-    "//starboard/shared/stub/speech_recognizer_stop.cc",
     "//starboard/shared/stub/speech_synthesis_cancel.cc",
     "//starboard/shared/stub/speech_synthesis_is_supported.cc",
     "//starboard/shared/stub/speech_synthesis_speak.cc",
@@ -355,6 +247,7 @@ static_library("starboard_platform") {
     "//starboard/shared/stub/system_binary_search.cc",
     "//starboard/shared/stub/system_break_into_debugger.cc",
     "//starboard/shared/stub/system_clear_last_error.cc",
+    "//starboard/shared/stub/system_egl.cc",
     "//starboard/shared/stub/system_get_connection_type.cc",
     "//starboard/shared/stub/system_get_device_type.cc",
     "//starboard/shared/stub/system_get_error_string.cc",
@@ -370,19 +263,29 @@ static_library("starboard_platform") {
     "//starboard/shared/stub/system_get_total_gpu_memory.cc",
     "//starboard/shared/stub/system_get_used_cpu_memory.cc",
     "//starboard/shared/stub/system_get_used_gpu_memory.cc",
+    "//starboard/shared/stub/system_gles.cc",
     "//starboard/shared/stub/system_has_capability.cc",
     "//starboard/shared/stub/system_hide_splash_screen.cc",
     "//starboard/shared/stub/system_is_debugger_attached.cc",
+    "//starboard/shared/stub/system_network_is_disconnected.cc",
     "//starboard/shared/stub/system_raise_platform_error.cc",
+    "//starboard/shared/stub/system_request_blur.cc",
+    "//starboard/shared/stub/system_request_conceal.cc",
+    "//starboard/shared/stub/system_request_focus.cc",
+    "//starboard/shared/stub/system_request_freeze.cc",
     "//starboard/shared/stub/system_request_pause.cc",
+    "//starboard/shared/stub/system_request_reveal.cc",
     "//starboard/shared/stub/system_request_stop.cc",
     "//starboard/shared/stub/system_request_suspend.cc",
     "//starboard/shared/stub/system_request_unpause.cc",
+    "//starboard/shared/stub/system_sign_with_certification_secret_key.cc",
     "//starboard/shared/stub/system_sort.cc",
-    '//starboard/shared/stub/system_supports_resume.cc',
+    "//starboard/shared/stub/system_supports_resume.cc",
     "//starboard/shared/stub/system_symbolize.cc",
+    "//starboard/shared/stub/thread_context_get_pointer.cc",
     "//starboard/shared/stub/thread_create.cc",
     "//starboard/shared/stub/thread_create_local_key.cc",
+    "//starboard/shared/stub/thread_create_priority.cc",
     "//starboard/shared/stub/thread_destroy_local_key.cc",
     "//starboard/shared/stub/thread_detach.cc",
     "//starboard/shared/stub/thread_get_current.cc",
@@ -391,6 +294,11 @@ static_library("starboard_platform") {
     "//starboard/shared/stub/thread_get_name.cc",
     "//starboard/shared/stub/thread_is_equal.cc",
     "//starboard/shared/stub/thread_join.cc",
+    "//starboard/shared/stub/thread_sampler_create.cc",
+    "//starboard/shared/stub/thread_sampler_destroy.cc",
+    "//starboard/shared/stub/thread_sampler_freeze.cc",
+    "//starboard/shared/stub/thread_sampler_is_supported.cc",
+    "//starboard/shared/stub/thread_sampler_thaw.cc",
     "//starboard/shared/stub/thread_set_local_value.cc",
     "//starboard/shared/stub/thread_set_name.cc",
     "//starboard/shared/stub/thread_sleep.cc",
@@ -399,34 +307,39 @@ static_library("starboard_platform") {
     "//starboard/shared/stub/time_get_monotonic_now.cc",
     "//starboard/shared/stub/time_get_monotonic_thread_now.cc",
     "//starboard/shared/stub/time_get_now.cc",
-    "//starboard/shared/posix/time_is_time_thread_now_supported.cc",
+    "//starboard/shared/stub/time_is_time_thread_now_supported.cc",
     "//starboard/shared/stub/time_zone_get_current.cc",
-    "//starboard/shared/stub/time_zone_get_dst_name.cc",
     "//starboard/shared/stub/time_zone_get_name.cc",
+    "//starboard/shared/stub/ui_nav_get_interface.cc",
     "//starboard/shared/stub/user_get_current.cc",
     "//starboard/shared/stub/user_get_property.cc",
     "//starboard/shared/stub/user_get_signed_in.cc",
+    "//starboard/shared/stub/window_blur_on_screen_keyboard.cc",
     "//starboard/shared/stub/window_create.cc",
     "//starboard/shared/stub/window_destroy.cc",
+    "//starboard/shared/stub/window_focus_on_screen_keyboard.cc",
+    "//starboard/shared/stub/window_get_diagonal_size_in_inches.cc",
+    "//starboard/shared/stub/window_get_on_screen_keyboard_bounding_rect.cc",
     "//starboard/shared/stub/window_get_platform_handle.cc",
     "//starboard/shared/stub/window_get_size.cc",
+    "//starboard/shared/stub/window_hide_on_screen_keyboard.cc",
+    "//starboard/shared/stub/window_is_on_screen_keyboard_shown.cc",
+    "//starboard/shared/stub/window_on_screen_keyboard_is_supported.cc",
+    "//starboard/shared/stub/window_on_screen_keyboard_suggestions_supported.cc",
     "//starboard/shared/stub/window_set_default_options.cc",
-    "application_stub.cc",
-    "application_stub.h",
-    "atomic_public.h",
-    "main.cc",
-    "thread_types_public.h",
+    "//starboard/shared/stub/window_set_on_screen_keyboard_keep_focus.cc",
+    "//starboard/shared/stub/window_show_on_screen_keyboard.cc",
+    "//starboard/shared/stub/window_update_on_screen_keyboard_suggestions.cc",
   ]
 
-  # Include private stubs, if present.
-  private_sources = exec_script("//starboard/tools/find_private_files.py",
-                                [
-                                  rebase_path("//", root_build_dir),
-                                  "shared/stub/*.cc",
-                                ],
-                                "list lines",
-                                [ "//starboard/private/shared/stub" ])
-  sources += rebase_path(private_sources, ".", root_build_dir)
+  public_configs = [ "//starboard/build/config:starboard_implementation" ]
 
-  defines = [ "STARBOARD_IMPLEMENTATION" ]
+  public_deps = [
+    "//starboard:starboard_headers_only",
+    "//starboard/common",
+  ]
+
+  if (is_internal_build) {
+    deps = [ "//starboard/private/shared/stub:private_sources" ]
+  }
 }

@@ -45,7 +45,7 @@ bool IsValidSplashScreenFormat(const std::string& rel) {
   bool is_valid_format = true;
   while (tokenizer.GetNext()) {
     std::string token = tokenizer.token();
-    if (SbStringCompareAll(token.c_str(), "splashscreen") == 0) {
+    if (strcmp(token.c_str(), "splashscreen") == 0) {
       is_valid_format = true;
     } else {
       for (char const& c : token) {
@@ -254,6 +254,9 @@ void HTMLLinkElement::OnContentProduced(const loader::Origin& last_url_origin,
 
 void HTMLLinkElement::OnLoadingComplete(
     const base::Optional<std::string>& error) {
+  // GetLoadTimingInfo and create resource timing before loader released.
+  GetLoadTimingInfoAndCreateResourceTiming();
+
   base::MessageLoop::current()->task_runner()->PostTask(
       FROM_HERE, base::Bind(&HTMLLinkElement::ReleaseLoader, this));
 
@@ -320,6 +323,14 @@ void HTMLLinkElement::CollectStyleSheet(
     cssom::StyleSheetVector* style_sheets) const {
   if (style_sheet_) {
     style_sheets->push_back(style_sheet_);
+  }
+}
+
+void HTMLLinkElement::GetLoadTimingInfoAndCreateResourceTiming() {
+  if (html_element_context()->performance() == nullptr) return;
+  if (loader_) {
+    html_element_context()->performance()->CreatePerformanceResourceTiming(
+        loader_->get_load_timing_info(), kTagName, absolute_url_.spec());
   }
 }
 

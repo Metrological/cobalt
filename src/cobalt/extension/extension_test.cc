@@ -15,13 +15,19 @@
 #include <cmath>
 
 #include "cobalt/extension/configuration.h"
+#include "cobalt/extension/crash_handler.h"
+#include "cobalt/extension/cwrappers.h"
+#include "cobalt/extension/font.h"
 #include "cobalt/extension/graphics.h"
 #include "cobalt/extension/installation_manager.h"
+#include "cobalt/extension/javascript_cache.h"
+#include "cobalt/extension/media_session.h"
 #include "cobalt/extension/platform_service.h"
+#include "cobalt/extension/updater_notification.h"
+#include "cobalt/extension/url_fetcher_observer.h"
 #include "starboard/system.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-#if SB_API_VERSION >= 11
 namespace cobalt {
 namespace extension {
 
@@ -61,7 +67,7 @@ TEST(ExtensionTest, Graphics) {
 
   EXPECT_STREQ(extension_api->name, kExtensionName);
   EXPECT_GE(extension_api->version, 1u);
-  EXPECT_LE(extension_api->version, 4u);
+  EXPECT_LE(extension_api->version, 5u);
 
   EXPECT_NE(extension_api->GetMaximumFrameIntervalInMilliseconds, nullptr);
   float maximum_frame_interval =
@@ -93,6 +99,11 @@ TEST(ExtensionTest, Graphics) {
       EXPECT_GE(clear_color_a, 0.0f);
       EXPECT_LE(clear_color_a, 1.0f);
     }
+  }
+
+  if (extension_api->version >= 5) {
+    EXPECT_NE(extension_api->GetMapToMeshColorAdjustments, nullptr);
+    EXPECT_NE(extension_api->GetRenderRootTransform, nullptr);
   }
 
   const ExtensionApi* second_extension_api =
@@ -172,6 +183,150 @@ TEST(ExtensionTest, Configuration) {
   EXPECT_EQ(second_extension_api, extension_api)
       << "Extension struct should be a singleton";
 }
+
+TEST(ExtensionTest, MediaSession) {
+  typedef CobaltExtensionMediaSessionApi ExtensionApi;
+  const char* kExtensionName = kCobaltExtensionMediaSessionName;
+
+  const ExtensionApi* extension_api =
+      static_cast<const ExtensionApi*>(SbSystemGetExtension(kExtensionName));
+  if (!extension_api) {
+    return;
+  }
+
+  EXPECT_STREQ(extension_api->name, kExtensionName);
+  EXPECT_EQ(extension_api->version, 1u);
+  EXPECT_NE(extension_api->OnMediaSessionStateChanged, nullptr);
+
+  const ExtensionApi* second_extension_api =
+      static_cast<const ExtensionApi*>(SbSystemGetExtension(kExtensionName));
+  EXPECT_EQ(second_extension_api, extension_api)
+      << "Extension struct should be a singleton";
+}
+
+TEST(ExtensionTest, CrashHandler) {
+  typedef CobaltExtensionCrashHandlerApi ExtensionApi;
+  const char* kExtensionName = kCobaltExtensionCrashHandlerName;
+
+  const ExtensionApi* extension_api =
+      static_cast<const ExtensionApi*>(SbSystemGetExtension(kExtensionName));
+  if (!extension_api) {
+    return;
+  }
+
+  EXPECT_STREQ(extension_api->name, kExtensionName);
+  EXPECT_EQ(extension_api->version, 1u);
+  EXPECT_NE(extension_api->OverrideCrashpadAnnotations, nullptr);
+
+  const ExtensionApi* second_extension_api =
+      static_cast<const ExtensionApi*>(SbSystemGetExtension(kExtensionName));
+  EXPECT_EQ(second_extension_api, extension_api)
+      << "Extension struct should be a singleton";
+}
+
+TEST(ExtensionTest, CWrappers) {
+  typedef CobaltExtensionCWrappersApi ExtensionApi;
+  const char* kExtensionName = kCobaltExtensionCWrappersName;
+
+  const ExtensionApi* extension_api =
+      static_cast<const ExtensionApi*>(SbSystemGetExtension(kExtensionName));
+  if (!extension_api) {
+    return;
+  }
+
+  EXPECT_STREQ(extension_api->name, kExtensionName);
+  EXPECT_EQ(extension_api->version, 1u);
+  EXPECT_NE(extension_api->PowWrapper, nullptr);
+
+  const ExtensionApi* second_extension_api =
+      static_cast<const ExtensionApi*>(SbSystemGetExtension(kExtensionName));
+  EXPECT_EQ(second_extension_api, extension_api)
+      << "Extension struct should be a singleton";
+}
+
+TEST(ExtensionTest, Font) {
+  typedef CobaltExtensionFontApi ExtensionApi;
+  const char* kExtensionName = kCobaltExtensionFontName;
+
+  const ExtensionApi* extension_api =
+      static_cast<const ExtensionApi*>(SbSystemGetExtension(kExtensionName));
+  if (!extension_api) {
+    return;
+  }
+
+  EXPECT_STREQ(extension_api->name, kExtensionName);
+  EXPECT_EQ(extension_api->version, 1u);
+  EXPECT_NE(extension_api->GetPathFallbackFontDirectory, nullptr);
+
+  const ExtensionApi* second_extension_api =
+      static_cast<const ExtensionApi*>(SbSystemGetExtension(kExtensionName));
+  EXPECT_EQ(second_extension_api, extension_api)
+      << "Extension struct should be a singleton";
+}
+
+TEST(ExtensionTest, JavaScriptCache) {
+  typedef CobaltExtensionJavaScriptCacheApi ExtensionApi;
+  const char* kExtensionName = kCobaltExtensionJavaScriptCacheName;
+
+  const ExtensionApi* extension_api =
+      static_cast<const ExtensionApi*>(SbSystemGetExtension(kExtensionName));
+  if (!extension_api) {
+    return;
+  }
+
+  EXPECT_STREQ(extension_api->name, kExtensionName);
+  EXPECT_EQ(extension_api->version, 1u);
+  EXPECT_NE(extension_api->GetCachedScript, nullptr);
+  EXPECT_NE(extension_api->ReleaseCachedScriptData, nullptr);
+  EXPECT_NE(extension_api->StoreCachedScript, nullptr);
+
+  const ExtensionApi* second_extension_api =
+      static_cast<const ExtensionApi*>(SbSystemGetExtension(kExtensionName));
+  EXPECT_EQ(second_extension_api, extension_api)
+      << "Extension struct should be a singleton";
+}
+
+TEST(ExtensionTest, UrlFetcherObserver) {
+  typedef CobaltExtensionUrlFetcherObserverApi ExtensionApi;
+  const char* kExtensionName = kCobaltExtensionUrlFetcherObserverName;
+
+  const ExtensionApi* extension_api =
+      static_cast<const ExtensionApi*>(SbSystemGetExtension(kExtensionName));
+  if (!extension_api) {
+    return;
+  }
+
+  EXPECT_STREQ(extension_api->name, kExtensionName);
+  EXPECT_EQ(extension_api->version, 1u);
+  EXPECT_NE(extension_api->FetcherCreated, nullptr);
+  EXPECT_NE(extension_api->FetcherDestroyed, nullptr);
+  EXPECT_NE(extension_api->StartURLRequest, nullptr);
+
+  const ExtensionApi* second_extension_api =
+      static_cast<const ExtensionApi*>(SbSystemGetExtension(kExtensionName));
+  EXPECT_EQ(second_extension_api, extension_api)
+      << "Extension struct should be a singleton";
+}
+
+TEST(ExtensionTest, UpdaterNotification) {
+  typedef CobaltExtensionUpdaterNotificationApi ExtensionApi;
+  const char* kExtensionName = kCobaltExtensionUpdaterNotificationName;
+
+  const ExtensionApi* extension_api =
+      static_cast<const ExtensionApi*>(SbSystemGetExtension(kExtensionName));
+  if (!extension_api) {
+    return;
+  }
+
+  EXPECT_STREQ(extension_api->name, kExtensionName);
+  EXPECT_EQ(extension_api->version, 1u);
+  EXPECT_NE(extension_api->UpdaterState, nullptr);
+
+  const ExtensionApi* second_extension_api =
+      static_cast<const ExtensionApi*>(SbSystemGetExtension(kExtensionName));
+  EXPECT_EQ(second_extension_api, extension_api)
+      << "Extension struct should be a singleton";
+}
+
 }  // namespace extension
 }  // namespace cobalt
-#endif  // SB_API_VERSION >= 11

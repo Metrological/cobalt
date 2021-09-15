@@ -16,6 +16,8 @@
 
 #include <ctype.h>
 
+#if SB_API_VERSION < 13
 bool SbCharacterIsHexDigit(int c) {
   return isxdigit(c);
 }
+#endif  // SB_API_VERSION < 13

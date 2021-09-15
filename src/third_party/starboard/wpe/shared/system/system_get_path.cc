@@ -67,7 +67,7 @@ bool GetExecutablePath(char* out_path, int path_size) {
     return false;
   }
 
-  SbStringCopy(out_path, path, path_size);
+  strncpy(out_path, path, path_size);
   return true;
 }
 
@@ -82,7 +82,7 @@ bool GetExecutableDirectory(char* out_path, int path_size) {
   }
 
   char* last_slash =
-      const_cast<char*>(SbStringFindLastCharacter(out_path, '/'));
+      const_cast<char*>(strrchr(out_path, '/'));
   if (!last_slash) {
     return false;
   }
@@ -98,10 +98,8 @@ bool GetExecutableName(char* out_path, int path_size) {
     return false;
   }
 
-  const char* last_slash = SbStringFindLastCharacter(path, '/');
-  if (SbStringCopy(out_path, last_slash + 1, path_size) >= path_size) {
-    return false;
-  }
+  const char* last_slash = strrchr(path, '/');
+  strncpy(out_path, last_slash + 1, path_size);
   return true;
 }
 
@@ -109,7 +107,7 @@ bool GetExecutableName(char* out_path, int path_size) {
 bool GetTemporaryDirectory(char* out_path, int path_size) {
   auto* temp = std::getenv("COBALT_TEMP");
   if (temp) {
-    SbStringCopy(out_path,temp, path_size);
+    strncpy(out_path,temp, path_size);
     return true;
   }
 
@@ -140,7 +138,7 @@ bool SbSystemGetPath(SbSystemPathId path_id, char* out_path, int path_size) {
 
   switch (path_id) {
     case kSbSystemPathContentDirectory:
-      if (SbStringConcat(path,
+      if (starboard::strlcat(path,
                          "/usr/share/content/data", kPathSize) >= kPathSize) {
         return false;
       }
@@ -150,7 +148,7 @@ bool SbSystemGetPath(SbSystemPathId path_id, char* out_path, int path_size) {
       if (!GetCacheDirectory(path, kPathSize)) {
         return false;
       }
-      if (SbStringConcat(path, "/cobalt", kPathSize) >= kPathSize) {
+      if (starboard::strlcat(path, "/cobalt", kPathSize) >= kPathSize) {
         return false;
       }
       if (!SbDirectoryCreate(path)) {
@@ -162,7 +160,7 @@ bool SbSystemGetPath(SbSystemPathId path_id, char* out_path, int path_size) {
       if (!SbSystemGetPath(kSbSystemPathTempDirectory, path, kPathSize)) {
         return false;
       }
-      if (SbStringConcat(path, "/log", kPathSize) >= kPathSize) {
+      if (starboard::strlcat(path, "/log", kPathSize) >= kPathSize) {
         return false;
       }
       SbDirectoryCreate(path);
@@ -191,11 +189,11 @@ bool SbSystemGetPath(SbSystemPathId path_id, char* out_path, int path_size) {
       return false;
   }
 
-  int length = SbStringGetLength(path);
+  int length = strlen(path);
   if (length < 1 || length > path_size) {
     return false;
   }
 
-  SbStringCopy(out_path, path, path_size);
+  strncpy(out_path, path, path_size);
   return true;
 }

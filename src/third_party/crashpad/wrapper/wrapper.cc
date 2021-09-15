@@ -110,12 +110,8 @@ std::map<std::string, std::string> GetPlatformInfo() {
   result = SbSystemGetProperty(kSbSystemPropertySystemIntegratorName,
                                value.data(),
                                kSystemPropertyMaxLength);
-#elif SB_API_VERSION == 11
-  result = SbSystemGetProperty(kSbSystemPropertyOriginalDesignManufacturerName,
-                               value.data(),
-                               kSystemPropertyMaxLength);
 #else
-  result = SbSystemGetProperty(kSbSystemPropertyNetworkOperatorName,
+  result = SbSystemGetProperty(kSbSystemPropertyOriginalDesignManufacturerName,
                                value.data(),
                                kSystemPropertyMaxLength);
 #endif
@@ -213,7 +209,7 @@ bool AddEvergreenInfoToCrashpad(EvergreenInfo evergreen_info) {
   return client->SendEvergreenInfoToHandler(evergreen_info);
 }
 
-bool AddAnnotationsToCrashpad(EvergreenAnnotations annotations) {
+bool AddAnnotationsToCrashpad(CrashpadAnnotations annotations) {
   ::crashpad::CrashpadClient* client = GetCrashpadClient();
   return client->SendAnnotationsToHandler(annotations);
 }

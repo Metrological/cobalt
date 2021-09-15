@@ -333,7 +333,7 @@ std::unique_ptr<base::Value> URLRequest::GetStateAsValue() const {
 
 void URLRequest::LogBlockedBy(const char* blocked_by) {
   DCHECK(blocked_by);
-  DCHECK_GT(SbStringGetLength(blocked_by), 0u);
+  DCHECK_GT(strlen(blocked_by), 0u);
 
   // Only log information to NetLog during startup and certain deferring calls
   // to delegates.  For all reads but the first, do nothing.
@@ -1156,6 +1156,11 @@ void URLRequest::OnHeadersComplete() {
     raw_header_size_ = GetTotalReceivedBytes();
 
     ConvertRealLoadTimesToBlockingTimes(&load_timing_info_);
+#if defined (STARBOARD)
+    if (!load_timing_info_callback_.is_null()) {
+      load_timing_info_callback_.Run(load_timing_info_);
+    }
+#endif  // defined(STARBOARD)
   }
 }
 

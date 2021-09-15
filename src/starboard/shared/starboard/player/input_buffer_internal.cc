@@ -15,19 +15,19 @@
 #include "starboard/shared/starboard/player/input_buffer_internal.h"
 
 #include <cctype>
+#include <cstring>
 #include <numeric>
 #include <sstream>
 
 #include "starboard/common/log.h"
+#include "starboard/common/string.h"
 #include "starboard/memory.h"
-#include "starboard/shared/starboard/media/media_util.h"
 
 namespace starboard {
 namespace shared {
 namespace starboard {
 namespace player {
 
-#if SB_API_VERSION >= 11
 InputBuffer::InputBuffer(SbPlayerDeallocateSampleFunc deallocate_sample_func,
                          SbPlayer player,
                          void* context,
@@ -60,32 +60,6 @@ InputBuffer::InputBuffer(SbPlayerDeallocateSampleFunc deallocate_sample_func,
         sample_info.side_data->data + sample_info.side_data->size);
   }
 }
-#else   // SB_API_VERSION >= 11
-InputBuffer::InputBuffer(SbMediaType sample_type,
-                         SbPlayerDeallocateSampleFunc dealloate_sample_func,
-                         SbPlayer player,
-                         void* context,
-                         const SbPlayerSampleInfo& sample_info,
-                         const SbMediaAudioSampleInfo* audio_sample_info)
-    : deallocate_sample_func_(dealloate_sample_func),
-      player_(player),
-      context_(context),
-      sample_type_(sample_type),
-      data_(static_cast<const uint8_t*>(sample_info.buffer)),
-      size_(sample_info.buffer_size),
-      timestamp_(sample_info.timestamp) {
-  SB_DCHECK(deallocate_sample_func_);
-
-  if (sample_type_ == kSbMediaTypeVideo) {
-    SB_DCHECK(sample_info.video_sample_info);
-    video_sample_info_ = *sample_info.video_sample_info;
-  } else {
-    SB_DCHECK(sample_type_ == kSbMediaTypeAudio && audio_sample_info);
-    audio_sample_info_ = *audio_sample_info;
-  }
-  TryToAssignDrmSampleInfo(sample_info.drm_info);
-}
-#endif  // SB_API_VERSION >= 11
 
 InputBuffer::~InputBuffer() {
   DeallocateSampleBuffer(data_);
@@ -133,11 +107,10 @@ std::string InputBuffer::ToString() const {
   }
   if (has_drm_info_) {
     ss << "iv: "
-       << GetHexRepresentation(drm_info_.initialization_vector,
-                               drm_info_.initialization_vector_size)
+       << HexEncode(drm_info_.initialization_vector,
+                    drm_info_.initialization_vector_size)
        << "\nkey_id: "
-       << GetHexRepresentation(drm_info_.identifier, drm_info_.identifier_size)
-       << '\n';
+       << HexEncode(drm_info_.identifier, drm_info_.identifier_size) << '\n';
     ss << "subsamples\n";
     for (int i = 0; i < drm_info_.subsample_count; ++i) {
       ss << "\t" << drm_info_.subsample_mapping[i].clear_byte_count << ", "
@@ -146,11 +119,10 @@ std::string InputBuffer::ToString() const {
   }
   if (!side_data_.empty()) {
     ss << "side data: "
-       << GetHexRepresentation(side_data_.data(),
-                               static_cast<int>(side_data_.size()))
+       << HexEncode(side_data_.data(), static_cast<int>(side_data_.size()))
        << '\n';
   }
-  ss << GetMixedRepresentation(data(), size(), 16) << '\n';
+  ss << media::GetMixedRepresentation(data(), size(), 16) << '\n';
   return ss.str();
 }
 

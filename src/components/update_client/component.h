@@ -25,7 +25,7 @@
 #include "components/update_client/update_client.h"
 #include "url/gurl.h"
 
-#if defined(OS_STARBOARD)
+#if defined(STARBOARD)
 #include "cobalt/extension/installation_manager.h"
 #endif
 
@@ -54,6 +54,12 @@ class Component {
   // Handles the current state of the component and makes it transition
   // to the next component state before |callback_handle_complete_| is invoked.
   void Handle(CallbackHandleComplete callback_handle_complete);
+
+#if defined(STARBOARD)
+  // Stops update progress for the component and may clean resources used in its
+  // current state.
+  void Cancel();
+#endif
 
   CrxUpdateItem GetCrxUpdateItem() const;
 
@@ -156,6 +162,11 @@ class Component {
     // by the outer component, after the current state is fully handled.
     void Handle(CallbackNextState callback);
 
+#if defined(STARBOARD)
+    // Stops update progress and may clean resources used in the current state.
+    virtual void Cancel();
+#endif
+
     ComponentState state() const { return state_; }
 
    protected:
@@ -247,6 +258,9 @@ class Component {
    public:
     explicit StateDownloadingDiff(Component* component);
     ~StateDownloadingDiff() override;
+#if defined(STARBOARD)
+    void Cancel() override;
+#endif
 
    private:
     // State overrides.
@@ -270,6 +284,9 @@ class Component {
    public:
     explicit StateDownloading(Component* component);
     ~StateDownloading() override;
+#if defined(STARBOARD)
+    void Cancel() override;
+#endif
 
    private:
     // State overrides.
@@ -428,7 +445,7 @@ class Component {
 
   base::FilePath crx_path_;
 
-#if defined(OS_STARBOARD)
+#if defined(STARBOARD)
   int installation_index_ = IM_EXT_INVALID_INDEX;
 #endif
 

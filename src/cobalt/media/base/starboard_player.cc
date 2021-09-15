@@ -23,6 +23,7 @@
 #include "base/logging.h"
 #include "base/trace_event/trace_event.h"
 #include "cobalt/media/base/starboard_utils.h"
+#include "starboard/common/media.h"
 #include "starboard/configuration.h"
 #include "starboard/memory.h"
 
@@ -140,7 +141,7 @@ StarboardPlayer::StarboardPlayer(
 #if SB_HAS(PLAYER_WITH_URL)
       ,
       is_url_based_(false)
-#endif  // SB_HAS(PLAYER_WITH_URL)
+#endif  // SB_HAS(PLAYER_WITH_URL
 {
   DCHECK(!get_decode_target_graphics_context_provider_func_.is_null());
   DCHECK(audio_config.IsValidConfig() || video_config.IsValidConfig());
@@ -148,10 +149,8 @@ StarboardPlayer::StarboardPlayer(
   DCHECK(set_bounds_helper_);
   DCHECK(video_frame_provider_);
 
-#if SB_API_VERSION >= 11
   audio_sample_info_.codec = kSbMediaAudioCodecNone;
   video_sample_info_.codec = kSbMediaVideoCodecNone;
-#endif  // SB_API_VERSION >= 11
 
   if (audio_config.IsValidConfig()) {
     UpdateAudioConfig(audio_config);
@@ -164,10 +163,12 @@ StarboardPlayer::StarboardPlayer(
 
   CreatePlayer();
 
-  task_runner->PostTask(
-      FROM_HERE,
-      base::Bind(&StarboardPlayer::CallbackHelper::ClearDecoderBufferCache,
-                 callback_helper_));
+  if (SbPlayerIsValid(player_)) {
+    task_runner->PostTask(
+        FROM_HERE,
+        base::Bind(&StarboardPlayer::CallbackHelper::ClearDecoderBufferCache,
+                   callback_helper_));
+  }
 }
 
 StarboardPlayer::~StarboardPlayer() {
@@ -189,10 +190,12 @@ void StarboardPlayer::UpdateAudioConfig(
   DCHECK(task_runner_->BelongsToCurrentThread());
   DCHECK(audio_config.IsValidConfig());
 
-  LOG(INFO) << "New audio config -- " << audio_config.AsHumanReadableString();
+  LOG(INFO) << "Updated AudioDecoderConfig -- "
+            << audio_config.AsHumanReadableString();
 
   audio_config_ = audio_config;
   audio_sample_info_ = MediaAudioConfigToSbMediaAudioSampleInfo(audio_config_);
+  LOG(INFO) << "Converted to SbMediaAudioSampleInfo -- " << audio_sample_info_;
 }
 
 void StarboardPlayer::UpdateVideoConfig(
@@ -200,27 +203,23 @@ void StarboardPlayer::UpdateVideoConfig(
   DCHECK(task_runner_->BelongsToCurrentThread());
   DCHECK(video_config.IsValidConfig());
 
-  LOG(INFO) << "New video config -- " << video_config.AsHumanReadableString();
+  LOG(INFO) << "Updated VideoDecoderConfig -- "
+            << video_config.AsHumanReadableString();
 
   video_config_ = video_config;
   video_sample_info_.frame_width =
       static_cast<int>(video_config_.natural_size().width());
   video_sample_info_.frame_height =
       static_cast<int>(video_config_.natural_size().height());
-#if SB_API_VERSION >= 11
   video_sample_info_.codec =
       MediaVideoCodecToSbMediaVideoCodec(video_config_.codec());
   video_sample_info_.color_metadata =
       MediaToSbMediaColorMetadata(video_config_.webm_color_metadata());
-#else   // SB_API_VERSION >= 11
-  media_color_metadata_ =
-      MediaToSbMediaColorMetadata(video_config_.webm_color_metadata());
-  video_sample_info_.color_metadata = &media_color_metadata_;
-#endif  // SB_API_VERSION >= 11
 #if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
   video_sample_info_.mime = video_config_.mime().c_str();
   video_sample_info_.max_video_capabilities = max_video_capabilities_.c_str();
 #endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+  LOG(INFO) << "Converted to SbMediaVideoSampleInfo -- " << video_sample_info_;
 }
 
 void StarboardPlayer::WriteBuffer(DemuxerStream::Type type,
@@ -450,8 +449,10 @@ void StarboardPlayer::Suspend() {
   player_ = kSbPlayerInvalid;
 }
 
-void StarboardPlayer::Resume() {
+void StarboardPlayer::Resume(SbWindow window) {
   DCHECK(task_runner_->BelongsToCurrentThread());
+
+  window_ = window;
 
   // Check if the player is already resumed.
   if (state_ != kSuspended) {
@@ -474,9 +475,11 @@ void StarboardPlayer::Resume() {
   CreatePlayer();
 #endif  // SB_HAS(PLAYER_WITH_URL)
 
-  base::AutoLock auto_lock(lock_);
-  state_ = kResuming;
-  UpdateBounds_Locked();
+  if (SbPlayerIsValid(player_)) {
+    base::AutoLock auto_lock(lock_);
+    state_ = kResuming;
+    UpdateBounds_Locked();
+  }
 }
 
 namespace {
@@ -514,7 +517,7 @@ void StarboardPlayer::CreateUrlPlayer(const std::string& url) {
   DCHECK(task_runner_->BelongsToCurrentThread());
 
   DCHECK(!on_encrypted_media_init_data_encountered_cb_.is_null());
-  DLOG(INFO) << "CreateUrlPlayer passed url " << url;
+  LOG(INFO) << "CreateUrlPlayer passed url " << url;
   player_ =
       SbUrlPlayerCreate(url.c_str(), window_, &StarboardPlayer::PlayerStatusCB,
                         &StarboardPlayer::EncryptedMediaInitDataEncounteredCB,
@@ -540,19 +543,14 @@ void StarboardPlayer::CreatePlayer() {
   TRACE_EVENT0("cobalt::media", "StarboardPlayer::CreatePlayer");
   DCHECK(task_runner_->BelongsToCurrentThread());
 
-#if SB_API_VERSION >= 11
+  bool is_visible = SbWindowIsValid(window_);
   SbMediaAudioCodec audio_codec = audio_sample_info_.codec;
-  SbMediaVideoCodec video_codec = video_sample_info_.codec;
-#else   // SB_API_VERSION >= 11
-  SbMediaAudioCodec audio_codec = kSbMediaAudioCodecNone;
-  if (audio_config_.IsValidConfig()) {
-    audio_codec = MediaAudioCodecToSbMediaAudioCodec(audio_config_.codec());
-  }
   SbMediaVideoCodec video_codec = kSbMediaVideoCodecNone;
-  if (video_config_.IsValidConfig()) {
-    video_codec = MediaVideoCodecToSbMediaVideoCodec(video_config_.codec());
+  // TODO: This is temporary for supporting background media playback.
+  //       Need to be removed with media refactor.
+  if (is_visible) {
+    video_codec = video_sample_info_.codec;
   }
-#endif  // SB_API_VERSION >= 11
 
   bool has_audio = audio_codec != kSbMediaAudioCodecNone;
 
@@ -562,6 +560,11 @@ void StarboardPlayer::CreatePlayer() {
   creation_param.drm_system = drm_system_;
   creation_param.audio_sample_info = audio_sample_info_;
   creation_param.video_sample_info = video_sample_info_;
+  // TODO: This is temporary for supporting background media playback.
+  //       Need to be removed with media refactor.
+  if (!is_visible) {
+    creation_param.video_sample_info.codec = kSbMediaVideoCodecNone;
+  }
   creation_param.output_mode = output_mode_;
   DCHECK_EQ(SbPlayerGetPreferredOutputMode(&creation_param), output_mode_);
   player_ = SbPlayerCreate(
@@ -573,22 +576,25 @@ void StarboardPlayer::CreatePlayer() {
 #else  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
 
   DCHECK(SbPlayerOutputModeSupported(output_mode_, video_codec, drm_system_));
+  // TODO: This is temporary for supporting background media playback.
+  //       Need to be removed with media refactor.
+  if (!is_visible) {
+    DCHECK(audio_codec != kSbMediaAudioCodecNone);
+  }
   player_ = SbPlayerCreate(
-      window_, video_codec, audio_codec,
-      drm_system_, has_audio ? &audio_sample_info_ : NULL,
-#if SB_API_VERSION >= 11
+      window_, video_codec, audio_codec, drm_system_,
+      has_audio ? &audio_sample_info_ : NULL,
       max_video_capabilities_.length() > 0 ? max_video_capabilities_.c_str()
                                            : NULL,
-#endif  // SB_API_VERSION >= 11
       &StarboardPlayer::DeallocateSampleCB, &StarboardPlayer::DecoderStatusCB,
-      &StarboardPlayer::PlayerStatusCB,
-      &StarboardPlayer::PlayerErrorCB,
-      this, output_mode_,
-      get_decode_target_graphics_context_provider_func_.Run());
+      &StarboardPlayer::PlayerStatusCB, &StarboardPlayer::PlayerErrorCB, this,
+      output_mode_, get_decode_target_graphics_context_provider_func_.Run());
 
 #endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
 
-  DCHECK(SbPlayerIsValid(player_));
+  if (!SbPlayerIsValid(player_)) {
+    return;
+  }
 
   if (output_mode_ == kSbPlayerOutputModeDecodeToTexture) {
     // If the player is setup to decode to texture, then provide Cobalt with
@@ -650,7 +656,6 @@ void StarboardPlayer::WriteBufferInternal(
     FillDrmSampleInfo(buffer, &drm_info, &subsample_mapping);
   }
 
-#if SB_API_VERSION >= 11
   DCHECK_GT(SbPlayerGetMaximumNumberOfSamplesPerWrite(player_, sample_type), 0);
 
   SbPlayerSampleSideData side_data = {};
@@ -681,16 +686,6 @@ void StarboardPlayer::WriteBufferInternal(
     sample_info.drm_info = NULL;
   }
   SbPlayerWriteSample2(player_, sample_type, &sample_info, 1);
-#else  // SB_API_VERSION >= 11
-  video_sample_info_.is_key_frame = buffer->is_key_frame();
-  DCHECK_GT(SbPlayerGetMaximumNumberOfSamplesPerWrite(player_, sample_type), 0);
-  SbPlayerSampleInfo sample_info = {
-      allocations.buffers()[0], allocations.buffer_sizes()[0],
-      buffer->timestamp().InMicroseconds(),
-      type == DemuxerStream::VIDEO ? &video_sample_info_ : NULL,
-      drm_info.subsample_count > 0 ? &drm_info : NULL};
-  SbPlayerWriteSample2(player_, sample_type, &sample_info, 1);
-#endif  // SB_API_VERSION >= 11
 }
 
 SbDecodeTarget StarboardPlayer::GetCurrentSbDecodeTarget() {
@@ -783,10 +778,10 @@ void StarboardPlayer::OnDecoderStatus(SbPlayer player, SbMediaType type,
       break;
 #if SB_API_VERSION < 12
     case kSbPlayerDecoderStateBufferFull:
-      DLOG(WARNING) << "kSbPlayerDecoderStateBufferFull has been deprecated.";
+      LOG(WARNING) << "kSbPlayerDecoderStateBufferFull has been deprecated.";
       return;
     case kSbPlayerDecoderStateDestroyed:
-      DLOG(WARNING) << "kSbPlayerDecoderStateDestroyed has been deprecated.";
+      LOG(WARNING) << "kSbPlayerDecoderStateDestroyed has been deprecated.";
       return;
 #endif  // SB_API_VERSION < 12
   }
@@ -941,14 +936,10 @@ SbPlayerOutputMode StarboardPlayer::ComputeSbPlayerOutputMode(
   auto output_mode = SbPlayerGetPreferredOutputMode(&creation_param);
   CHECK_NE(kSbPlayerOutputModeInvalid, output_mode);
   return output_mode;
-#else  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
+#else   // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
   SbMediaVideoCodec video_codec = kSbMediaVideoCodecNone;
 
-#if SB_API_VERSION >= 11
   video_codec = video_sample_info_.codec;
-#else   // SB_API_VERSION >= 11
-  video_codec = MediaVideoCodecToSbMediaVideoCodec(video_config_.codec());
-#endif  // SB_API_VERSION >= 11
 
   // Try to choose |kSbPlayerOutputModeDecodeToTexture| when
   // |prefer_decode_to_texture| is true.

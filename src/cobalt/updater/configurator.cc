@@ -5,6 +5,7 @@
 #include "cobalt/updater/configurator.h"
 
 #include <set>
+#include <utility>
 
 #include "base/version.h"
 #include "cobalt/script/javascript_engine.h"
@@ -28,36 +29,13 @@ namespace {
 // Default time constants.
 const int kDelayOneMinute = 60;
 const int kDelayOneHour = kDelayOneMinute * 60;
-const std::set<std::string> valid_channels = {
-    // Default channel for debug/devel builds.
-    "dev",
-    // Channel for dogfooders.
-    "dogfood",
-    // Default channel for gold builds.
-    "prod",
-    // Default channel for qa builds. A gold build can switch to this channel to
-    // get an official qa build.
-    "qa",
-    // Test an update with higher version than prod channel.
-    "test",
-    // Test an update with mismatched sabi.
-    "tmsabi",
-    // Test an update that does nothing.
-    "tnoop",
-    // Test an update that crashes.
-    "tcrash",
-    // Test an update that fails verification.
-    "tfailv",
-    // Test a series of continuous updates with two channels.
-    "tseries1", "tseries2",
-};
 
 #if defined(COBALT_BUILD_TYPE_DEBUG) || defined(COBALT_BUILD_TYPE_DEVEL)
-const std::string kDefaultUpdaterChannel = "dev";
+const char kDefaultUpdaterChannel[] = "dev";
 #elif defined(COBALT_BUILD_TYPE_QA)
-const std::string kDefaultUpdaterChannel = "qa";
+const char kDefaultUpdaterChannel[] = "qa";
 #elif defined(COBALT_BUILD_TYPE_GOLD)
-const std::string kDefaultUpdaterChannel = "prod";
+const char kDefaultUpdaterChannel[] = "prod";
 #endif
 
 std::string GetDeviceProperty(SbSystemPropertyId id) {
@@ -93,6 +71,9 @@ Configurator::Configurator(network::NetworkModule* network_module)
   } else {
     SetChannel(persisted_channel);
   }
+  if (network_module != nullptr) {
+    user_agent_string_ = network_module->GetUserAgent();
+  }
 }
 Configurator::~Configurator() = default;
 
@@ -127,7 +108,10 @@ std::string Configurator::GetBrand() const { return {}; }
 std::string Configurator::GetLang() const {
   const char* locale_id = SbSystemGetLocaleId();
   if (!locale_id) {
-    return "";
+    // If Starboard failed to determine the locale, return a hardcoded, but
+    // valid BCP 47 language tag as required by
+    // https://html.spec.whatwg.org/commit-snapshots/e2f08b4e56d9a098038fb16c7ff6bb820a57cfab/#language-preferences
+    return "en-US";
   }
   std::string locale_string(locale_id);
   // POSIX platforms put time zone id at the end of the locale id, like
@@ -140,7 +124,7 @@ std::string Configurator::GetLang() const {
 }
 
 std::string Configurator::GetOSLongName() const {
-  return "Starboard";  // version_info::GetOSType();
+  return GetDeviceProperty(kSbSystemPropertyPlatformName);
 }
 
 base::flat_map<std::string, std::string> Configurator::ExtraRequestParams()
@@ -160,6 +144,26 @@ base::flat_map<std::string, std::string> Configurator::ExtraRequestParams()
   // Model name
   params.insert(
       std::make_pair("model", GetDeviceProperty(kSbSystemPropertyModelName)));
+
+  // Original Design manufacturer name
+  params.insert(
+      std::make_pair("manufacturer",
+                     GetDeviceProperty(kSbSystemPropertySystemIntegratorName)));
+
+  // Chipset model number
+  params.insert(std::make_pair(
+      "chipset", GetDeviceProperty(kSbSystemPropertyChipsetModelNumber)));
+
+  // Firmware version
+  params.insert(std::make_pair(
+      "firmware", GetDeviceProperty(kSbSystemPropertyFirmwareVersion)));
+
+  // Model year
+  params.insert(
+      std::make_pair("year", GetDeviceProperty(kSbSystemPropertyModelYear)));
+
+  // User Agent String
+  params.insert(std::make_pair("uastring", user_agent_string_));
 
   return params;
 }
@@ -231,15 +235,6 @@ std::string Configurator::GetChannel() const {
 void Configurator::SetChannel(const std::string& updater_channel) {
   base::AutoLock auto_lock(updater_channel_lock_);
   updater_channel_ = updater_channel;
-  persisted_data_->SetUpdaterChannel(GetAppGuid(), updater_channel);
-}
-
-bool Configurator::IsChannelValid(const std::string& channel) {
-  if (!valid_channels.count(channel)) {
-    SetUpdaterStatus(std::string("Invalid channel requested"));
-    return false;
-  }
-  return true;
 }
 
 // The updater status is get by main web module thread and set by the updater

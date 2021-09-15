@@ -43,7 +43,7 @@ bool ResetCache()
   char cache_path[kSbFileMaxPath];
   if (SbUserGetProperty(SbUserGetCurrent(), kSbUserPropertyHomeDirectory,
                        cache_path, sizeof(cache_path))) {
-    if (SbStringConcat(cache_path, "/.cache", sizeof(cache_path))) {
+    if (::starboard::strlcat(cache_path, "/.cache", sizeof(cache_path))) {
       status = true;
       if (::starboard::SbFileDeleteRecursive(cache_path, false)) {
         status = true;
@@ -68,7 +68,7 @@ bool ResetCredentials()
       std::vector<char> entry(kSbFileMaxName);
 
       while (SbDirectoryGetNext(dir, entry.data(), kSbFileMaxName)) {
-        if (!SbStringCompare(entry.data(), cred_prefix, sizeof(cred_prefix) - 1)) {
+        if (!strncmp(entry.data(), cred_prefix, sizeof(cred_prefix) - 1)) {
 
           char cred_path[kSbFileMaxPath];
           SbStringFormatF(cred_path, kSbFileMaxPath, "%s/%s", home_path, entry.data());
@@ -80,7 +80,7 @@ bool ResetCredentials()
       SbDirectoryEntry entry;
 
       while (SbDirectoryGetNext(dir, &entry)) {
-        if (!SbStringCompare(entry.name, cred_prefix, sizeof(cred_prefix) - 1)) {
+        if (!strncmp(entry.name, cred_prefix, sizeof(cred_prefix) - 1)) {
           char cred_path[kSbFileMaxPath];
           SbStringFormatF(cred_path, kSbFileMaxPath, "%s/%s", home_path, entry.data());
           if (!SbFileDelete(cred_path)) {

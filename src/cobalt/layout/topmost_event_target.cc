@@ -95,7 +95,7 @@ void TopmostEventTarget::ConsiderElement(dom::Element* element,
     }
 
     scoped_refptr<dom::HTMLElement> html_element = element->AsHTMLElement();
-    if (html_element && html_element->CanbeDesignatedByPointerIfDisplayed()) {
+    if (html_element && html_element->CanBeDesignatedByPointerIfDisplayed()) {
       ConsiderBoxes(html_element, layout_boxes, element_coordinate);
     }
   }
@@ -239,13 +239,11 @@ void SendStateChangeEnterEvents(
         target_element->DispatchEvent(new dom::PointerEvent(
             base::Tokens::pointerover(), view, *event_init));
         for (scoped_refptr<dom::Element> element = target_element;
-             element != nearest_common_ancestor;
+             element && element != nearest_common_ancestor;
              element = element->parent_element()) {
-          if (element) {
-            element->DispatchEvent(new dom::PointerEvent(
-                base::Tokens::pointerenter(), dom::Event::kNotBubbles,
-                dom::Event::kNotCancelable, view, *event_init));
-          }
+          element->DispatchEvent(new dom::PointerEvent(
+              base::Tokens::pointerenter(), dom::Event::kNotBubbles,
+              dom::Event::kNotCancelable, view, *event_init));
         }
       }
 
@@ -254,13 +252,11 @@ void SendStateChangeEnterEvents(
       target_element->DispatchEvent(
           new dom::MouseEvent(base::Tokens::mouseover(), view, *event_init));
       for (scoped_refptr<dom::Element> element = target_element;
-           element != nearest_common_ancestor;
+           element && element != nearest_common_ancestor;
            element = element->parent_element()) {
-        if (element) {
-          element->DispatchEvent(new dom::MouseEvent(
-              base::Tokens::mouseenter(), dom::Event::kNotBubbles,
-              dom::Event::kNotCancelable, view, *event_init));
-        }
+        element->DispatchEvent(new dom::MouseEvent(
+            base::Tokens::mouseenter(), dom::Event::kNotBubbles,
+            dom::Event::kNotCancelable, view, *event_init));
       }
     }
   }
@@ -449,7 +445,7 @@ void TopmostEventTarget::MaybeSendPointerEvents(
     // This is an 'up' event for the last pressed button indicating that no
     // more buttons are pressed.
     if (target_element && !is_touchpad_event) {
-      // Send the click event if needed, which is not prevented by canceling
+      // Send the click event if needed, which is not prevented by cancelling
       // the pointerdown event.
       //   https://www.w3.org/TR/uievents/#event-type-click
       //   https://www.w3.org/TR/pointerevents/#compatibility-mapping-with-mouse-events

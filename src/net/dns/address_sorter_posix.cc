@@ -4,7 +4,7 @@
 
 #include "net/dns/address_sorter_posix.h"
 
-#if defined(OS_STARBOARD)
+#if defined(STARBOARD)
 #include "starboard/client_porting/poem/inet_poem.h"
 #else
 #include <netinet/in.h>
@@ -376,9 +376,9 @@ void AddressSorterPosix::OnIPAddressChanged() {
     info.native = info.home = info.deprecated = false;
     if (ifa->ifa_addr->sa_family == AF_INET6) {
       struct in6_ifreq ifr = {};
-      SbStringCopy(ifr.ifr_name, ifa->ifa_name, sizeof(ifr.ifr_name) - 1);
+      strncpy(ifr.ifr_name, ifa->ifa_name, sizeof(ifr.ifr_name) - 1);
       DCHECK_LE(ifa->ifa_addr->sa_len, sizeof(ifr.ifr_ifru.ifru_addr));
-      SbMemoryCopy(&ifr.ifr_ifru.ifru_addr, ifa->ifa_addr,
+      memcpy(&ifr.ifr_ifru.ifru_addr, ifa->ifa_addr,
                    ifa->ifa_addr->sa_len);
       int rv = ioctl(ioctl_socket, SIOCGIFAFLAG_IN6, &ifr);
       if (rv >= 0) {

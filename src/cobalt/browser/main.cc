@@ -55,32 +55,44 @@ bool CheckForAndExecuteStartupSwitches() {
 }
 
 void PreloadApplication(int argc, char** argv, const char* link,
-                        const base::Closure& quit_closure) {
+                        const base::Closure& quit_closure,
+                        SbTimeMonotonic timestamp) {
   if (CheckForAndExecuteStartupSwitches()) {
     SbSystemRequestStop(0);
     return;
   }
-  LOG(INFO) << "Preloading application.";
+  LOG(INFO) << "Concealing application.";
   DCHECK(!g_application);
-  g_application =
-      new cobalt::browser::Application(quit_closure, true /*should_preload*/);
+  g_application = new cobalt::browser::Application(quit_closure,
+                                                   true /*should_preload*/,
+                                                   timestamp);
   DCHECK(g_application);
 }
 
 void StartApplication(int argc, char** argv, const char* link,
-                      const base::Closure& quit_closure) {
+                      const base::Closure& quit_closure,
+                      SbTimeMonotonic timestamp) {
   if (CheckForAndExecuteStartupSwitches()) {
     SbSystemRequestStop(0);
     return;
   }
   LOG(INFO) << "Starting application.";
+#if SB_API_VERSION >= 13
+  DCHECK(!g_application);
+  g_application = new cobalt::browser::Application(quit_closure,
+                                                   false /*not_preload*/,
+                                                   timestamp);
+  DCHECK(g_application);
+#else
   if (!g_application) {
     g_application = new cobalt::browser::Application(quit_closure,
-                                                     false /*should_preload*/);
+                                                     false /*should_preload*/,
+                                                     timestamp);
     DCHECK(g_application);
   } else {
-    g_application->Start();
+    g_application->Start(timestamp);
   }
+#endif  // SB_API_VERSION >= 13
 }
 
 void StopApplication() {
@@ -101,7 +113,7 @@ void HandleStarboardEvent(const SbEvent* starboard_event) {
 
 }  // namespace
 
-#if defined(OS_STARBOARD)
+#if defined(STARBOARD)
 COBALT_WRAP_MAIN(PreloadApplication, StartApplication, HandleStarboardEvent,
                  StopApplication);
 #else

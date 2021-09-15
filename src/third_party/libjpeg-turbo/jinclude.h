@@ -39,10 +39,6 @@
 //#include <stddef.h>
 #endif
 
-#ifdef HAVE_STDLIB_H
-#include "starboard/client_porting/poem/stdlib_poem.h"
-#endif
-
 #include "starboard/client_porting/poem/stdio_poem.h"
 #include "starboard/file.h"
 
@@ -51,17 +47,12 @@
 #include <stddef.h>
 #endif
 
-#ifdef HAVE_STDLIB_H
-#include <stdlib.h>
-#endif
-
 #ifdef NEED_SYS_TYPES_H
 #include <sys/types.h>
 #endif
 
 #include <stdio.h>
 #endif
-
 /*
  * We need memory copying and zeroing functions, plus strncpy().
  * ANSI and System V implementations declare these in <string.h>.
@@ -75,8 +66,8 @@
 #if defined(NEED_STARBOARD_MEMORY)
 
 #include "starboard/memory.h"
-#define MEMZERO(target,size)	SbMemorySet((void *)(target), 0, (size_t)(size))
-#define MEMCOPY(dest,src,size)	SbMemoryCopy((void *)(dest), (const void *)(src), (size_t)(size))
+#define MEMZERO(target,size)	memset((void *)(target), 0, (size_t)(size))
+#define MEMCOPY(dest,src,size)	memcpy((void *)(dest), (const void *)(src), (size_t)(size))
 
 #elif NEED_BSD_STRINGS
 
@@ -87,6 +78,10 @@
   bcopy((const void *)(src), (void *)(dest), (size_t)(size))
 
 #else /* not BSD, assume ANSI/SysV string lib */
+
+#ifdef HAVE_STDLIB_H
+#include <stdlib.h>
+#endif
 
 #include <string.h>
 #define MEMZERO(target, size) \

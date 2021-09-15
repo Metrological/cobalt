@@ -23,8 +23,8 @@ namespace dom {
 TEST(NavigatorLicensesTest, NonEmpty) {
   testing::StubEnvironmentSettings environment_settings;
   scoped_refptr<cobalt::dom::Navigator> navigator =
-      new cobalt::dom::Navigator(&environment_settings, std::string(),
-                                 std::string(), nullptr, nullptr, nullptr);
+      new cobalt::dom::Navigator(&environment_settings, std::string(), NULL,
+                                 std::string(), nullptr, nullptr);
 
   ASSERT_TRUE(navigator != nullptr);
   EXPECT_FALSE(navigator->licenses().empty());

@@ -120,9 +120,6 @@
 // Whether the current platform implements the on screen keyboard interface.
 #define SB_HAS_ON_SCREEN_KEYBOARD 0
 
-// Whether the current platform has speech recognizer.
-#define SB_HAS_SPEECH_RECOGNIZER 0
-
 // Whether the current platform has speech synthesis.
 #define SB_HAS_SPEECH_SYNTHESIS 0
 
@@ -139,13 +136,6 @@
 // Whether this platform can map executable memory. Implies SB_HAS_MMAP. This is
 // required for platforms that want to JIT.
 #define SB_CAN_MAP_EXECUTABLE_MEMORY 1
-
-// The Raspberry Pi does not apparently align fields in a heap-allocated struct
-// by over 16 bytes.
-#define SB_HAS_QUIRK_DOES_NOT_ALIGN_FIELDS_IN_HEAP_OVER_16_BYTES 1
-
-// The Raspberry Pi does not apparently align stack variables by over 16 bytes.
-#define SB_HAS_QUIRK_DOES_NOT_STACK_ALIGN_OVER_16_BYTES 1
 
 // --- Network Configuration -------------------------------------------------
 
@@ -172,5 +162,14 @@
 #if !defined(__GNUC__)
 #error "RasPi builds need a GCC-like compiler (for the moment)."
 #endif
+
+// --- Platform Specific Quirks ----------------------------------------------
+
+// The Raspberry Pi does not apparently align fields in a heap-allocated struct
+// by over 16 bytes.
+#define SB_HAS_QUIRK_DOES_NOT_ALIGN_FIELDS_IN_HEAP_OVER_16_BYTES 1
+
+// The Raspberry Pi does not apparently align stack variables by over 16 bytes.
+#define SB_HAS_QUIRK_DOES_NOT_STACK_ALIGN_OVER_16_BYTES 1
 
 #endif  // STARBOARD_RASPI_SHARED_CONFIGURATION_PUBLIC_H_

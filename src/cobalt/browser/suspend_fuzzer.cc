@@ -31,8 +31,13 @@ const base::TimeDelta kInterval = base::TimeDelta::FromSeconds(10);
 
 }  // namespace
 
+#if SB_API_VERSION >= 13
+SuspendFuzzer::SuspendFuzzer()
+    : thread_("suspend_fuzzer"), step_type_(kShouldRequestFreeze) {
+#else
 SuspendFuzzer::SuspendFuzzer()
     : thread_("suspend_fuzzer"), step_type_(kShouldRequestSuspend) {
+#endif  // SB_API_VERSION >= 13
   thread_.Start();
   thread_.message_loop()->task_runner()->PostDelayedTask(
       FROM_HERE, base::Bind(&SuspendFuzzer::DoStep, base::Unretained(this)),
@@ -43,17 +48,32 @@ SuspendFuzzer::~SuspendFuzzer() { thread_.Stop(); }
 
 void SuspendFuzzer::DoStep() {
   DCHECK(base::MessageLoop::current() == thread_.message_loop());
-  if (step_type_ == kShouldRequestSuspend) {
-    SB_DLOG(INFO) << "suspend_fuzzer: Requesting suspend.";
-    SbSystemRequestSuspend();
-    step_type_ = kShouldRequestUnpause;
-  } else if (step_type_ == kShouldRequestUnpause) {
-    SB_DLOG(INFO) << "suspend_fuzzer: Requesting unpause.";
-    SbSystemRequestUnpause();
-    step_type_ = kShouldRequestSuspend;
+#if SB_API_VERSION >= 13
+  if (step_type_ == kShouldRequestFreeze) {
+    SB_DLOG(INFO) << "suspend_fuzzer: Requesting freeze.";
+    SbSystemRequestFreeze();
+    step_type_ = kShouldRequestFocus;
+  } else if (step_type_ == kShouldRequestFocus) {
+    SB_DLOG(INFO) << "suspend_fuzzer: Requesting focus.";
+    SbSystemRequestFocus();
+    step_type_ = kShouldRequestFocus;
   } else {
     NOTREACHED();
   }
+#else
+  if (step_type_ == kShouldRequestSuspend) {
+    SB_DLOG(INFO) << "suspend_fuzzer: Requesting suspend.";
+    SbSystemRequestSuspend();
+    step_type_ = kShouldRequestSuspend;
+  } else if (step_type_ == kShouldRequestUnpause) {
+    SB_DLOG(INFO) << "suspend_fuzzer: Requesting unpause.";
+    SbSystemRequestUnpause();
+    step_type_ = kShouldRequestUnpause;
+  } else {
+    NOTREACHED();
+  }
+#endif  // SB_API_VERSION >= 13
+
   base::MessageLoop::current()->task_runner()->PostDelayedTask(
       FROM_HERE, base::Bind(&SuspendFuzzer::DoStep, base::Unretained(this)),
       kInterval);

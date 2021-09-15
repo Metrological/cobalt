@@ -16,6 +16,8 @@
 
 #include <ctype.h>
 
+#if SB_API_VERSION < 13
 bool SbCharacterIsAlphanumeric(int c) {
   return isalnum(c);
 }
+#endif  // SB_API_VERSION < 13

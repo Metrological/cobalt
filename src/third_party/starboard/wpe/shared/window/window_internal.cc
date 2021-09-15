@@ -450,8 +450,8 @@ void KeyboardHandler::Direct(const uint32_t key, const state action) {
 
 void KeyboardHandler::CreateKey(int key, state action, bool is_repeat) {
   SbInputData* data = new SbInputData();
-  SbMemorySet(data, 0, sizeof(*data));
-#if SB_API_VERSION >= 10
+  memset(data, 0, sizeof(*data));
+#if SB_API_VERSION < 13
   data->timestamp = SbTimeGetMonotonicNow();
 #endif  // SB_API_VERSION >= 10
   data->window = window_;

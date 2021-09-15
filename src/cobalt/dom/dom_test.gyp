@@ -18,7 +18,7 @@
   },
   'targets': [
     {
-      # For the convenince, some tests depend on dom_parser.gyp:dom_parser. To
+      # For the convenience, some tests depend on dom_parser.gyp:dom_parser. To
       # avoid the dependency cycle between the two gyp files, dom_test is
       # separated into its own gyp file.
       'target_name': 'dom_test',
@@ -58,6 +58,8 @@
         'node_list_test.cc',
         'node_test.cc',
         'on_screen_keyboard_test.cc',
+        'application_lifecycle_state_test.cc',
+        'performance_observer_test.cc',
         'performance_test.cc',
         'rule_matching_test.cc',
         'screen_test.cc',
@@ -66,19 +68,17 @@
         'text_test.cc',
         'time_ranges_test.cc',
         'url_utils_test.cc',
+        'user_agent_data_test.cc',
         'window_test.cc',
         'xml_document_test.cc',
       ],
       'dependencies': [
         '<(DEPTH)/cobalt/base/base.gyp:base',
-        '<(DEPTH)/cobalt/browser/browser.gyp:browser',
         '<(DEPTH)/cobalt/css_parser/css_parser.gyp:css_parser',
         '<(DEPTH)/cobalt/dom/dom.gyp:dom',
         '<(DEPTH)/cobalt/dom/testing/dom_testing.gyp:dom_testing',
-        '<(DEPTH)/cobalt/dom_parser/dom_parser.gyp:dom_parser',
         '<(DEPTH)/cobalt/loader/loader.gyp:loader',
-        '<(DEPTH)/cobalt/renderer/rasterizer/skia/skia/skia.gyp:skia',
-        '<(DEPTH)/cobalt/speech/speech.gyp:speech',
+        '<(DEPTH)/cobalt/script/script.gyp:script',
         '<(DEPTH)/testing/gmock.gyp:gmock',
         '<(DEPTH)/testing/gtest.gyp:gtest',
       ],

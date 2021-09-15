@@ -87,11 +87,7 @@ enum TestStatus {
   kNotrun,
 };
 
-enum TestsStatus {
-  kTestsOk = 0,
-  kTestsError,
-  kTestsTimeout
-};
+enum TestsStatus { kTestsOk = 0, kTestsError, kTestsTimeout };
 
 std::string TestStatusToString(int status) {
   switch (status) {
@@ -244,8 +240,8 @@ HarnessResult ParseResults(const std::string& json_results) {
   // Expect that parsing test result succeeded.
   EXPECT_EQ(base::JSONReader::JSON_NO_ERROR, reader.error_code());
   if (!root) {
-    // Unparseable JSON, or empty string.
-    LOG(ERROR) << "Web Platform Tests returned unparseable JSON test result!";
+    // Unparsable JSON, or empty string.
+    LOG(ERROR) << "Web Platform Tests returned unparsable JSON test result!";
     return harness_result;
   }
 
@@ -428,16 +424,27 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::ValuesIn(EnumerateWebPlatformTests("mediasession")),
     GetTestName());
 
+INSTANTIATE_TEST_CASE_P(
+    performance_timeline, WebPlatformTest,
+    ::testing::ValuesIn(EnumerateWebPlatformTests("performance-timeline")),
+    GetTestName());
+
+INSTANTIATE_TEST_CASE_P(
+    resource_timing, WebPlatformTest,
+    ::testing::ValuesIn(EnumerateWebPlatformTests("resource-timing")),
+    GetTestName());
+
 INSTANTIATE_TEST_CASE_P(streams, WebPlatformTest,
                         ::testing::ValuesIn(EnumerateWebPlatformTests(
                             "streams", "'ReadableStream' in this")),
                         GetTestName());
 
-INSTANTIATE_TEST_CASE_P(webidl, WebPlatformTest,
-    ::testing::ValuesIn(EnumerateWebPlatformTests("WebIDL")),
-    GetTestName());
+INSTANTIATE_TEST_CASE_P(
+    webidl, WebPlatformTest,
+    ::testing::ValuesIn(EnumerateWebPlatformTests("WebIDL")), GetTestName());
 
-INSTANTIATE_TEST_CASE_P(websockets, WebPlatformTest,
+INSTANTIATE_TEST_CASE_P(
+    websockets, WebPlatformTest,
     ::testing::ValuesIn(EnumerateWebPlatformTests("websockets")),
     GetTestName());
 
@@ -445,6 +452,10 @@ INSTANTIATE_TEST_CASE_P(
     web_crypto_api, WebPlatformTest,
     ::testing::ValuesIn(EnumerateWebPlatformTests("WebCryptoAPI")),
     GetTestName());
+
+INSTANTIATE_TEST_CASE_P(
+    encoding, WebPlatformTest,
+    ::testing::ValuesIn(EnumerateWebPlatformTests("encoding")), GetTestName());
 
 #endif  // !defined(COBALT_WIN)
 

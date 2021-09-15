@@ -204,8 +204,12 @@ void Layout::TearDownTestCase() {
 }
 
 TEST_P(Layout, Test) {
-  RunTest(GetParam(), graphics_context_,
-          renderer::RenderTreePixelTester::Options());
+  renderer::RenderTreePixelTester::Options pixel_tester_options;
+  if (renderer::RenderTreePixelTester::IsReferencePlatform()) {
+    // Use stricter tolerances on reference platforms.
+    pixel_tester_options.gaussian_blur_sigma = 3.5f;
+  }
+  RunTest(GetParam(), graphics_context_, pixel_tester_options);
 }
 
 // This test does an exact pixel compare with the expected output.
@@ -324,6 +328,10 @@ INSTANTIATE_TEST_CASE_P(
     CSSOMViewLayoutTests, Layout,
     ::testing::ValuesIn(EnumerateLayoutTests("cssom-view")),
     GetTestName());
+// Custom DOM (https://dom.spec.whatwg.org/) test cases.
+INSTANTIATE_TEST_CASE_P(DOMLayoutTests, Layout,
+                        ::testing::ValuesIn(EnumerateLayoutTests("dom")),
+                        GetTestName());
 // "dir" attribute tests.
 // https://html.spec.whatwg.org/multipage/dom.html#the-dir-attribute
 INSTANTIATE_TEST_CASE_P(

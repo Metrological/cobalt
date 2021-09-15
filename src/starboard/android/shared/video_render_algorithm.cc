@@ -73,6 +73,23 @@ void VideoRenderAlgorithm::Render(
       video_decoder_->SetPlaybackRate(playback_rate);
     }
 
+    if (is_audio_eos_played) {
+      // If the audio stream has reached end of stream before the video stream,
+      // we should end the video stream immediately by only keeping one frame in
+      // the backlog.
+      bool popped = false;
+      while (frames->size() > 1) {
+        frames->pop_front();
+        popped = true;
+      }
+      if (popped) {
+        // Let the loop process the end of stream frame, if there is one.
+        continue;
+      } else {
+        break;
+      }
+    }
+
     jlong early_us = frames->front()->timestamp() - playback_time;
 
     auto system_time_ns = GetSystemNanoTime();
@@ -102,11 +119,8 @@ void VideoRenderAlgorithm::Render(
 VideoRenderAlgorithm::VideoFrameReleaseTimeHelper::
     VideoFrameReleaseTimeHelper() {
   auto* env = JniEnvExt::Get();
-  ScopedLocalJavaRef<jobject> j_context(env->CallStarboardObjectMethodOrAbort(
-      "getApplicationContext", "()Landroid/content/Context;"));
-  j_video_frame_release_time_helper_ =
-      env->NewObjectOrAbort("dev/cobalt/media/VideoFrameReleaseTimeHelper",
-                            "(Landroid/content/Context;)V", j_context.Get());
+  j_video_frame_release_time_helper_ = env->NewObjectOrAbort(
+      "dev/cobalt/media/VideoFrameReleaseTimeHelper", "()V");
   j_video_frame_release_time_helper_ =
       env->ConvertLocalRefToGlobalRef(j_video_frame_release_time_helper_);
   env->CallVoidMethod(j_video_frame_release_time_helper_, "enable", "()V");

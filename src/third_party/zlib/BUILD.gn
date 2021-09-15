@@ -57,12 +57,18 @@ source_set("zlib_adler32_simd") {
     ]
     if (!is_debug) {
       # Use optimize_speed (-O3) to output the _smallest_ code.
-      configs -= [ "//build/config/compiler:default_optimization" ]
+      if(!is_starboard) {
+        configs -= [ "//build/config/compiler:default_optimization" ]
+      }
       configs += [ "//build/config/compiler:optimize_speed" ]
     }
   }
 
   configs += [ ":zlib_internal_config" ]
+  if (is_starboard && !is_debug) {
+    configs -= [ "//starboard/build/config:size" ]
+    configs += [ "//starboard/build/config:speed" ]
+  }
 
   public_configs = [ ":zlib_adler32_simd_config" ]
 }
@@ -72,7 +78,7 @@ if (use_arm_neon_optimizations) {
     # Disabled for iPhone, as described in DDI0487C_a_armv8_arm:
     #  "All implementations of the ARMv8.1 architecture are required to
     #   implement the CRC32* instructions. These are optional in ARMv8.0."
-    if (!is_ios) {
+    if (!is_ios && arm_version >= 8) {
       defines = [ "CRC32_ARMV8_CRC32" ]
       if (is_android) {
         defines += [ "ARMV8_OS_ANDROID" ]
@@ -94,7 +100,7 @@ if (use_arm_neon_optimizations) {
     if (!is_ios) {
       include_dirs = [ "." ]
 
-      if (is_android) {
+      if (!is_starboard && is_android) {
         import("//build/config/android/config.gni")
         if (defined(android_ndk_root) && android_ndk_root != "") {
           deps = [
@@ -117,12 +123,21 @@ if (use_arm_neon_optimizations) {
       ]
 
       if (!is_debug) {
-        configs -= [ "//build/config/compiler:default_optimization" ]
+        if(!is_starboard) {
+          configs -= [ "//build/config/compiler:default_optimization" ]
+        }
         configs += [ "//build/config/compiler:optimize_speed" ]
       }
     }
 
     configs += [ ":zlib_internal_config" ]
+    if (is_starboard && !is_debug) {
+      configs -= [ "//starboard/build/config:size" ]
+      configs += [ "//starboard/build/config:speed" ]
+    }
+    if (is_starboard) {
+      deps = [ "//starboard:starboard_headers_only" ]
+    }
 
     public_configs = [ ":zlib_arm_crc32_config" ]
   }
@@ -158,19 +173,29 @@ source_set("zlib_inflate_chunk_simd") {
       "contrib/optimizations/inflate.c",
     ]
 
+    cflags_c = [ "-Wno-unused-function" ]
+
     if (use_arm_neon_optimizations && !is_debug) {
       # Here we trade better performance on newer/bigger ARMv8 cores
       # for less perf on ARMv7, per crbug.com/772870#c40
-      configs -= [ "//build/config/compiler:default_optimization" ]
+      if(!is_starboard) {
+        configs -= [ "//build/config/compiler:default_optimization" ]
+      }
       configs += [ "//build/config/compiler:optimize_speed" ]
     }
   }
 
-  configs -= [ "//build/config/compiler:chromium_code" ]
+  if (!is_starboard) {
+    configs -= [ "//build/config/compiler:chromium_code" ]
+  }
   configs += [
     ":zlib_internal_config",
     "//build/config/compiler:no_chromium_code",
   ]
+  if (is_starboard && !is_debug) {
+    configs -= [ "//starboard/build/config:size" ]
+    configs += [ "//starboard/build/config:speed" ]
+  }
 
   public_configs = [ ":zlib_inflate_chunk_simd_config" ]
 }
@@ -224,7 +249,9 @@ source_set("zlib_x86_simd") {
     ]
   }
 
-  configs -= [ "//build/config/compiler:chromium_code" ]
+  if (!is_starboard) {
+    configs -= [ "//build/config/compiler:chromium_code" ]
+  }
   configs += [
     ":zlib_internal_config",
     "//build/config/compiler:no_chromium_code",
@@ -275,6 +302,7 @@ component("zlib") {
 
   defines = []
   deps = []
+  cflags_c = []
 
   if (use_x86_x64_optimizations || use_arm_neon_optimizations) {
     deps += [
@@ -283,17 +311,39 @@ component("zlib") {
     ]
 
     if (use_x86_x64_optimizations) {
-      sources += [ "x86.c" ]
+      sources += [
+        "arm_stub.c",
+        "x86.c",
+      ]
+      cflags_c += [ "-Wno-missing-braces" ]
       deps += [ ":zlib_crc32_simd" ]
     } else if (use_arm_neon_optimizations) {
-      sources += [ "contrib/optimizations/slide_hash_neon.h" ]
+      sources += [
+        "contrib/optimizations/slide_hash_neon.c",
+        "contrib/optimizations/slide_hash_neon.h",
+      ]
       deps += [ ":zlib_arm_crc32" ]
     }
   } else {
-    sources += [ "inflate.c" ]
+    sources += [
+      "arm_stub.c",
+      "inflate.c",
+    ]
   }
 
-  configs -= [ "//build/config/compiler:chromium_code" ]
+  if (is_starboard) {
+    sources += [ "inflate.c" ]
+    sources -= [
+      "gzclose.c",
+      "gzguts.h",
+      "gzlib.c",
+      "gzread.c",
+      "gzwrite.c",
+    ]
+    deps += [ "//starboard/common" ]
+  } else {
+    configs -= [ "//build/config/compiler:chromium_code" ]
+  }
   configs += [
     ":zlib_internal_config",
     "//build/config/compiler:no_chromium_code",
@@ -346,7 +396,9 @@ static_library("minizip") {
     ":zlib",
   ]
 
-  configs -= [ "//build/config/compiler:chromium_code" ]
+  if (!is_starboard) {
+    configs -= [ "//build/config/compiler:chromium_code" ]
+  }
   configs += [
     "//build/config/compiler:no_chromium_code",
 
@@ -357,22 +409,26 @@ static_library("minizip") {
   public_configs = [ ":zlib_config" ]
 }
 
-executable("zlib_bench") {
-  include_dirs = [ "." ]
+if (!is_starboard) {
+  executable("zlib_bench") {
+    include_dirs = [ "." ]
 
-  sources = [
-    "contrib/bench/zlib_bench.cc",
-  ]
+    sources = [
+      "contrib/bench/zlib_bench.cc",
+    ]
 
-  if (!is_debug) {
-    configs -= [ "//build/config/compiler:default_optimization" ]
-    configs += [ "//build/config/compiler:optimize_speed" ]
+    if (!is_debug) {
+      configs -= [ "//build/config/compiler:default_optimization" ]
+      configs += [ "//build/config/compiler:optimize_speed" ]
+    }
+
+    if (!is_starboard) {
+      configs -= [ "//build/config/compiler:chromium_code" ]
+    }
+    configs += [ "//build/config/compiler:no_chromium_code" ]
+
+    deps = [
+      ":zlib",
+    ]
   }
-
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs += [ "//build/config/compiler:no_chromium_code" ]
-
-  deps = [
-    ":zlib",
-  ]
 }

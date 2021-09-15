@@ -47,14 +47,14 @@ void BasicTest(SbSystemPropertyId id,
                int line) {
 #define LOCAL_CONTEXT "Context : id=" << id << ", line=" << line;
   char value[kValueSize] = {0};
-  SbMemorySet(value, 0xCD, kValueSize);
+  memset(value, 0xCD, kValueSize);
   bool result = SbSystemGetProperty(id, value, kValueSize);
   if (expect_result) {
     EXPECT_EQ(expected_result, result) << LOCAL_CONTEXT;
   }
   if (result) {
     EXPECT_NE('\xCD', value[0]) << LOCAL_CONTEXT;
-    int len = static_cast<int>(SbStringGetLength(value));
+    int len = static_cast<int>(strlen(value));
     EXPECT_GT(len, 0) << LOCAL_CONTEXT;
   } else {
     EXPECT_EQ('\xCD', value[0]) << LOCAL_CONTEXT;
@@ -64,7 +64,7 @@ void BasicTest(SbSystemPropertyId id,
 
 void UnmodifiedOnFailureTest(SbSystemPropertyId id, int line) {
   char value[kValueSize] = {0};
-  SbMemorySet(value, 0xCD, kValueSize);
+  memset(value, 0xCD, kValueSize);
   for (size_t i = 0; i <= kValueSize; ++i) {
     if (SbSystemGetProperty(id, value, i)) {
       return;
@@ -83,11 +83,9 @@ TEST(SbSystemGetPropertyTest, ReturnsRequired) {
   BasicTest(kSbSystemPropertyFirmwareVersion, false, true, __LINE__);
 #if SB_API_VERSION >= 12
   BasicTest(kSbSystemPropertySystemIntegratorName, false, true, __LINE__);
-#elif SB_API_VERSION == 11
+#else
   BasicTest(kSbSystemPropertyOriginalDesignManufacturerName,
             false, true, __LINE__);
-#else
-  BasicTest(kSbSystemPropertyNetworkOperatorName, false, true, __LINE__);
 #endif
   BasicTest(kSbSystemPropertySpeechApiKey, false, true, __LINE__);
 
@@ -130,17 +128,13 @@ TEST(SbSystemGetPropertyTest, DoesNotTouchOutputBufferOnFailureForDefinedIds) {
   UnmodifiedOnFailureTest(kSbSystemPropertyModelYear, __LINE__);
 #if SB_API_VERSION >= 12
   UnmodifiedOnFailureTest(kSbSystemPropertySystemIntegratorName, __LINE__);
-#elif SB_API_VERSION == 11
+#else
   UnmodifiedOnFailureTest(kSbSystemPropertyOriginalDesignManufacturerName,
                           __LINE__);
-#else
-  UnmodifiedOnFailureTest(kSbSystemPropertyNetworkOperatorName, __LINE__);
 #endif
   UnmodifiedOnFailureTest(kSbSystemPropertyPlatformName, __LINE__);
   UnmodifiedOnFailureTest(kSbSystemPropertySpeechApiKey, __LINE__);
-#if SB_API_VERSION >= 5
   UnmodifiedOnFailureTest(kSbSystemPropertyUserAgentAuxField, __LINE__);
-#endif  // SB_API_VERSION >= 5
 }
 
 TEST(SbSystemGetPropertyTest, SpeechApiKeyNotLeaked) {
@@ -150,7 +144,7 @@ TEST(SbSystemGetPropertyTest, SpeechApiKeyNotLeaked) {
       SbSystemGetProperty(kSbSystemPropertySpeechApiKey, speech_api_key, kSize);
 
   if (!has_speech_key) {
-    EXPECT_EQ(0, SbStringGetLength(speech_api_key));
+    EXPECT_EQ(0, strlen(speech_api_key));
     return;
   }
 
@@ -163,10 +157,8 @@ TEST(SbSystemGetPropertyTest, SpeechApiKeyNotLeaked) {
     kSbSystemPropertyModelYear,
 #if SB_API_VERSION >= 12
     kSbSystemPropertySystemIntegratorName,
-#elif SB_API_VERSION == 11
-    kSbSystemPropertyOriginalDesignManufacturerName,
 #else
-    kSbSystemPropertyNetworkOperatorName,
+    kSbSystemPropertyOriginalDesignManufacturerName,
 #endif
     kSbSystemPropertyPlatformName,
   };
@@ -175,7 +167,7 @@ TEST(SbSystemGetPropertyTest, SpeechApiKeyNotLeaked) {
     char value[kSize] = {0};
 
     if (SbSystemGetProperty(val, value, kSize)) {
-      ASSERT_FALSE(SbStringFindString(value, speech_api_key));
+      ASSERT_FALSE(strstr(value, speech_api_key));
     }
   }
 }

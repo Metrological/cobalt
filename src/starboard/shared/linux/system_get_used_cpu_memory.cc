@@ -21,9 +21,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "starboard/common/file.h"
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
-#include "starboard/file.h"
 
 // We find the current amount of used memory on Linux by opening
 // '/proc/self/status' and scan the file for its "VmRSS" and "VmSwap" entries.
@@ -45,7 +45,7 @@
 // value in bytes (not kilobytes as it is presented in /proc/self/status).
 int64_t SearchForMemoryValue(
     const char* search_key, const char* buffer) {
-  const char* found = SbStringFindString(buffer, search_key);
+  const char* found = strstr(buffer, search_key);
   if (!found) {
     SB_LOG(ERROR) << "Could not find '" << search_key << "' in "
                   << "/proc/self/status.";

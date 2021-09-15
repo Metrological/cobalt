@@ -66,7 +66,7 @@ const int kRendererThreadStackSize =
 // How many entries the rasterize periodic timer will contain before updating.
 const size_t kRasterizePeriodicTimerEntriesPerUpdate = 60;
 
-// The maxiumum numer of entries that the rasterize animations timer can contain
+// The maximum numer of entries that the rasterize animations timer can contain
 // before automatically updating. In the typical use case, the update will
 // occur manually when the animations expire.
 const size_t kRasterizeAnimationsTimerMaxEntries = 60;
@@ -80,7 +80,6 @@ void DestructSubmissionOnMessageLoop(base::MessageLoop* message_loop,
 }
 
 bool ShouldClearFrameOnShutdown(render_tree::ColorRGBA* out_clear_color) {
-#if SB_API_VERSION >= 11
   const CobaltExtensionGraphicsApi* graphics_extension =
       static_cast<const CobaltExtensionGraphicsApi*>(
           SbSystemGetExtension(kCobaltExtensionGraphicsName));
@@ -97,7 +96,6 @@ bool ShouldClearFrameOnShutdown(render_tree::ColorRGBA* out_clear_color) {
     }
     return false;
   }
-#endif
 
   // Default is to clear to opaque black.
   out_clear_color->set_r(0.0f);
@@ -602,6 +600,9 @@ void Pipeline::InitializeRasterizerThread(
   DCHECK_CALLED_ON_VALID_THREAD(rasterizer_thread_checker_);
   rasterizer_ = create_rasterizer_function.Run();
   rasterizer_created_event_.Signal();
+
+  // Async load additional fonts after rasterizer thread is fully initialized.
+  GetResourceProvider()->LoadAdditionalFonts();
 
   // Note that this is setup as high priority, but lower than the rasterizer
   // thread's priority (ThreadPriority::HIGHEST).  This is to ensure that

@@ -56,10 +56,6 @@
         'arm_fpu': '<(floating_point_fpu)',
 
         'conditions': [
-          ['target_arch_sub=="v6zk"', {
-            'arm_version': 6,
-            'armv7': 0,
-          }],
           ['target_arch_sub=="v7a"', {
             'arm_version': 7,
             'armv7': 1,
@@ -78,10 +74,13 @@
 
       'SB_API_VERSION=<(sb_api_version)',
 
+      'SB_SABI_TARGET_ARCH="<(target_arch)"',
+      'SB_SABI_WORD_SIZE="<(word_size)"',
+
       # Inlined Python used to capitalize the variable values.
-      'SB_IS_ARCH_<!(python -c "print(\'<(target_arch)\'.upper())")=1',
-      'SB_HAS_<!(python -c "print(\'<(calling_convention)\'.upper())")_CALLING=1',
-      'SB_HAS_<!(python -c "print(\'<(floating_point_abi)\'.upper())")_FLOATS=1',
+      'SB_IS_ARCH_<!pymod_do_main(starboard.build.gyp_functions str_upper <(target_arch))=1',
+      'SB_HAS_<!pymod_do_main(starboard.build.gyp_functions str_upper <(calling_convention))_CALLING=1',
+      'SB_HAS_<!pymod_do_main(starboard.build.gyp_functions str_upper <(floating_point_abi))_FLOATS=1',
 
       'SB_IS_<(word_size)_BIT=1',
       'SB_ALIGNMENT_OF_CHAR=<(alignment_char)',
@@ -132,4 +131,3 @@
     '<(DEPTH)/<(sabi_json_path)',
   ],
 }
-

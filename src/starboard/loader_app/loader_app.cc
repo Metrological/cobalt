@@ -15,10 +15,13 @@
 #include <vector>
 
 #include "starboard/common/log.h"
+#include "starboard/common/string.h"
 #include "starboard/configuration.h"
 #include "starboard/configuration_constants.h"
 #include "starboard/elf_loader/elf_loader.h"
+#include "starboard/elf_loader/elf_loader_constants.h"
 #include "starboard/elf_loader/evergreen_info.h"
+#include "starboard/elf_loader/sabi_string.h"
 #include "starboard/event.h"
 #include "starboard/file.h"
 #include "starboard/loader_app/app_key.h"
@@ -30,6 +33,7 @@
 #include "starboard/shared/starboard/command_line.h"
 #include "starboard/string.h"
 #include "starboard/thread_types.h"
+#include "third_party/crashpad/wrapper/annotations.h"
 #include "third_party/crashpad/wrapper/wrapper.h"
 
 namespace {
@@ -91,6 +95,10 @@ void LoadLibraryAndInitialize(const std::string& alternative_content_path) {
   std::string library_path = content_dir;
   library_path += kSbFileSepString;
   library_path += kSystemImageLibraryPath;
+  if (!SbFileExists(library_path.c_str())) {
+    // Try the compressed path if the binary doesn't exits.
+    library_path += starboard::elf_loader::kCompressionSuffix;
+  }
 
   if (!g_elf_loader.Load(library_path, content_path, false)) {
     SB_NOTREACHED() << "Failed to load library at '"
@@ -110,15 +118,23 @@ void LoadLibraryAndInitialize(const std::string& alternative_content_path) {
     SB_LOG(INFO) << "Loaded Cobalt library information into Crashpad.";
   }
 
+  auto get_evergreen_sabi_string_func = reinterpret_cast<const char* (*)()>(
+      g_elf_loader.LookupSymbol("GetEvergreenSabiString"));
+
+  if (!CheckSabi(get_evergreen_sabi_string_func)) {
+    SB_LOG(ERROR) << "CheckSabi failed";
+    return;
+  }
+
   auto get_user_agent_func = reinterpret_cast<const char* (*)()>(
       g_elf_loader.LookupSymbol("GetCobaltUserAgentString"));
   if (!get_user_agent_func) {
     SB_LOG(ERROR) << "Failed to get user agent string";
   } else {
-    EvergreenAnnotations cobalt_version_info;
-    SbMemorySet(&cobalt_version_info, sizeof(EvergreenAnnotations), 0);
-    SbStringCopy(cobalt_version_info.user_agent_string, get_user_agent_func(),
-                 EVERGREEN_USER_AGENT_MAX_SIZE);
+    CrashpadAnnotations cobalt_version_info;
+    memset(&cobalt_version_info, 0, sizeof(CrashpadAnnotations));
+    starboard::strlcpy(cobalt_version_info.user_agent_string,
+                       get_user_agent_func(), USER_AGENT_STRING_MAX_SIZE);
     third_party::crashpad::wrapper::AddAnnotationsToCrashpad(
         cobalt_version_info);
     SB_DLOG(INFO) << "Added user agent string to Crashpad.";
@@ -149,15 +165,15 @@ void SbEventHandle(const SbEvent* event) {
     const starboard::shared::starboard::CommandLine command_line(
         data->argument_count, const_cast<const char**>(data->argument_values));
 
-    bool disable_updates =
-        command_line.HasSwitch(starboard::loader_app::kDisableUpdates);
-    SB_LOG(INFO) << "disable_updates=" << disable_updates;
+    bool is_evergreen_lite =
+        command_line.HasSwitch(starboard::loader_app::kEvergreenLite);
+    SB_LOG(INFO) << "is_evergreen_lite=" << is_evergreen_lite;
 
     std::string alternative_content =
         command_line.GetSwitchValue(starboard::loader_app::kContent);
     SB_LOG(INFO) << "alternative_content=" << alternative_content;
 
-    if (disable_updates) {
+    if (is_evergreen_lite) {
       LoadLibraryAndInitialize(alternative_content);
     } else {
       std::string url =

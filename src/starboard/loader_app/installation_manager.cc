@@ -22,11 +22,14 @@
 #include "starboard/common/log.h"
 #include "starboard/common/mutex.h"
 #include "starboard/common/scoped_ptr.h"
+#include "starboard/common/string.h"
 #include "starboard/configuration_constants.h"
 #include "starboard/directory.h"
 #include "starboard/file.h"
 #include "starboard/loader_app/installation_store.pb.h"
+#if !SB_IS(EVERGREEN_COMPATIBLE_LITE)
 #include "starboard/loader_app/pending_restart.h"
+#endif  // !SB_IS(EVERGREEN_COMPATIBLE_LITE)
 #include "starboard/once.h"
 #include "starboard/string.h"
 
@@ -148,7 +151,7 @@ int InstallationManager::GetAppKey(char* app_key, int app_key_length) {
     SB_LOG(ERROR) << "GetAppKey: not initialized";
     return IM_ERROR;
   }
-  SbStringCopy(app_key, app_key_.c_str(), app_key_length);
+  starboard::strlcpy(app_key, app_key_.c_str(), app_key_length);
   return IM_SUCCESS;
 }
 
@@ -395,14 +398,14 @@ int InstallationManager::RollForwardIfNeeded() {
 //
 int InstallationManager::RollForwardInternal(int installation_index) {
   // Save old priority.
-  int new_installation_old_prority =
+  int new_installation_old_priority =
       installation_store_.installations(installation_index).priority();
 
   SB_DLOG(INFO) << "RollForwardInternal: new_installation_old_priority="
-                << new_installation_old_prority;
+                << new_installation_old_priority;
 
   // Lower priorities of all jumped over installations.
-  ShiftPrioritiesInRange(highest_priority_, new_installation_old_prority,
+  ShiftPrioritiesInRange(highest_priority_, new_installation_old_priority,
                          1 /* shift down +1 */);
 
   // The new installation will be set to the highest priority.
@@ -583,8 +586,11 @@ bool InstallationManager::SaveInstallationStore() {
 
   const size_t buf_size = installation_store_.ByteSize();
   std::vector<char> buf(buf_size, 0);
-  loader_app::SetPendingRestart(
-      installation_store_.roll_forward_to_installation() != -1);
+
+  int result = installation_store_.roll_forward_to_installation();
+#if !SB_IS(EVERGREEN_COMPATIBLE_LITE)
+  loader_app::SetPendingRestart(result != -1);
+#endif
 
   installation_store_.SerializeToArray(buf.data(),
                                        installation_store_.ByteSize());

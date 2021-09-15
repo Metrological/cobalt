@@ -25,7 +25,8 @@ namespace loader {
 
 CachedResourceBase::OnLoadedCallbackHandler::OnLoadedCallbackHandler(
     const scoped_refptr<CachedResourceBase>& cached_resource,
-    const base::Closure& success_callback, const base::Closure& error_callback)
+    const base::Closure& success_callback,
+    const base::Closure& error_callback)
     : cached_resource_(cached_resource),
       success_callback_(success_callback),
       error_callback_(error_callback) {
@@ -43,6 +44,11 @@ CachedResourceBase::OnLoadedCallbackHandler::OnLoadedCallbackHandler(
     error_callback_list_iterator_ = cached_resource_->AddCallback(
         kOnLoadingErrorCallbackType, error_callback_);
   }
+}
+
+net::LoadTimingInfo
+    CachedResourceBase::OnLoadedCallbackHandler::GetLoadTimingInfo() {
+  return cached_resource_->GetLoadTimingInfo();
 }
 
 CachedResourceBase::OnLoadedCallbackHandler::~OnLoadedCallbackHandler() {
@@ -114,7 +120,7 @@ void CachedResourceBase::ScheduleLoadingRetry() {
   on_retry_loading_.Run();
 
   // The delay starts at 1 second and doubles every subsequent retry until the
-  // maxiumum delay of 1024 seconds (~17 minutes) is reached. After this, all
+  // maximum delay of 1024 seconds (~17 minutes) is reached. After this, all
   // additional attempts also wait 1024 seconds.
   const int64 kBaseRetryDelayInMilliseconds = 1000;
   const int kMaxRetryCountShift = 10;
@@ -133,6 +139,10 @@ void CachedResourceBase::ScheduleLoadingRetry() {
 void CachedResourceBase::OnLoadingComplete(
     const base::Optional<std::string>& error) {
   DCHECK_CALLED_ON_VALID_THREAD(cached_resource_thread_checker_);
+
+  if (loader_ != nullptr) {
+    load_timing_info_ = loader_->get_load_timing_info();
+  }
 
   // Success
   if (!error) {

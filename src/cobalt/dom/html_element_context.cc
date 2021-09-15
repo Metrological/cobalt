@@ -15,6 +15,7 @@
 #include "cobalt/dom/html_element_context.h"
 
 #include "cobalt/dom/html_element_factory.h"
+#include "cobalt/dom/window.h"
 
 #if !defined(COBALT_BUILD_TYPE_GOLD)
 #include "cobalt/dom/testing/stub_environment_settings.h"
@@ -43,10 +44,12 @@ HTMLElementContext::HTMLElementContext()
       remote_typeface_cache_(NULL),
       mesh_cache_(NULL),
       dom_stat_tracker_(NULL),
-      page_visibility_state_weak_ptr_factory_(&page_visibility_state_),
+      application_lifecycle_state_weak_ptr_factory_(
+          &application_lifecycle_state_),
       video_playback_rate_multiplier_(1.f),
       sync_load_thread_("SynchronousLoad"),
-      html_element_factory_(new HTMLElementFactory()) {
+      html_element_factory_(new HTMLElementFactory()),
+      performance_(NULL) {
   sync_load_thread_.Start();
 }
 #endif  // !defined(COBALT_BUILD_TYPE_GOLD)
@@ -70,6 +73,7 @@ HTMLElementContext::HTMLElementContext(
     const std::string& font_language_script,
     base::ApplicationState initial_application_state,
     base::WaitableEvent* synchronous_loader_interrupt,
+    Performance* performance,
     bool enable_inline_script_warnings, float video_playback_rate_multiplier)
     : environment_settings_(environment_settings),
       fetcher_factory_(fetcher_factory),
@@ -90,13 +94,15 @@ HTMLElementContext::HTMLElementContext(
       mesh_cache_(mesh_cache),
       dom_stat_tracker_(dom_stat_tracker),
       font_language_script_(font_language_script),
-      page_visibility_state_(initial_application_state),
-      page_visibility_state_weak_ptr_factory_(&page_visibility_state_),
+      application_lifecycle_state_(initial_application_state),
+      application_lifecycle_state_weak_ptr_factory_(
+          &application_lifecycle_state_),
       video_playback_rate_multiplier_(video_playback_rate_multiplier),
       synchronous_loader_interrupt_(synchronous_loader_interrupt),
       enable_inline_script_warnings_(enable_inline_script_warnings),
       sync_load_thread_("SynchronousLoad"),
-      html_element_factory_(new HTMLElementFactory()) {
+      html_element_factory_(new HTMLElementFactory()),
+      performance_(performance) {
   sync_load_thread_.Start();
 }
 

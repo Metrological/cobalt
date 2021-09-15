@@ -51,7 +51,7 @@ GraphicsState::GraphicsState()
       vertex_buffers_updated_(false) {
   // https://www.khronos.org/registry/OpenGL-Refpages/es2.0/xhtml/glGet.xml
   // GL_MAX_VERTEX_ATTRIBS should return at least 8. So default to that in
-  // case the glGetIntergerv call fails.
+  // case the glGetIntegerv call fails.
   max_vertex_attribs_ = 8;
   GL_CALL(glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &max_vertex_attribs_));
 
@@ -61,7 +61,7 @@ GraphicsState::GraphicsState()
     DCHECK_NE(vertex_data_buffer_handle_[frame], 0);
     DCHECK_NE(vertex_index_buffer_handle_[frame], 0);
   }
-  SbMemorySet(clip_adjustment_, 0, sizeof(clip_adjustment_));
+  memset(clip_adjustment_, 0, sizeof(clip_adjustment_));
   SetDirty();
   blend_enabled_ = false;
   Reset();
@@ -182,8 +182,8 @@ void GraphicsState::Viewport(int x, int y, int width, int height) {
   if (viewport_ != new_viewport) {
     viewport_ = new_viewport;
     if (!state_dirty_) {
-      GL_CALL(glViewport(viewport_.x(), viewport_.y(),
-                         viewport_.width(), viewport_.height()));
+      GL_CALL(glViewport(viewport_.x(), viewport_.y(), viewport_.width(),
+                         viewport_.height()));
     }
   }
 }
@@ -193,8 +193,8 @@ void GraphicsState::Scissor(int x, int y, int width, int height) {
   if (scissor_ != new_scissor) {
     scissor_ = new_scissor;
     if (!state_dirty_) {
-      GL_CALL(glScissor(scissor_.x(), scissor_.y(),
-                        scissor_.width(), scissor_.height()));
+      GL_CALL(glScissor(scissor_.x(), scissor_.y(), scissor_.width(),
+                        scissor_.height()));
     }
   }
 }
@@ -411,17 +411,17 @@ void GraphicsState::Reset() {
   GL_CALL(glDisable(GL_CULL_FACE));
 
   GL_CALL(glBindFramebuffer(GL_FRAMEBUFFER, render_target_handle_));
-  GL_CALL(glViewport(viewport_.x(), viewport_.y(),
-                     viewport_.width(), viewport_.height()));
-  GL_CALL(glScissor(scissor_.x(), scissor_.y(),
-                    scissor_.width(), scissor_.height()));
+  GL_CALL(glViewport(viewport_.x(), viewport_.y(), viewport_.width(),
+                     viewport_.height()));
+  GL_CALL(glScissor(scissor_.x(), scissor_.y(), scissor_.width(),
+                    scissor_.height()));
   GL_CALL(glEnable(GL_SCISSOR_TEST));
 
   array_buffer_handle_ = 0;
   index_buffer_handle_ = 0;
   texture_unit_ = 0;
-  SbMemorySet(&texunit_target_, 0, sizeof(texunit_target_));
-  SbMemorySet(&texunit_texture_, 0, sizeof(texunit_texture_));
+  memset(&texunit_target_, 0, sizeof(texunit_target_));
+  memset(&texunit_texture_, 0, sizeof(texunit_texture_));
   clip_adjustment_dirty_ = true;
 
   enabled_vertex_attrib_array_mask_ = 0;

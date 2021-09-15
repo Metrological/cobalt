@@ -60,7 +60,7 @@ class InterleavedSincResampler {
 
   double GetSampleRateRatio() const { return io_sample_rate_ratio_; }
 
-  int GetNumberOfCashedFrames() const;
+  int GetNumberOfCachedFrames() const;
 
   int channels() const { return channel_count_; }
 
@@ -70,7 +70,7 @@ class InterleavedSincResampler {
     Buffer() {}
     Buffer(const float* data, int frames, int channel_count) : frames_(frames) {
       data_.reset(new float[frames * channel_count]);
-      SbMemoryCopy(data_.get(), data, frames * channel_count * sizeof(float));
+      memcpy(data_.get(), data, frames * channel_count * sizeof(float));
     }
     Buffer(scoped_array<float> data, int frames)
         : data_(data.Pass()), frames_(frames) {}
@@ -86,7 +86,8 @@ class InterleavedSincResampler {
     scoped_array<float> data_;
     int frames_ = 0;
 
-    SB_DISALLOW_COPY_AND_ASSIGN(Buffer);
+    Buffer(const Buffer&) = delete;
+    void operator=(const Buffer&) = delete;
   };
 
   // The kernel size can be adjusted for quality (higher is better) at the
@@ -164,7 +165,8 @@ class InterleavedSincResampler {
   float* r4_;
   float* r5_;
 
-  SB_DISALLOW_COPY_AND_ASSIGN(InterleavedSincResampler);
+  InterleavedSincResampler(const InterleavedSincResampler&) = delete;
+  void operator=(const InterleavedSincResampler&) = delete;
 };
 
 }  // namespace filter

@@ -1,4 +1,4 @@
-# Copyright 2017 The Cobalt Authors. All Rights Reserved.
+# Copyright 2021 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,35 +12,66 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO: change to //starboard eventually
-import("//cobalt/build/config/base.gni")
+# The "common" target contains facilities provided by Starboard that are common
+# to all platforms.
 
+# This must be a static_library, not a source_set. When using a source_set, we
+# see duplicate definition errors when compiling new.cc because of our
+# overloaded operators.
 static_library("common") {
+  public_deps = [ "//starboard:starboard_headers_only" ]
+  check_includes = false
+
   sources = [
+    "//starboard/shared/media_session/playback_state.cc",
+    "//starboard/shared/media_session/playback_state.h",
+    "byte_swap.h",
     "common.cc",
+    "condition_variable.cc",
+    "condition_variable.h",
+    "configuration_defaults.cc",
+    "configuration_defaults.h",
+    "experimental/concurrency_debug.cc",
+    "experimental/concurrency_debug.h",
+    "file.cc",
+    "file.h",
     "flat_map.h",
-    "memory.cc",
+    "locked_ptr.h",
+    "log.cc",
+    "log.h",
+    "media.cc",
+    "media.h",
     "move.h",
+    "murmurhash2.cc",
+    "murmurhash2.h",
+    "mutex.cc",
+    "mutex.h",
     "new.cc",
     "optional.cc",
+    "optional.h",
+    "queue.h",
+    "recursive_mutex.cc",
+    "recursive_mutex.h",
     "ref_counted.cc",
     "ref_counted.h",
     "reset_and_return.h",
+    "rwlock.cc",
     "rwlock.h",
-    "semaphore.h",
     "scoped_ptr.h",
+    "semaphore.cc",
+    "semaphore.h",
+    "socket.cc",
+    "socket.h",
+    "spin_lock.cc",
+    "spin_lock.h",
     "state_machine.cc",
     "state_machine.h",
+    "storage.cc",
+    "storage.h",
+    "string.h",
+    "thread.cc",
+    "thread.h",
     "thread_collision_warner.cc",
     "thread_collision_warner.h",
   ]
-
-  # TODO: get rid of dependence on Cobalt
-  if (!enable_custom_media_session_client) {
-    sources += [ "//starboard/shared/media_session/stub_playback_state.cc" ]
-  }
-
-  # This must be defined when building Starboard, and must not when building
-  # Starboard client code.
-  defines = [ "STARBOARD_IMPLEMENTATION" ]
 }

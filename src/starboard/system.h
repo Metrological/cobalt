@@ -75,14 +75,14 @@ typedef enum SbSystemPathId {
 // System properties that can be queried for. Many of these are used in
 // User-Agent string generation.
 typedef enum SbSystemPropertyId {
-#if SB_API_VERSION >= 11
   // The certification scope that identifies a group of devices.
   kSbSystemPropertyCertificationScope,
 
+#if SB_API_VERSION < 13
   // The HMAC-SHA256 base64 encoded symmetric key used to sign a subset of the
   // query parameters from the application startup URL.
   kSbSystemPropertyBase64EncodedCertificationSecret,
-#endif  // SB_API_VERSION >= 11
+#endif  // SB_API_VERSION < 13
 
   // The full model number of the main platform chipset, including any
   // vendor-specific prefixes.
@@ -113,15 +113,11 @@ typedef enum SbSystemPropertyId {
   // The corporate entity responsible for submitting the device to YouTube
   // certification and for the device maintenance/updates.
   kSbSystemPropertySystemIntegratorName,
-#elif SB_API_VERSION == 11
+#else
   // The corporate entity responsible for the manufacturing/assembly of the
   // device on behalf of the business entity owning the brand.  This is often
   // abbreviated as ODM.
   kSbSystemPropertyOriginalDesignManufacturerName,
-#else
-  // The name of the network operator that owns the target device, if
-  // applicable.
-  kSbSystemPropertyNetworkOperatorName,
 #endif
 
   // The name of the operating system and platform, suitable for inclusion in a
@@ -194,12 +190,14 @@ typedef enum SbSystemCapabilityId {
   // call.
   kSbSystemCapabilityCanQueryGPUMemoryStats,
 
+#if SB_API_VERSION < 13
   // Whether this system sets the |timestamp| field of SbInputData. If the
   // system does not set this field, then it will automatically be set; however,
   // the relative time between input events likely will not be preserved, so
   // time-related calculations (e.g. velocity for move events) will be
   // incorrect.
   kSbSystemCapabilitySetsInputTimestamp,
+#endif  // SB_API_VERSION < 13
 
   // ATTENTION: Do not add more to this enum. Instead add an "IsSupported"
   // function in the relevant module.
@@ -234,51 +232,6 @@ typedef void (*SbSystemPlatformErrorCallback)(
 // Private structure used to represent a raised platform error.
 typedef struct SbSystemPlatformErrorPrivate SbSystemPlatformErrorPrivate;
 
-#if SB_API_VERSION < 11
-// Opaque handle returned by |SbSystemRaisePlatformError| that can be passed
-// to |SbSystemClearPlatformError|.
-typedef SbSystemPlatformErrorPrivate* SbSystemPlatformError;
-
-// Well-defined value for an invalid |SbSystemPlatformError|.
-#define kSbSystemPlatformErrorInvalid (SbSystemPlatformError) NULL
-
-// Checks whether a |SbSystemPlatformError| is valid.
-static SB_C_INLINE bool SbSystemPlatformErrorIsValid(
-    SbSystemPlatformError handle) {
-  return handle != kSbSystemPlatformErrorInvalid;
-}
-
-// Cobalt calls this function to notify the platform that an error has occurred
-// in the application that the platform may need to handle. The platform is
-// expected to then notify the user of the error and to provide a means for
-// any required interaction, such as by showing a dialog.
-//
-// The return value is a handle that may be used in a subsequent call to
-// |SbSystemClearPlatformError|. For example, the handle could be used to
-// programatically dismiss a dialog that was raised in response to the error.
-// The lifetime of the object referenced by the handle is until the user reacts
-// to the error or the error is dismissed by a call to
-// SbSystemClearPlatformError, whichever happens first. Note that if the
-// platform cannot respond to the error, then this function should return
-// |kSbSystemPlatformErrorInvalid|.
-//
-// This function may be called from any thread, and it is the platform's
-// responsibility to decide how to handle an error received while a previous
-// error is still pending. If that platform can only handle one error at a
-// time, then it may queue the second error or ignore it by returning
-// |kSbSystemPlatformErrorInvalid|.
-//
-// |type|: An error type, from the SbSystemPlatformErrorType enum,
-//    that defines the error.
-// |callback|: A function that may be called by the platform to let the caller
-//   know that the user has reacted to the error.
-// |user_data|: An opaque pointer that the platform should pass as an argument
-//   to the callback function, if it is called.
-SB_EXPORT SbSystemPlatformError
-SbSystemRaisePlatformError(SbSystemPlatformErrorType type,
-                           SbSystemPlatformErrorCallback callback,
-                           void* user_data);
-#else   // SB_API_VERSION < 11
 // Cobalt calls this function to notify the platform that an error has occurred
 // in the application that the platform may need to handle. The platform is
 // expected to then notify the user of the error and to provide a means for
@@ -303,18 +256,6 @@ SB_EXPORT bool SbSystemRaisePlatformError(
     SbSystemPlatformErrorType type,
     SbSystemPlatformErrorCallback callback,
     void* user_data);
-#endif  // SB_API_VERSION < 11
-
-#if SB_API_VERSION < 11
-// Clears a platform error that was previously raised by a call to
-// |SbSystemRaisePlatformError|. The platform may use this, for example,
-// to close a dialog that was opened in response to the error.
-//
-// |handle|: The platform error to be cleared.
-
-// presubmit: allow sb_export mismatch
-SB_EXPORT void SbSystemClearPlatformError(SbSystemPlatformError handle);
-#endif  // SB_API_VERSION < 11
 
 // Pointer to a function to compare two items. The return value uses standard
 // |*cmp| semantics:
@@ -366,6 +307,13 @@ SB_EXPORT SbSystemDeviceType SbSystemGetDeviceType();
 
 // Returns the device's current network connection type.
 SB_EXPORT SbSystemConnectionType SbSystemGetConnectionType();
+
+#if SB_API_VERSION >= 13
+// Returns if the device is disconnected from network. "Disconnected" is chosen
+// over connected because disconnection can be determined with more certainty
+// than connection usually.
+SB_EXPORT bool SbSystemNetworkIsDisconnected();
+#endif
 
 // Retrieves the platform-defined system path specified by |path_id| and
 // places it as a zero-terminated string into the user-allocated |out_path|
@@ -499,6 +447,67 @@ SB_EXPORT bool SbSystemSymbolize(const void* address,
                                  char* out_buffer,
                                  int buffer_size);
 
+#if SB_API_VERSION >= 13
+// Requests that the application move into the Blurred state at the next
+// convenient point. This should roughly correspond to "unfocused application"
+// in a traditional window manager, where the application may be partially
+// visible.
+//
+// This function eventually causes a |kSbEventTypeBlur| event to be dispatched
+// to the application. Before the |kSbEventTypeBlur| event is dispatched, some
+// work may continue to be done, and unrelated system events may be dispatched.
+SB_EXPORT void SbSystemRequestBlur();
+
+// Requests that the application move into the Started state at the next
+// convenient point. This should roughly correspond to a "focused application"
+// in a traditional window manager, where the application is fully visible and
+// the primary receiver of input events.
+//
+// This function eventually causes a |kSbEventTypeFocus| event to be
+// dispatched to the application. Before |kSbEventTypeFocus| is dispatched,
+// some work may continue to be done, and unrelated system events may be
+// dispatched.
+SB_EXPORT void SbSystemRequestFocus();
+
+// Requests that the application move into the Concealed state at the next
+// convenient point. This should roughly correspond to "minimization" in a
+// traditional window manager, where the application is no longer visible.
+// However, the background tasks can still be running.
+//
+// This function eventually causes a |kSbEventTypeConceal| event to be
+// dispatched to the application. Before the |kSbEventTypeConceal| event is
+// dispatched, some work may continue to be done, and unrelated system events
+// may be dispatched.
+//
+// In the Concealed state, the application will be invisible, but probably
+// still be running background tasks. The expectation is that an external
+// system event will bring the application out of the Concealed state.
+SB_EXPORT void SbSystemRequestConceal();
+
+// Requests that the application move into the Blurred state at the next
+// convenient point. This should roughly correspond to a "focused application"
+// in a traditional window manager, where the application is fully visible and
+// the primary receiver of input events.
+//
+// This function eventually causes a |kSbEventTypeReveal| event to be
+// dispatched to the application. Before the |kSbEventTypeReveal| event is
+// dispatched, some work may continue to be done, and unrelated system events
+// may be dispatched.
+SB_EXPORT void SbSystemRequestReveal();
+
+// Requests that the application move into the Frozen state at the next
+// convenient point.
+//
+// This function eventually causes a |kSbEventTypeFreeze| event to be
+// dispatched to the application. Before the |kSbEventTypeSuspend| event is
+// dispatched, some work may continue to be done, and unrelated system events
+// may be dispatched.
+//
+// In the Frozen state, the application will be resident, but probably not
+// running. The expectation is that an external system event will bring the
+// application out of the Frozen state.
+SB_EXPORT void SbSystemRequestFreeze();
+#else
 // Requests that the application move into the Paused state at the next
 // convenient point. This should roughly correspond to "unfocused application"
 // in a traditional window manager, where the application may be partially
@@ -533,6 +542,7 @@ SB_EXPORT void SbSystemRequestUnpause();
 // running. The expectation is that an external system event will bring the
 // application out of the Suspended state.
 SB_EXPORT void SbSystemRequestSuspend();
+#endif  // SB_API_VERSION >= 13
 
 // Requests that the application be terminated gracefully at the next
 // convenient point. In the meantime, some work may continue to be done, and
@@ -545,6 +555,7 @@ SB_EXPORT void SbSystemRequestSuspend();
 //   that is eventually terminated as a result of a call to this function.
 SB_EXPORT void SbSystemRequestStop(int error_level);
 
+#if SB_API_VERSION < 13
 // Binary searches a sorted table |base| of |element_count| objects, each
 // element |element_width| bytes in size for an element that |comparator|
 // compares equal to |key|.
@@ -562,7 +573,9 @@ SB_EXPORT void* SbSystemBinarySearch(const void* key,
                                      size_t element_count,
                                      size_t element_width,
                                      SbSystemComparator comparator);
+#endif
 
+#if SB_API_VERSION < 13
 // Sorts an array of elements |base|, with |element_count| elements of
 // |element_width| bytes each, using |comparator| as the comparison function.
 //
@@ -576,6 +589,7 @@ SB_EXPORT void SbSystemSort(void* base,
                             size_t element_count,
                             size_t element_width,
                             SbSystemComparator comparator);
+#endif
 
 // Hides the system splash screen on systems that support a splash screen that
 // is displayed while the application is loading. This function may be called
@@ -591,7 +605,6 @@ SB_EXPORT void SbSystemHideSplashScreen();
 // application.
 SB_EXPORT bool SbSystemSupportsResume();
 
-#if SB_API_VERSION >= 11
 // Returns pointer to a constant global struct implementing the extension named
 // |name|, if it is implemented. Otherwise return NULL.
 //
@@ -611,11 +624,8 @@ SB_EXPORT bool SbSystemSupportsResume();
 // only get the extension once, meaning updated values would be ignored. As
 // the version of extensions are incremented, fields may be added to the end
 // of the struct, but never removed (only deprecated).
-
 SB_EXPORT const void* SbSystemGetExtension(const char* name);
-#endif  // SB_API_VERSION >= 11
 
-#if SB_API_VERSION >= 11
 // Computes a HMAC-SHA256 digest of |message| into |digest| using the
 // application's certification secret.
 //
@@ -632,7 +642,6 @@ SB_EXPORT bool SbSystemSignWithCertificationSecretKey(
     size_t message_size_in_bytes,
     uint8_t* digest,
     size_t digest_size_in_bytes);
-#endif
 
 #ifdef __cplusplus
 }  // extern "C"

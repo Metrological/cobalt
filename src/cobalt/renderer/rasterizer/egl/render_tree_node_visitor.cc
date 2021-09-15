@@ -21,6 +21,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <utility>
 
 #include "base/logging.h"
 #include "base/optional.h"
@@ -283,7 +284,7 @@ bool RoundedViewportSupportedForSource(
   return false;
 }
 
-// Return the error value of a given offscreen taget cache entry.
+// Return the error value of a given offscreen target cache entry.
 // |desired_bounds| specifies the world-space bounds to which an offscreen
 //   target will be rendered.
 // |cached_bounds| specifies the world-space bounds used when the offscreen
@@ -427,13 +428,14 @@ void RenderTreeNodeVisitor::Visit(render_tree::FilterNode* filter_node) {
         bool limit_to_screen_size = false;
         math::RectF mapped_content_rect =
             draw_state_.transform.MapRect(content_rect);
-        draw_state_.scissor = math::Rect::RoundFromRectF(
-            RoundOut(mapped_content_rect, 0.0f));
+        draw_state_.scissor =
+            math::Rect::RoundFromRectF(RoundOut(mapped_content_rect, 0.0f));
         draw_state_.rounded_scissor_corners.reset();
 
         OffscreenRasterize(data.source, limit_to_screen_size, &texture,
                            &texcoord_transform, &mapped_content_rect);
         if (mapped_content_rect.IsEmpty()) {
+          draw_state_ = old_draw_state;
           return;
         }
 
@@ -518,6 +520,7 @@ void RenderTreeNodeVisitor::Visit(render_tree::FilterNode* filter_node) {
       OffscreenRasterize(data.source, limit_to_screen_size, &texture,
                          &texcoord_transform, &content_rect);
       if (content_rect.IsEmpty()) {
+        draw_state_.opacity = old_opacity;
         return;
       }
 
@@ -697,12 +700,12 @@ void RenderTreeNodeVisitor::Visit(render_tree::LottieNode* lottie_node) {
   mapped_size.Scale(std::max(scale.width(), scale.height()));
 
   OffscreenTargetManager::TargetInfo target_info;
-  if (!offscreen_target_manager_->GetCachedTarget(
-      animation, mapped_size, &target_info)) {
+  if (!offscreen_target_manager_->GetCachedTarget(animation, mapped_size,
+                                                  &target_info)) {
     // No pre-existing target was found. Allocate a new target.
     animation->ResetRenderCache();
-    offscreen_target_manager_->AllocateCachedTarget(
-        animation, mapped_size, &target_info);
+    offscreen_target_manager_->AllocateCachedTarget(animation, mapped_size,
+                                                    &target_info);
   }
   if (target_info.framebuffer == nullptr) {
     // Unable to allocate the render target for the animation cache.
@@ -710,11 +713,9 @@ void RenderTreeNodeVisitor::Visit(render_tree::LottieNode* lottie_node) {
   }
 
   // Add a draw call to update the cache.
-  std::unique_ptr<DrawObject> update_cache(new DrawCallback(
-      base::Bind(&skia::SkottieAnimation::UpdateRenderCache,
-                 base::Unretained(animation),
-                 base::Unretained(target_info.skia_canvas),
-                 target_info.region.size())));
+  std::unique_ptr<DrawObject> update_cache(new DrawCallback(base::Bind(
+      &skia::SkottieAnimation::UpdateRenderCache, base::Unretained(animation),
+      base::Unretained(target_info.skia_canvas), target_info.region.size())));
   draw_object_manager_->AddBatchedExternalDraw(
       std::move(update_cache), lottie_node->GetTypeId(),
       target_info.framebuffer, target_info.region);
@@ -986,6 +987,11 @@ void RenderTreeNodeVisitor::GetCachedTarget(
     OffscreenTargetManager::TargetInfo* out_target_info,
     math::RectF* out_content_rect) {
   math::RectF node_bounds(node->GetBounds());
+  if (node->GetTypeId() == base::GetTypeId<render_tree::TextNode>()) {
+    // Work around bug with text width calculation being slightly too small for
+    // cursive text.
+    node_bounds.set_width(node_bounds.width() * 1.01f);
+  }
   math::RectF mapped_bounds(draw_state_.transform.MapRect(node_bounds));
   if (mapped_bounds.IsEmpty()) {
     *out_content_cached = true;
@@ -1038,7 +1044,7 @@ void RenderTreeNodeVisitor::FallbackRasterize(
   math::RectF content_rect;
 
   if (node->GetTypeId() != base::GetTypeId<render_tree::TextNode>()) {
-      ++fallback_rasterize_count_;
+    ++fallback_rasterize_count_;
   }
 
   // Retrieve the previously cached contents or try to allocate a cached
@@ -1129,8 +1135,8 @@ void RenderTreeNodeVisitor::FallbackRasterize(
 //   should be used to render node's contents. This will be IsEmpty() if
 //   nothing needs to be rendered.
 void RenderTreeNodeVisitor::OffscreenRasterize(
-    scoped_refptr<render_tree::Node> node,
-    bool limit_to_screen_size, const backend::TextureEGL** out_texture,
+    scoped_refptr<render_tree::Node> node, bool limit_to_screen_size,
+    const backend::TextureEGL** out_texture,
     math::Matrix3F* out_texcoord_transform, math::RectF* out_content_rect) {
   // Map the target to world space. This avoids scaling artifacts if the target
   // is magnified.
@@ -1164,8 +1170,8 @@ void RenderTreeNodeVisitor::OffscreenRasterize(
   offscreen_target_manager_->AllocateUncachedTarget(target_size, &target_info);
 
   if (!target_info.framebuffer) {
-    LOG(ERROR) << "Could not allocate framebuffer ("
-               << target_size.width() << "x" << target_size.height()
+    LOG(ERROR) << "Could not allocate framebuffer (" << target_size.width()
+               << "x" << target_size.height()
                << ") for offscreen rasterization.";
     out_content_rect->SetRect(0.0f, 0.0f, 0.0f, 0.0f);
     return;

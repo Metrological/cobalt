@@ -22,7 +22,7 @@ import _env  # pylint: disable=unused-import, relative-import
 from starboard.build.application_configuration import ApplicationConfiguration
 from starboard.optional import get_optional_tests
 from starboard.sabi import sabi
-from starboard.tools import ccache
+from starboard.tools import cache
 from starboard.tools import environment
 from starboard.tools import paths
 from starboard.tools import platform
@@ -70,15 +70,19 @@ class PlatformConfiguration(object):
       self._directory = os.path.realpath(os.path.dirname(__file__))
     self._application_configuration = None
     self._application_configuration_search_path = [self._directory]
+    # Default build accelerator is ccache.
+    self.build_accelerator = self.GetBuildAccelerator(cache.Accelerator.CCACHE)
 
-    # Specifies the build accelerator to be used. Default is ccache.
-    build_accelerator = ccache.Ccache()
+  def GetBuildAccelerator(self, accelerator):
+    """Returns the build accelerator name."""
+    build_accelerator = cache.Cache(accelerator)
+    name = build_accelerator.GetName()
     if build_accelerator.Use():
-      self.build_accelerator = build_accelerator.GetName()
-      logging.info('Using %sbuild accelerator.', self.build_accelerator)
+      logging.info('Using %s build accelerator.', name)
+      return name
     else:
-      self.build_accelerator = ''
-      logging.info('Not using a build accelerator.')
+      logging.info('Not using %s build accelerator.', name)
+      return ''
 
   def GetBuildFormat(self):
     """Returns the desired build format."""
@@ -251,22 +255,24 @@ class PlatformConfiguration(object):
       logging.info('Using Thread Sanitizer')
 
     variables = {
-        'clang': use_clang,
+        'clang':
+            use_clang,
 
         # Whether to build with clang's Source Based Code Coverage
         # instrumentation.
         # See https://clang.llvm.org/docs/SourceBasedCodeCoverage.html
-        'use_source_code_coverage': use_source_code_coverage,
+        'use_source_code_coverage':
+            use_source_code_coverage,
 
         # Whether to build with clang's Address Sanitizer instrumentation.
-        'use_asan': use_asan,
+        'use_asan':
+            use_asan,
         # Whether to build with clang's Thread Sanitizer instrumentation.
-        'use_tsan': use_tsan,
+        'use_tsan':
+            use_tsan,
 
-        # Which JavaScript engine to use.  Currently, both SpiderMonkey 45 and
-        # V8 are supported.  Note that V8 can only be used on platforms that
-        # support JIT.
-        'javascript_engine': 'v8',
+        'javascript_engine':
+            'v8',
 
         # If the path to the Starboard ABI file is able to be formatted, it will
         # be using the experimental Starboard API version of the file, i.e.
@@ -277,10 +283,14 @@ class PlatformConfiguration(object):
                 sb_api_version=sabi.SB_API_VERSION),
 
         # TODO: Remove these compatibility variables.
-        'cobalt_config': config_name,
-        'cobalt_fastbuild': 0,
-        'custom_media_session_client': 0,
-        'enable_vr': 0,
+        'cobalt_config':
+            config_name,
+        'cobalt_fastbuild':
+            0,
+        'custom_media_session_client':
+            0,
+        'enable_vr':
+            0,
     }
     return variables
 
@@ -342,7 +352,7 @@ class PlatformConfiguration(object):
     return []
 
   def GetDeployPathPatterns(self):
-    """Gets deployment paths patterns for files to be included for deployement.
+    """Gets deployment paths patterns for files to be included for deployment.
 
     Example: ['deploy/*.exe', 'content/*']
 
@@ -354,7 +364,8 @@ class PlatformConfiguration(object):
     raise NotImplementedError()
 
   def GetPathToSabiJsonFile(self):
-    """Gets the path to the JSON file with Starboard ABI information for the build.
+    """Gets the path to the JSON file with Starboard ABI information for the
+       build.
 
     Examples:
         'starboard/sabi/arm64/sabi-v12.json'

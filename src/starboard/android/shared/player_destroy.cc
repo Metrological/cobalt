@@ -14,17 +14,12 @@
 
 #include "starboard/player.h"
 
-#include "starboard/android/shared/cobalt/android_media_session_client.h"
 #include "starboard/shared/starboard/player/player_internal.h"
-
-using starboard::android::shared::cobalt::kNone;
-using starboard::android::shared::cobalt::
-    UpdateActiveSessionPlatformPlaybackState;
 
 void SbPlayerDestroy(SbPlayer player) {
   if (!SbPlayerIsValid(player)) {
     return;
   }
-  UpdateActiveSessionPlatformPlaybackState(kNone);
+
   delete player;
 }

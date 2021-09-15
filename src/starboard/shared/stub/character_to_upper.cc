@@ -14,6 +14,8 @@
 
 #include "starboard/character.h"
 
+#if SB_API_VERSION < 13
 int SbCharacterToUpper(int c) {
   return c;
 }
+#endif  // SB_API_VERSION < 13

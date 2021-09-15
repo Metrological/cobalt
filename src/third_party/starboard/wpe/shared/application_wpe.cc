@@ -113,12 +113,14 @@ void Application::DeepLink(const char* link_data) {
 
 void Application::Suspend()
 {
+#if SB_API_VERSION < 13
   suspend_lock_.lock();
   ::starboard::shared::starboard::Application::Pause(this, nullptr);
   ::starboard::shared::starboard::Application::Suspend(this,
     [](void* application) {
       reinterpret_cast<Application*>(application)->suspend_lock_.unlock();
     });
+#endif
 }
 
 void Application::OnSuspend()
@@ -132,6 +134,7 @@ void Application::OnSuspend()
 
 void Application::Resume()
 {
+#if SB_API_VERSION < 13
   suspend_lock_.lock();
 
   ::starboard::shared::starboard::Application::Unpause(this,
@@ -146,6 +149,7 @@ void Application::Resume()
     [](void* application) {
       reinterpret_cast<Application*>(application)->suspend_lock_.unlock();
     });
+#endif
 }
 
 void Application::OnResume()

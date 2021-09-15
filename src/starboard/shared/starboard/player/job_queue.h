@@ -15,8 +15,11 @@
 #ifndef STARBOARD_SHARED_STARBOARD_PLAYER_JOB_QUEUE_H_
 #define STARBOARD_SHARED_STARBOARD_PLAYER_JOB_QUEUE_H_
 
+// TODO: We need unit tests for JobQueue and JobThread.
+
 #include <functional>
 #include <map>
+#include <utility>
 
 #include "starboard/common/condition_variable.h"
 #include "starboard/common/log.h"
@@ -79,8 +82,11 @@ class JobQueue {
       return job_queue_->BelongsToCurrentThread();
     }
 
-    JobToken Schedule(Job job, SbTimeMonotonic delay = 0) {
+    JobToken Schedule(const Job& job, SbTimeMonotonic delay = 0) {
       return job_queue_->Schedule(job, this, delay);
+    }
+    JobToken Schedule(Job&& job, SbTimeMonotonic delay = 0) {
+      return job_queue_->Schedule(std::move(job), this, delay);
     }
 
     void RemoveJobByToken(JobToken job_token) {
@@ -98,7 +104,7 @@ class JobQueue {
     // Allow |JobOwner| created on another thread to run on the current thread
     // if it is created with |kDetached|.
     // Note that this operation is not thread safe.  It is the caller's
-    // responsilibity to ensure that concurrency hasn't happened yet.
+    // responsibility to ensure that concurrency hasn't happened yet.
     void AttachToCurrentThread() {
       SB_DCHECK(job_queue_ == NULL);
       job_queue_ = JobQueue::current();
@@ -111,7 +117,10 @@ class JobQueue {
   JobQueue();
   ~JobQueue();
 
-  JobToken Schedule(Job job, SbTimeMonotonic delay = 0);
+  JobToken Schedule(const Job& job, SbTimeMonotonic delay = 0);
+  JobToken Schedule(Job&& job, SbTimeMonotonic delay = 0);
+  void ScheduleAndWait(const Job& job);
+  void ScheduleAndWait(Job&& job);
   void RemoveJobByToken(JobToken job_token);
 
   // The processing of jobs may not be stopped when this function returns, but
@@ -143,7 +152,8 @@ class JobQueue {
   };
   typedef std::multimap<SbTimeMonotonic, JobRecord> TimeToJobRecordMap;
 
-  JobToken Schedule(Job job, JobOwner* owner, SbTimeMonotonic delay);
+  JobToken Schedule(const Job& job, JobOwner* owner, SbTimeMonotonic delay);
+  JobToken Schedule(Job&& job, JobOwner* owner, SbTimeMonotonic delay);
   void RemoveJobsByOwner(JobOwner* owner);
   // Return true if a job is run, otherwise return false.  When there is no job
   // ready to run currently and |wait_for_next_job| is true, the function will

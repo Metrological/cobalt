@@ -15,7 +15,7 @@
 #include "cobalt/dom/document.h"
 
 #include <memory>
-#include <vector>
+#include <utility>
 
 #include "base/bind.h"
 #include "base/bind_helpers.h"
@@ -49,6 +49,7 @@
 #include "cobalt/dom/html_element_factory.h"
 #include "cobalt/dom/html_head_element.h"
 #include "cobalt/dom/html_html_element.h"
+#include "cobalt/dom/html_media_element.h"
 #include "cobalt/dom/html_script_element.h"
 #include "cobalt/dom/initial_computed_style.h"
 #include "cobalt/dom/keyboard_event.h"
@@ -74,7 +75,8 @@ Document::Document(HTMLElementContext* html_element_context,
                    const Options& options)
     : ALLOW_THIS_IN_INITIALIZER_LIST(Node(html_element_context, this)),
       html_element_context_(html_element_context),
-      page_visibility_state_(html_element_context_->page_visibility_state()),
+      application_lifecycle_state_(
+          html_element_context_->application_lifecycle_state()),
       window_(options.window),
       implementation_(new DOMImplementation(html_element_context)),
       style_sheets_(new cssom::StyleSheetList()),
@@ -101,11 +103,12 @@ Document::Document(HTMLElementContext* html_element_context,
       ready_state_(kDocumentReadyStateComplete),
       dom_max_element_depth_(options.dom_max_element_depth),
       render_postponed_(false),
+      frozenness_(false),
       ALLOW_THIS_IN_INITIALIZER_LIST(intersection_observer_task_manager_(
           new IntersectionObserverTaskManager())) {
   DCHECK(html_element_context_);
   DCHECK(options.url.is_empty() || options.url.is_valid());
-  page_visibility_state_->AddObserver(this);
+  application_lifecycle_state_->AddObserver(this);
 
   if (options.viewport_size) {
     SetViewport(*options.viewport_size);
@@ -391,8 +394,17 @@ scoped_refptr<HTMLHeadElement> Document::head() const {
   return NULL;
 }
 
+scoped_refptr<HTMLScriptElement> Document::current_script() const {
+  return current_script_;
+}
+
+void Document::set_current_script(
+    const scoped_refptr<HTMLScriptElement>& current_script) {
+  current_script_ = current_script;
+}
+
 bool Document::HasFocus() const {
-  return page_visibility_state()->HasWindowFocus();
+  return application_lifecycle_state()->HasWindowFocus();
 }
 
 // https://www.w3.org/TR/html50/editing.html#dom-document-activeelement
@@ -526,6 +538,11 @@ scoped_refptr<HTMLHtmlElement> Document::html() const {
 void Document::SetActiveElement(Element* active_element) {
   if (active_element) {
     active_element_ = base::AsWeakPtr(active_element);
+    if (active_element != ui_nav_focus_element_) {
+      // Call UpdateUiNavigationFocus() after UI navigation items have been
+      // updated. This happens during render tree generation from layout.
+      ui_nav_focus_needs_update_ = true;
+    }
   } else {
     active_element_.reset();
   }
@@ -861,6 +878,26 @@ bool Document::UpdateComputedStyleOnElementAndAncestor(HTMLElement* element) {
   return true;
 }
 
+void Document::UpdateUiNavigation() {
+  HTMLElement* active_html_element =
+      active_element() ? active_element()->AsHTMLElement() : nullptr;
+  if (active_html_element && ui_nav_focus_needs_update_) {
+    ui_nav_focus_needs_update_ = false;
+    active_html_element->UpdateUiNavigationFocus();
+  }
+}
+
+bool Document::TrySetUiNavFocusElement(const void* focus_element,
+                                       SbTimeMonotonic time) {
+  if (ui_nav_focus_element_update_time_ > time) {
+    // A later focus update was already issued.
+    return false;
+  }
+  ui_nav_focus_element_update_time_ = time;
+  ui_nav_focus_element_ = focus_element;
+  return true;
+}
+
 void Document::SampleTimelineTime() { default_timeline_->Sample(); }
 
 #if defined(ENABLE_PARTIAL_LAYOUT_CONTROL)
@@ -894,8 +931,8 @@ void Document::SetViewport(const ViewportSize& viewport_size) {
 }
 
 Document::~Document() {
-  if (page_visibility_state_) {
-    page_visibility_state_->RemoveObserver(this);
+  if (application_lifecycle_state_) {
+    application_lifecycle_state_->RemoveObserver(this);
   }
   // Ensure that all outstanding weak ptrs become invalid.
   // Some objects that will be released while this destructor runs may
@@ -992,10 +1029,108 @@ void Document::OnWindowFocusChanged(bool has_focus) {
   // Ignored by this class.
 }
 
-void Document::OnVisibilityStateChanged(
-    page_visibility::VisibilityState visibility_state) {
+void Document::OnVisibilityStateChanged(VisibilityState visibility_state) {
   DispatchEvent(new Event(base::Tokens::visibilitychange(), Event::kBubbles,
                           Event::kNotCancelable));
+
+  // Refocus the previously-focused UI navigation item (if any).
+  if (visibility_state == kVisibilityStateVisible) {
+    HTMLElement* active_html_element =
+        active_element() ? active_element()->AsHTMLElement() : nullptr;
+    if (active_html_element) {
+      ui_nav_focus_needs_update_ = false;
+      active_html_element->UpdateUiNavigationFocus();
+    }
+  }
+}
+
+// Algorithm for 'change the frozenness of a document'
+//   https://wicg.github.io/page-lifecycle/#change-the-frozenness-of-a-document
+void Document::OnFrozennessChanged(bool is_frozen) {
+  // 1. If frozenness is true, run the freeze steps for doc given auto
+  // resume frozen media.
+  // 2. Otherwise, run the resume steps given doc.
+  if (is_frozen) {
+    FreezeSteps();
+  } else {
+    ResumeSteps();
+  }
+}
+
+void Document::CollectHTMLMediaElements(
+    std::vector<HTMLMediaElement*>* html_media_elements) {
+  scoped_refptr<HTMLElement> root = html();
+  if (root) {
+    DCHECK_EQ(this, root->parent_node());
+    root->CollectHTMLMediaElementsRecursively(html_media_elements, 0);
+  }
+}
+
+// Algorithm for 'freeze steps'
+//   https://wicg.github.io/page-lifecycle/#freeze-steps
+void Document::FreezeSteps() {
+  if (frozenness_) {
+    return;
+  }
+
+  // 1. Set doc's frozeness state to true.
+  frozenness_ = true;
+
+  // 2. Fire an event named freeze at doc.
+  DispatchEvent(new Event(base::Tokens::freeze(), Event::kBubbles,
+                          Event::kNotCancelable));
+
+  // 3. Let elements be all media elements that are shadow-including
+  //    documents of doc, in shadow-including tree order.
+  //    Note: Cobalt currently only supports one document.
+  std::unique_ptr<std::vector<HTMLMediaElement*>> html_media_elements(
+      new std::vector<HTMLMediaElement*>());
+  CollectHTMLMediaElements(html_media_elements.get());
+
+  // 4. For each element in elements:
+  //    1. If element's paused is false, then:
+  //       1. Set element's resume frozen flag to auto resume frozen
+  //       media.
+  //       2. Execute media pause on element.
+  for (const auto& element : *html_media_elements) {
+    if (!element->paused()) {
+      element->set_resume_frozen_flag(true);
+      element->Pause();
+    }
+  }
+}
+
+// Algorithm for 'resume steps'
+//   https://wicg.github.io/page-lifecycle/#resume-steps
+void Document::ResumeSteps() {
+  if (!frozenness_) {
+    return;
+  }
+
+  // 1. Let elements be all media elements that are shadow-including
+  //    documents of doc, in shadow-including tree order.
+  //    Note: Cobalt currently only supports one document.
+  std::unique_ptr<std::vector<HTMLMediaElement*>> html_media_elements(
+      new std::vector<HTMLMediaElement*>());
+  CollectHTMLMediaElements(html_media_elements.get());
+
+  // 2. For each element in elements:
+  //    1. If elements's resume frozen flag is true.
+  //       1. Set elements's resume frozen flag to false.
+  //       2. Execute media play on element.
+  for (const auto& element : *html_media_elements) {
+    if (element->resume_frozen_flag()) {
+      element->set_resume_frozen_flag(false);
+      element->Play();
+    }
+  }
+
+  // 3. Fire an event named resume at doc.
+  DispatchEvent(new Event(base::Tokens::resume(), Event::kBubbles,
+                          Event::kNotCancelable));
+
+  // 4. Set doc's frozeness state to false.
+  frozenness_ = false;
 }
 
 void Document::TraceMembers(script::Tracer* tracer) {

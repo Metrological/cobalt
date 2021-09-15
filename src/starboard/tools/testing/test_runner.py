@@ -417,6 +417,9 @@ class TestRunner(object):
                    xml_output_path)
       test_params.append("--gtest_output=xml:%s" % (xml_output_path))
 
+    # Turn off color codes from output to make it easy to parse
+    test_params.append("--gtest_color=no")
+
     test_params.extend(self.target_params)
     if self.dry_run:
       test_params.extend(["--gtest_list_tests"])
@@ -836,7 +839,7 @@ def main():
       "-w",
       "--launcher_args",
       help="Pass space-separated arguments to control launcher behaviour. "
-      "Arguments are plaform specific and may not be implemented for all "
+      "Arguments are platform specific and may not be implemented for all "
       "platforms. Common arguments are:\n\t'noinstall' - skip install steps "
       "before running the test\n\t'systools' - use system-installed tools.")
   args = arg_parser.parse_args()

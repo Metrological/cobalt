@@ -78,7 +78,7 @@ CobaltExtensionPlatformService Open(void* context,
 
 void Close(CobaltExtensionPlatformService service) {
   JniEnvExt* env = JniEnvExt::Get();
-  env->CallVoidMethodOrAbort(service->cobalt_service, "close", "()V");
+  env->CallVoidMethodOrAbort(service->cobalt_service, "onClose", "()V");
   ScopedLocalJavaRef<jstring> j_name(
       env->NewStringStandardUTFOrAbort(service->name));
   env->CallStarboardVoidMethodOrAbort("closeCobaltService",
@@ -111,23 +111,22 @@ void* Send(CobaltExtensionPlatformService service,
   }
   *invalid_state =
       env->GetBooleanFieldOrAbort(j_response_from_client, "invalidState", "Z");
-  jbyteArray j_out_data_array = static_cast<jbyteArray>(
-      env->GetObjectFieldOrAbort(j_response_from_client, "data", "[B"));
-  *output_length = env->GetArrayLength(j_out_data_array);
+  ScopedLocalJavaRef<jbyteArray> j_out_data_array(static_cast<jbyteArray>(
+      env->GetObjectFieldOrAbort(j_response_from_client, "data", "[B")));
+  *output_length = env->GetArrayLength(j_out_data_array.Get());
   char* output = new char[*output_length];
-  env->GetByteArrayRegion(j_out_data_array, 0, *output_length,
+  env->GetByteArrayRegion(j_out_data_array.Get(), 0, *output_length,
                           reinterpret_cast<jbyte*>(output));
   return output;
 }
 
 const CobaltExtensionPlatformServiceApi kPlatformServiceApi = {
-  kCobaltExtensionPlatformServiceName,
-  1,      // API version that's implemented.
-  &Has,
-  &Open,
-  &Close,
-  &Send
-};
+    kCobaltExtensionPlatformServiceName,
+    1,  // API version that's implemented.
+    &Has,
+    &Open,
+    &Close,
+    &Send};
 
 }  // namespace
 
@@ -138,7 +137,11 @@ Java_dev_cobalt_coat_CobaltService_nativeSendToClient(JniEnvExt* env,
                                                       jbyteArray j_data) {
   CobaltExtensionPlatformService service =
       reinterpret_cast<CobaltExtensionPlatformService>(nativeService);
-  SB_DCHECK(CobaltExtensionPlatformServiceIsValid(service));
+  if (!CobaltExtensionPlatformServiceIsValid(service)) {
+    SB_LOG(WARNING) << "Trying to send message through platform service when "
+                       "the service is already closed";
+    return;
+  }
 
   jsize length = env->GetArrayLength(j_data);
   char* data = new char[length];

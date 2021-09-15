@@ -14,6 +14,8 @@
 
 #include "starboard/character.h"
 
+#if SB_API_VERSION < 13
 bool SbCharacterIsHexDigit(int c) {
   return false;
 }
+#endif  // SB_API_VERSION < 13

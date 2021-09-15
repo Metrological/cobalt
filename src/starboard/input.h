@@ -50,15 +50,6 @@ typedef enum SbInputDeviceType {
   // Produces |Press| and |Unpress| events.
   kSbInputDeviceTypeKeyboard,
 
-#if SB_API_VERSION < 5
-  // Input from a microphone that would provide audio data to the caller, who
-  // may then find some way to detect speech or other sounds within it. It may
-  // have processed or filtered the audio in some way before it arrives.
-  //
-  // Produces |Audio| events.
-  kSbInputDeviceTypeMicrophone,
-#endif
-
   // Input from a traditional mouse.
   //
   // Produces |Move|, |Press|, and |Unpress| events.
@@ -68,15 +59,6 @@ typedef enum SbInputDeviceType {
   //
   // Produces |Press| and |Unpress| events.
   kSbInputDeviceTypeRemote,
-
-#if SB_API_VERSION < 5
-  // Input from a speech command analyzer, which is some hardware or software
-  // that, given a set of known phrases, activates when one of the registered
-  // phrases is heard.
-  //
-  // Produces |Command| events.
-  kSbInputDeviceTypeSpeechCommand,
-#endif
 
   // Input from a single- or multi-touchscreen.
   //
@@ -99,16 +81,6 @@ typedef enum SbInputDeviceType {
 
 // The action that an input event represents.
 typedef enum SbInputEventType {
-#if SB_API_VERSION < 5
-  // Receipt of Audio. Some audio data was received by the input microphone.
-  kSbInputEventTypeAudio,
-  // Receipt of a command. A command was received from some semantic source,
-  // like a speech recognizer.
-  kSbInputEventTypeCommand,
-  // Grab activation. This event type is deprecated.
-  kSbInputEventTypeGrab,
-#endif
-
   // Device Movement. In the case of |Mouse|, and perhaps |Gesture|, the
   // movement tracks an absolute cursor position. In the case of |TouchPad|,
   // only relative movements are provided.
@@ -120,11 +92,6 @@ typedef enum SbInputEventType {
   // terminates, such as when the key/button/finger is raised. Injecting repeat
   // presses is up to the client.
   kSbInputEventTypePress,
-
-#if SB_API_VERSION < 5
-  // Grab deactivation. This event type is deprecated.
-  kSbInputEventTypeUngrab,
-#endif
 
   // Key or button deactivation. The counterpart to the |Press| event, this
   // event is sent when the key or button being pressed is released.
@@ -148,13 +115,14 @@ typedef struct SbInputVector {
 
 // Event data for |kSbEventTypeInput| events.
 typedef struct SbInputData {
+#if SB_API_VERSION < 13
   // The time that should be reported for this event. This is intended to
   // facilitate calculation of time-sensitive information (e.g. velocity for
   // kSbInputEventTypeMove). This may be set to 0 to have the relevant systems
   // automatically set the timestamp. However, this may happen at a later time,
   // so the relative time between events may not be preserved.
   SbTimeMonotonic timestamp;
-
+#endif  // SB_API_VERSION < 13
   // The window in which the input was generated.
   SbWindow window;
 

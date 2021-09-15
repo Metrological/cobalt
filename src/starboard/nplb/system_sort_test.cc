@@ -19,6 +19,8 @@
 #include "starboard/system.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
+#if SB_API_VERSION < 13
+
 namespace starboard {
 namespace nplb {
 namespace {
@@ -38,9 +40,11 @@ TEST(SbSystemSortTest, SunnyDayLetters) {
   char buf[SB_ARRAY_SIZE(kSorted)] = {0};
   SbStringCopy(buf, kScrambled, SB_ARRAY_SIZE(buf));
   SbSystemSort(buf, SB_ARRAY_SIZE(buf) - 1, 1, &CharComparator);
-  EXPECT_TRUE(SbStringCompareAll(kSorted, kScrambled));
+  EXPECT_TRUE(strcmp(kSorted, kScrambled));
 }
 
 }  // namespace
 }  // namespace nplb
 }  // namespace starboard
+
+#endif  // SB_API_VERSION < 13

@@ -16,7 +16,6 @@
 #include "base/threading/thread_task_runner_handle.h"
 #include "net/base/net_errors.h"
 #include "net/http/http_cache_writers.h"
-#include "starboard/character.h"
 #include "starboard/memory.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -44,7 +43,7 @@ int GetTestModeForEntry(const std::string& key) {
   // URL corresponding to a registered MockTransaction.  It would be good to
   // have another way to access the test_mode.
   GURL url;
-  if (SbCharacterIsDigit(key[0])) {
+  if (isdigit(key[0])) {
     size_t slash = key.find('/');
     DCHECK(slash != std::string::npos);
     url = GURL(key.substr(slash + 1));
@@ -123,7 +122,7 @@ int MockDiskEntry::ReadData(int index,
     return 0;
 
   int num = std::min(buf_len, static_cast<int>(data_[index].size()) - offset);
-  SbMemoryCopy(buf->data(), &data_[index][offset], num);
+  memcpy(buf->data(), &data_[index][offset], num);
 
   if (MockHttpCache::GetTestMode(test_mode_) & TEST_MODE_SYNC_CACHE_READ)
     return num;
@@ -167,7 +166,7 @@ int MockDiskEntry::WriteData(int index,
   DCHECK_LT(offset + buf_len, kMaxMockCacheEntrySize);
   data_[index].resize(offset + buf_len);
   if (buf_len)
-    SbMemoryCopy(&data_[index][offset], buf->data(), buf_len);
+    memcpy(&data_[index][offset], buf->data(), buf_len);
 
   if (MockHttpCache::GetTestMode(test_mode_) & TEST_MODE_SYNC_CACHE_WRITE)
     return buf_len;
@@ -205,7 +204,7 @@ int MockDiskEntry::ReadSparseData(int64_t offset,
 
   int num = std::min(static_cast<int>(data_[1].size()) - real_offset,
                      buf_len);
-  SbMemoryCopy(buf->data(), &data_[1][real_offset], num);
+  memcpy(buf->data(), &data_[1][real_offset], num);
 
   if (MockHttpCache::GetTestMode(test_mode_) & TEST_MODE_SYNC_CACHE_READ)
     return num;
@@ -246,7 +245,7 @@ int MockDiskEntry::WriteSparseData(int64_t offset,
     data_[1].resize(real_offset + buf_len);
   }
 
-  SbMemoryCopy(&data_[1][real_offset], buf->data(), buf_len);
+  memcpy(&data_[1][real_offset], buf->data(), buf_len);
   if (MockHttpCache::GetTestMode(test_mode_) & TEST_MODE_SYNC_CACHE_WRITE)
     return buf_len;
 

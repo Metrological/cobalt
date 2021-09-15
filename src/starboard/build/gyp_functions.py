@@ -22,7 +22,7 @@ import sys
 
 # lifted from standard lib webbrowser.py
 def isexecutable(cmd):
-  """Returns whether the input file is an exectuable."""
+  """Returns whether the input file is an executable."""
   if sys.platform[:3] == 'win':
     extensions = ('.exe', '.bat', '.cmd')
     cmd = cmd.lower()
@@ -72,6 +72,13 @@ class Extensions(object):
 
   def call(self):
     return getattr(self, self.command)()
+
+  def wrap_windows_path(self):
+    """Fixup a windows-style path by dealing with separators and spaces."""
+    path = os.path.normpath('/'.join(self.argv))
+    ret = path.replace(os.sep, '/')
+    ret = '"' + ret.strip() + '"'
+    return ret
 
   def file_glob(self):
     """Glob files in dir, with pattern glob."""

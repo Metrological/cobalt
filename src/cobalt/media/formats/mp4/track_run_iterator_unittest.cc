@@ -406,7 +406,7 @@ class TrackRunIteratorTest : public testing::Test {
     sinf->info.track_encryption.default_crypt_byte_block = 1;
     sinf->info.track_encryption.default_skip_byte_block = 9;
     sinf->info.track_encryption.default_constant_iv_size = 16;
-    SbMemoryCopy(sinf->info.track_encryption.default_constant_iv, kIv3, 16);
+    memcpy(sinf->info.track_encryption.default_constant_iv, kIv3, 16);
     sinf->info.track_encryption.default_kid.assign(kKeyId,
                                                    kKeyId + arraysize(kKeyId));
   }
@@ -418,19 +418,19 @@ class TrackRunIteratorTest : public testing::Test {
     track_cenc_group.entries[0].crypt_byte_block = 1;
     track_cenc_group.entries[0].skip_byte_block = 9;
     track_cenc_group.entries[0].constant_iv_size = 16;
-    SbMemoryCopy(track_cenc_group.entries[0].constant_iv, kIv4, 16);
+    memcpy(track_cenc_group.entries[0].constant_iv, kIv4, 16);
 
     frag->sample_group_description.entries[1].iv_size = 0;
     frag->sample_group_description.entries[1].crypt_byte_block = 1;
     frag->sample_group_description.entries[1].skip_byte_block = 9;
     frag->sample_group_description.entries[1].constant_iv_size = 16;
-    SbMemoryCopy(frag->sample_group_description.entries[1].constant_iv, kIv5,
+    memcpy(frag->sample_group_description.entries[1].constant_iv, kIv5,
                  16);
     frag->sample_group_description.entries[2].iv_size = 0;
     frag->sample_group_description.entries[2].crypt_byte_block = 1;
     frag->sample_group_description.entries[2].skip_byte_block = 9;
     frag->sample_group_description.entries[2].constant_iv_size = 16;
-    SbMemoryCopy(frag->sample_group_description.entries[2].constant_iv, kIv5,
+    memcpy(frag->sample_group_description.entries[2].constant_iv, kIv5,
                  16);
   }
 
@@ -884,7 +884,7 @@ TEST_F(TrackRunIteratorTest, SharedAuxInfoTest) {
   EXPECT_TRUE(iter_->CacheAuxInfo(kAuxInfo, arraysize(kAuxInfo)));
   std::unique_ptr<DecryptConfig> config = iter_->GetDecryptConfig();
   ASSERT_EQ(arraysize(kIv1), config->iv().size());
-  EXPECT_TRUE(!SbMemoryCompare(kIv1, config->iv().data(), config->iv().size()));
+  EXPECT_TRUE(!memcmp(kIv1, config->iv().data(), config->iv().size()));
   iter_->AdvanceSample();
   EXPECT_EQ(iter_->GetMaxClearOffset(), 50);
   iter_->AdvanceRun();
@@ -893,7 +893,7 @@ TEST_F(TrackRunIteratorTest, SharedAuxInfoTest) {
   EXPECT_TRUE(iter_->CacheAuxInfo(kAuxInfo, arraysize(kAuxInfo)));
   EXPECT_EQ(iter_->GetMaxClearOffset(), 200);
   ASSERT_EQ(arraysize(kIv1), config->iv().size());
-  EXPECT_TRUE(!SbMemoryCompare(kIv1, config->iv().data(), config->iv().size()));
+  EXPECT_TRUE(!memcmp(kIv1, config->iv().data(), config->iv().size()));
   iter_->AdvanceSample();
   EXPECT_EQ(iter_->GetMaxClearOffset(), 201);
 }
@@ -979,7 +979,7 @@ TEST_F(TrackRunIteratorTest, KeyFrameFlagCombinations) {
   // no dependents, but we occasionally encounter media where all samples are
   // marked "sync" and we must rely on combining the two flags to pick out the
   // true key frames. See http://crbug.com/310712 and http://crbug.com/507916.
-  // Realiably knowing the keyframes for video is also critical to SPS PPS
+  // Reliably knowing the keyframes for video is also critical to SPS PPS
   // insertion.
   EXPECT_EQ("2 K P P P K P", KeyframeAndRAPInfo(iter_.get()));
 }

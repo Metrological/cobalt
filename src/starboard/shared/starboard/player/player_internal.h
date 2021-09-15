@@ -42,12 +42,7 @@ struct SbPlayerPrivate {
       starboard::scoped_ptr<PlayerWorker::Handler> player_worker_handler);
 
   void Seek(SbTime seek_to_time, int ticket);
-#if SB_API_VERSION >= 11
   void WriteSample(const SbPlayerSampleInfo& sample_info);
-#else   // SB_API_VERSION >= 11
-  void WriteSample(SbMediaType sample_type,
-                   const SbPlayerSampleInfo& sample_info);
-#endif  // SB_API_VERSION >= 11
   void WriteEndOfStream(SbMediaType stream_type);
   void SetBounds(int z_index, int x, int y, int width, int height);
 
@@ -82,14 +77,10 @@ struct SbPlayerPrivate {
   void UpdateMediaInfo(SbTime media_time,
                        int dropped_video_frames,
                        int ticket,
-                       bool underflow);
+                       bool is_progressing);
 
   SbPlayerDeallocateSampleFunc sample_deallocate_func_;
   void* context_;
-#if SB_API_VERSION < 11
-  AudioSampleInfo audio_sample_info_;
-#endif  // SB_API_VERSION < 11
-
   starboard::Mutex mutex_;
   int ticket_ = SB_PLAYER_INITIAL_TICKET;
   SbTime media_time_ = 0;
@@ -101,7 +92,9 @@ struct SbPlayerPrivate {
   double volume_ = 1.0;
   int total_video_frames_ = 0;
   int dropped_video_frames_ = 0;
-  bool underflow_ = false;
+  // Used to determine if |worker_| is progressing with playback so that
+  // we may extrapolate the media time in GetInfo().
+  bool is_progressing_ = false;
 
   starboard::scoped_ptr<PlayerWorker> worker_;
 

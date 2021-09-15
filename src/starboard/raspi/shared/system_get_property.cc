@@ -114,9 +114,9 @@ const char* GetModelName() {
 bool CopyStringAndTestIfSuccess(char* out_value,
                                 int value_length,
                                 const char* from_value) {
-  if (SbStringGetLength(from_value) + 1 > value_length)
+  if (strlen(from_value) + 1 > value_length)
     return false;
-  SbStringCopy(out_value, from_value, value_length);
+  starboard::strlcpy(out_value, from_value, value_length);
   return true;
 }
 
@@ -142,10 +142,8 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
     case kSbSystemPropertyModelYear:
 #if SB_API_VERSION >= 12
     case kSbSystemPropertySystemIntegratorName:
-#elif SB_API_VERSION == 11
-    case kSbSystemPropertyOriginalDesignManufacturerName:
 #else
-    case kSbSystemPropertyNetworkOperatorName:
+    case kSbSystemPropertyOriginalDesignManufacturerName:
 #endif
     case kSbSystemPropertySpeechApiKey:
       return false;
@@ -154,16 +152,8 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
       return CopyStringAndTestIfSuccess(out_value, value_length, kFriendlyName);
 
     case kSbSystemPropertyPlatformName: {
-      // Example output: "Raspian Linux armv7l".
-      utsname name;
-
-      if (uname(&name) == -1)
-        return false;
-
-      std::string temp =
-          starboard::FormatString("Raspian %s %s", name.sysname, name.machine);
-
-      return CopyStringAndTestIfSuccess(out_value, value_length, temp.c_str());
+      return CopyStringAndTestIfSuccess(out_value, value_length,
+                                        "X11; Linux armv7l");
     }
 
     default:

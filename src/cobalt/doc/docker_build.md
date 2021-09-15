@@ -1,14 +1,11 @@
-# Cobalt Docker builds [ Experimental ]
+# Cobalt Docker builds
 
-Cobalt includes minimal [Docker image][docker.com](https://www.docker.com/)
+Cobalt includes [Docker image][docker.com](https://www.docker.com/)
 definitions for simplifying managing build environments.
 
 The instructions below assume Docker is installed and is able to run basic
 [`hello-world` verification](https://docs.docker.com/get-started/#test-docker-installation).
 `docker-compose` command is expected to be available as well.
-
-Note: Docker build images are currently provided as experimental, and for
-reference only.
 
 ## Usage
 
@@ -24,7 +21,7 @@ You can override this with an environment variable, e.g.
 where config is one of the four optimization levels, debug, devel, qa and gold,
 and target is the build target passed to `ninja`
 
-See [Cobalt README](https://cobalt.googlesource.com/cobalt/+/master/src/README.md#build-types)
+See [Cobalt README](../../README.md#build-types)
 for full details.
 
 Builds will be available in your `${COBALT_SRC}/out` directory.
@@ -55,6 +52,10 @@ The `docker-compose.yml` contains the currently defined experimental build
 configurations. Edit or add new `service` entries as needed, to build custom
 configurations.
 
+## Pre-built images
+
+Note: Pre-built images from a public container registry are not yet available.
+
 ## Troubleshooting
 
 To debug build issues, enter the shell of the corresponding build container by
@@ -62,4 +63,4 @@ launching the bash shell, i.e.
 
   `docker-compose run linux-x64x11 /bin/bash`
 
-and try to build cobalt [with the usual `gyp / ninja` flow](https://cobalt.googlesource.com/cobalt/+/master/src/README.md#building-and-running-the-code).
+and try to build cobalt [with the usual `gyp / ninja` flow](../../README.md#building-and-running-the-code).

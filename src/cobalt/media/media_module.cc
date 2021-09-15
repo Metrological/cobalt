@@ -57,8 +57,8 @@ class CanPlayTypeHandlerStarboard : public CanPlayTypeHandler {
     //   video/webm; codecs="vp9"
     // We do a rough pre-filter to ensure that only video/mp4 is supported as
     // progressive.
-    if (SbStringFindString(mime_type.c_str(), "video/mp4") == 0 &&
-        SbStringFindString(mime_type.c_str(), "application/x-mpegURL") == 0) {
+    if (strstr(mime_type.c_str(), "video/mp4") == 0 &&
+        strstr(mime_type.c_str(), "application/x-mpegURL") == 0) {
       return kSbMediaSupportTypeNotSupported;
     }
 
@@ -129,6 +129,7 @@ std::unique_ptr<WebMediaPlayer> MediaModule::CreateWebMediaPlayer(
   if (system_window_) {
     window = system_window_->GetSbWindow();
   }
+
   return std::unique_ptr<WebMediaPlayer>(new media::WebMediaPlayerImpl(
       window,
       base::Bind(&MediaModule::GetSbDecodeTargetGraphicsContextProvider,
@@ -158,11 +159,16 @@ void MediaModule::Resume(render_tree::ResourceProvider* resource_provider) {
 
   resource_provider_ = resource_provider;
 
+  SbWindow window = kSbWindowInvalid;
+  if (system_window_) {
+    window = system_window_->GetSbWindow();
+  }
+
   for (Players::iterator iter = players_.begin(); iter != players_.end();
        ++iter) {
     DCHECK(!iter->second);
     if (!iter->second) {
-      iter->first->Resume();
+      iter->first->Resume(window);
     }
   }
 

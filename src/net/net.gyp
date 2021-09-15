@@ -846,7 +846,7 @@
         'proxy_resolution/proxy_resolver_factory.cc',
         'proxy_resolution/proxy_resolver_factory.h',
 
-        # We still need to support mozjs-45
+        # We do not need this flavor of resolver yet
         # 'proxy_resolution/proxy_resolver_v8_tracing.cc',
         # 'proxy_resolution/proxy_resolver_v8_tracing.h',
         # 'proxy_resolution/proxy_resolver_v8_tracing_wrapper.cc',
@@ -1757,7 +1757,7 @@
         'proto_in_dir': 'nqe/proto',
         'proto_out_dir': 'net/nqe/proto',
       },
-      'includes': ['<(DEPTH)/build/protoc.gypi'],
+      'includes': ['<(DEPTH)/build_gyp/protoc.gypi'],
     },
     {
       'target_name': 'net_quic_proto',
@@ -1779,7 +1779,7 @@
         'proto_in_dir': 'third_party/quic/core/proto/',
         'proto_out_dir': 'net/third_party/quic/core/proto/',
       },
-      'includes': ['<(DEPTH)/build/protoc.gypi'],
+      'includes': ['<(DEPTH)/build_gyp/protoc.gypi'],
 
       'all_dependent_settings': {
         'include_dirs': [
@@ -1823,7 +1823,7 @@
             '<(output_dir)/<(RULE_INPUT_ROOT)-inc.cc',
           ],
           'action': [
-            'python',
+            'python2',
             '<(script_path)',
             '<(data_dir)/<(RULE_INPUT_ROOT).gperf',
             '<(output_dir)/<(RULE_INPUT_ROOT)-inc.cc',
@@ -2098,7 +2098,7 @@
         'proxy_resolution/proxy_list_unittest.cc',
         'proxy_resolution/proxy_resolution_service_unittest.cc',
         'proxy_resolution/proxy_server_unittest.cc',
-        # We still have Mozjs.
+        # not useful to us.
         # 'proxy_resolution/proxy_resolver_v8_tracing_unittest.cc',
         # 'proxy_resolution/proxy_resolver_v8_tracing_wrapper_unittest.cc',
         # 'proxy_resolution/proxy_resolver_v8_unittest.cc',

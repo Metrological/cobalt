@@ -22,17 +22,12 @@ namespace cobalt {
 namespace renderer {
 namespace backend {
 
-GraphicsContext::GraphicsContext(GraphicsSystem* system)
-    : system_(system) {
-#if SB_API_VERSION < 11
-  graphics_extension_ = nullptr;
-#else
+GraphicsContext::GraphicsContext(GraphicsSystem* system) : system_(system) {
   graphics_extension_ = static_cast<const CobaltExtensionGraphicsApi*>(
       SbSystemGetExtension(kCobaltExtensionGraphicsName));
   if (graphics_extension_) {
     // Verify it's the extension needed.
-    if (SbStringCompareAll(graphics_extension_->name,
-                           kCobaltExtensionGraphicsName) != 0 ||
+    if (strcmp(graphics_extension_->name, kCobaltExtensionGraphicsName) != 0 ||
         graphics_extension_->version < 1) {
       LOG(WARNING) << "Not using supplied cobalt graphics extension: "
                    << "'" << graphics_extension_->name << "' ("
@@ -40,7 +35,6 @@ GraphicsContext::GraphicsContext(GraphicsSystem* system)
       graphics_extension_ = nullptr;
     }
   }
-#endif
 }
 
 float GraphicsContext::GetMaximumFrameIntervalInMilliseconds() {

@@ -391,17 +391,16 @@ void FilterBasedPlayerWorkerHandler::SetVolume(double volume) {
   }
 }
 
-bool FilterBasedPlayerWorkerHandler::SetBounds(
-    const PlayerWorker::Bounds& bounds) {
+bool FilterBasedPlayerWorkerHandler::SetBounds(const Bounds& bounds) {
   SB_DCHECK(BelongsToCurrentThread());
 
-  if (SbMemoryCompare(&bounds_, &bounds, sizeof(bounds_)) != 0) {
+  if (memcmp(&bounds_, &bounds, sizeof(bounds_)) != 0) {
     // |z_index| is changed quite frequently.  Assign |z_index| first, so we
     // only log when the other members of |bounds| have been changed to avoid
     // spamming the log.
     bounds_.z_index = bounds.z_index;
     bool bounds_changed =
-        SbMemoryCompare(&bounds_, &bounds, sizeof(bounds_)) != 0;
+        memcmp(&bounds_, &bounds, sizeof(bounds_)) != 0;
     SB_LOG_IF(INFO, bounds_changed)
         << "Set bounds to "
         << "x: " << bounds.x << ", y: " << bounds.y
@@ -506,7 +505,7 @@ void FilterBasedPlayerWorkerHandler::Update() {
     double playback_rate;
     auto media_time = media_time_provider_->GetCurrentMediaTime(
         &is_playing, &is_eos_played, &is_underflow, &playback_rate);
-    update_media_info_cb_(media_time, dropped_frames, is_underflow);
+    update_media_info_cb_(media_time, dropped_frames, !is_underflow);
   }
 
   update_job_token_ = Schedule(update_job_, kUpdateInterval);

@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include "cobalt/dom/performance.h"
+#include "cobalt/dom/performance_high_resolution_time.h"
+#include "cobalt/dom/testing/stub_environment_settings.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace cobalt {
@@ -22,23 +24,41 @@ TEST(PerformanceTest, Now) {
   scoped_refptr<base::SystemMonotonicClock> clock(
       new base::SystemMonotonicClock());
 
-  scoped_refptr<Performance> performance(new Performance(clock));
+  testing::StubEnvironmentSettings environment_settings;
+  scoped_refptr<Performance> performance(new Performance(&environment_settings, clock));
 
   // Test that now returns a result that is within a correct range for the
   // current time.
-  base::TimeDelta lower_limit = clock->Now();
+  DOMHighResTimeStamp lower_limit =
+      performance->MonotonicTimeToDOMHighResTimeStamp(base::TimeTicks::Now());
 
-  double current_time_in_milliseconds = performance->Now();
+  DOMHighResTimeStamp current_time_in_milliseconds = performance->Now();
 
-  base::TimeDelta upper_limit = clock->Now();
+  DOMHighResTimeStamp upper_limit =
+      performance->MonotonicTimeToDOMHighResTimeStamp(base::TimeTicks::Now());
 
-  scoped_refptr<base::OffsetClock> navigation_start_clock =
-      performance->timing()->GetNavigationStartClock();
+  DCHECK_GE(current_time_in_milliseconds, lower_limit);
+  DCHECK_LE(current_time_in_milliseconds, upper_limit);
+}
 
-  DCHECK_GE(current_time_in_milliseconds,
-            (lower_limit - navigation_start_clock->origin()).InMillisecondsF());
-  DCHECK_LE(current_time_in_milliseconds,
-            (upper_limit - navigation_start_clock->origin()).InMillisecondsF());
+TEST(PerformanceTest, MonotonicTimeToDOMHighResTimeStamp) {
+  scoped_refptr<base::SystemMonotonicClock> clock(
+      new base::SystemMonotonicClock());
+
+  testing::StubEnvironmentSettings environment_settings;
+  scoped_refptr<Performance> performance(new Performance(&environment_settings, clock));
+
+  base::TimeTicks current_time_ticks = base::TimeTicks::Now();
+  DOMHighResTimeStamp  current_time = ClampTimeStampMinimumResolution(
+      current_time_ticks,
+      Performance::kPerformanceTimerMinResolutionInMicroseconds);
+  DOMHighResTimeStamp current_time_respect_to_time_origin =
+      performance->MonotonicTimeToDOMHighResTimeStamp(current_time_ticks);
+  DOMHighResTimeStamp time_origin = ClampTimeStampMinimumResolution(
+      performance->GetTimeOrigin(),
+      Performance::kPerformanceTimerMinResolutionInMicroseconds);
+
+  DCHECK_EQ(current_time_respect_to_time_origin, current_time - time_origin);
 }
 
 TEST(PerformanceTest, NavigationStart) {
@@ -50,19 +70,17 @@ TEST(PerformanceTest, NavigationStart) {
   // the object will be created at the beginning of a new navigation.
   scoped_refptr<base::SystemMonotonicClock> clock(
       new base::SystemMonotonicClock());
-  base::Time lower_limit = base::Time::Now();
+  base::TimeTicks lower_limit = base::TimeTicks::Now();
 
   scoped_refptr<PerformanceTiming> performance_timing(
-      new PerformanceTiming(clock));
+      new PerformanceTiming(clock, base::TimeTicks::Now()));
 
-  base::Time upper_limit = base::Time::Now();
+  base::TimeTicks upper_limit = base::TimeTicks::Now();
 
   DCHECK_GE(performance_timing->navigation_start(),
-            static_cast<uint64>(
-                (lower_limit - base::Time::UnixEpoch()).InMilliseconds()));
+            static_cast<uint64>((lower_limit.ToInternalValue())));
   DCHECK_LE(performance_timing->navigation_start(),
-            static_cast<uint64>(
-                (upper_limit - base::Time::UnixEpoch()).InMilliseconds()));
+            static_cast<uint64>((upper_limit.ToInternalValue())));
 }
 
 }  // namespace dom

@@ -28,8 +28,8 @@ namespace player {
 // Decoded audio frames produced by an audio decoder.  It can contain multiple
 // frames with continuous timestamps.
 // It doesn't have a specific storage type and sample type.  The decoder and the
-// renderer will determinate the proper storage type and sample type in their
-// own way.
+// renderer will determine the proper storage type and sample type in their own
+// way.
 class DecodedAudio : public RefCountedThreadSafe<DecodedAudio> {
  public:
   DecodedAudio();  // Signal an EOS.
@@ -73,7 +73,8 @@ class DecodedAudio : public RefCountedThreadSafe<DecodedAudio> {
   scoped_array<uint8_t> buffer_;
   size_t size_;
 
-  SB_DISALLOW_COPY_AND_ASSIGN(DecodedAudio);
+  DecodedAudio(const DecodedAudio&) = delete;
+  void operator=(const DecodedAudio&) = delete;
 };
 
 }  // namespace player

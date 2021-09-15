@@ -152,7 +152,7 @@
       '-std=c11',
     ],
     'cflags_cc': [
-      '-std=gnu++11',
+      '-std=gnu++14',
       '-Wno-literal-suffix',
     ],
     'default_configuration': 'wpe-brcm-arm',

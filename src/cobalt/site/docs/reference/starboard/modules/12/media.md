@@ -108,7 +108,7 @@ specific values start at 1000.
     Limited Rec. 709 color range with RGB values ranging from 16 to 235.
 *   `kSbMediaRangeIdFull`
 
-    Full RGB color range with RGB valees from 0 to 255.
+    Full RGB color range with RGB values from 0 to 255.
 *   `kSbMediaRangeIdDerived`
 
     Range is defined by TransferId/MatrixId.
@@ -127,7 +127,7 @@ the following link: [https://www.w3.org/TR/2011/WD-html5-20110113/video.html#dom
     The media type cannot be played.
 *   `kSbMediaSupportTypeMaybe`
 
-    Cannot determinate if the media type is playable without playing it.
+    Cannot determine if the media type is playable without playing it.
 *   `kSbMediaSupportTypeProbably`
 
     The media type seems to be playable.
@@ -192,12 +192,13 @@ output.
 
 ### SbMediaAudioSampleInfo ###
 
-An audio sample info, which is a description of a given audio sample. This, in
-hexadecimal string form, acts as a set of instructions to the audio decoder.
+An audio sample info, which is a description of a given audio sample. This acts
+as a set of instructions to the audio decoder.
 
-The audio sample info consists of a little-endian hexadecimal encoded
-`WAVEFORMATEX` structure followed by an Audio-specific configuration field. The
-`WAVEFORMATEX` structure is specified at: [http://msdn.microsoft.com/en-us/library/dd390970(v=vs.85).aspx](http://msdn.microsoft.com/en-us/library/dd390970(v=vs.85).aspx)
+The audio sample info consists of information found in the `WAVEFORMATEX`
+structure, as well as other information for the audio decoder, including the
+Audio-specific configuration field. The `WAVEFORMATEX` structure is specified at
+[http://msdn.microsoft.com/en-us/library/dd390970(v=vs.85).aspx](http://msdn.microsoft.com/en-us/library/dd390970(v=vs.85).aspx)x) .
 
 #### Members ####
 
@@ -270,11 +271,11 @@ Electronics Association press release: [https://www.cta.tech/News/Press-Releases
 *   `unsigned int chroma_siting_horizontal`
 
     How chroma is subsampled horizontally. (0: Unspecified, 1: Left Collocated,
-    2: Half)
+    2: Half).
 *   `unsigned int chroma_siting_vertical`
 
     How chroma is subsampled vertically. (0: Unspecified, 1: Top Collocated, 2:
-    Half)
+    Half).
 *   `SbMediaMasteringMetadata mastering_metadata`
 
     [HDR Metadata field] SMPTE 2086 mastering data.
@@ -292,7 +293,7 @@ Electronics Association press release: [https://www.cta.tech/News/Press-Releases
     value and meanings for Primaries are adopted from Table 2 of ISO/IEC
     23001-8:2013/DCOR1. (0: Reserved, 1: ITU-R BT.709, 2: Unspecified, 3:
     Reserved, 4: ITU-R BT.470M, 5: ITU-R BT.470BG, 6: SMPTE 170M, 7: SMPTE 240M,
-    8: FILM, 9: ITU-R BT.2020, 10: SMPTE ST 428-1, 22: JEDEC P22 phosphors)
+    8: FILM, 9: ITU-R BT.2020, 10: SMPTE ST 428-1, 22: JEDEC P22 phosphors).
 *   `SbMediaTransferId transfer`
 
     [Color Space field] The transfer characteristics of the video. For clarity,
@@ -302,7 +303,7 @@ Electronics Association press release: [https://www.cta.tech/News/Press-Releases
     4: Gamma 2.2 curve, 5: Gamma 2.8 curve, 6: SMPTE 170M, 7: SMPTE 240M, 8:
     Linear, 9: Log, 10: Log Sqrt, 11: IEC 61966-2-4, 12: ITU-R BT.1361 Extended
     Colour Gamut, 13: IEC 61966-2-1, 14: ITU-R BT.2020 10 bit, 15: ITU-R BT.2020
-    12 bit, 16: SMPTE ST 2084, 17: SMPTE ST 428-1 18: ARIB STD-B67 (HLG))
+    12 bit, 16: SMPTE ST 2084, 17: SMPTE ST 428-1 18: ARIB STD-B67 (HLG)).
 *   `SbMediaMatrixId matrix`
 
     [Color Space field] The Matrix Coefficients of the video used to derive luma
@@ -310,12 +311,12 @@ Electronics Association press release: [https://www.cta.tech/News/Press-Releases
     the value and meanings for MatrixCoefficients are adopted from Table 4 of
     ISO/IEC 23001-8:2013/DCOR1. (0:GBR, 1: BT709, 2: Unspecified, 3: Reserved,
     4: FCC, 5: BT470BG, 6: SMPTE 170M, 7: SMPTE 240M, 8: YCOCG, 9: BT2020 Non-
-    constant Luminance, 10: BT2020 Constant Luminance)
+    constant Luminance, 10: BT2020 Constant Luminance).
 *   `SbMediaRangeId range`
 
     [Color Space field] Clipping of the color ranges. (0: Unspecified, 1:
     Broadcast Range, 2: Full range (no clipping), 3: Defined by
-    MatrixCoefficients/TransferCharacteristics)
+    MatrixCoefficients/TransferCharacteristics).
 *   `float custom_primary_matrix`
 
     [Color Space field] Only used if primaries == kSbMediaPrimaryIdCustom. This

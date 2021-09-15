@@ -20,11 +20,13 @@
 #include "starboard/configuration.h"
 #include "starboard/media.h"
 #include "starboard/shared/starboard/media/media_util.h"
+#include "starboard/shared/starboard/media/mime_type.h"
 
 using starboard::android::shared::JniEnvExt;
 using starboard::android::shared::ScopedLocalJavaRef;
 using starboard::android::shared::SupportedVideoCodecToMimeType;
 using starboard::shared::starboard::media::IsSDRVideo;
+using starboard::shared::starboard::media::MimeType;
 
 namespace {
 
@@ -93,13 +95,41 @@ bool SbMediaIsVideoSupported(SbMediaVideoCodec video_codec,
   if (!mime) {
     return false;
   }
+  // Check extended parameters for correctness and return false if any invalid
+  // invalid params are found.
+  MimeType mime_type(content_type);
+  // Allows for enabling tunneled playback. Disabled by default.
+  // https://source.android.com/devices/tv/multimedia-tunneling
+  mime_type.RegisterBoolParameter("tunnelmode");
+  // Override endianness on HDR Info header. Defaults to little.
+  mime_type.RegisterStringParameter("hdrinfoendianness", "big|little");
+
+  if (!mime_type.is_valid()) {
+    return false;
+  }
+
+  bool must_support_tunnel_mode =
+      mime_type.GetParamBoolValue("tunnelmode", false);
+  if (must_support_tunnel_mode && decode_to_texture_required) {
+    SB_LOG(WARNING) << "Tunnel mode is rejected because output mode decode to "
+                       "texture is required but not supported.";
+    return false;
+  }
+
   JniEnvExt* env = JniEnvExt::Get();
   ScopedLocalJavaRef<jstring> j_mime(env->NewStringStandardUTFOrAbort(mime));
-  bool must_support_hdr = (transfer_id != kSbMediaTransferIdBt709 &&
-                           transfer_id != kSbMediaTransferIdUnspecified);
+  const bool must_support_hdr = (transfer_id != kSbMediaTransferIdBt709 &&
+                                 transfer_id != kSbMediaTransferIdUnspecified);
+
+  // We assume that if a device supports a format for clear playback, it will
+  // also support it for encrypted playback. However, some devices require
+  // tunneled playback to be encrypted, so we must align the tunnel mode
+  // requirement with the secure playback requirement.
+  const bool require_secure_playback = must_support_tunnel_mode;
   return env->CallStaticBooleanMethodOrAbort(
              "dev/cobalt/media/MediaCodecUtil", "hasVideoDecoderFor",
-             "(Ljava/lang/String;ZIIIIZ)Z", j_mime.Get(), false, frame_width,
-             frame_height, static_cast<jint>(bitrate), fps,
-             must_support_hdr) == JNI_TRUE;
+             "(Ljava/lang/String;ZIIIIZZ)Z", j_mime.Get(),
+             require_secure_playback, frame_width, frame_height,
+             static_cast<jint>(bitrate), fps, must_support_hdr,
+             must_support_tunnel_mode) == JNI_TRUE;
 }

@@ -89,8 +89,22 @@
       'sources': [
         'main.cc',
       ],
-
       'conditions': [
+        # Help platforms cross compiled on linux to reduce
+        # the memory footprint of crashpad_handler by eliminating
+        # unused code and unused shared libraries.
+        # The flags assume gcc/clang toolchain.
+        ['host_os=="linux"',  {
+          'cflags': [
+            '-ffunction-sections',
+            '-fdata-sections',
+          ],
+          'ldflags': [
+            '-Wl,--as-needed',
+            '-Wl,-gc-sections',
+            '-Wl,-z,noexecstack',
+          ],
+        }],
         ['OS=="win"',  {
           'msvs_settings': {
             'VCLinkerTool': {

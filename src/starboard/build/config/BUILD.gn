@@ -1,4 +1,4 @@
-# Copyright 2017 The Cobalt Authors. All Rights Reserved.
+# Copyright 2021 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,70 +12,152 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO: change to //starboard eventually
-import("//cobalt/build/config/base.gni")
-import("//starboard/build/delegated_config.gni")
+config("base") {
+  defines = []
 
-# =============================================================================
-# COMPILER DEFAULTS
-# =============================================================================
+  if (final_executable_type == "shared_library") {
+    if (current_toolchain != default_toolchain) {
+      defines += [ "main=StarboardMain" ]
+      cflags = [ "-fPIC" ]
+    }
+  }
 
-# TODO: only set these defines on the files that actually need them
-config("compiler_defaults") {
-  # The canonical way to detect Starboard is #if defined(STARBOARD). This
-  # should be defined both when building Starboard itself, and when building
-  # any other source file in a Starboard-based project.
+  if (is_debug) {
+    defines += [
+      "STARBOARD_BUILD_TYPE_DEBUG",
+      "_DEBUG",
+    ]
+  }
+
+  if (is_devel) {
+    defines += [
+      "STARBOARD_BUILD_TYPE_DEVEL",
+      "_DEBUG",
+    ]
+  }
+
+  if (is_qa) {
+    defines += [
+      "STARBOARD_BUILD_TYPE_QA",
+      "NDEBUG",
+    ]
+  }
+
+  if (is_gold) {
+    defines += [
+      "STARBOARD_BUILD_TYPE_GOLD",
+      "NDEBUG",
+    ]
+  }
+}
+
+config("host") {
+  if (current_toolchain == host_toolchain) {
+    if (host_os == "linux") {
+      ldflags = [ "-pthread" ]
+      cflags_cc = [ "-std=gnu++14" ]
+
+      if (target_cpu == "arm" || target_cpu == "x86") {
+        cflags = [ "-m32" ]
+        ldflags += [
+          "-target",
+          "i386-unknown-linux-gnu",
+          "-latomic",
+        ]
+      }
+    }
+  }
+}
+
+config("target") {
+  if (current_toolchain != host_toolchain) {
+    if (final_executable_type == "shared_library") {
+      # Rewrite main() functions into StarboardMain. TODO: This is a
+      # hack, it would be better to be more surgical, here.
+      defines = [ "main=StarboardMain" ]
+    } else {
+      # To link into a shared library on Linux and similar platforms,
+      # the compiler must be told to generate Position Independent Code.
+      # This appears to cause errors when linking the code statically,
+      # however.
+      cflags = [ "-fPIC" ]
+    }
+
+    if (is_starboard) {
+      configs = [ ":starboard" ]
+    }
+  }
+}
+
+config("starboard") {
   defines = [ "STARBOARD" ]
 
   if (gl_type == "none") {
-    defines += [ "SB_GYP_GL_TYPE_IS_NONE=1" ]
+    defines += [ "SB_GN_GL_TYPE_IS_NONE=1" ]
   } else {
-    defines += [ "SB_GYP_GL_TYPE_IS_NONE=0" ]
+    defines += [ "SB_GN_GL_TYPE_IS_NONE=0" ]
   }
 
   if (abort_on_allocation_failure) {
     defines += [ "SB_ABORT_ON_ALLOCATION_FAILURE" ]
   }
 
-  if (sb_allow_memory_tracking) {
+  if (sb_allows_memory_tracking) {
     defines += [ "STARBOARD_ALLOWS_MEMORY_TRACKING" ]
   }
 
-  # There doesn't appear to be any way to use the C preprocessor to do
-  # string concatenation with the / character. This prevents us from using
-  # the preprocessor to assemble an include file path, so we have to do
-  # the concatenation here in GN.
-  # http://stackoverflow.com/questions/29601786/c-preprocessor-building-a-path-string
+  if (sb_enable_lib) {
+    defines += [ "SB_IS_LIBRARY=1" ]
+  }
+
+  if (sb_is_evergreen) {
+    defines += [ "SB_IS_EVERGREEN=1" ]
+  }
+
+  if (sb_is_evergreen_compatible) {
+    defines += [ "SB_IS_EVERGREEN_COMPATIBLE=1" ]
+  }
+
+  if (sb_evergreen_compatible_use_libunwind) {
+    defines += [ "SB_IS_EVERGREEN_COMPATIBLE_LIBUNWIND=1" ]
+  }
+
+  if (sb_evergreen_compatible_enable_lite) {
+    defines += [ "SB_IS_EVERGREEN_COMPATIBLE_LITE=1" ]
+  }
+
   defines += [
     "STARBOARD_ATOMIC_INCLUDE=\"$starboard_path/atomic_public.h\"",
     "STARBOARD_CONFIGURATION_INCLUDE=\"$starboard_path/configuration_public.h\"",
     "STARBOARD_THREAD_TYPES_INCLUDE=\"$starboard_path/thread_types_public.h\"",
   ]
-
 }
 
-# =============================================================================
-# DELEGATED CONFIGS
-# =============================================================================
-
-# Enables pedantic levels of warnings for the current toolchain.
-delegated_config("pedantic_warnings") {
-  path = "//$starboard_path"
-  generate_default = false
+config("starboard_implementation") {
+  # This allows the benchmarks to include internal only header files.
+  defines = [ "STARBOARD_IMPLEMENTATION" ]
 }
 
-# Controls the optimization level
-delegated_config("optimizations") {
-  path = "//$starboard_path"
-  prefixes = [ "no", "debuggable", "full" ]
+config("speed") {
+  if (defined(speed_config_path)) {
+    configs = [ speed_config_path ]
+  }
 }
 
-# Enables/disables rtti
-delegated_config("rtti") {
-  path = "//$starboard_path"
+config("size") {
+  if (defined(size_config_path)) {
+    configs = [ size_config_path ]
+  }
 }
 
-# Enables the exit-time-destructors warning.
-config("wexit_time_destructors") {
-  configs = [ "//$starboard_path:wexit_time_destructors" ]
+config("pedantic_warnings") {
+  if (defined(pedantic_warnings_config_path)) {
+    configs = [ pedantic_warnings_config_path ]
+  }
+}
+
+config("no_pedantic_warnings") {
+  if (defined(no_pedantic_warnings_config_path)) {
+    configs = [ no_pedantic_warnings_config_path ]
+  }
 }

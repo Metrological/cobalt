@@ -88,6 +88,8 @@ class MediaCodecBridge {
                                                    int64_t presentation_time_us,
                                                    int size) = 0;
     virtual void OnMediaCodecOutputFormatChanged() = 0;
+    // This is only called on video decoder when tunnel mode is enabled.
+    virtual void OnMediaCodecFrameRendered(SbTime frame_timestamp) = 0;
 
    protected:
     ~Handler() {}
@@ -103,11 +105,14 @@ class MediaCodecBridge {
       SbMediaVideoCodec video_codec,
       int width,
       int height,
+      int fps,
       Handler* handler,
       jobject j_surface,
       jobject j_media_crypto,
       const SbMediaColorMetadata* color_metadata,
       bool require_software_codec,
+      int tunnel_mode_audio_session_id,
+      bool force_big_endian_hdr_metadata,
       std::string* error_message);
 
   ~MediaCodecBridge();
@@ -146,6 +151,7 @@ class MediaCodecBridge {
                                          int64_t presentation_time_us,
                                          int size);
   void OnMediaCodecOutputFormatChanged();
+  void OnMediaCodecFrameRendered(SbTime frame_timestamp);
 
  private:
   // |MediaCodecBridge|s must only be created through its factory methods.
@@ -162,7 +168,8 @@ class MediaCodecBridge {
   // |GetOutputDimensions|.
   jobject j_reused_get_output_format_result_ = NULL;
 
-  SB_DISALLOW_COPY_AND_ASSIGN(MediaCodecBridge);
+  MediaCodecBridge(const MediaCodecBridge&) = delete;
+  void operator=(const MediaCodecBridge&) = delete;
 };
 
 }  // namespace shared

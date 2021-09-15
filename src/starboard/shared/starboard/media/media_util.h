@@ -50,9 +50,6 @@ struct VideoSampleInfo : SbMediaVideoSampleInfo {
   std::string mime_storage;
   std::string max_video_capabilities_storage;
 #endif  // SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
-#if SB_API_VERSION < 11
-  SbMediaColorMetadata color_metadata_storage;
-#endif  // SB_API_VERSION < 11
 };
 
 bool IsAudioOutputSupported(SbMediaAudioCodingType coding_type, int channels);
@@ -97,20 +94,16 @@ int GetBytesPerSample(SbMediaAudioSampleType sample_type);
 SbMediaSupportType CanPlayMimeAndKeySystem(const MimeType& mime_type,
                                            const char* key_system);
 
-const char* GetCodecName(SbMediaAudioCodec codec);
-const char* GetCodecName(SbMediaVideoCodec codec);
-const char* GetPrimaryIdName(SbMediaPrimaryId primary_id);
-const char* GetTransferIdName(SbMediaTransferId transfer_id);
-const char* GetMatrixIdName(SbMediaMatrixId matrix_id);
-const char* GetRangeIdName(SbMediaRangeId range_id);
+std::string GetStringRepresentation(const uint8_t* data, const int size);
+std::string GetMixedRepresentation(const uint8_t* data,
+                                   const int size,
+                                   const int bytes_per_line);
 
-#if SB_API_VERSION >= 11
 //  When this function returns true, usually indicates that the two sample info
 //  cannot be processed by the same audio decoder.
 bool IsAudioSampleInfoSubstantiallyDifferent(
     const SbMediaAudioSampleInfo& left,
     const SbMediaAudioSampleInfo& right);
-#endif  // SB_API_VERSION < 11
 
 }  // namespace media
 }  // namespace starboard
@@ -126,19 +119,5 @@ bool operator!=(const SbMediaColorMetadata& metadata_1,
                 const SbMediaColorMetadata& metadata_2);
 bool operator!=(const SbMediaVideoSampleInfo& sample_info_1,
                 const SbMediaVideoSampleInfo& sample_info_2);
-
-// For logging use only.
-std::ostream& operator<<(std::ostream& os,
-                         const SbMediaMasteringMetadata& metadata);
-std::ostream& operator<<(std::ostream& os,
-                         const SbMediaColorMetadata& metadata);
-std::ostream& operator<<(std::ostream& os,
-                         const SbMediaVideoSampleInfo& sample_info);
-
-std::string GetHexRepresentation(const uint8_t* data, int size);
-std::string GetStringRepresentation(const uint8_t* data, int size);
-std::string GetMixedRepresentation(const uint8_t* data,
-                                   int size,
-                                   int bytes_per_line);
 
 #endif  // STARBOARD_SHARED_STARBOARD_MEDIA_MEDIA_UTIL_H_

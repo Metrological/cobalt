@@ -23,9 +23,8 @@
     'enable_vr': 0,
     'default_renderer_options_dependency': '<(DEPTH)/cobalt/renderer/default_options_starboard.gyp:default_options',
     'javascript_engine': 'v8',
-    'cobalt_v8_enable_embedded_builtins': 1,
 
-    'cobalt_font_package': 'minimal',
+    'cobalt_font_package': 'empty',
 
     # Override that omits the "data" subdirectory.
     # TODO: Remove when omitted for all platforms in base_configuration.gypi.
@@ -33,13 +32,6 @@
 
     'final_executable_type': 'shared_library',
     'gtest_target_type': 'shared_library',
-
-    # Using an inner scope for 'variables' so that it can be made a default
-    # (and so overridden elsewhere), but yet still used immediately in this
-    # file.
-    'variables': {
-      'use_dlmalloc_allocator%': 0,
-    },
   },
   'target_defaults': {
     'defines' : [

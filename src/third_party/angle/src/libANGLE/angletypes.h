@@ -17,7 +17,6 @@
 #include "libANGLE/Constants.h"
 #include "libANGLE/Error.h"
 #include "libANGLE/RefCountObject.h"
-#include "nb/cpp14oncpp11.h"
 
 #include <inttypes.h>
 #include <stdint.h>
@@ -404,7 +403,7 @@ enum class ComponentType
     InvalidEnum = 4,
 };
 
-CONSTEXPR_OR_INLINE ComponentType GLenumToComponentType(GLenum componentType)
+constexpr ComponentType GLenumToComponentType(GLenum componentType)
 {
     switch (componentType)
     {
@@ -421,7 +420,11 @@ CONSTEXPR_OR_INLINE ComponentType GLenumToComponentType(GLenum componentType)
     }
 }
 
-extern CONSTEXPR angle::PackedEnumMap<ComponentType, uint32_t> kComponentMasks;
+constexpr angle::PackedEnumMap<ComponentType, uint32_t> kComponentMasks = {{
+    {ComponentType::Float, 0x10001},
+    {ComponentType::Int, 0x00001},
+    {ComponentType::UnsignedInt, 0x10000},
+}};
 
 constexpr size_t kMaxComponentTypeMaskIndex = 16;
 using ComponentTypeMask                     = angle::BitSet<kMaxComponentTypeMaskIndex * 2>;

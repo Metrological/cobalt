@@ -22,9 +22,11 @@
 #include "base/threading/thread.h"
 #include "cobalt/base/application_state.h"
 #include "cobalt/cssom/css_parser.h"
+#include "cobalt/dom/application_lifecycle_state.h"
 #include "cobalt/dom/dom_stat_tracker.h"
 #include "cobalt/dom/parser.h"
 #include "cobalt/dom/url_registry.h"
+#include "cobalt/dom/performance.h"
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/loader/font/remote_typeface_cache.h"
 #include "cobalt/loader/image/animated_image_tracker.h"
@@ -32,7 +34,6 @@
 #include "cobalt/loader/mesh/mesh_cache.h"
 #include "cobalt/media/can_play_type_handler.h"
 #include "cobalt/media/web_media_player_factory.h"
-#include "cobalt/page_visibility/page_visibility_state.h"
 #include "cobalt/script/environment_settings.h"
 #include "cobalt/script/script_runner.h"
 #include "cobalt/script/script_value_factory.h"
@@ -74,6 +75,7 @@ class HTMLElementContext {
       const std::string& font_language_script,
       base::ApplicationState initial_application_state,
       base::WaitableEvent* synchronous_loader_interrupt,
+      Performance* performance,
       bool enable_inline_script_warnings = false,
       float video_playback_rate_multiplier = 1.0);
   ~HTMLElementContext();
@@ -156,9 +158,11 @@ class HTMLElementContext {
     return reduced_image_cache_capacity_manager_;
   }
 
-  base::WeakPtr<page_visibility::PageVisibilityState> page_visibility_state() {
-    return page_visibility_state_weak_ptr_factory_.GetWeakPtr();
+  base::WeakPtr<ApplicationLifecycleState> application_lifecycle_state() {
+    return application_lifecycle_state_weak_ptr_factory_.GetWeakPtr();
   }
+
+  Performance* performance() { return performance_; }
 
  private:
 #if !defined(COBALT_BUILD_TYPE_GOLD)
@@ -185,15 +189,17 @@ class HTMLElementContext {
   loader::mesh::MeshCache* const mesh_cache_;
   DomStatTracker* const dom_stat_tracker_;
   const std::string font_language_script_;
-  page_visibility::PageVisibilityState page_visibility_state_;
-  base::WeakPtrFactory<page_visibility::PageVisibilityState>
-      page_visibility_state_weak_ptr_factory_;
+  ApplicationLifecycleState application_lifecycle_state_;
+  base::WeakPtrFactory<ApplicationLifecycleState>
+      application_lifecycle_state_weak_ptr_factory_;
   const float video_playback_rate_multiplier_;
   base::WaitableEvent* synchronous_loader_interrupt_ = nullptr;
   bool enable_inline_script_warnings_;
 
   base::Thread sync_load_thread_;
   std::unique_ptr<HTMLElementFactory> html_element_factory_;
+
+  Performance* performance_;
 
   DISALLOW_COPY_AND_ASSIGN(HTMLElementContext);
 };

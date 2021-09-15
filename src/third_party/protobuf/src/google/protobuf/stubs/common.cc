@@ -33,10 +33,6 @@
 #ifdef STARBOARD
 #include <string.h>
 #include "starboard/common/string.h"
-#undef __builtin_strlen
-#define __builtin_strlen SbStringGetLength
-#undef strlen
-#define strlen SbStringGetLength
 #endif  // STARBOARD
 
 #include <google/protobuf/stubs/common.h>

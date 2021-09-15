@@ -24,10 +24,10 @@
 #include "base/strings/string_util.h"
 #include "base/synchronization/lock.h"
 #include "cobalt/base/get_application_key.h"
+#include "starboard/common/file.h"
 #include "starboard/common/string.h"
 #include "starboard/configuration_constants.h"
 #include "starboard/directory.h"
-#include "starboard/file.h"
 
 namespace cobalt {
 namespace browser {
@@ -40,11 +40,11 @@ bool CreateDirsForKey(const std::string& key) {
   }
   std::size_t prev_found = 0;
   std::size_t found = key.find(kSbFileSepString);
-  SbStringConcat(path.data(), kSbFileSepString, kSbFileMaxPath);
+  starboard::strlcat(path.data(), kSbFileSepString, kSbFileMaxPath);
   while (found != std::string::npos) {
-    SbStringConcat(path.data(),
-                   key.substr(prev_found, found - prev_found).c_str(),
-                   kSbFileMaxPath);
+    starboard::strlcat(path.data(),
+                       key.substr(prev_found, found - prev_found).c_str(),
+                       kSbFileMaxPath);
     if (!SbDirectoryCreate(path.data())) {
       return false;
     }
@@ -175,7 +175,7 @@ bool SplashScreenCache::AddPathDirectory(const std::string& directory,
                                          std::vector<char>& path,
                                          std::string& subpath) const {
   std::string subcomponent = kSbFileSepString + directory;
-  if (SbStringConcat(path.data(), subcomponent.c_str(), kSbFileMaxPath) >=
+  if (starboard::strlcat(path.data(), subcomponent.c_str(), kSbFileMaxPath) >=
       static_cast<int>(kSbFileMaxPath)) {
     return false;
   }

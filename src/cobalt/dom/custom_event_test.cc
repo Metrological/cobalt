@@ -31,7 +31,6 @@
 #include "cobalt/dom_parser/parser.h"
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/loader/loader_factory.h"
-#include "cobalt/media_session/media_session.h"
 #include "cobalt/script/global_environment.h"
 #include "cobalt/script/javascript_engine.h"
 #include "cobalt/script/source_code.h"
@@ -76,7 +75,7 @@ class CustomEventTest : public ::testing::Test {
         base::kApplicationStateStarted, css_parser_.get(), dom_parser_.get(),
         fetcher_factory_.get(), loader_factory_.get(), NULL, NULL, NULL, NULL,
         NULL, NULL, &local_storage_database_, NULL, NULL, NULL, NULL,
-        global_environment_->script_value_factory(), NULL, NULL, url_, "",
+        global_environment_->script_value_factory(), NULL, NULL, url_, "", NULL,
         "en-US", "en", base::Callback<void(const GURL&)>(),
         base::Bind(&MockErrorCallback::Run,
                    base::Unretained(&mock_error_callback_)),
@@ -84,7 +83,7 @@ class CustomEventTest : public ::testing::Test {
         kCspEnforcementEnable, base::Closure() /* csp_policy_changed */,
         base::Closure() /* ran_animation_frame_callbacks */,
         dom::Window::CloseCallback() /* window_close */,
-        base::Closure() /* window_minimize */, NULL, NULL, NULL,
+        base::Closure() /* window_minimize */, NULL, NULL,
         dom::Window::OnStartDispatchEventCallback(),
         dom::Window::OnStopDispatchEventCallback(),
         dom::ScreenshotManager::ProvideScreenshotFunctionCallback(), NULL);

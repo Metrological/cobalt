@@ -14,7 +14,6 @@
 
 #include "starboard/player.h"
 
-#include "starboard/android/shared/cobalt/android_media_session_client.h"
 #include "starboard/android/shared/video_decoder.h"
 #include "starboard/android/shared/video_window.h"
 #include "starboard/common/log.h"
@@ -28,9 +27,6 @@
 using starboard::shared::starboard::player::filter::
     FilterBasedPlayerWorkerHandler;
 using starboard::shared::starboard::player::PlayerWorker;
-using starboard::android::shared::cobalt::kPlaying;
-using starboard::android::shared::cobalt::
-    UpdateActiveSessionPlatformPlaybackState;
 using starboard::android::shared::VideoDecoder;
 
 SbPlayer SbPlayerCreate(SbWindow window,
@@ -77,9 +73,8 @@ SbPlayer SbPlayerCreate(SbWindow window,
                << "\", and max video capabilities \"" << max_video_capabilities
                << "\".";
 
-  if (!sample_deallocate_func || !decoder_status_func || !player_status_func
-      || !player_error_func
-      ) {
+  if (!sample_deallocate_func || !decoder_status_func || !player_status_func ||
+      !player_error_func) {
     return kSbPlayerInvalid;
   }
 
@@ -88,6 +83,8 @@ SbPlayer SbPlayerCreate(SbWindow window,
 
   if (audio_codec != kSbMediaAudioCodecNone &&
       audio_codec != kSbMediaAudioCodecAac &&
+      audio_codec != kSbMediaAudioCodecAc3 &&
+      audio_codec != kSbMediaAudioCodecEac3 &&
       audio_codec != kSbMediaAudioCodecOpus) {
     SB_LOG(ERROR) << "Unsupported audio codec " << audio_codec;
     return kSbPlayerInvalid;
@@ -109,13 +106,21 @@ SbPlayer SbPlayerCreate(SbWindow window,
     return kSbPlayerInvalid;
   }
 
+  if (has_audio && creation_param->audio_sample_info.number_of_channels >
+                       SbAudioSinkGetMaxChannels()) {
+    SB_LOG(ERROR) << "creation_param->audio_sample_info.number_of_channels"
+                  << " exceeds the maximum number of audio channels supported"
+                  << " by this platform.";
+    return kSbPlayerInvalid;
+  }
+
   auto output_mode = creation_param->output_mode;
   if (SbPlayerGetPreferredOutputMode(creation_param) != output_mode) {
     SB_LOG(ERROR) << "Unsupported player output mode " << output_mode;
     return kSbPlayerInvalid;
   }
 
-  if (SbStringGetLength(max_video_capabilities) == 0) {
+  if (strlen(max_video_capabilities) == 0) {
     // Check the availability of hardware video decoder. Main player must use a
     // hardware codec, but Android doesn't support multiple concurrent hardware
     // codecs. Since it's not safe to have multiple hardware codecs, we only
@@ -126,11 +131,12 @@ SbPlayer SbPlayerCreate(SbWindow window,
         kMaxNumberOfHardwareDecoders) {
       return kSbPlayerInvalid;
     }
-    // Only update session state for main player.
-    UpdateActiveSessionPlatformPlaybackState(kPlaying);
   }
 
-  if (creation_param->output_mode != kSbPlayerOutputModeDecodeToTexture) {
+  if (creation_param->output_mode != kSbPlayerOutputModeDecodeToTexture &&
+      // TODO: This is temporary for supporting background media playback.
+      //       Need to be removed with media refactor.
+      video_codec != kSbMediaVideoCodecNone) {
     // Check the availability of the video window. As we only support one main
     // player, and sub players are in decode to texture mode on Android, a
     // single video window should be enough.

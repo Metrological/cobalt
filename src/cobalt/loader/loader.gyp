@@ -52,6 +52,7 @@
         'image/animated_webp_image.h',
         'image/dummy_gif_image_decoder.cc',
         'image/dummy_gif_image_decoder.h',
+        'image/failure_image_decoder.h',
         'image/image_cache.h',
         'image/image_data_decoder.cc',
         'image/image_data_decoder.h',
@@ -141,6 +142,7 @@
         'file_fetcher_test.cc',
         'font/typeface_decoder_test.cc',
         'image/image_decoder_test.cc',
+        'image/image_decoder_unit_test.cc',
         'mesh/mesh_decoder_test.cc',
         'loader_test.cc',
         'text_decoder_test.cc',
@@ -206,7 +208,7 @@
         '<(input_directory)/splash_screen.js',
         '<(input_directory)/unable_message.html.template',
         '<(input_directory)/update_message.html.template',
-        '<!@(["python", "<(DEPTH)/starboard/tools/find_private_files.py", "<(DEPTH)", "*.html", "cobalt/loader/embedded_resources"])',
+        '<!@pymod_do_main(starboard.build.gyp_functions file_glob <(DEPTH)/cobalt/loader/embedded_resources *.html)',
       ],
       'actions': [
         {
@@ -218,7 +220,7 @@
           'outputs': [
             '<(output_path)',
           ],
-          'action': ['python', '<(script_path)', 'LoaderEmbeddedResources', '<(output_path)', '<(input_directory)'],
+          'action': ['python2', '<(script_path)', 'LoaderEmbeddedResources', '<(output_path)', '<(input_directory)'],
           'message': 'Embedding layout resources in "<(input_directory)" into header file, "<(output_path)".',
         },
       ],

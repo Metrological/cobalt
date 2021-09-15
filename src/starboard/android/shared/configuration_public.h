@@ -25,10 +25,6 @@
 
 // --- Architecture Configuration --------------------------------------------
 
-// Indicates that there is no support for alignment at greater than 16 bytes for
-// items on the stack.
-#define SB_HAS_QUIRK_DOES_NOT_STACK_ALIGN_OVER_16_BYTES 1
-
 // --- System Header Configuration -------------------------------------------
 
 // Any system headers listed here that are not provided by the platform will be
@@ -157,10 +153,18 @@
 
 // --- User Configuration ----------------------------------------------------
 
+// --- Platform Specific Configuration ---------------------------------------
+
 // --- Platform Specific Audits ----------------------------------------------
 
 #if !defined(__GNUC__)
 #error "Android builds need a GCC-like compiler (for the moment)."
 #endif
+
+// --- Platform Specific Quirks ----------------------------------------------
+
+// Indicates that there is no support for alignment at greater than 16 bytes for
+// items on the stack.
+#define SB_HAS_QUIRK_DOES_NOT_STACK_ALIGN_OVER_16_BYTES 1
 
 #endif  // STARBOARD_ANDROID_SHARED_CONFIGURATION_PUBLIC_H_

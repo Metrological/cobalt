@@ -14,5 +14,6 @@
 
 #include "starboard/system.h"
 
-void SbSystemRequestPause() {
-}
+#if SB_API_VERSION < 13
+void SbSystemRequestPause() {}
+#endif  // SB_API_VERSION < 13

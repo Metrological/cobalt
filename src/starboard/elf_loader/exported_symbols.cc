@@ -40,7 +40,9 @@
 #include "starboard/player.h"
 #include "starboard/socket.h"
 #include "starboard/socket_waiter.h"
+#if SB_API_VERSION < 13
 #include "starboard/speech_recognizer.h"
+#endif
 #include "starboard/speech_synthesis.h"
 #include "starboard/storage.h"
 #include "starboard/string.h"
@@ -75,6 +77,7 @@ ExportedSymbols::ExportedSymbols(
   REGISTER_SYMBOL(SbByteSwapU16);
   REGISTER_SYMBOL(SbByteSwapU32);
   REGISTER_SYMBOL(SbByteSwapU64);
+#if SB_API_VERSION < 13
   REGISTER_SYMBOL(SbCharacterIsAlphanumeric);
   REGISTER_SYMBOL(SbCharacterIsDigit);
   REGISTER_SYMBOL(SbCharacterIsHexDigit);
@@ -82,6 +85,7 @@ ExportedSymbols::ExportedSymbols(
   REGISTER_SYMBOL(SbCharacterIsUpper);
   REGISTER_SYMBOL(SbCharacterToLower);
   REGISTER_SYMBOL(SbCharacterToUpper);
+#endif  // SB_API_VERSION < 13
   REGISTER_SYMBOL(SbConditionVariableBroadcast);
   REGISTER_SYMBOL(SbConditionVariableCreate);
   REGISTER_SYMBOL(SbConditionVariableDestroy);
@@ -95,11 +99,13 @@ ExportedSymbols::ExportedSymbols(
   REGISTER_SYMBOL(SbDirectoryCreate);
   REGISTER_SYMBOL(SbDirectoryGetNext);
   REGISTER_SYMBOL(SbDirectoryOpen);
+#if SB_API_VERSION < 13
   REGISTER_SYMBOL(SbDoubleAbsolute);
   REGISTER_SYMBOL(SbDoubleExponent);
   REGISTER_SYMBOL(SbDoubleFloor);
   REGISTER_SYMBOL(SbDoubleIsFinite);
   REGISTER_SYMBOL(SbDoubleIsNan);
+#endif  // SB_API_VERSION < 13
   REGISTER_SYMBOL(SbDrmCloseSession);
   REGISTER_SYMBOL(SbDrmCreateSystem);
   REGISTER_SYMBOL(SbDrmDestroySystem);
@@ -125,7 +131,9 @@ ExportedSymbols::ExportedSymbols(
   REGISTER_SYMBOL(SbFileWrite);
   REGISTER_SYMBOL(SbMediaGetAudioConfiguration);
   REGISTER_SYMBOL(SbMediaGetAudioOutputCount);
+#if SB_API_VERSION < 13
   REGISTER_SYMBOL(SbMediaIsSupported);
+#endif  // SB_API_VERSION < 13
   REGISTER_SYMBOL(SbMemoryAllocate);
   REGISTER_SYMBOL(SbMemoryAllocateAligned);
   REGISTER_SYMBOL(SbMemoryAllocateNoReport);
@@ -146,15 +154,21 @@ ExportedSymbols::ExportedSymbols(
   REGISTER_SYMBOL(SbMediaCanPlayMimeAndKeySystem);
   REGISTER_SYMBOL(SbMemoryAllocateAlignedUnchecked);
   REGISTER_SYMBOL(SbMemoryAllocateUnchecked);
+#if SB_API_VERSION < 13
   REGISTER_SYMBOL(SbMemoryCompare);
   REGISTER_SYMBOL(SbMemoryCopy);
   REGISTER_SYMBOL(SbMemoryFindByte);
+#endif
   REGISTER_SYMBOL(SbMemoryFree);
   REGISTER_SYMBOL(SbMemoryFreeAligned);
   REGISTER_SYMBOL(SbMemoryGetStackBounds);
+#if SB_API_VERSION < 13
   REGISTER_SYMBOL(SbMemoryMove);
+#endif
   REGISTER_SYMBOL(SbMemoryReallocateUnchecked);
+#if SB_API_VERSION < 13
   REGISTER_SYMBOL(SbMemorySet);
+#endif
   REGISTER_SYMBOL(SbMutexAcquire);
   REGISTER_SYMBOL(SbMutexAcquireTry);
   REGISTER_SYMBOL(SbMutexCreate);
@@ -205,29 +219,39 @@ ExportedSymbols::ExportedSymbols(
   REGISTER_SYMBOL(SbStorageOpenRecord);
   REGISTER_SYMBOL(SbStorageReadRecord);
   REGISTER_SYMBOL(SbStorageWriteRecord);
+#if SB_API_VERSION < 13
   REGISTER_SYMBOL(SbStringCompare);
   REGISTER_SYMBOL(SbStringCompareAll);
+#endif
   REGISTER_SYMBOL(SbStringCompareNoCase);
   REGISTER_SYMBOL(SbStringCompareNoCaseN);
+#if SB_API_VERSION < 13
   REGISTER_SYMBOL(SbStringCompareWide);
   REGISTER_SYMBOL(SbStringConcat);
   REGISTER_SYMBOL(SbStringConcatWide);
   REGISTER_SYMBOL(SbStringCopy);
   REGISTER_SYMBOL(SbStringCopyWide);
+#endif  // SB_API_VERSION >= 13
   REGISTER_SYMBOL(SbStringDuplicate);
+#if SB_API_VERSION < 13
   REGISTER_SYMBOL(SbStringFindCharacter);
   REGISTER_SYMBOL(SbStringFindLastCharacter);
   REGISTER_SYMBOL(SbStringFindString);
+#endif
   REGISTER_SYMBOL(SbStringFormat);
   REGISTER_SYMBOL(SbStringFormatWide);
+#if SB_API_VERSION < 13
   REGISTER_SYMBOL(SbStringGetLength);
   REGISTER_SYMBOL(SbStringGetLengthWide);
   REGISTER_SYMBOL(SbStringParseDouble);
   REGISTER_SYMBOL(SbStringParseSignedInteger);
   REGISTER_SYMBOL(SbStringParseUInt64);
   REGISTER_SYMBOL(SbStringParseUnsignedInteger);
+#endif
   REGISTER_SYMBOL(SbStringScan);
+#if SB_API_VERSION < 13
   REGISTER_SYMBOL(SbSystemBinarySearch);
+#endif
   REGISTER_SYMBOL(SbSystemBreakIntoDebugger);
   REGISTER_SYMBOL(SbSystemClearLastError);
   REGISTER_SYMBOL(SbSystemGetConnectionType);
@@ -248,11 +272,24 @@ ExportedSymbols::ExportedSymbols(
   REGISTER_SYMBOL(SbSystemHideSplashScreen);
   REGISTER_SYMBOL(SbSystemIsDebuggerAttached);
   REGISTER_SYMBOL(SbSystemRaisePlatformError);
+#if SB_API_VERSION >= 13
+  REGISTER_SYMBOL(SbSystemRequestBlur);
+  REGISTER_SYMBOL(SbSystemRequestConceal);
+  REGISTER_SYMBOL(SbSystemRequestFocus);
+  REGISTER_SYMBOL(SbSystemRequestFreeze);
+  REGISTER_SYMBOL(SbSystemRequestReveal);
+  REGISTER_SYMBOL(SbSystemRequestStop);
+#else
   REGISTER_SYMBOL(SbSystemRequestPause);
   REGISTER_SYMBOL(SbSystemRequestStop);
   REGISTER_SYMBOL(SbSystemRequestSuspend);
   REGISTER_SYMBOL(SbSystemRequestUnpause);
+#endif  // SB_API_VERSION >= 13
+
+#if SB_API_VERSION < 13
   REGISTER_SYMBOL(SbSystemSort);
+#endif  // SB_API_VERSION < 13
+
   REGISTER_SYMBOL(SbSystemSymbolize);
   REGISTER_SYMBOL(SbThreadCreate);
   REGISTER_SYMBOL(SbThreadCreateLocalKey);
@@ -282,11 +319,8 @@ ExportedSymbols::ExportedSymbols(
   REGISTER_SYMBOL(SbWindowGetSize);
   REGISTER_SYMBOL(SbWindowSetDefaultOptions);
   REGISTER_SYMBOL(SbSystemGetPath);
-
-#if SB_API_VERSION >= 11
   REGISTER_SYMBOL(SbGetEglInterface);
   REGISTER_SYMBOL(SbGetGlesInterface);
-#endif  // SB_API_VERSION >= 11
 
 #if SB_API_VERSION >= 12
   REGISTER_SYMBOL(SbFileAtomicReplace);
@@ -320,10 +354,8 @@ ExportedSymbols::ExportedSymbols(
   REGISTER_SYMBOL(SbWindowIsOnScreenKeyboardShown);
   REGISTER_SYMBOL(SbWindowSetOnScreenKeyboardKeepFocus);
   REGISTER_SYMBOL(SbWindowShowOnScreenKeyboard);
-#if SB_API_VERSION >= 11
   REGISTER_SYMBOL(SbWindowOnScreenKeyboardSuggestionsSupported);
   REGISTER_SYMBOL(SbWindowUpdateOnScreenKeyboardSuggestions);
-#endif  // SB_API_VERSION >= 11
 #endif  // SB_API_VERSION >= 12 ||
         // SB_HAS(ON_SCREEN_KEYBOARD)
 
@@ -362,19 +394,17 @@ ExportedSymbols::ExportedSymbols(
 #endif  // SB_API_VERSION >= 12 ||
         // SB_HAS(TIME_THREAD_NOW)
 
-#if SB_API_VERSION >= 5
-#if SB_API_VERSION >= 12
+#if SB_API_VERSION == 12
   REGISTER_SYMBOL(SbSpeechRecognizerIsSupported);
 #endif
-#if SB_API_VERSION >= 12 || SB_HAS(SPEECH_RECOGNIZER)
+#if SB_API_VERSION == 12 || (SB_API_VERSION < 12 && SB_HAS(SPEECH_RECOGNIZER))
   REGISTER_SYMBOL(SbSpeechRecognizerCreate);
   REGISTER_SYMBOL(SbSpeechRecognizerDestroy);
   REGISTER_SYMBOL(SbSpeechRecognizerStart);
   REGISTER_SYMBOL(SbSpeechRecognizerStop);
   REGISTER_SYMBOL(SbSpeechRecognizerCancel);
 #endif  // SB_API_VERSION >= 12 ||
-        // SB_HAS(SPEECH_RECOGNIZER)
-#endif  // SB_API_VERSION >= 5
+        // (SB_API_VERSION < 12 && SB_HAS(SPEECH_RECOGNIZER))
 
 #if SB_API_VERSION >= 12
   REGISTER_SYMBOL(SbSpeechSynthesisIsSupported);
@@ -403,8 +433,6 @@ ExportedSymbols::ExportedSymbols(
   REGISTER_SYMBOL(SbPlayerSeek2);
   REGISTER_SYMBOL(SbPlayerWriteSample2);
   REGISTER_SYMBOL(SbSystemSupportsResume);
-
-#if SB_API_VERSION >= 11
   REGISTER_SYMBOL(SbAudioSinkGetMinBufferSizeInFrames);
   REGISTER_SYMBOL(SbCPUFeaturesGet);
   REGISTER_SYMBOL(SbMediaSetAudioWriteDuration);
@@ -417,7 +445,6 @@ ExportedSymbols::ExportedSymbols(
   REGISTER_SYMBOL(SbThreadSamplerIsSupported);
   REGISTER_SYMBOL(SbThreadSamplerThaw);
   REGISTER_SYMBOL(SbWindowGetDiagonalSizeInInches);
-#endif  // SB_API_VERSION >= 11
 
 #if SB_API_VERSION >= 12
   REGISTER_SYMBOL(kSbDefaultMmapThreshold);
@@ -436,8 +463,6 @@ ExportedSymbols::ExportedSymbols(
   REGISTER_SYMBOL(kSbMaxThreadNameLength);
   REGISTER_SYMBOL(kSbMediaMaxAudioBitrateInBitsPerSecond);
   REGISTER_SYMBOL(kSbMediaMaxVideoBitrateInBitsPerSecond);
-  REGISTER_SYMBOL(kSbMediaMaximumVideoFrames);
-  REGISTER_SYMBOL(kSbMediaMaximumVideoPrerollFrames);
   REGISTER_SYMBOL(kSbMediaVideoFrameAlignment);
   REGISTER_SYMBOL(kSbMemoryLogPath);
   REGISTER_SYMBOL(kSbMemoryPageSize);
@@ -448,6 +473,10 @@ ExportedSymbols::ExportedSymbols(
   REGISTER_SYMBOL(kSbPreferredRgbaByteOrder);
   REGISTER_SYMBOL(kSbUserMaxSignedIn);
 #endif  // SB_API_VERSION >= 12
+
+#if SB_API_VERSION >= 13
+  REGISTER_SYMBOL(SbSystemNetworkIsDisconnected);
+#endif  // SB_API_VERSION >= 13
 }  // NOLINT
 
 const void* ExportedSymbols::Lookup(const char* name) {

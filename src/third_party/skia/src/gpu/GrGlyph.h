@@ -45,20 +45,13 @@ struct GrGlyph {
         return skGlyph.maskFormat() == SkMask::kSDF_Format
            ? GrGlyph::MaskStyle::kDistance_MaskStyle
            : GrGlyph::MaskStyle::kCoverage_MaskStyle;
-	}
-
-    static inline bool Fits(const SkIRect& bounds) {
-        return SkTFitsIn<int16_t>(bounds.fLeft) &&
-               SkTFitsIn<int16_t>(bounds.fTop) &&
-               SkTFitsIn<int16_t>(bounds.fRight) &&
-               SkTFitsIn<int16_t>(bounds.fBottom);
     }
 
     GrGlyph(const SkGlyph& skGlyph)
         : fPackedID{skGlyph.getPackedID()}
         , fMaskFormat{FormatFromSkGlyph(skGlyph.maskFormat())}
         , fMaskStyle{MaskStyleFromSkGlyph(skGlyph)}
-        , fBounds(GrIRect16::Make(skGlyph.iRect())) {}
+        , fBounds{GrIRect16::Make(skGlyph.iRect())} {}
 
 
     SkRect destRect(SkPoint origin) {

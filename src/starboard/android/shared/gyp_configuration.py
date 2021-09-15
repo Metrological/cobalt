@@ -146,7 +146,8 @@ class AndroidConfiguration(PlatformConfiguration):
     if not self._target_toolchain:
       tool_prefix = os.path.join(sdk_utils.GetNdkPath(), 'toolchains', 'llvm',
                                  'prebuilt', 'linux-x86_64', 'bin', '')
-      cc_path = self.build_accelerator + ' ' + tool_prefix + _ABI_TOOL_NAMES[self.android_abi][0]
+      cc_path = self.build_accelerator + ' ' + tool_prefix + _ABI_TOOL_NAMES[
+          self.android_abi][0]
       cxx_path = cc_path + '++'
       ar_path = tool_prefix + _ABI_TOOL_NAMES[self.android_abi][1]
       clang_flags = [
@@ -228,7 +229,7 @@ class AndroidConfiguration(PlatformConfiguration):
               path=cxx_path,
               defines=clang_defines,
               extra_flags=clang_flags + [
-                  '-std=c++11',
+                  '-std=c++14',
               ]),
           clang.AssemblerWithCPreprocessor(
               path=cc_path, defines=clang_defines, extra_flags=clang_flags),
@@ -244,7 +245,7 @@ class AndroidConfiguration(PlatformConfiguration):
       if not hasattr(self, 'host_compiler_environment'):
         self.host_compiler_environment = build.GetHostCompilerEnvironment(
             clang_build.GetClangSpecification(), self.build_accelerator)
-      cc_path = self.host_compiler_environment['CC_host'],
+      cc_path = self.host_compiler_environment['CC_host']
       cxx_path = self.host_compiler_environment['CXX_host']
       self._host_toolchain = [
           clang.CCompiler(path=cc_path),
@@ -276,32 +277,6 @@ class AndroidConfiguration(PlatformConfiguration):
   # A map of failing or crashing tests per target.
   __FILTERED_TESTS = {  # pylint: disable=invalid-name
       'player_filter_tests': [
-          # Filter flaky failed tests temporarily.
-          'VideoDecoderTests/VideoDecoderTest.SingleInput/0',
-          'VideoDecoderTests/VideoDecoderTest.SingleInput/2',
-          'VideoDecoderTests/VideoDecoderTest.SingleInput/4',
-          'VideoDecoderTests/VideoDecoderTest.SingleInput/6',
-          'VideoDecoderTests/VideoDecoderTest.ResetBeforeInput/0',
-          'VideoDecoderTests/VideoDecoderTest.ResetBeforeInput/2',
-          'VideoDecoderTests/VideoDecoderTest.ResetBeforeInput/4',
-          'VideoDecoderTests/VideoDecoderTest.ResetBeforeInput/6',
-          'VideoDecoderTests/VideoDecoderTest.MultipleResets/0',
-          'VideoDecoderTests/VideoDecoderTest.MultipleResets/2',
-          'VideoDecoderTests/VideoDecoderTest.MultipleResets/4',
-          'VideoDecoderTests/VideoDecoderTest.MultipleResets/6',
-          'VideoDecoderTests/VideoDecoderTest.MultipleInputs/0',
-          'VideoDecoderTests/VideoDecoderTest.MultipleInputs/2',
-          'VideoDecoderTests/VideoDecoderTest.MultipleInputs/4',
-          'VideoDecoderTests/VideoDecoderTest.MultipleInputs/6',
-          'VideoDecoderTests/VideoDecoderTest.Preroll/0',
-          'VideoDecoderTests/VideoDecoderTest.Preroll/2',
-          'VideoDecoderTests/VideoDecoderTest.Preroll/4',
-          'VideoDecoderTests/VideoDecoderTest.Preroll/6',
-          'VideoDecoderTests/VideoDecoderTest.DecodeFullGOP/0',
-          'VideoDecoderTests/VideoDecoderTest.DecodeFullGOP/2',
-          'VideoDecoderTests/VideoDecoderTest.DecodeFullGOP/4',
-          'VideoDecoderTests/VideoDecoderTest.DecodeFullGOP/6',
-
           # GetMaxNumberOfCachedFrames() on Android is device dependent,
           # and Android doesn't provide an API to get it. So, this function
           # doesn't make sense on Android. But HoldFramesUntilFull tests depend
@@ -317,28 +292,43 @@ class AndroidConfiguration(PlatformConfiguration):
           # Android currently does not support multi-video playback, which
           # the following tests depend upon.
           'VideoDecoderTests/VideoDecoderTest.ThreeMoreDecoders/*',
+
+          # The video pipeline will hang if it doesn't receive any input.
+          'PlayerComponentsTests/PlayerComponentsTest.EOSWithoutInput/*',
+
+          # The e/eac3 audio time reporting during pause will be revisitied.
+          'PlayerComponentsTests/PlayerComponentsTest.Pause/15',
       ],
       'nplb': [
           # This test is failing because localhost is not defined for IPv6 in
           # /etc/hosts.
           'SbSocketAddressTypes/SbSocketResolveTest.Localhost/1',
+
+          # These tests are taking longer due to interop on android. Work is
+          # underway to investigate whether this is acceptable.
+          'SbMediaCanPlayMimeAndKeySystem.ValidatePerformance',
+          'SbMediaConfigurationTest.ValidatePerformance',
+
           # SbDirectory has problems with empty Asset dirs.
           'SbDirectoryCanOpenTest.SunnyDayStaticContent',
           'SbDirectoryGetNextTest.SunnyDayStaticContent',
           'SbDirectoryOpenTest.SunnyDayStaticContent',
           'SbFileGetPathInfoTest.WorksOnStaticContentDirectories',
-          # Android doesn't currently support specifying a bitrate under 8000
-          'SbMediaCanPlayMimeAndKeySystem.MinimumSupport',
-          # There are issues with playback of heeac format files where the input
-          # |frames_per_channel| is 6912, instead of 12544 (as with other
-          # formats).
-          'SbPlayerWriteSampleTests/SbPlayerWriteSampleTest.NoInput/6',
+
           # These tests are disabled due to not receiving the kEndOfStream
           # player state update within the specified timeout.
-          'SbPlayerWriteSampleTests/SbPlayerWriteSampleTest.NoInput/7',
-          'SbPlayerWriteSampleTests/SbPlayerWriteSampleTest.NoInput/8',
-          'SbPlayerWriteSampleTests/SbPlayerWriteSampleTest.NoInput/9',
-          'SbPlayerWriteSampleTests/SbPlayerWriteSampleTest.NoInput/10',
+          'SbPlayerWriteSampleTests/SbPlayerWriteSampleTest.NoInput/*',
+
+          # Android does not use SbDrmSessionClosedFunc, which these tests
+          # depend on.
+          'SbDrmSessionTest.SunnyDay',
+          'SbDrmSessionTest.CloseDrmSessionBeforeUpdateSession',
+
+          # This test is failing because Android calls the
+          # SbDrmSessionUpdateRequestFunc with SbDrmStatus::kSbDrmStatusSuccess
+          # when invalid initialization data is passed to
+          # SbDrmGenerateSessionUpdateRequest().
+          'SbDrmSessionTest.InvalidSessionUpdateRequestParams',
       ],
   }
 

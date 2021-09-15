@@ -55,9 +55,6 @@ void V8FlagsInit() {
   };
 
   if (!configuration::Configuration::GetInstance()->CobaltEnableJit()) {
-#if !defined(V8_EMBEDDED_BUILTINS)
-    CHECK(false) << "Jitless mode required embedded builtins.";
-#endif
     kV8CommandLineFlags.push_back("--jitless");
   }
 
@@ -67,7 +64,7 @@ void V8FlagsInit() {
 
   for (auto flag_str : kV8CommandLineFlags) {
     v8::V8::SetFlagsFromString(flag_str.c_str(),
-                               SbStringGetLength(flag_str.c_str()));
+                               strlen(flag_str.c_str()));
   }
 #if defined(ENABLE_DEBUG_COMMAND_LINE_SWITCHES)
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();

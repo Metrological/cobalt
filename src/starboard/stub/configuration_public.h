@@ -162,15 +162,12 @@
 // Whether the current platform implements the on screen keyboard interface.
 #define SB_HAS_ON_SCREEN_KEYBOARD 0
 
-// Whether the current platform has speech recognizer.
-#define SB_HAS_SPEECH_RECOGNIZER 1
-
 // Whether the current platform has speech synthesis.
 #define SB_HAS_SPEECH_SYNTHESIS 1
 
 // --- Media Configuration ---------------------------------------------------
 
-// After a seek is triggerred, the default behavior is to append video frames
+// After a seek is triggered, the default behavior is to append video frames
 // from the last key frame before the seek time and append audio frames from the
 // seek time because usually all audio frames are key frames.  On platforms that
 // cannot decode video frames without displaying them, this will cause the video
@@ -187,10 +184,6 @@
 // The implementation is allowed to support kSbMediaAudioSampleTypeInt16 only
 // when this macro is defined.
 #undef SB_HAS_QUIRK_SUPPORT_INT16_AUDIO_SAMPLES
-
-// dlmalloc will use the ffs intrinsic if available.  Platforms on which this is
-// not available should define the following quirk.
-#undef SB_HAS_QUIRK_NO_FFS
 
 // --- Decoder-only Params ---
 

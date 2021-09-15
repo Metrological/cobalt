@@ -83,7 +83,7 @@
 //
 //     // If the decode works, you can get the texture out and render it.
 //     SbDecodeTargetInfo info;
-//     SbMemorySet(&info, 0, sizeof(info));
+//     memset(&info, 0, sizeof(info));
 //     SbDecodeTargetGetInfo(target, &info);
 //     GLuint texture =
 //         info.planes[kSbDecodeTargetPlaneRGBA].texture;
@@ -139,7 +139,7 @@ typedef enum SbDecodeTargetFormat {
   // order.
   kSbDecodeTargetFormat3Plane10BitYUVI420,
 
-  // A decoder target format consisting of a single plane with pixels layed out
+  // A decoder target format consisting of a single plane with pixels laid out
   // in the format UYVY.  Since there are two Y values per sample, but only one
   // U value and only one V value, horizontally the Y resolution is twice the
   // size of both the U and V resolutions.  Vertically, they Y, U and V all
@@ -178,7 +178,7 @@ typedef enum SbDecodeTargetPlane {
 #if SB_API_VERSION >= 12 || SB_HAS(GLES2)
 struct SbDecodeTargetGraphicsContextProvider;
 
-// Signature for a Starboard implementaion function that is to be run by a
+// Signature for a Starboard implementation function that is to be run by a
 // SbDecodeTargetGlesContextRunner callback.
 typedef void (*SbDecodeTargetGlesContextRunnerTarget)(
     void* gles_context_runner_target_context);
@@ -234,7 +234,6 @@ typedef struct SbDecodeTargetGraphicsContextProvider {
 // Defines a rectangular content region within a SbDecodeTargetInfoPlane
 // structure.
 typedef struct SbDecodeTargetInfoContentRegion {
-#if SB_API_VERSION >= 11
   // If the texture (width, height) is set to (1, 1), then these values will
   // be interpreted as normalized coordinates, and depending on the platform
   // (for example GLES 2.0 provides no method of obtaining the texture
@@ -244,14 +243,6 @@ typedef struct SbDecodeTargetInfoContentRegion {
   float top;
   float right;
   float bottom;
-#else
-  // These integer values are assumed to be in units of pixels, within the
-  // texture's width and height.
-  int left;
-  int top;
-  int right;
-  int bottom;
-#endif
 } SbDecodeTargetInfoContentRegion;
 
 // Defines an image plane within a SbDecodeTargetInfo object.
@@ -269,14 +260,12 @@ typedef struct SbDecodeTargetInfoPlane {
   // that it be set to something else like GL_TEXTURE_EXTERNAL_OES.
   uint32_t gl_texture_target;
 
-#if SB_API_VERSION >= 7
   // For kSbDecodeTargetFormat2PlaneYUVNV12 planes: the format of the
   // texture. Usually, for the luma plane, this is either GL_ALPHA or
   // GL_RED_EXT. For the chroma plane, this is usually GL_LUMINANCE_ALPHA
   // or GL_RG_EXT.
   // Ignored for other plane types.
   uint32_t gl_texture_format;
-#endif  // SB_API_VERSION >= 7
 
 #endif  // SB_API_VERSION >= 12 || SB_HAS(GLES2)
 

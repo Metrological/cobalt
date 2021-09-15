@@ -23,7 +23,7 @@ static int GetUIntMkvSize(uint64_t value) {
   return 8;
 }
 
-// Returns the minimium size required to serialize an integer value.
+// Returns the minimum size required to serialize an integer value.
 static int GetUIntSize(uint64_t value) {
   if (value < 0x0100ULL) return 1;
   if (value < 0x010000ULL) return 2;
@@ -119,7 +119,7 @@ static void WriteStringElement(uint8_t** buf_ptr, int* buf_size_ptr,
   const uint64_t size = value.length();
   WriteUInt(&buf, &buf_size, size);
 
-  SbMemoryCopy(buf, value.data(), size);
+  memcpy(buf, value.data(), size);
   buf += size;
   buf_size -= size;
 }

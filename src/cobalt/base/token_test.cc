@@ -47,7 +47,7 @@ TEST(TokenTest, CompareEqual) {
   EXPECT_EQ(non_empty_1, non_empty_2);
 }
 
-TEST(TokenTest, CompareUnqual) {
+TEST(TokenTest, CompareUnequal) {
   std::string kTestString = "test";
 
   Token empty;
@@ -71,7 +71,7 @@ TEST(TokenTest, CompareSorted) {
   // Sort the vector so we iterate it alphabetically.
   std::sort(tokens.begin(), tokens.end(),
             [](const Token& l, const Token& r) -> bool {
-              return SbStringCompareAll(l.c_str(), r.c_str()) < 0;
+              return strcmp(l.c_str(), r.c_str()) < 0;
             });
 
   // The natural order of the tokens is not alphabetical.

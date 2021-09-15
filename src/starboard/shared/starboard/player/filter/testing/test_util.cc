@@ -14,6 +14,7 @@
 
 #include "starboard/shared/starboard/player/filter/testing/test_util.h"
 
+#include "starboard/audio_sink.h"
 #include "starboard/common/log.h"
 #include "starboard/directory.h"
 #include "starboard/shared/starboard/media/media_support_internal.h"
@@ -58,14 +59,41 @@ std::string GetTestInputDirectory() {
 
 void StubDeallocateSampleFunc(SbPlayer player,
                               void* context,
-                              const void* sample_buffer) {
-}
+                              const void* sample_buffer) {}
 
 std::string ResolveTestFileName(const char* filename) {
   return GetTestInputDirectory() + kSbFileSepChar + filename;
 }
 
-std::vector<const char*> GetSupportedAudioTestFiles(bool include_heaac) {
+std::string GetContentTypeFromAudioCodec(SbMediaAudioCodec audio_codec,
+                                         const char* mime_attributes) {
+  SB_DCHECK(audio_codec != kSbMediaAudioCodecNone);
+
+  std::string content_type;
+  switch (audio_codec) {
+    case kSbMediaAudioCodecAac:
+      content_type = "audio/mp4; codecs=\"mp4a.40.2\"";
+      break;
+    case kSbMediaAudioCodecOpus:
+      content_type = "audio/webm; codecs=\"opus\"";
+      break;
+    case kSbMediaAudioCodecAc3:
+      content_type = "audio/mp4; codecs=\"ac-3\"";
+      break;
+    case kSbMediaAudioCodecEac3:
+      content_type = "audio/mp4; codecs=\"ec-3\"";
+      break;
+    default:
+      SB_NOTREACHED();
+  }
+  return strlen(mime_attributes) > 0 ? content_type + "; " + mime_attributes
+                                     : content_type;
+}
+
+std::vector<const char*> GetSupportedAudioTestFiles(
+    HeaacOption heaac_option,
+    int max_channels,
+    const char* extra_mime_attributes) {
   // beneath_the_canopy_aac_stereo.dmp
   //   codec: kSbMediaAudioCodecAac
   //   sampling rate: 44.1k
@@ -80,6 +108,14 @@ std::vector<const char*> GetSupportedAudioTestFiles(bool include_heaac) {
   // filters for every platform, just in case a particular test case should be
   // disabled.
 
+  struct AudioFileInfo {
+    const char* filename;
+    SbMediaAudioCodec audio_codec;
+    int num_channels;
+    int64_t bitrate;
+    bool is_heaac;
+  };
+
   const char* kFilenames[] = {"beneath_the_canopy_aac_stereo.dmp",
                               "beneath_the_canopy_aac_5_1.dmp",
                               "beneath_the_canopy_aac_mono.dmp",
@@ -90,34 +126,50 @@ std::vector<const char*> GetSupportedAudioTestFiles(bool include_heaac) {
                               "sintel_381_ac3.dmp",
                               "heaac.dmp"};
 
-  static std::vector<const char*> test_params_with_heaac;
-  static std::vector<const char*> test_params_without_heaac;
+  static std::vector<AudioFileInfo> audio_file_info_cache;
+  std::vector<const char*> filenames;
 
-  std::vector<const char*>& test_params =
-      include_heaac ? test_params_with_heaac : test_params_without_heaac;
+  if (audio_file_info_cache.empty()) {
+    audio_file_info_cache.reserve(SB_ARRAY_SIZE_INT(kFilenames));
+    for (auto filename : kFilenames) {
+      VideoDmpReader dmp_reader(ResolveTestFileName(filename).c_str(),
+                                VideoDmpReader::kEnableReadOnDemand);
+      SB_DCHECK(dmp_reader.number_of_audio_buffers() > 0);
 
-  if (!test_params.empty()) {
-    return test_params;
-  }
-
-  for (auto filename : kFilenames) {
-    VideoDmpReader dmp_reader(ResolveTestFileName(filename).c_str(),
-                              VideoDmpReader::kEnableReadOnDemand);
-    SB_DCHECK(dmp_reader.number_of_audio_buffers() > 0);
-    if (SbMediaIsAudioSupported(dmp_reader.audio_codec(),
-#if SB_API_VERSION >= 12
-                                "",  // content_type
-#endif  // SB_API_VERSION >= 12
-                                dmp_reader.audio_bitrate())) {
-      test_params_with_heaac.push_back(filename);
-      if (SbStringFindString(filename, "heaac") == nullptr) {
-        test_params_without_heaac.push_back(filename);
-      }
+      audio_file_info_cache.push_back(
+          {filename, dmp_reader.audio_codec(),
+           dmp_reader.audio_sample_info().number_of_channels,
+           dmp_reader.audio_bitrate(), strstr(filename, "heaac") != nullptr});
     }
   }
 
-  SB_DCHECK(!test_params.empty());
-  return test_params;
+  for (auto& audio_file_info : audio_file_info_cache) {
+    // Filter files with channels exceeding |max_channels|.
+    if (audio_file_info.num_channels > max_channels) {
+      continue;
+    }
+
+    // Filter heaac files when |heaac_option| == kExcludeHeaac.
+    if (heaac_option == kExcludeHeaac && audio_file_info.is_heaac) {
+      continue;
+    }
+
+    // Filter files of unsupported codec.
+    if (!SbMediaIsAudioSupported(
+            audio_file_info.audio_codec,
+#if SB_API_VERSION >= 12
+            GetContentTypeFromAudioCodec(audio_file_info.audio_codec,
+                                         extra_mime_attributes)
+                .c_str(),
+#endif  // SB_API_VERSION >= 12
+            audio_file_info.bitrate)) {
+      continue;
+    }
+
+    filenames.push_back(audio_file_info.filename);
+  }
+
+  return filenames;
 }
 
 std::vector<VideoTestParam> GetSupportedVideoTests() {
@@ -129,10 +181,9 @@ std::vector<VideoTestParam> GetSupportedVideoTests() {
   // filters for every platform, just in case a particular test case should be
   // disabled.
 
-  const char* kFilenames[] = {"beneath_the_canopy_137_avc.dmp",
-                              "beneath_the_canopy_248_vp9.dmp",
-                              "sintel_399_av1.dmp",
-                              "black_test_avc_1080p_30to60_fps.dmp"};
+  const char* kFilenames[] = {
+      "beneath_the_canopy_137_avc.dmp", "beneath_the_canopy_248_vp9.dmp",
+      "sintel_399_av1.dmp", "black_test_avc_1080p_30to60_fps.dmp"};
 
   static std::vector<VideoTestParam> test_params;
 
@@ -159,16 +210,12 @@ std::vector<VideoTestParam> GetSupportedVideoTests() {
               dmp_reader.video_codec(),
 #if SB_API_VERSION >= 12
               "",  // content_type
-#endif  // SB_API_VERSION >= 12
+#endif             // SB_API_VERSION >= 12
 #if SB_HAS(MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
               -1, -1, 8, kSbMediaPrimaryIdUnspecified,
               kSbMediaTransferIdUnspecified, kSbMediaMatrixIdUnspecified,
 #endif  // SB_HAS(MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
-#if SB_API_VERSION >= 11
               video_sample_info.frame_width, video_sample_info.frame_height,
-#else   // SB_API_VERSION >= 11
-              video_sample_info->frame_width, video_sample_info->frame_height,
-#endif  // SB_API_VERSION >= 11
               dmp_reader.video_bitrate(), dmp_reader.video_fps(), false)) {
         test_params.push_back(std::make_tuple(filename, output_mode));
       }

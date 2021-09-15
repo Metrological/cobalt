@@ -174,14 +174,12 @@ uint32_t DecodeTargetFormatToGLFormat(
     case kSbDecodeTargetFormat1PlaneRGBA:
     // For UYVY, we will use a fragment shader where R = the first U, G = Y,
     // B = the second U, and A = V.
-    case kSbDecodeTargetFormat1PlaneUYVY:
-    {
+    case kSbDecodeTargetFormat1PlaneUYVY: {
       DCHECK_EQ(0, plane);
       return GL_RGBA;
     } break;
     case kSbDecodeTargetFormat2PlaneYUVNV12: {
       DCHECK_LT(plane, 2);
-#if SB_API_VERSION >= 7
       // If this DCHECK fires, please set gl_texture_format, introduced
       // in Starboard 7.
       //
@@ -200,31 +198,20 @@ uint32_t DecodeTargetFormatToGLFormat(
           return plane_info->gl_texture_format;
         default:
           // gl_texture_format is either unassigned or assigned to
-          // an invalud value. Please see comment above for
+          // an invalid value. Please see comment above for
           // gl_texture_format change, introduced in Starboard 7.
           CHECK(false);
           return 0;
       }
-#else   // SB_API_VERSION >= 7
-      switch (plane) {
-        case 0:
-          return GL_ALPHA;
-        case 1:
-          return GL_LUMINANCE_ALPHA;
-        default:
-          NOTREACHED();
-          return GL_RGBA;
-      }
-#endif  // SB_API_VERSION >= 7
     } break;
     case kSbDecodeTargetFormat3Plane10BitYUVI420:
     case kSbDecodeTargetFormat3PlaneYUVI420: {
       DCHECK_LT(plane, 3);
-#if SB_API_VERSION >= 7 && defined(GL_RED_EXT)
+#if defined(GL_RED_EXT)
       if (plane_info->gl_texture_format == GL_RED_EXT) {
         return GL_RED_EXT;
       }
-#endif  // SB_API_VERSION >= 7 && defined(GL_RED_EXT)
+#endif  // defined(GL_RED_EXT)
       return GL_ALPHA;
     } break;
     default: {
@@ -279,7 +266,7 @@ scoped_refptr<render_tree::Image>
 HardwareResourceProvider::CreateImageFromSbDecodeTarget(
     SbDecodeTarget decode_target) {
   SbDecodeTargetInfo info;
-  SbMemorySet(&info, 0, sizeof(info));
+  memset(&info, 0, sizeof(info));
   CHECK(SbDecodeTargetGetInfo(decode_target, &info));
   DCHECK_NE(kSbDecodeTargetFormat1PlaneBGRA, info.format);
 
@@ -287,7 +274,7 @@ HardwareResourceProvider::CreateImageFromSbDecodeTarget(
   scoped_refptr<DecodeTargetReferenceCounted> decode_target_ref(
       new DecodeTargetReferenceCounted(decode_target));
 
-// There is limited format support at this time.
+  // There is limited format support at this time.
   int planes_per_format = SbDecodeTargetNumberOfPlanesForFormat(info.format);
 
   for (int i = 0; i < planes_per_format; ++i) {
@@ -476,6 +463,13 @@ HardwareResourceProvider::GetCharacterFallbackTypeface(
               NULL, CobaltFontStyleToSkFontStyle(font_style), &language_cstr, 1,
               character)));
   return scoped_refptr<render_tree::Typeface>(new SkiaTypeface(typeface));
+}
+
+void HardwareResourceProvider::LoadAdditionalFonts() {
+  sk_sp<SkFontMgr> font_manager(SkFontMgr::RefDefault());
+  SkFontMgr_Cobalt* cobalt_font_manager =
+      base::polymorphic_downcast<SkFontMgr_Cobalt*>(font_manager.get());
+  cobalt_font_manager->LoadLocaleDefault();
 }
 
 scoped_refptr<render_tree::Typeface>

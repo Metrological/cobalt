@@ -14,6 +14,7 @@
 
 #include <string>
 
+#include "starboard/shared/starboard/media/media_support_internal.h"
 #include "starboard/media.h"
 
 #include "third_party/starboard/wpe/shared/drm/drm_system_ocdm.h"

@@ -79,11 +79,7 @@ SbMediaVideoCodec MediaVideoCodecToSbMediaVideoCodec(VideoCodec codec) {
     case kCodecHEVC:
       return kSbMediaVideoCodecH265;
     case kCodecAV1:
-#if SB_API_VERSION >= 11
       return kSbMediaVideoCodecAv1;
-#else  // SB_API_VERSION >= 11
-      return kSbMediaVideoCodecVp10;
-#endif  // SB_API_VERSION >= 11
     default:
       // Cobalt only supports a subset of video codecs defined by Chromium.
       DLOG(ERROR) << "Unsupported video codec "
@@ -100,10 +96,8 @@ SbMediaAudioSampleInfo MediaAudioConfigToSbMediaAudioSampleInfo(
 
   SbMediaAudioSampleInfo audio_sample_info;
 
-#if SB_API_VERSION >= 11
   audio_sample_info.codec =
       MediaAudioCodecToSbMediaAudioCodec(audio_decoder_config.codec());
-#endif  // SB_API_VERSION >= 11
 
 #if SB_HAS(PLAYER_CREATION_AND_OUTPUT_MODE_QUERY_IMPROVEMENT)
   audio_sample_info.mime = audio_decoder_config.mime().c_str();
@@ -188,10 +182,10 @@ void FillDrmSampleInfo(const scoped_refptr<DecoderBuffer>& buffer,
     return;
   }
 
-  SbMemoryCopy(drm_info->initialization_vector, &config->iv()[0],
+  memcpy(drm_info->initialization_vector, &config->iv()[0],
                config->iv().size());
   drm_info->initialization_vector_size = config->iv().size();
-  SbMemoryCopy(drm_info->identifier, &config->key_id()[0],
+  memcpy(drm_info->identifier, &config->key_id()[0],
                config->key_id().size());
   drm_info->identifier_size = config->key_id().size();
   drm_info->subsample_count = config->subsamples().size();
@@ -368,8 +362,9 @@ SbMediaColorMetadata MediaToSbMediaColorMetadata(
       static_cast<SbMediaRangeId>(color_space.range());
   if (sb_media_color_metadata.primaries == kSbMediaPrimaryIdCustom) {
     const float* custom_primary_matrix = color_space.custom_primary_matrix();
-    SbMemoryCopy(sb_media_color_metadata.custom_primary_matrix,
-                 custom_primary_matrix, sizeof(custom_primary_matrix));
+    memcpy(sb_media_color_metadata.custom_primary_matrix,
+           custom_primary_matrix,
+           sizeof(sb_media_color_metadata.custom_primary_matrix));
   }
 
   return sb_media_color_metadata;

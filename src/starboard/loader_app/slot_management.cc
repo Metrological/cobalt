@@ -17,7 +17,10 @@
 #include <vector>
 
 #include "starboard/common/log.h"
+#include "starboard/common/string.h"
 #include "starboard/configuration_constants.h"
+#include "starboard/elf_loader/elf_loader_constants.h"
+#include "starboard/elf_loader/sabi_string.h"
 #include "starboard/event.h"
 #include "starboard/file.h"
 #include "starboard/loader_app/app_key_files.h"
@@ -184,7 +187,7 @@ void* LoadSlotManagedLibrary(const std::string& app_key,
         current_installation = RevertBack(current_installation, app_key);
         continue;
       }
-      // If the current installtion is in use by an updater roll back.
+      // If the current installation is in use by an updater roll back.
       if (DrainFileDraining(installation_path.data(), "")) {
         SB_LOG(INFO) << "Active slot draining";
         current_installation = RevertBack(current_installation, app_key);
@@ -204,6 +207,12 @@ void* LoadSlotManagedLibrary(const std::string& app_key,
     SbStringFormatF(lib_path.data(), kSbFileMaxPath, "%s%s%s%s%s",
                     installation_path.data(), kSbFileSepString,
                     kCobaltLibraryPath, kSbFileSepString, kCobaltLibraryName);
+    if (!SbFileExists(lib_path.data())) {
+      // Try the compressed path if the binary doesn't exits.
+      starboard::strlcat(lib_path.data(),
+                         starboard::elf_loader::kCompressionSuffix,
+                         kSbFileMaxPath);
+    }
     SB_LOG(INFO) << "lib_path=" << lib_path.data();
 
     std::string content;
@@ -244,15 +253,31 @@ void* LoadSlotManagedLibrary(const std::string& app_key,
       SB_LOG(INFO) << "Loaded Cobalt library information into Crashpad.";
     }
 
+    auto get_evergreen_sabi_string_func = reinterpret_cast<const char* (*)()>(
+        library_loader->Resolve("GetEvergreenSabiString"));
+
+    if (!CheckSabi(get_evergreen_sabi_string_func)) {
+      SB_LOG(ERROR) << "CheckSabi failed";
+      // Hard failure. Discard the image and auto rollback, but only if
+      // the current image is not the system image.
+      if (current_installation != 0) {
+        current_installation = RevertBack(current_installation, app_key);
+        continue;
+      } else {
+        // The system image at index 0 failed.
+        return NULL;
+      }
+    }
+
     auto get_user_agent_func = reinterpret_cast<const char* (*)()>(
         library_loader->Resolve("GetCobaltUserAgentString"));
     if (!get_user_agent_func) {
       SB_LOG(ERROR) << "Failed to get user agent string";
     } else {
-      EvergreenAnnotations cobalt_version_info;
-      SbMemorySet(&cobalt_version_info, sizeof(EvergreenAnnotations), 0);
-      SbStringCopy(cobalt_version_info.user_agent_string, get_user_agent_func(),
-                   EVERGREEN_USER_AGENT_MAX_SIZE);
+      CrashpadAnnotations cobalt_version_info;
+      memset(&cobalt_version_info, 0, sizeof(CrashpadAnnotations));
+      starboard::strlcpy(cobalt_version_info.user_agent_string,
+                         get_user_agent_func(), USER_AGENT_STRING_MAX_SIZE);
       third_party::crashpad::wrapper::AddAnnotationsToCrashpad(
           cobalt_version_info);
       SB_DLOG(INFO) << "Added user agent string to Crashpad.";

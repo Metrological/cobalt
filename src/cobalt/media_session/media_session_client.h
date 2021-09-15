@@ -19,6 +19,7 @@
 #include <memory>
 
 #include "base/threading/thread_checker.h"
+#include "cobalt/extension/media_session.h"
 #include "cobalt/media/web_media_player_factory.h"
 #include "cobalt/media_session/media_session.h"
 #include "cobalt/media_session/media_session_action_details.h"
@@ -34,20 +35,14 @@ class MediaSessionClient {
   friend class MediaSession;
 
  public:
-  MediaSessionClient() : MediaSessionClient(new MediaSession(this)) {}
-
+  MediaSessionClient(): MediaSessionClient(nullptr) {}
   // Injectable MediaSession for tests.
-  explicit MediaSessionClient(scoped_refptr<MediaSession> media_session)
-      : media_session_(media_session),
-        platform_playback_state_(kMediaSessionPlaybackStateNone) {}
+  explicit MediaSessionClient(MediaSession* media_session);
 
   virtual ~MediaSessionClient();
 
-  // Creates platform-specific instance.
-  static std::unique_ptr<MediaSessionClient> Create();
-
   // Retrieves the singleton MediaSession associated with this client.
-  scoped_refptr<MediaSession>& GetMediaSession() { return media_session_; }
+  MediaSession* GetMediaSession() { return media_session_; }
 
   // The web app should set the MediaPositionState of the MediaSession object.
   // However, if that is not done, then query the web media player factory to
@@ -59,40 +54,95 @@ class MediaSessionClient {
   // the "guessed playback state"
   // https://wicg.github.io/mediasession/#guessed-playback-state
   // Can be invoked from any thread.
-  void UpdatePlatformPlaybackState(MediaSessionPlaybackState state);
+  void UpdatePlatformPlaybackState(
+      CobaltExtensionMediaSessionPlaybackState state);
 
   // Invokes a given media session action
   // https://wicg.github.io/mediasession/#actions-model
   // Can be invoked from any thread.
-  void InvokeAction(MediaSessionAction action) {
-    std::unique_ptr<MediaSessionActionDetails> details(
-        new MediaSessionActionDetails());
-    details->set_action(action);
+  void InvokeAction(CobaltExtensionMediaSessionAction action) {
+    std::unique_ptr<CobaltExtensionMediaSessionActionDetails> details(
+        new CobaltExtensionMediaSessionActionDetails());
+    CobaltExtensionMediaSessionActionDetailsInit(details.get(), action);
     InvokeActionInternal(std::move(details));
   }
 
   // Invokes a given media session action that takes additional details.
-  void InvokeAction(std::unique_ptr<MediaSessionActionDetails> details) {
-    InvokeActionInternal(std::move(details));
+  void InvokeAction(CobaltExtensionMediaSessionActionDetails details) {
+    std::unique_ptr<CobaltExtensionMediaSessionActionDetails> details_ptr(
+        new CobaltExtensionMediaSessionActionDetails(details));
+    InvokeActionInternal(std::move(details_ptr));
   }
 
   // Invoked on the browser thread when any metadata, position state, playback
   // state, or supported session actions change.
   virtual void OnMediaSessionStateChanged(
-      const MediaSessionState& session_state) = 0;
+      const MediaSessionState& session_state);
+
+  // Indicate the media session client is active or not depending on the
+  // media session playback state.
+  bool is_active() {
+    return session_state_.actual_playback_state() !=
+        kMediaSessionPlaybackStateNone;
+  }
+
+  // Set maybe freeze callback.
+  void SetMaybeFreezeCallback(const base::Closure& maybe_freeze_callback) {
+    maybe_freeze_callback_ = maybe_freeze_callback;
+  }
+
+  void set_media_session(MediaSession* media_session) {
+    media_session_ = media_session;
+  }
+
+  // Post a delayed task for running MaybeFreeze callback.
+  void PostDelayedTaskForMaybeFreezeCallback();
 
  private:
   THREAD_CHECKER(thread_checker_);
-  scoped_refptr<MediaSession> media_session_;
+  MediaSession* media_session_;
   MediaSessionState session_state_;
   MediaSessionPlaybackState platform_playback_state_;
   const media::WebMediaPlayerFactory* media_player_factory_ = nullptr;
+  const CobaltExtensionMediaSessionApi* extension_;
 
   void UpdateMediaSessionState();
   MediaSessionPlaybackState ComputeActualPlaybackState() const;
   MediaSessionState::AvailableActionsSet ComputeAvailableActions() const;
+  void InvokeActionInternal(
+      std::unique_ptr<CobaltExtensionMediaSessionActionDetails> details);
 
-  void InvokeActionInternal(std::unique_ptr<MediaSessionActionDetails> details);
+  void ConvertMediaSessionActions(
+      const MediaSessionState::AvailableActionsSet& actions,
+      bool result[kCobaltExtensionMediaSessionActionNumActions]);
+  std::unique_ptr<MediaSessionActionDetails> ConvertActionDetails(
+      const CobaltExtensionMediaSessionActionDetails& ext_details);
+
+  // Static callback wrappers for MediaSessionAPI extension.
+  static void UpdatePlatformPlaybackStateCallback(
+      CobaltExtensionMediaSessionPlaybackState state, void* callback_context);
+  static void InvokeActionCallback(
+      CobaltExtensionMediaSessionActionDetails details, void* callback_context);
+
+  // MediaSessionAPI extension type conversion helpers.
+  CobaltExtensionMediaSessionPlaybackState ConvertPlaybackState(
+      MediaSessionPlaybackState state);
+  MediaSessionPlaybackState ConvertPlaybackState(
+      CobaltExtensionMediaSessionPlaybackState state);
+  CobaltExtensionMediaSessionAction ConvertMediaSessionAction(
+      MediaSessionAction action);
+  MediaSessionAction ConvertMediaSessionAction(
+      CobaltExtensionMediaSessionAction action);
+
+  // If the media session is not active, then run MaybeFreezeCallback to
+  // suspend the App.
+  void RunMaybeFreezeCallback(int sequence_number);
+
+  base::Closure maybe_freeze_callback_;
+
+  // This is for checking the sequence number of PostDelayedTask. It should be
+  // aligned with a single thread.
+  int sequence_number_;
 
   DISALLOW_COPY_AND_ASSIGN(MediaSessionClient);
 };

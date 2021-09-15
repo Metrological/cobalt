@@ -52,6 +52,33 @@ class Application {
   // Signature for a function that will be called at the beginning of Teardown.
   typedef void (*TeardownCallback)(void);
 
+#if SB_API_VERSION >= 13
+  // Enumeration of states that the application can be in.
+  enum State {
+    // The initial Unstarted state.
+    kStateUnstarted,
+
+    // The normal foreground, fully-visible state after receiving the initial
+    // START event or after FOCUS from Blurred.
+    kStateStarted,
+
+    // The background-but-visible or partially-obscured state after receiving a
+    // BLUR event from Started or REVEAL event from Concealed.
+    kStateBlurred,
+
+    // The background-invisible state after receiving a CONCEAL event from
+    // Blurred or UNFREEZE event from Frozen.
+    kStateConcealed,
+
+    // The fully-obscured or about-to-be-terminated state after receiving a
+    // FREEZE event in Concealed.
+    kStateFrozen,
+
+    // The completely terminated state after receiving the STOP event in the
+    // Frozen.
+    kStateStopped,
+  };
+#else
   // Enumeration of states that the application can be in.
   enum State {
     // The initial Unstarted state.
@@ -78,6 +105,7 @@ class Application {
     // Suspended state.
     kStateStopped,
   };
+#endif  // SB_API_VERSION >= 13
 
   // Structure to keep track of scheduled events, also used as the data argument
   // for kSbEventTypeScheduled Events.
@@ -116,6 +144,31 @@ class Application {
   // deleting the event and calling the destructor on its data when it is
   // deleted.
   struct Event {
+#if SB_API_VERSION >= 13
+     Event(SbEventType type, SbTimeMonotonic timestamp,
+           void* data, SbEventDataDestructor destructor)
+        : event(new SbEvent()), destructor(destructor), error_level(0) {
+      event->type = type;
+      event->timestamp = timestamp;
+      event->data = data;
+    }
+
+    Event(SbEventType type, void* data, SbEventDataDestructor destructor)
+        : event(new SbEvent()), destructor(destructor), error_level(0) {
+      event->type = type;
+      event->timestamp = SbTimeGetMonotonicNow();
+      event->data = data;
+    }
+
+    explicit Event(TimedEvent* data)
+        : event(new SbEvent()),
+          destructor(&DeleteDestructor<TimedEvent>),
+          error_level(0) {
+      event->type = kSbEventTypeScheduled;
+      event->timestamp = SbTimeGetMonotonicNow();
+      event->data = data;
+    }
+#else  // SB_API_VERSION >= 13
     Event(SbEventType type, void* data, SbEventDataDestructor destructor)
         : event(new SbEvent()), destructor(destructor), error_level(0) {
       event->type = type;
@@ -128,6 +181,7 @@ class Application {
       event->type = kSbEventTypeScheduled;
       event->data = data;
     }
+#endif  // SB_API_VERSION >= 13
     ~Event() {
       if (destructor) {
         destructor(event->data);
@@ -162,9 +216,7 @@ class Application {
   int Run(int argc, char** argv, const char* link_data) {
     return Run(CommandLine(argc, argv), link_data);
   }
-  int Run(int argc, char** argv) {
-    return Run(CommandLine(argc, argv));
-  }
+  int Run(int argc, char** argv) { return Run(CommandLine(argc, argv)); }
 
 // Prevents GetCommandLine from being redefined.  For example, Windows
 // defines it to GetCommandLineW, which causes link errors.
@@ -176,6 +228,70 @@ class Application {
   // NULL until Run() is called.
   const CommandLine* GetCommandLine();
 
+#if SB_API_VERSION >= 13
+  // Signals that the application should transition from STARTED to BLURRED as
+  // soon as possible. Does nothing if already BLURRED or CONCEALED. May be
+  // called from an external thread.
+  //
+  // |context|: A context value to pass to |callback| on event completion. Must
+  // not be NULL if callback is not NULL.
+  // |callback|: A function to call on event completion, from the main thread.
+  void Blur(void* context, EventHandledCallback callback);
+
+  // Signals that the application should transition to STARTED as soon as
+  // possible, moving through all required state transitions to get there. Does
+  // nothing if already STARTED. May be called from an external thread.
+  //
+  // |context|: A context value to pass to |callback| on event completion. Must
+  // not be NULL if callback is not NULL.
+  // |callback|: A function to call on event completion, from the main thread.
+  void Focus(void* context, EventHandledCallback callback);
+
+  // Signals that the application should transition to CONCEALED from BLURRED
+  // as soon as possible, moving through all required state transitions to get
+  // there. Does nothing if already CONCEALED, FROZEN, or STOPPED. May be called
+  // from an external thread.
+  //
+  // |context|: A context value to pass to |callback| on event completion. Must
+  // not be NULL if callback is not NULL.
+  // |callback|: A function to call on event completion, from the main thread.
+  void Conceal(void* context, EventHandledCallback callback);
+
+  // Signals that the application should transition to BLURRED from CONCEALED as
+  // soon as possible, moving through all required state transitions to get
+  // there. Does nothing if already STARTED or BLURRED. May be called from
+  // an external thread.
+  //
+  // |context|: A context value to pass to |callback| on event completion. Must
+  // not be NULL if callback is not NULL.
+  // |callback|: A function to call on event completion, from the main thread.
+  void Reveal(void* context, EventHandledCallback callback);
+
+  // Signals that the application should transition to FROZEN as soon as
+  // possible, moving through all required state transitions to get there. Does
+  // nothing if already FROZEN or STOPPED. May be called from an external
+  // thread.
+  //
+  // |context|: A context value to pass to |callback| on event completion. Must
+  // not be NULL if callback is not NULL.
+  // |callback|: A function to call on event completion, from the main thread.
+  void Freeze(void* context, EventHandledCallback callback);
+
+  // Signals that the application should transition to CONCEALED from FROZEN as
+  // soon as possible. Does nothing if already CONCEALED, BLURRED, or STARTED.
+  // May be called from an external thread.
+  //
+  // |context|: A context value to pass to |callback| on event completion. Must
+  // not be NULL if callback is not NULL.
+  // |callback|: A function to call on event completion, from the main thread.
+  void Unfreeze(void* context, EventHandledCallback callback);
+
+  // Signals that the application should gracefully terminate as soon as
+  // possible. Will transition through BLURRED, CONCEALED and FROZEN to STOPPED
+  // as appropriate for the current state. May be called from an external
+  // thread.
+  void Stop(int error_level);
+#else
   // Signals that the application should transition from STARTED to PAUSED as
   // soon as possible. Does nothing if already PAUSED or SUSPENDED. May be
   // called from an external thread.
@@ -216,6 +332,7 @@ class Application {
   // possible. Will transition through PAUSED and SUSPENDED to STOPPED as
   // appropriate for the current state. May be called from an external thread.
   void Stop(int error_level);
+#endif  // SB_API_VERSION >= 13
 
   // Injects a link event to the application with the given |link_data|, which
   // must be a null-terminated string. Makes a copy of |link_data|, so it only
@@ -226,14 +343,17 @@ class Application {
   // Injects an event of type kSbEventTypeLowMemory to the application.
   void InjectLowMemoryEvent();
 
-#if SB_API_VERSION >= 8
+#if SB_API_VERSION >= 13
+  void InjectOsNetworkDisconnectedEvent();
+  void InjectOsNetworkConnectedEvent();
+#endif
+
   // Inject a window size change event.
   //
   // |context|: A context value to pass to |callback| on event completion. Must
   // not be NULL if callback is not NULL.
   // |callback|: A function to call on event completion, from the main thread.
   void WindowSizeChanged(void* context, EventHandledCallback callback);
-#endif  // SB_API_VERSION >= 8
 
   // Schedules an event into the event queue.  May be called from an external
   // thread.
@@ -355,7 +475,11 @@ class Application {
 
   // Synchronously dispatches a Start event to the system event handler. Must be
   // called on the main dispatch thread.
+#if SB_API_VERSION >= 13
+  void DispatchStart(SbTimeMonotonic timestamp);
+#else  // SB_API_VERSION >= 13
   void DispatchStart();
+#endif  // SB_API_VERSION >= 13
 
   // Returns whether the Preload event should be sent in |Run| before entering
   // the event loop. Derived classes that return true must call |Unpause| or
@@ -366,7 +490,11 @@ class Application {
 
   // Synchronously dispatches a Preload event to the system event handler. Must
   // be called on the main dispatch thread.
+#if SB_API_VERSION >= 13
+  void DispatchPreload(SbTimeMonotonic timestamp);
+#else  // SB_API_VERSION >= 13
   void DispatchPreload();
+#endif  // SB_API_VERSION >= 13
 
   // Returns whether the '--preload' command-line argument is specified.
   bool HasPreloadSwitch();
@@ -384,7 +512,11 @@ class Application {
  private:
   // Creates an initial event type of either Start or Preload with the original
   // command line and deep link.
+#if SB_API_VERSION >= 13
+  Event* CreateInitialEvent(SbEventType type, SbTimeMonotonic timestamp);
+#else  // SB_API_VERSION >= 13
   Event* CreateInitialEvent(SbEventType type);
+#endif  // SB_API_VERSION >= 13
 
   // Internal workhorse of the main run loop.
   int RunLoop();

@@ -145,20 +145,27 @@ bool CanPlay(const media::CanPlayTypeHandler& can_play_type_handler,
 
 Navigator::Navigator(
     script::EnvironmentSettings* settings, const std::string& user_agent,
-    const std::string& language, scoped_refptr<MediaSession> media_session,
+    UserAgentPlatformInfo* platform_info, const std::string& language,
     scoped_refptr<cobalt::dom::captions::SystemCaptionSettings> captions,
     script::ScriptValueFactory* script_value_factory)
     : user_agent_(user_agent),
+      user_agent_data_(
+          new NavigatorUAData(platform_info, script_value_factory)),
       language_(language),
       mime_types_(new MimeTypeArray()),
       plugins_(new PluginArray()),
-      media_session_(media_session),
       media_devices_(
           new media_capture::MediaDevices(settings, script_value_factory)),
       system_caption_settings_(captions),
       script_value_factory_(script_value_factory) {}
 
 const std::string& Navigator::language() const { return language_; }
+
+script::Sequence<std::string> Navigator::languages() const {
+  script::Sequence<std::string> languages;
+  languages.push_back(language_);
+  return languages;
+}
 
 base::Optional<std::string> GetFilenameForLicenses() {
   const size_t kBufferSize = kSbFileMaxPath + 1;
@@ -207,9 +214,21 @@ const std::string Navigator::licenses() const {
 
 const std::string& Navigator::user_agent() const { return user_agent_; }
 
+const scoped_refptr<NavigatorUAData>& Navigator::user_agent_data() const {
+  return user_agent_data_;
+}
+
 bool Navigator::java_enabled() const { return false; }
 
 bool Navigator::cookie_enabled() const { return false; }
+
+bool Navigator::on_line() const {
+#if SB_API_VERSION >= 13
+  return !SbSystemNetworkIsDisconnected();
+#else
+  return true;
+#endif
+}
 
 scoped_refptr<media_capture::MediaDevices> Navigator::media_devices() {
   return media_devices_;
@@ -223,8 +242,20 @@ const scoped_refptr<PluginArray>& Navigator::plugins() const {
   return plugins_;
 }
 
-const scoped_refptr<media_session::MediaSession>& Navigator::media_session()
-    const {
+const scoped_refptr<media_session::MediaSession>& Navigator::media_session() {
+  if (media_session_ == nullptr) {
+    media_session_ =
+        scoped_refptr<media_session::MediaSession>(new MediaSession());
+
+    if (media_player_factory_ != nullptr) {
+      media_session_->EnsureMediaSessionClient();
+      DCHECK(media_session_->media_session_client());
+      media_session_->media_session_client()->SetMaybeFreezeCallback(
+          maybe_freeze_callback_);
+      media_session_->media_session_client()->SetMediaPlayerFactory(
+          media_player_factory_);
+    }
+  }
   return media_session_;
 }
 

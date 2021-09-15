@@ -33,7 +33,7 @@ const auto kHeadless = AvcParameterSets::kHeadless;
 const auto kAnnexBHeaderSizeInBytes =
     AvcParameterSets::kAnnexBHeaderSizeInBytes;
 const uint8_t kSliceStartCode = 0x61;
-const uint8_t kIdrStartCode = 0x65;
+const uint8_t kIdrStartCode = AvcParameterSets::kIdrStartCode;
 const uint8_t kSpsStartCode = AvcParameterSets::kSpsStartCode;
 const uint8_t kPpsStartCode = AvcParameterSets::kPpsStartCode;
 
@@ -323,7 +323,7 @@ TEST(AvcParameterSetsTest, MultipleSpsAndPpsWithoutPayload) {
   }
 }
 
-TEST(AvcParameterSetsTest, SpsAfterPayload) {
+TEST(AvcParameterSetsTest, SpsAfterIdr) {
   auto parameter_sets_in_annex_b = kSpsInAnnexB + kPpsInAnnexB;
   auto nalus_in_annex_b =
       parameter_sets_in_annex_b + kIdrInAnnexB + kSpsInAnnexB;
@@ -334,7 +334,7 @@ TEST(AvcParameterSetsTest, SpsAfterPayload) {
       HasEqualParameterSets(parameter_sets_in_annex_b, nalus_in_annex_b));
 }
 
-TEST(AvcParameterSetsTest, PpsAfterPayload) {
+TEST(AvcParameterSetsTest, PpsAfterIdr) {
   auto parameter_sets_in_annex_b = kSpsInAnnexB + kPpsInAnnexB;
   auto nalus_in_annex_b =
       parameter_sets_in_annex_b + kIdrInAnnexB + kPpsInAnnexB;
@@ -345,7 +345,7 @@ TEST(AvcParameterSetsTest, PpsAfterPayload) {
       HasEqualParameterSets(parameter_sets_in_annex_b, nalus_in_annex_b));
 }
 
-TEST(AvcParameterSetsTest, SpsAndPpsAfterPayloadWithoutSpsAndPps) {
+TEST(AvcParameterSetsTest, SpsAndPpsAfterIdrWithoutSpsAndPps) {
   auto parameter_sets_in_annex_b = kSpsInAnnexB + kPpsInAnnexB;
   auto nalus_in_annex_b =
       kIdrInAnnexB + kPpsInAnnexB + parameter_sets_in_annex_b;
@@ -430,7 +430,7 @@ TEST(AvcParameterSetsTest, InvalidNaluHeader) {
   }
 }
 
-TEST(AvcParameterSetsTest, MultiNalusWithouSpsPps) {
+TEST(AvcParameterSetsTest, MultiNalusWithoutSpsPps) {
   std::vector<uint8_t> nalus_in_annex_b = kIdrInAnnexB + kSliceInAnnexB;
 
   for (int i = 0; i < 3; ++i) {
@@ -475,7 +475,7 @@ TEST(AvcParameterSetsTest, ConvertAnnexBToAvcc) {
 }
 
 TEST(AvcParameterSetsTest, ConvertAnnexBToAvccEmptyNalus) {
-  const std::vector<uint8_t> kEmpty;
+  const std::vector<uint8_t> kEmpty = {};
   const std::vector<uint8_t> kRawNalu = {1, 2, 3, 4, 5};
 
   std::vector<uint8_t> nalus_in_annex_b;

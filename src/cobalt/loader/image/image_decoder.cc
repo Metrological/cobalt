@@ -21,6 +21,7 @@
 #include "base/trace_event/trace_event.h"
 #include "cobalt/configuration/configuration.h"
 #include "cobalt/loader/image/dummy_gif_image_decoder.h"
+#include "cobalt/loader/image/failure_image_decoder.h"
 #include "cobalt/loader/image/image_decoder_starboard.h"
 #include "cobalt/loader/image/jpeg_image_decoder.h"
 #include "cobalt/loader/image/lottie_animation_decoder.h"
@@ -28,6 +29,7 @@
 #include "cobalt/loader/image/stub_image_decoder.h"
 #include "cobalt/loader/image/webp_image_decoder.h"
 #include "cobalt/loader/switches.h"
+#include "cobalt/render_tree/resource_provider_stub.h"
 #include "net/base/mime_util.h"
 #include "net/http/http_status_code.h"
 #include "starboard/configuration.h"
@@ -52,26 +54,46 @@ void CacheMessage(std::string* result, const std::string& message) {
   result->append(message);
 }
 
+// Returns true if the ResourceProvider is ResourceProviderStub.
+bool IsResourceProviderStub(render_tree::ResourceProvider* resource_provider) {
+  return resource_provider->GetTypeId() ==
+         base::GetTypeId<render_tree::ResourceProviderStub>();
+}
+
+}  // namespace
+
 // Determine the ImageType of an image from its signature.
 ImageDecoder::ImageType DetermineImageType(const uint8* header) {
   if (!memcmp(header, "\xFF\xD8\xFF", 3)) {
     return ImageDecoder::kImageTypeJPEG;
   } else if (!memcmp(header, "GIF87a", 6) || !memcmp(header, "GIF89a", 6)) {
     return ImageDecoder::kImageTypeGIF;
-  } else if (!memcmp(header, "{", 1)) {
-    // TODO: Improve heuristics for determining whether the file contains valid
-    // Lottie JSON.
-    return ImageDecoder::kImageTypeJSON;
   } else if (!memcmp(header, "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A", 8)) {
     return ImageDecoder::kImageTypePNG;
   } else if (!memcmp(header, "RIFF", 4) && !memcmp(header + 8, "WEBPVP", 6)) {
     return ImageDecoder::kImageTypeWebP;
   } else {
+    const std::string header_str = reinterpret_cast<const char*>(header);
+    std::string::size_type first_non_white_space_pos =
+        header_str.find_first_not_of(" \t\r\n");
+    if (first_non_white_space_pos + 1 < header_str.size()) {
+      if (header_str[first_non_white_space_pos] == '{' ||
+          header_str[first_non_white_space_pos] ==
+              '[') {  // json can start with either object hash or an array
+        std::string::size_type second_non_white_space_pos =
+            header_str.find_first_not_of(" \t\r\n",
+                                         first_non_white_space_pos + 1);
+        if (second_non_white_space_pos + 1 < header_str.size()) {
+          if (header_str[second_non_white_space_pos] == '"' &&
+              isalnum(header_str[second_non_white_space_pos + 1])) {
+            return ImageDecoder::kImageTypeJSON;
+          }
+        }
+      }
+    }
     return ImageDecoder::kImageTypeInvalid;
   }
 }
-
-}  // namespace
 
 ImageDecoder::ImageDecoder(
     render_tree::ResourceProvider* resource_provider,
@@ -219,7 +241,11 @@ void ImageDecoder::Resume(render_tree::ResourceProvider* resource_provider) {
   DCHECK_EQ(state_, kSuspended);
   DCHECK(!resource_provider_);
   DCHECK(resource_provider);
-
+  if (IsResourceProviderStub(resource_provider)) {
+    use_failure_image_decoder_ = true;
+  } else {
+    use_failure_image_decoder_ = false;
+  }
   state_ = kWaitingForHeader;
   resource_provider_ = resource_provider;
 }
@@ -328,11 +354,14 @@ std::unique_ptr<ImageDataDecoder> MaybeCreateStarboardDecoder(
 std::unique_ptr<ImageDataDecoder> CreateImageDecoderFromImageType(
     ImageDecoder::ImageType image_type,
     render_tree::ResourceProvider* resource_provider,
-    const base::DebuggerHooks& debugger_hooks) {
+    const base::DebuggerHooks& debugger_hooks, bool use_failure_image_decoder) {
   // Call different types of decoders by matching the image signature.
   if (s_use_stub_image_decoder) {
     return std::unique_ptr<ImageDataDecoder>(
         new StubImageDecoder(resource_provider, debugger_hooks));
+  } else if (use_failure_image_decoder) {
+    return std::unique_ptr<ImageDataDecoder>(
+        new FailureImageDecoder(resource_provider, debugger_hooks));
   } else if (image_type == ImageDecoder::kImageTypeJPEG) {
     return std::unique_ptr<ImageDataDecoder>(
         new JPEGImageDecoder(resource_provider, debugger_hooks,
@@ -379,7 +408,8 @@ bool ImageDecoder::InitializeInternalDecoder(const uint8* input_bytes,
 
   if (!decoder_) {
     decoder_ = CreateImageDecoderFromImageType(image_type_, resource_provider_,
-                                               debugger_hooks_);
+                                               debugger_hooks_,
+                                               use_failure_image_decoder_);
   }
 
   if (!decoder_) {
@@ -412,7 +442,7 @@ bool ImageDecoder::AllowDecodingToMultiPlane() {
                       ->CobaltRasterizerType()) == "direct-gles";
 #elif SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
   bool allow_image_decoding_to_multi_plane = true;
-#else  // SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
+#else   // SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
   bool allow_image_decoding_to_multi_plane = false;
 #endif  // SB_HAS(GLES2) && defined(COBALT_FORCE_DIRECT_GLES_RASTERIZER)
 

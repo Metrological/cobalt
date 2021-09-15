@@ -1,4 +1,4 @@
-# Copyright 2017 The Cobalt Authors. All Rights Reserved.
+# Copyright 2021 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,29 +12,93 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-group("all") {
+group("gn_all") {
   testonly = true
+
   deps = [
-    # TODO: uncomment as each of these are implemented
-    # "//starboard/client_porting/eztime:all",
-    # "//starboard/client_porting/icu_init:all",
-    # "//starboard/client_porting/poem:all",
-    "//starboard/examples",
-    # "//starboard/nplb/blitter_pixel_tests:all",
-    "//starboard/nplb:all",
     ":starboard",
+    "//starboard/client_porting/cwrappers:cwrappers_test",
+    "//starboard/client_porting/eztime",
+    "//starboard/client_porting/eztime:eztime_test",
+    "//starboard/client_porting/icu_init",
+    "//starboard/client_porting/poem:poem_unittests",
+    "//starboard/examples/window:starboard_window_example",
+    "//starboard/nplb",
+    "//starboard/nplb/nplb_evergreen_compat_tests",
+
+    # "//starboard/tools",  TODO(andrewsavage)
   ]
 
-  has_platform_tests =
-      exec_script("//build/dir_exists.py",
-                  [ rebase_path("//$starboard_path/tests", root_build_dir) ],
-                  "string") == "True"
+  if (gl_type != "none") {
+    deps += [ "//starboard/examples/glclear:starboard_glclear_example" ]
+  }
+
+  if (has_platform_targets) {
+    deps += [ "//$starboard_path/platform_targets" ]
+  }
+
   if (has_platform_tests) {
-    deps += [ "//$starboard_path/tests" ]
+    deps += [ "//$starboard_path/starboard_platform_tests" ]
+  } else {
+    deps += [ ":starboard_platform_tests" ]
+  }
+
+  if (sb_filter_based_player) {
+    deps += [
+      "//starboard/shared/starboard/player/filter/testing:player_filter_tests",
+      "//starboard/shared/starboard/player/filter/tools:audio_dmp_player",
+    ]
+  }
+
+  if (sb_enable_benchmark) {
+    deps += [ "//starboard/benchmark" ]
+  }
+
+  if (!sb_is_evergreen) {
+    deps += [ "//third_party/lz4_lib:lz4" ]
+
+    if (sb_is_evergreen_compatible) {
+      deps += [
+        "//third_party/crashpad/client",
+        "//third_party/crashpad/handler",
+      ]
+    }
   }
 }
 
-source_set("starboard") {
+group("starboard") {
+  public_deps = [ ":starboard_headers_only" ]
+
+  if (sb_is_evergreen) {
+    public_deps += []
+  } else {
+    public_deps += [
+      "//$starboard_path:starboard_platform",
+      "//starboard/client_porting/cwrappers",
+      "//starboard/client_porting/eztime",
+      "//starboard/common",
+    ]
+
+    if (sb_is_evergreen_compatible) {
+      public_deps += [ "//third_party/crashpad/wrapper" ]
+    } else {
+      public_deps += [ "//third_party/crashpad/wrapper:wrapper_stub" ]
+    }
+
+    if (final_executable_type == "shared_library" &&
+        current_toolchain != default_toolchain) {
+      set_defaults("executable") {
+        sources = [ "//starboard/shared/starboard/shared_main_adapter.cc" ]
+      }
+    }
+  }
+}
+
+static_library("starboard_headers_only") {
+  # We include starboard/common/log.h in starboard_headers, but some common
+  # files include starboard headers.
+  check_includes = false
+
   sources = [
     "atomic.h",
     "audio_sink.h",
@@ -43,13 +107,17 @@ source_set("starboard") {
     "character.h",
     "condition_variable.h",
     "configuration.h",
+    "configuration_constants.h",
+    "cpu_features.h",
     "decode_target.h",
     "directory.h",
     "double.h",
     "drm.h",
+    "egl.h",
     "event.h",
     "export.h",
     "file.h",
+    "gles.h",
     "input.h",
     "key.h",
     "log.h",
@@ -73,25 +141,23 @@ source_set("starboard") {
     "types.h",
     "user.h",
     "window.h",
-    "//starboard/shared/media_session/playback_state.h",
+
+    # Include private headers, if present.
+    # "<!@pymod_do_main(starboard.build.gyp_functions file_glob <(DEPTH)/starboard/private *.h)",
   ]
+}
 
-  private_sources = exec_script("tools/find_private_files.py",
-                                [
-                                  rebase_path("//", root_build_dir),
-                                  "*.h",
-                                ],
-                                "list lines",
-                                [ "//starboard/private" ])
-  sources += rebase_path(private_sources, ".", root_build_dir)
+if (!has_platform_tests) {
+  # If 'starboard_platform_tests' is not defined by the platform, then an
+  # empty 'starboard_platform_tests' target is defined.
+  target(gtest_target_type, "starboard_platform_tests") {
+    testonly = true
 
-  deps = [
-    "//starboard/common",
-  ]
+    sources = [ "//starboard/common/test_main.cc" ]
 
-  public_deps = [
-    "//$starboard_path:starboard_platform",
-  ]
-
-  # TODO: handle shared_main_adapter.cc
+    public_deps = [
+      ":starboard",
+      "//testing/gmock",
+    ]
+  }
 }

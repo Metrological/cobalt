@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "base/bind.h"
 #include "base/callback.h"
@@ -32,7 +33,6 @@
 #include "cobalt/dom_parser/parser.h"
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/loader/loader_factory.h"
-#include "cobalt/media_session/media_session.h"
 #include "cobalt/script/global_environment.h"
 #include "cobalt/script/javascript_engine.h"
 #include "starboard/window.h"
@@ -65,7 +65,7 @@ class StubWindow {
         environment_settings.get()
             ? std::move(environment_settings)
             : std::unique_ptr<script::EnvironmentSettings>(new DOMSettings(
-                  0, NULL, NULL, NULL, NULL, NULL, engine_.get(),
+                  0, NULL, NULL, NULL, NULL, NULL, NULL, engine_.get(),
                   global_environment(), null_debugger_hooks_, NULL));
     window_ = new dom::Window(
         environment_settings_.get(), cssom::ViewportSize(1920, 1080),
@@ -73,14 +73,14 @@ class StubWindow {
         fetcher_factory_.get(), loader_factory_.get(), NULL, NULL, NULL, NULL,
         NULL, NULL, &local_storage_database_, NULL, NULL, NULL, NULL,
         global_environment_->script_value_factory(), NULL,
-        dom_stat_tracker_.get(), url_, "", "en-US", "en",
+        dom_stat_tracker_.get(), url_, "", NULL, "en-US", "en",
         base::Callback<void(const GURL&)>(),
         base::Bind(&StubLoadCompleteCallback), NULL,
         network_bridge::PostSender(), csp::kCSPRequired,
         dom::kCspEnforcementEnable, base::Closure() /* csp_policy_changed */,
         base::Closure() /* ran_animation_frame_callbacks */,
         dom::Window::CloseCallback() /* window_close */,
-        base::Closure() /* window_minimize */, NULL, NULL, NULL,
+        base::Closure() /* window_minimize */, NULL, NULL,
         dom::Window::OnStartDispatchEventCallback(),
         dom::Window::OnStopDispatchEventCallback(),
         dom::ScreenshotManager::ProvideScreenshotFunctionCallback(), NULL);

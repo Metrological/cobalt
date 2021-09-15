@@ -22,6 +22,20 @@
       ],
       'sources': [
         'cpp14_constexpr.cc',
+        'cpp14_initialization.cc',
+      ],
+      'dependencies': [
+        '<(DEPTH)/starboard/starboard.gyp:starboard',
+      ],
+    },
+    {
+      'target_name': 'cpp17_supported',
+      'type': 'static_library',
+      'cflags_cc': [
+        '-std=c++17',
+      ],
+      'sources': [
+        'cpp17_support.cc',
       ],
       'dependencies': [
         '<(DEPTH)/starboard/starboard.gyp:starboard',

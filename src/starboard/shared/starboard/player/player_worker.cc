@@ -68,12 +68,10 @@ PlayerWorker* PlayerWorker::CreateInstance(
     SbPlayerErrorFunc player_error_func,
     SbPlayer player,
     void* context) {
-
-  PlayerWorker* ret = new PlayerWorker(audio_codec, video_codec, handler.Pass(),
-                                       update_media_info_cb,
-                                       decoder_status_func, player_status_func,
-                                       player_error_func,
-                                       player, context);
+  PlayerWorker* ret =
+      new PlayerWorker(audio_codec, video_codec, handler.Pass(),
+                       update_media_info_cb, decoder_status_func,
+                       player_status_func, player_error_func, player, context);
 
   if (ret && SbThreadIsValid(ret->thread_)) {
     return ret;
@@ -139,8 +137,10 @@ PlayerWorker::PlayerWorker(SbMediaAudioCodec audio_codec,
 
 void PlayerWorker::UpdateMediaInfo(SbTime time,
                                    int dropped_video_frames,
-                                   bool underflow) {
-  update_media_info_cb_(time, dropped_video_frames, ticket_, underflow);
+                                   bool is_progressing) {
+  if (player_state_ == kSbPlayerStatePresenting) {
+    update_media_info_cb_(time, dropped_video_frames, ticket_, is_progressing);
+  }
 }
 
 void PlayerWorker::UpdatePlayerState(SbPlayerState player_state) {

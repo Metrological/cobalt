@@ -25,9 +25,9 @@
 #include "starboard/shared/starboard/application.h"
 #include "starboard/system.h"
 
-#if SB_IS(EVERGREEN_COMPATIBLE)
+#if SB_IS(EVERGREEN_COMPATIBLE) && !SB_IS(EVERGREEN_COMPATIBLE_LITE)
 #include "starboard/loader_app/pending_restart.h"
-#endif
+#endif  // SB_IS(EVERGREEN_COMPATIBLE) && !SB_IS(EVERGREEN_COMPATIBLE_LITE)
 
 namespace starboard {
 namespace shared {
@@ -35,7 +35,8 @@ namespace signal {
 
 namespace {
 
-const std::initializer_list<int> kAllSignals = {SIGUSR1, SIGUSR2, SIGCONT};
+const std::initializer_list<int> kAllSignals = {SIGUSR1, SIGUSR2, SIGCONT,
+                                                SIGTSTP, SIGPWR};
 
 int SignalMask(std::initializer_list<int> signal_ids, int action) {
   sigset_t mask;
@@ -58,6 +59,36 @@ void SetSignalHandler(int signal_id, SignalHandlerFunction handler) {
   ::sigaction(signal_id, &action, NULL);
 }
 
+#if SB_API_VERSION >= 13
+void Conceal(int signal_id) {
+  SignalMask(kAllSignals, SIG_BLOCK);
+  LogSignalCaught(signal_id);
+  SbSystemRequestConceal();
+  SignalMask(kAllSignals, SIG_UNBLOCK);
+}
+
+void Focus(int signal_id) {
+  SignalMask(kAllSignals, SIG_BLOCK);
+  LogSignalCaught(signal_id);
+  // TODO: Unfreeze or Focus based on state before frozen?
+  starboard::Application::Get()->Focus(NULL, NULL);
+  SignalMask(kAllSignals, SIG_UNBLOCK);
+}
+
+void Freeze(int signal_id) {
+  SignalMask(kAllSignals, SIG_BLOCK);
+  LogSignalCaught(signal_id);
+  SbSystemRequestFreeze();
+  SignalMask(kAllSignals, SIG_UNBLOCK);
+}
+
+void Stop(int signal_id) {
+  SignalMask(kAllSignals, SIG_BLOCK);
+  LogSignalCaught(signal_id);
+  starboard::Application::Get()->Stop(0);
+  SignalMask(kAllSignals, SIG_UNBLOCK);
+}
+#else
 void Suspend(int signal_id) {
   SignalMask(kAllSignals, SIG_BLOCK);
   LogSignalCaught(signal_id);
@@ -72,6 +103,7 @@ void Resume(int signal_id) {
   starboard::Application::Get()->Unpause(NULL, NULL);
   SignalMask(kAllSignals, SIG_UNBLOCK);
 }
+#endif  // SB_API_VERSION >= 13
 
 void LowMemory(int signal_id) {
   SignalMask(kAllSignals, SIG_BLOCK);
@@ -129,10 +161,20 @@ void InstallSuspendSignalHandlers() {
   // Future created threads inherit the same block mask as per POSIX rules
   // http://pubs.opengroup.org/onlinepubs/009695399/functions/xsh_chap02_04.html
   SignalMask(kAllSignals, SIG_BLOCK);
+
+#if SB_API_VERSION >= 13
+  SetSignalHandler(SIGUSR1, &Conceal);
+  SetSignalHandler(SIGUSR2, &LowMemory);
+  SetSignalHandler(SIGCONT, &Focus);
+  SetSignalHandler(SIGTSTP, &Freeze);
+  SetSignalHandler(SIGPWR, &Stop);
+  ConfigureSignalHandlerThread(true);
+#else
   SetSignalHandler(SIGUSR1, &Suspend);
   SetSignalHandler(SIGUSR2, &LowMemory);
   SetSignalHandler(SIGCONT, &Resume);
   ConfigureSignalHandlerThread(true);
+#endif  // SB_API_VERSION >= 13
 }
 
 void UninstallSuspendSignalHandlers() {
@@ -142,6 +184,9 @@ void UninstallSuspendSignalHandlers() {
   SetSignalHandler(SIGUSR1, SIG_DFL);
   SetSignalHandler(SIGUSR2, SIG_DFL);
   SetSignalHandler(SIGCONT, SIG_DFL);
+#if SB_API_VERSION >= 13
+  SetSignalHandler(SIGPWR, SIG_DFL);
+#endif  // SB_API_VERSION >= 13
   ConfigureSignalHandlerThread(false);
 }
 

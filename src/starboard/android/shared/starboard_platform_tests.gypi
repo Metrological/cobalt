@@ -23,6 +23,8 @@
         '<(DEPTH)/starboard/common/test_main.cc',
         '<@(media_tests_sources)',
         'jni_env_ext_test.cc',
+        'model_year_test.cc',
+        'video_frame_tracker_test.cc',
       ],
       'defines': [
         # This allows the tests to include internal only header files.

@@ -74,8 +74,38 @@ JobQueue::~JobQueue() {
   ResetCurrentThreadJobQueue();
 }
 
-JobQueue::JobToken JobQueue::Schedule(Job job, SbTimeMonotonic delay /*= 0*/) {
+JobQueue::JobToken JobQueue::Schedule(const Job& job,
+                                      SbTimeMonotonic delay /*= 0*/) {
   return Schedule(job, NULL, delay);
+}
+
+JobQueue::JobToken JobQueue::Schedule(Job&& job,
+                                      SbTimeMonotonic delay /*= 0*/) {
+  return Schedule(std::move(job), NULL, delay);
+}
+
+void JobQueue::ScheduleAndWait(const Job& job) {
+  ScheduleAndWait(Job(job));
+}
+
+void JobQueue::ScheduleAndWait(Job&& job) {
+  // TODO: Allow calling from the JobQueue thread.
+  SB_DCHECK(!BelongsToCurrentThread());
+
+  Schedule(std::move(job));
+
+  bool job_finished = false;
+
+  Schedule(std::bind([&]() {
+    ScopedLock lock(mutex_);
+    job_finished = true;
+    condition_.Broadcast();
+  }));
+
+  ScopedLock lock(mutex_);
+  while (!job_finished && !stopped_) {
+    condition_.Wait();
+  }
 }
 
 void JobQueue::RemoveJobByToken(JobToken job_token) {
@@ -96,12 +126,10 @@ void JobQueue::RemoveJobByToken(JobToken job_token) {
 }
 
 void JobQueue::StopSoon() {
-  {
-    ScopedLock scoped_lock(mutex_);
-    stopped_ = true;
-    time_to_job_record_map_.clear();
-    condition_.Signal();
-  }
+  ScopedLock scoped_lock(mutex_);
+  stopped_ = true;
+  time_to_job_record_map_.clear();
+  condition_.Broadcast();
 }
 
 void JobQueue::RunUntilStopped() {
@@ -137,7 +165,13 @@ JobQueue* JobQueue::current() {
   return GetCurrentThreadJobQueue();
 }
 
-JobQueue::JobToken JobQueue::Schedule(Job job,
+JobQueue::JobToken JobQueue::Schedule(const Job& job,
+                                      JobOwner* owner,
+                                      SbTimeMonotonic delay) {
+  return Schedule(Job(job), owner, delay);
+}
+
+JobQueue::JobToken JobQueue::Schedule(Job&& job,
                                       JobOwner* owner,
                                       SbTimeMonotonic delay) {
   SB_DCHECK(job);
@@ -151,7 +185,7 @@ JobQueue::JobToken JobQueue::Schedule(Job job,
   ++current_job_token_;
 
   JobToken job_token(current_job_token_);
-  JobRecord job_record = {job_token, job, owner};
+  JobRecord job_record = {job_token, std::move(job), owner};
 #if ENABLE_JOB_QUEUE_PROFILING
   if (kProfileStackDepth > 0) {
     job_record.stack_size =
@@ -165,7 +199,7 @@ JobQueue::JobToken JobQueue::Schedule(Job job,
 
   time_to_job_record_map_.insert(std::make_pair(time_to_run_job, job_record));
   if (is_first_job) {
-    condition_.Signal();
+    condition_.Broadcast();
   }
   return job_token;
 }
@@ -175,18 +209,12 @@ void JobQueue::RemoveJobsByOwner(JobOwner* owner) {
   SB_DCHECK(owner);
 
   ScopedLock scoped_lock(mutex_);
-  // std::multimap::erase() doesn't return an iterator until C++11.  So this has
-  // to be done in a nested loop to delete multiple occurrences of |job|.
-  bool should_keep_running = true;
-  while (should_keep_running) {
-    should_keep_running = false;
-    for (TimeToJobRecordMap::iterator iter = time_to_job_record_map_.begin();
-         iter != time_to_job_record_map_.end(); ++iter) {
-      if (iter->second.owner == owner) {
-        time_to_job_record_map_.erase(iter);
-        should_keep_running = true;
-        break;
-      }
+  for (TimeToJobRecordMap::iterator iter = time_to_job_record_map_.begin();
+       iter != time_to_job_record_map_.end();) {
+    if (iter->second.owner == owner) {
+      iter = time_to_job_record_map_.erase(iter);
+    } else {
+      ++iter;
     }
   }
 }

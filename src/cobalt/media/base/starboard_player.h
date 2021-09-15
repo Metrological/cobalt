@@ -114,7 +114,9 @@ class StarboardPlayer {
 #endif  // SB_HAS(PLAYER_WITH_URL)
 
   void Suspend();
-  void Resume();
+  // TODO: This is temporary for supporting background media playback.
+  //       Need to be removed with media refactor.
+  void Resume(SbWindow window);
 
   SbDecodeTarget GetCurrentSbDecodeTarget();
   SbPlayerOutputMode GetSbPlayerOutputMode();
@@ -205,7 +207,7 @@ class StarboardPlayer {
   SbPlayerOutputMode ComputeSbPlayerOutputMode(
       bool prefer_decode_to_texture) const;
 
-  // The following variables are initialized in the ctor and never changed.
+// The following variables are initialized in the ctor and never changed.
 #if SB_HAS(PLAYER_WITH_URL)
   std::string url_;
 #endif  // SB_HAS(PLAYER_WITH_URL)
@@ -213,7 +215,7 @@ class StarboardPlayer {
   const GetDecodeTargetGraphicsContextProviderFunc
       get_decode_target_graphics_context_provider_func_;
   scoped_refptr<CallbackHelper> callback_helper_;
-  const SbWindow window_;
+  SbWindow window_;
   SbDrmSystem drm_system_ = kSbDrmSystemInvalid;
   Host* const host_;
   // Consider merge |SbPlayerSetBoundsHelper| into CallbackHelper.
@@ -226,9 +228,6 @@ class StarboardPlayer {
   VideoDecoderConfig video_config_;
   SbMediaAudioSampleInfo audio_sample_info_ = {};
   SbMediaVideoSampleInfo video_sample_info_ = {};
-#if SB_API_VERSION < 11
-  SbMediaColorMetadata media_color_metadata_;
-#endif  // SB_API_VERSION < 11
   DecodingBuffers decoding_buffers_;
   int ticket_ = SB_PLAYER_INITIAL_TICKET;
   float volume_ = 1.0f;
@@ -254,7 +253,7 @@ class StarboardPlayer {
 
   VideoFrameProvider* const video_frame_provider_;
 
-  // A string of video maxmium capabilities.
+  // A string of video maximum capabilities.
   std::string max_video_capabilities_;
 
 #if SB_HAS(PLAYER_WITH_URL)

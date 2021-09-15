@@ -87,8 +87,7 @@ class EvergreenArmConfiguration(shared_configuration.EvergreenConfiguration):
     return variables
 
   __FILTERED_TESTS = {  # pylint: disable=invalid-name
-      'nplb': ['SbPlayerWriteSampleTests/SbPlayerWriteSampleTest.NoInput/4',
-               'SbSystemGetStackTest.SunnyDayStackDirection',
+      'nplb': ['SbSystemGetStackTest.SunnyDayStackDirection',
                'SbSystemGetStackTest.SunnyDay',
                'SbSystemGetStackTest.SunnyDayShortStack',
                'SbSystemSymbolizeTest.SunnyDay'],

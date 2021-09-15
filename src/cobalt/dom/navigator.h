@@ -22,7 +22,9 @@
 #include "cobalt/dom/captions/system_caption_settings.h"
 #include "cobalt/dom/eme/media_key_system_configuration.h"
 #include "cobalt/dom/mime_type_array.h"
+#include "cobalt/dom/navigator_ua_data.h"
 #include "cobalt/dom/plugin_array.h"
+#include "cobalt/media/web_media_player_factory.h"
 #include "cobalt/media_capture/media_devices.h"
 #include "cobalt/media_session/media_session.h"
 #include "cobalt/script/promise.h"
@@ -41,16 +43,19 @@ class Navigator : public script::Wrappable {
  public:
   Navigator(
       script::EnvironmentSettings* settings, const std::string& user_agent,
-      const std::string& language,
-      scoped_refptr<cobalt::media_session::MediaSession> media_session,
+      UserAgentPlatformInfo* platform_info, const std::string& language,
       scoped_refptr<cobalt::dom::captions::SystemCaptionSettings> captions,
       script::ScriptValueFactory* script_value_factory);
 
   // Web API: NavigatorID
   const std::string& user_agent() const;
 
+  // Web API: NavigatorUA
+  const scoped_refptr<NavigatorUAData>& user_agent_data() const;
+
   // Web API: NavigatorLanguage
   const std::string& language() const;
+  script::Sequence<std::string> languages() const;
 
   // Web API: NavigatorLicenses
   const std::string licenses() const;
@@ -61,14 +66,24 @@ class Navigator : public script::Wrappable {
   // Web API: NavigatorPlugins
   bool cookie_enabled() const;
 
+  bool on_line() const;
+
   // Web API: MediaDevices
   scoped_refptr<media_capture::MediaDevices> media_devices();
 
   const scoped_refptr<MimeTypeArray>& mime_types() const;
   const scoped_refptr<PluginArray>& plugins() const;
 
-  const scoped_refptr<cobalt::media_session::MediaSession>& media_session()
-      const;
+  const scoped_refptr<media_session::MediaSession>& media_session();
+
+  // Set maybe freeze callback.
+  void set_maybefreeze_callback(const base::Closure& maybe_freeze_callback) {
+    maybe_freeze_callback_ = maybe_freeze_callback;
+  }
+
+  void set_media_player_factory(const media::WebMediaPlayerFactory* factory) {
+    media_player_factory_ = factory;
+  }
 
   // Web API: extension defined in Encrypted Media Extensions (16 March 2017).
   using InterfacePromise = script::Promise<scoped_refptr<script::Wrappable>>;
@@ -114,6 +129,7 @@ class Navigator : public script::Wrappable {
       const std::string& encryption_scheme);
 
   std::string user_agent_;
+  scoped_refptr<NavigatorUAData> user_agent_data_;
   std::string language_;
   scoped_refptr<MimeTypeArray> mime_types_;
   scoped_refptr<PluginArray> plugins_;
@@ -123,6 +139,9 @@ class Navigator : public script::Wrappable {
       system_caption_settings_;
   script::ScriptValueFactory* script_value_factory_;
   base::Optional<bool> key_system_with_attributes_supported_;
+
+  base::Closure maybe_freeze_callback_;
+  const media::WebMediaPlayerFactory* media_player_factory_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(Navigator);
 };

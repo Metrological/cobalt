@@ -14,7 +14,6 @@
 
 #include "cobalt/updater/updater_module.h"
 
-#include <map>
 #include <utility>
 #include <vector>
 
@@ -50,25 +49,32 @@ constexpr uint8_t kCobaltPublicKeyHash[] = {
     0x9e, 0x8b, 0x2d, 0x22, 0x65, 0x19, 0xb1, 0xfa, 0xba, 0x02, 0x04,
     0x3a, 0xb2, 0x7a, 0xf6, 0xfe, 0xd5, 0x35, 0xa1, 0x19, 0xd9};
 
-// The map to translate update state from ComponentState to readable string.
-const std::map<ComponentState, const char*> update_state_map = {
-    {ComponentState::kNew, "Will check for update soon"},
-    {ComponentState::kChecking, "Checking for update"},
-    {ComponentState::kCanUpdate, "Update is available"},
-    {ComponentState::kDownloadingDiff, "Downloading delta update"},
-    {ComponentState::kDownloading, "Downloading update"},
-    {ComponentState::kDownloaded, "Update is downloaded"},
-    {ComponentState::kUpdatingDiff, "Installing delta update"},
-    {ComponentState::kUpdating, "Installing update"},
-    {ComponentState::kUpdated, "Update installed, pending restart"},
-    {ComponentState::kUpToDate, "App is up to date"},
-    {ComponentState::kUpdateError, "Failed to update"},
-    {ComponentState::kUninstalled, "Update uninstalled"},
-    {ComponentState::kRun, "Transitioning..."},
-    // ComponentState::kLastStatus is not meaningful to show to users.
-};
-
 void QuitLoop(base::OnceClosure quit_closure) { std::move(quit_closure).Run(); }
+
+CobaltExtensionUpdaterNotificationState
+ComponentStateToCobaltExtensionUpdaterNotificationState(
+    ComponentState component_state) {
+  switch (component_state) {
+    case ComponentState::kChecking:
+      return kCobaltExtensionUpdaterNotificationStateChecking;
+    case ComponentState::kCanUpdate:
+      return kCobaltExtensionUpdaterNotificationStateUpdateAvailable;
+    case ComponentState::kDownloading:
+      return kCobaltExtensionUpdaterNotificationStateDownloading;
+    case ComponentState::kDownloaded:
+      return kCobaltExtensionUpdaterNotificationStateDownloaded;
+    case ComponentState::kUpdating:
+      return kCobaltExtensionUpdaterNotificationStateInstalling;
+    case ComponentState::kUpdated:
+      return kCobaltExtensionUpdaterNotificationStatekUpdated;
+    case ComponentState::kUpToDate:
+      return kCobaltExtensionUpdaterNotificationStatekUpdated;
+    case ComponentState::kUpdateError:
+      return kCobaltExtensionUpdaterNotificationStatekUpdateFailed;
+    default:
+      return kCobaltExtensionUpdaterNotificationStateNone;
+  }
+}
 
 }  // namespace
 
@@ -78,21 +84,29 @@ namespace updater {
 void Observer::OnEvent(Events event, const std::string& id) {
   std::string status;
   if (update_client_->GetCrxUpdateState(id, &crx_update_item_)) {
-    auto status_iterator = update_state_map.find(crx_update_item_.state);
-    if (status_iterator == update_state_map.end()) {
+    auto status_iterator =
+        component_to_updater_status_map.find(crx_update_item_.state);
+    if (status_iterator == component_to_updater_status_map.end()) {
       status = "Status is unknown.";
     } else if (crx_update_item_.state == ComponentState::kUpToDate &&
                updater_configurator_->GetPreviousUpdaterStatus().compare(
-                   update_state_map.find(ComponentState::kUpdated)->second) ==
-                   0) {
-      status =
-          std::string(update_state_map.find(ComponentState::kUpdated)->second);
+                   updater_status_string_map.find(UpdaterStatus::kUpdated)
+                       ->second) == 0) {
+      status = std::string(
+          updater_status_string_map.find(UpdaterStatus::kUpdated)->second);
     } else {
-      status = std::string(status_iterator->second);
+      status = std::string(
+          updater_status_string_map.find(status_iterator->second)->second);
     }
     if (crx_update_item_.state == ComponentState::kUpdateError) {
       status +=
           ", error code is " + std::to_string(crx_update_item_.error_code);
+    }
+    if (updater_notification_ext_ != nullptr) {
+      updater_notification_ext_->UpdaterState(
+          ComponentStateToCobaltExtensionUpdaterNotificationState(
+              crx_update_item_.state),
+          GetCurrentEvergreenVersion().c_str());
     }
   } else {
     status = "No status available";
@@ -160,10 +174,16 @@ void UpdaterModule::Finalize() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   update_client_->RemoveObserver(updater_observer_.get());
   updater_observer_.reset();
+  update_client_->Stop();
   update_client_ = nullptr;
 
-  updater_configurator_->GetPrefService()->CommitPendingWrite(
-      base::BindOnce(&QuitLoop, base::Bind(base::DoNothing::Repeatedly())));
+  if (updater_configurator_ != nullptr) {
+    auto pref_service = updater_configurator_->GetPrefService();
+    if (pref_service != nullptr) {
+      pref_service->CommitPendingWrite(
+          base::BindOnce(&QuitLoop, base::Bind(base::DoNothing::Repeatedly())));
+    }
+  }
 
   updater_configurator_ = nullptr;
 }
@@ -252,17 +272,30 @@ void UpdaterModule::Update() {
       base::TimeDelta::FromHours(kNextUpdateCheckHours));
 }
 
+// The following methods are called by other threads than the updater_thread_.
+
 void UpdaterModule::CompareAndSwapChannelChanged(int old_value, int new_value) {
-  updater_configurator_->CompareAndSwapChannelChanged(old_value, new_value);
+  auto config = updater_configurator_;
+  if (config) config->CompareAndSwapChannelChanged(old_value, new_value);
 }
 
-// The following three methods all called by the main web module thread.
 std::string UpdaterModule::GetUpdaterChannel() const {
-  return updater_configurator_->GetChannel();
+  auto config = updater_configurator_;
+  if (!config) return "";
+
+  return config->GetChannel();
 }
 
 void UpdaterModule::SetUpdaterChannel(const std::string& updater_channel) {
-  updater_configurator_->SetChannel(updater_channel);
+  auto config = updater_configurator_;
+  if (config) config->SetChannel(updater_channel);
+}
+
+std::string UpdaterModule::GetUpdaterStatus() const {
+  auto config = updater_configurator_;
+  if (!config) return "";
+
+  return config->GetUpdaterStatus();
 }
 
 void UpdaterModule::RunUpdateCheck() {
@@ -292,6 +325,22 @@ void UpdaterModule::ResetInstallations() {
     SB_LOG(ERROR) << "Updater failed to clean the product directory.";
     return;
   }
+}
+
+int UpdaterModule::GetInstallationIndex() const {
+  auto installation_manager =
+      static_cast<const CobaltExtensionInstallationManagerApi*>(
+          SbSystemGetExtension(kCobaltExtensionInstallationManagerName));
+  if (!installation_manager) {
+    SB_LOG(ERROR) << "Updater failed to get installation manager extension.";
+    return -1;
+  }
+  int index = installation_manager->GetCurrentInstallationIndex();
+  if (index == IM_EXT_ERROR) {
+    SB_LOG(ERROR) << "Updater failed to get current installation index.";
+    return -1;
+  }
+  return index;
 }
 
 }  // namespace updater

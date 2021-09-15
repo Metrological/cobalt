@@ -44,7 +44,8 @@ class SplashScreen : public LifecycleObserver {
                const base::Optional<GURL>& fallback_splash_screen_url,
                cobalt::browser::SplashScreenCache* splash_screen_cache,
                const base::Callback<void(base::TimeDelta)>&
-                   on_splash_screen_shutdown_complete);
+                   on_splash_screen_shutdown_complete,
+               const base::Closure& maybe_freeze_callback);
   ~SplashScreen();
 
   void SetSize(const cssom::ViewportSize& viewport_size) {
@@ -52,15 +53,27 @@ class SplashScreen : public LifecycleObserver {
   }
 
   // LifecycleObserver implementation.
-  void Prestart() override { web_module_->Prestart(); }
-  void Start(render_tree::ResourceProvider* resource_provider) override {
-    web_module_->Start(resource_provider);
+  // LifecycleObserver implementation.
+  void Blur(SbTimeMonotonic timestamp) override {
+    web_module_->Blur(0);
   }
-  void Pause() override { web_module_->Pause(); }
-  void Unpause() override { web_module_->Unpause(); }
-  void Suspend() override { web_module_->Suspend(); }
-  void Resume(render_tree::ResourceProvider* resource_provider) override {
-    web_module_->Resume(resource_provider);
+  void Conceal(render_tree::ResourceProvider* resource_provider,
+               SbTimeMonotonic timestamp) override {
+    web_module_->Conceal(resource_provider, 0);
+  }
+  void Freeze(SbTimeMonotonic timestamp) override {
+    web_module_->Freeze(0);
+  }
+  void Unfreeze(render_tree::ResourceProvider* resource_provider,
+                SbTimeMonotonic timestamp) override {
+    web_module_->Unfreeze(resource_provider, 0);
+  }
+  void Reveal(render_tree::ResourceProvider* resource_provider,
+              SbTimeMonotonic timestamp) override {
+    web_module_->Reveal(resource_provider, 0);
+  }
+  void Focus(SbTimeMonotonic timestamp) override {
+    web_module_->Focus(0);
   }
 
   void ReduceMemory() { web_module_->ReduceMemory(); }
@@ -76,6 +89,8 @@ class SplashScreen : public LifecycleObserver {
   bool ShutdownSignaled() const { return shutdown_signaled_; }
 
   WebModule& web_module() { return *web_module_; }
+
+  bool IsReadyToFreeze() { return web_module_->IsReadyToFreeze(); }
 
  private:
   // Run when window.close() is called by the WebModule.

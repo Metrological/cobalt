@@ -53,8 +53,8 @@ void EnsureYUVToRGBLookupTableInitialized() {
   // The minimum value of |v| can be 2.112f * (-128) = -271, the maximum value
   // of |v| can be 1.164f * 255 + 2.112f * 127 = 565.  So we need 512 bytes at
   // each side of the clamp buffer.
-  SbMemorySet(s_clamp_table, 0, 512);
-  SbMemorySet(s_clamp_table + 768, 0xff, 512);
+  memset(s_clamp_table, 0, 512);
+  memset(s_clamp_table + 768, 0xff, 512);
 
   uint8_t i = 0;
   while (true) {
@@ -82,7 +82,7 @@ void CopyPlane(int bit_depth,
                const uint8_t* source,
                int pixels) {
   if (bit_depth == 8) {
-    SbMemoryCopy(destination, source, pixels);
+    memcpy(destination, source, pixels);
     return;
   }
   SB_DCHECK(bit_depth == 10 || bit_depth == 12);
@@ -186,6 +186,12 @@ scoped_refptr<CpuVideoFrame> CpuVideoFrame::CreateYV12Frame(
     const uint8_t* u,
     const uint8_t* v) {
   SB_DCHECK(bit_depth == 8 || bit_depth == 10 || bit_depth == 12);
+
+  if (bit_depth > 8) {
+    SB_DCHECK(source_pitch_in_bytes >= width * 2);
+  } else {
+    SB_DCHECK(source_pitch_in_bytes >= width);
+  }
 
   scoped_refptr<CpuVideoFrame> frame(new CpuVideoFrame(timestamp));
   frame->format_ = kYV12;

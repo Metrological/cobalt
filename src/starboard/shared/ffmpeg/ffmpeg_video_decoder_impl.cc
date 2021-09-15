@@ -46,7 +46,7 @@ size_t GetYV12SizeInBytes(int32_t width, int32_t height) {
 #if LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
 
 void ReleaseBuffer(void* opaque, uint8_t* data) {
-  SbMemoryDeallocate(data);
+  SbMemoryDeallocateAligned(data);
 }
 
 int AllocateBufferCallback(AVCodecContext* codec_context,
@@ -66,11 +66,11 @@ int AllocateBufferCallback(AVCodecContext* codec_context, AVFrame* frame) {
 }
 
 void ReleaseBuffer(AVCodecContext*, AVFrame* frame) {
-  SbMemoryDeallocate(frame->opaque);
+  SbMemoryDeallocateAligned(frame->opaque);
   frame->opaque = NULL;
 
   // The FFmpeg API expects us to zero the data pointers in this callback.
-  SbMemorySet(frame->data, 0, sizeof(frame->data));
+  memset(frame->data, 0, sizeof(frame->data));
 }
 #endif  // LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
 
@@ -91,7 +91,7 @@ VideoDecoderImpl<FFMPEG>::VideoDecoderImpl(
       codec_context_(NULL),
       av_frame_(NULL),
       stream_ended_(false),
-      error_occured_(false),
+      error_occurred_(false),
       decoder_thread_(kSbThreadInvalid),
       output_mode_(output_mode),
       decode_target_graphics_context_provider_(
@@ -212,7 +212,7 @@ void VideoDecoderImpl<FFMPEG>::DecoderThreadFunc() {
     if (event.type == kReset) {
       return;
     }
-    if (error_occured_) {
+    if (error_occurred_) {
       continue;
     }
     if (event.type == kWriteInputBuffer) {
@@ -257,7 +257,7 @@ bool VideoDecoderImpl<FFMPEG>::DecodePacket(AVPacket* packet) {
     error_cb_(kSbPlayerErrorDecode,
               FormatString("avcodec_decode_video2() failed with result %d.",
                            decode_result));
-    error_occured_ = true;
+    error_occurred_ = true;
     return false;
   }
   if (frame_decoded == 0) {
@@ -268,15 +268,16 @@ bool VideoDecoderImpl<FFMPEG>::DecodePacket(AVPacket* packet) {
     SB_DLOG(ERROR) << "Video frame was produced yet has invalid frame data.";
     error_cb_(kSbPlayerErrorDecode,
               "Video frame was produced yet has invalid frame data.");
-    error_occured_ = true;
+    error_occurred_ = true;
     return false;
   }
 
   int codec_aligned_width = av_frame_->width;
   int codec_aligned_height = av_frame_->height;
   int codec_linesize_align[AV_NUM_DATA_POINTERS];
-  ffmpeg_->avcodec_align_dimensions2(codec_context_,
-      &codec_aligned_width, &codec_aligned_height, codec_linesize_align);
+  ffmpeg_->avcodec_align_dimensions2(codec_context_, &codec_aligned_width,
+                                     &codec_aligned_height,
+                                     codec_linesize_align);
 
   int pitch = AlignUp(av_frame_->width, codec_linesize_align[0] * 2);
 
@@ -425,8 +426,9 @@ int VideoDecoderImpl<FFMPEG>::AllocateBuffer(AVCodecContext* codec_context,
   int codec_aligned_width = codec_context->width;
   int codec_aligned_height = codec_context->height;
   int codec_linesize_align[AV_NUM_DATA_POINTERS];
-  ffmpeg_->avcodec_align_dimensions2(codec_context,
-      &codec_aligned_width, &codec_aligned_height, codec_linesize_align);
+  ffmpeg_->avcodec_align_dimensions2(codec_context, &codec_aligned_width,
+                                     &codec_aligned_height,
+                                     codec_linesize_align);
 
   // Align to linesize alignment * 2 as we will divide y_stride by 2 for
   // u and v planes.
@@ -478,8 +480,9 @@ int VideoDecoderImpl<FFMPEG>::AllocateBuffer(AVCodecContext* codec_context,
   int codec_aligned_width = codec_context->width;
   int codec_aligned_height = codec_context->height;
   int codec_linesize_align[AV_NUM_DATA_POINTERS];
-  ffmpeg_->avcodec_align_dimensions2(codec_context,
-      &codec_aligned_width, &codec_aligned_height, codec_linesize_align);
+  ffmpeg_->avcodec_align_dimensions2(codec_context, &codec_aligned_width,
+                                     &codec_aligned_height,
+                                     codec_linesize_align);
 
   // Align to linesize alignment * 2 as we will divide y_stride by 2 for
   // u and v planes.

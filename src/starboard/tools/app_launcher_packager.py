@@ -33,15 +33,13 @@ from paths import REPOSITORY_ROOT
 from paths import THIRD_PARTY_ROOT
 sys.path.append(THIRD_PARTY_ROOT)
 # pylint: disable=g-import-not-at-top,g-bad-import-order
+from starboard.tools import command_line
+from starboard.tools import log_level
 from starboard.tools import port_symlink
 import starboard.tools.platform
 
 # Default python directories to app launcher resources.
 _INCLUDE_FILE_PATTERNS = [
-    ('buildbot', '_env.py'),  # Only needed for device_server to execute
-    ('buildbot', '__init__.py'),  # Only needed for device_server to execute
-    ('buildbot/device_server', '*.py'),
-    ('buildbot/device_server/shared/ssl_certs', '*'),
     ('cobalt', '*.py'),
     ('starboard', '*.py'),
     ('starboard/tools', 'platform.py.template')
@@ -236,8 +234,8 @@ def MakeZipArchive(src, output_zip):
 
 
 def main(command_args):
-  logging.basicConfig(level=logging.INFO)
   parser = argparse.ArgumentParser()
+  command_line.AddLoggingArguments(parser, default='warning')
   dest_group = parser.add_mutually_exclusive_group(required=True)
   dest_group.add_argument(
       '-d',
@@ -263,8 +261,7 @@ def main(command_args):
       "logging level use '--log_level' instead.")
   args = parser.parse_args(command_args)
 
-  if not args.verbose:
-    logging.disable(logging.INFO)
+  log_level.InitializeLogging(args)
 
   if args.destination_root:
     CopyAppLauncherTools(REPOSITORY_ROOT, args.destination_root)
@@ -276,6 +273,7 @@ def main(command_args):
     finally:
       shutil.rmtree(temp_dir)
   elif args.list:
+    src_files = []
     for src_file in _GetSourceFilesList(REPOSITORY_ROOT):
       # Skip paths with '$' since they won't get through the Ninja generator.
       if '$' in src_file:
@@ -284,8 +282,15 @@ def main(command_args):
       src_file = os.path.relpath(src_file)
       # Forward slashes for gyp, even on Windows.
       src_file = src_file.replace('\\', '/')
-      print src_file
+      src_files.append(src_file)
+    out = ' '.join(src_files)
+    return out.strip()
   return 0
+
+
+def DoMain(argv):
+  """Script main function."""
+  return main(argv)
 
 
 if __name__ == '__main__':

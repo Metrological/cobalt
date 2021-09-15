@@ -11,6 +11,8 @@
 
 #include <openssl/mem.h>
 
+#include <string.h>
+
 #if defined(OPENSSL_WINDOWS)
 OPENSSL_MSVC_PRAGMA(warning(push, 3))
 #include <windows.h>
@@ -63,7 +65,7 @@ void *OPENSSL_realloc(void *orig_ptr, size_t new_size) {
     to_copy = old_size;
   }
 
-  SbMemoryCopy(ret, orig_ptr, to_copy);
+  memcpy(ret, orig_ptr, to_copy);
   OPENSSL_free(orig_ptr);
 
   return ret;
@@ -101,7 +103,7 @@ const void *OPENSSL_memchr(const void *s, int c, size_t n) {
     return NULL;
   }
 
-  return SbMemoryFindByte(s, c, n);
+  return memchr(s, c, n);
 }
 
 int OPENSSL_memcmp(const void *s1, const void *s2, size_t n) {
@@ -109,7 +111,7 @@ int OPENSSL_memcmp(const void *s1, const void *s2, size_t n) {
     return 0;
   }
 
-  return SbMemoryCompare(s1, s2, n);
+  return memcmp(s1, s2, n);
 }
 
 void *OPENSSL_memcpy(void *dst, const void *src, size_t n) {
@@ -117,7 +119,7 @@ void *OPENSSL_memcpy(void *dst, const void *src, size_t n) {
     return dst;
   }
 
-  return SbMemoryCopy(dst, src, n);
+  return memcpy(dst, src, n);
 }
 
 void *OPENSSL_memmove(void *dst, const void *src, size_t n) {
@@ -125,7 +127,7 @@ void *OPENSSL_memmove(void *dst, const void *src, size_t n) {
     return dst;
   }
 
-  return SbMemoryMove(dst, src, n);
+  return memmove(dst, src, n);
 }
 
 void *OPENSSL_memset(void *dst, int c, size_t n) {
@@ -133,7 +135,7 @@ void *OPENSSL_memset(void *dst, int c, size_t n) {
     return dst;
   }
 
-  return SbMemorySet(dst, c, n);
+  return memset(dst, c, n);
 }
 
 uint32_t OPENSSL_hash32(const void *ptr, size_t len) {
@@ -163,7 +165,7 @@ size_t OPENSSL_strnlen(const char *s, size_t len) {
 }
 
 char *OPENSSL_strdup(const char *s) {
-  const size_t len = SbStringGetLength(s) + 1;
+  const size_t len = strlen(s) + 1;
   char *ret = OPENSSL_malloc(len);
   if (ret == NULL) {
     return NULL;

@@ -183,8 +183,39 @@ class AbstractLauncher(object):
     Raises:
       RuntimeError: Suspend signal not supported on platform.
     """
-
     raise RuntimeError("Suspend not supported for this platform.")
+
+  def SendConceal(self):
+    """sends conceal signal to the launcher's executable.
+
+    Raises:
+      RuntimeError: Conceal signal not supported on platform.
+    """
+    raise RuntimeError("Conceal not supported for this platform.")
+
+  def SendFocus(self):
+    """sends focus signal to the launcher's executable.
+
+    Raises:
+      RuntimeError: focus signal not supported on platform.
+    """
+    raise RuntimeError("Focus not supported for this platform.")
+
+  def SendFreeze(self):
+    """sends freeze signal to the launcher's executable.
+
+    Raises:
+      RuntimeError: Freeze signal not supported on platform.
+    """
+    raise RuntimeError("Freeze not supported for this platform.")
+
+  def SendStop(self):
+    """sends stop signal to the launcher's executable.
+
+    Raises:
+      RuntimeError: Stop signal not supported on platform.
+    """
+    raise RuntimeError("Stop not supported for this platform.")
 
   def SupportsDeepLink(self):
     return False
@@ -204,6 +235,27 @@ class AbstractLauncher(object):
     raise RuntimeError(
         "Deep link not supported for this platform (link {} sent).".format(
             link))
+
+  # Not like SendSuspendResume sending signals to cobalt, system suspend and
+  # resume send system signals to suspend and resume cobalt process.
+  def SupportsSystemSuspendResume(self):
+    return False
+
+  def SendSystemResume(self):
+    """sends a system signal to the resume the launcher's executable.
+
+    Raises:
+      RuntimeError: System resume signal not supported on platform.
+    """
+    raise RuntimeError("System resume signal not supported for this platform.")
+
+  def SendSystemSuspend(self):
+    """sends a system signal to suspend the current running executable.
+
+    Raises:
+      RuntimeError: System suspend signal not supported on platform.
+    """
+    raise RuntimeError("System suspend signal not supported for this platform.")
 
   def GetStartupTimeout(self):
     """Gets the number of seconds to wait before assuming a launcher timeout."""

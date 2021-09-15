@@ -16,6 +16,8 @@
 
 #include <ctype.h>
 
+#if SB_API_VERSION < 13
 bool SbCharacterIsUpper(int c) {
   return isupper(c);
 }
+#endif  // SB_API_VERSION < 13

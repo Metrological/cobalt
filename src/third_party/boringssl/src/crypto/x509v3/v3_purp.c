@@ -70,11 +70,6 @@
 
 #include "../internal.h"
 
-#if defined(STARBOARD)
-#include "starboard/system.h"
-#define bsearch SbSystemBinarySearch
-#endif
-
 #define V1_ROOT (EXFLAG_V1|EXFLAG_SS)
 #define ku_reject(x, usage) \
         (((x)->ex_flags & EXFLAG_KUSAGE) && !((x)->ex_kusage & (usage)))
@@ -192,7 +187,7 @@ int X509_PURPOSE_get_by_sname(char *sname)
     X509_PURPOSE *xptmp;
     for (i = 0; i < X509_PURPOSE_get_count(); i++) {
         xptmp = X509_PURPOSE_get0(i);
-        if (!OPENSSL_port_strcmp(xptmp->sname, sname))
+        if (!strcmp(xptmp->sname, sname))
             return i;
     }
     return -1;

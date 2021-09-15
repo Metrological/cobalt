@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// SendTo is largely tested with ReceiveFrom, so look there for more invovled
+// SendTo is largely tested with ReceiveFrom, so look there for more involved
 // tests.
 
 #include <utility>
@@ -43,7 +43,7 @@ void* SendToServerSocketEntryPoint(void* trio_as_void_ptr) {
   // The contents of this buffer are inconsequential.
   const size_t kBufSize = 1024;
   char* send_buf = new char[kBufSize];
-  SbMemorySet(send_buf, 0, kBufSize);
+  memset(send_buf, 0, kBufSize);
 
   // Continue sending to the socket until it fails to send. It's expected that
   // SbSocketSendTo will fail when the server socket closes, but the application
@@ -76,15 +76,9 @@ TEST(SbSocketSendToTest, RainyDayUnconnectedSocket) {
   int result = SbSocketSendTo(socket, buf, sizeof(buf), NULL);
   EXPECT_EQ(-1, result);
 
-#if SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) || \
-    SB_API_VERSION >= 9
   EXPECT_SB_SOCKET_ERROR_IN(SbSocketGetLastError(socket),
                             kSbSocketErrorConnectionReset,
                             kSbSocketErrorFailed);
-#else
-  EXPECT_SB_SOCKET_ERROR_IS_ERROR(SbSocketGetLastError(socket));
-#endif  // SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) ||
-        // SB_API_VERSION >= 9
 
   EXPECT_TRUE(SbSocketDestroy(socket));
 }
@@ -113,15 +107,9 @@ TEST_P(PairSbSocketSendToTest, RainyDaySendToClosedSocket) {
   void* thread_result;
   EXPECT_TRUE(SbThreadJoin(send_thread, &thread_result));
 
-#if SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) || \
-    SB_API_VERSION >= 9
   EXPECT_SB_SOCKET_ERROR_IN(SbSocketGetLastError(trio.server_socket),
                             kSbSocketErrorConnectionReset,
                             kSbSocketErrorFailed);
-#else
-  EXPECT_SB_SOCKET_ERROR_IS_ERROR(SbSocketGetLastError(trio.server_socket));
-#endif  // SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) ||
-        // SB_API_VERSION >= 9
 
   // Clean up the server socket.
   EXPECT_TRUE(SbSocketDestroy(trio.server_socket));
@@ -187,13 +175,8 @@ TEST_P(PairSbSocketSendToTest, RainyDaySendToSocketConnectionReset) {
     if (result < 0) {
       SbSocketError err = SbSocketGetLastError(trio->client_socket->socket());
 
-#if SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) || \
-    SB_API_VERSION >= 9
       EXPECT_EQ(kSbSocketErrorConnectionReset, err)
           << "Expected connection drop.";
-#else
-      EXPECT_EQ(kSbSocketErrorFailed, err);
-#endif
       return;
     }
 
@@ -201,8 +184,8 @@ TEST_P(PairSbSocketSendToTest, RainyDaySendToSocketConnectionReset) {
       return;  // Other way in which the connection was reset.
     }
   }
-  ASSERT_TRUE(false) << "Connection was not dropped after "
-                     << kNumRetries << " tries.";
+  ASSERT_TRUE(false) << "Connection was not dropped after " << kNumRetries
+                     << " tries.";
 }
 
 #if SB_HAS(IPV6)

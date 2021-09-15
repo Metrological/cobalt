@@ -40,41 +40,41 @@ namespace android {
 namespace shared {
 
 namespace {
-  enum {
-    kLooperIdAndroidCommand,
-    kLooperIdAndroidInput,
-    kLooperIdKeyboardInject,
-  };
+enum {
+  kLooperIdAndroidCommand,
+  kLooperIdAndroidInput,
+  kLooperIdKeyboardInject,
+};
 
-  const char* AndroidCommandName(
-      ApplicationAndroid::AndroidCommand::CommandType type) {
-    switch (type) {
-      case ApplicationAndroid::AndroidCommand::kUndefined:
-        return "Undefined";
-      case ApplicationAndroid::AndroidCommand::kStart:
-        return "Start";
-      case ApplicationAndroid::AndroidCommand::kResume:
-        return "Resume";
-      case ApplicationAndroid::AndroidCommand::kPause:
-        return "Pause";
-      case ApplicationAndroid::AndroidCommand::kStop:
-        return "Stop";
-      case ApplicationAndroid::AndroidCommand::kInputQueueChanged:
-        return "InputQueueChanged";
-      case ApplicationAndroid::AndroidCommand::kNativeWindowCreated:
-        return "NativeWindowCreated";
-      case ApplicationAndroid::AndroidCommand::kNativeWindowDestroyed:
-        return "NativeWindowDestroyed";
-      case ApplicationAndroid::AndroidCommand::kWindowFocusGained:
-        return "WindowFocusGained";
-      case ApplicationAndroid::AndroidCommand::kWindowFocusLost:
-        return "WindowFocusLost";
-      case ApplicationAndroid::AndroidCommand::kDeepLink:
-        return "DeepLink";
-      default:
-        return "unknown";
-    }
+const char* AndroidCommandName(
+    ApplicationAndroid::AndroidCommand::CommandType type) {
+  switch (type) {
+    case ApplicationAndroid::AndroidCommand::kUndefined:
+      return "Undefined";
+    case ApplicationAndroid::AndroidCommand::kStart:
+      return "Start";
+    case ApplicationAndroid::AndroidCommand::kResume:
+      return "Resume";
+    case ApplicationAndroid::AndroidCommand::kPause:
+      return "Pause";
+    case ApplicationAndroid::AndroidCommand::kStop:
+      return "Stop";
+    case ApplicationAndroid::AndroidCommand::kInputQueueChanged:
+      return "InputQueueChanged";
+    case ApplicationAndroid::AndroidCommand::kNativeWindowCreated:
+      return "NativeWindowCreated";
+    case ApplicationAndroid::AndroidCommand::kNativeWindowDestroyed:
+      return "NativeWindowDestroyed";
+    case ApplicationAndroid::AndroidCommand::kWindowFocusGained:
+      return "WindowFocusGained";
+    case ApplicationAndroid::AndroidCommand::kWindowFocusLost:
+      return "WindowFocusLost";
+    case ApplicationAndroid::AndroidCommand::kDeepLink:
+      return "DeepLink";
+    default:
+      return "unknown";
   }
+}
 }  // namespace
 
 // "using" doesn't work with class members, so make a local convenience type.
@@ -92,7 +92,6 @@ ApplicationAndroid::ApplicationAndroid(ALooper* looper)
       activity_state_(AndroidCommand::kUndefined),
       window_(kSbWindowInvalid),
       last_is_accessibility_high_contrast_text_enabled_(false) {
-
   // Initialize Time Zone early so that local time works correctly.
   // Called once here to help SbTimeZoneGet*Name()
   tzset();
@@ -193,6 +192,21 @@ void ApplicationAndroid::OnResume() {
   env->CallStarboardVoidMethodOrAbort("beforeStartOrResume", "()V");
 }
 
+void ApplicationAndroid::OnSuspend() {
+  JniEnvExt* env = JniEnvExt::Get();
+  env->CallStarboardVoidMethodOrAbort("beforeSuspend", "()V");
+}
+
+void ApplicationAndroid::StartMediaPlaybackService() {
+  JniEnvExt* env = JniEnvExt::Get();
+  env->CallStarboardVoidMethodOrAbort("startMediaPlaybackService", "()V");
+}
+
+void ApplicationAndroid::StopMediaPlaybackService() {
+  JniEnvExt* env = JniEnvExt::Get();
+  env->CallStarboardVoidMethodOrAbort("stopMediaPlaybackService", "()V");
+}
+
 void ApplicationAndroid::ProcessAndroidCommand() {
   JniEnvExt* env = JniEnvExt::Get();
   AndroidCommand cmd;
@@ -227,22 +241,36 @@ void ApplicationAndroid::ProcessAndroidCommand() {
     // Starboard resume/suspend is tied to the UI window being created/destroyed
     // (rather than to the Activity lifecycle) since Cobalt can't do anything at
     // all if it doesn't have a window surface to draw on.
-    case AndroidCommand::kNativeWindowCreated:
-      {
-        ScopedLock lock(android_command_mutex_);
-        native_window_ = static_cast<ANativeWindow*>(cmd.data);
-        if (window_) {
-          window_->native_window = native_window_;
-        }
-        // Now that we have the window, signal that the Android UI thread can
-        // continue, before we start or resume the Starboard app.
-        android_command_condition_.Signal();
+    case AndroidCommand::kNativeWindowCreated: {
+      ScopedLock lock(android_command_mutex_);
+      native_window_ = static_cast<ANativeWindow*>(cmd.data);
+      if (window_) {
+        window_->native_window = native_window_;
       }
+      // Media playback service is tied to UI window being created/destroyed
+      // (rather than to the Activity lifecycle), the service should be
+      // stopped before native window being created.
+      StopMediaPlaybackService();
+      // Now that we have the window, signal that the Android UI thread can
+      // continue, before we start or resume the Starboard app.
+      android_command_condition_.Signal();
+    }
       if (state() == kStateUnstarted) {
         // This is the initial launch, so we have to start Cobalt now that we
         // have a window.
         env->CallStarboardVoidMethodOrAbort("beforeStartOrResume", "()V");
+#if SB_API_VERSION >= 13
+        DispatchStart(GetAppStartTimestamp());
+#else  // SB_API_VERSION >= 13
         DispatchStart();
+#endif  // SB_API_VERSION >= 13
+      } else if (state() == kStateConcealed || state() == kStateFrozen) {
+#if SB_API_VERSION >= 13
+        DispatchAndDelete(new Event(kSbEventTypeReveal, SbTimeGetMonotonicNow(),
+                                    NULL, NULL));
+#else  // SB_API_VERSION >= 13
+        DispatchAndDelete(new Event(kSbEventTypeReveal, NULL, NULL));
+#endif  // SB_API_VERSION >= 13
       } else {
         // Now that we got a window back, change the command for the switch
         // below to sync up with the current activity lifecycle.
@@ -254,10 +282,19 @@ void ApplicationAndroid::ProcessAndroidCommand() {
       // early in SendAndroidCommand().
       {
         ScopedLock lock(android_command_mutex_);
+        // Media playback service is tied to UI window being created/destroyed
+        // (rather than to the Activity lifecycle). The service should be
+        // started after window being destroyed.
+        StartMediaPlaybackService();
         // Cobalt can't keep running without a window, even if the Activity
         // hasn't stopped yet. DispatchAndDelete() will inject events as needed
         // if we're not already paused.
-        DispatchAndDelete(new Event(kSbEventTypeSuspend, NULL, NULL));
+#if SB_API_VERSION >= 13
+        DispatchAndDelete(new Event(kSbEventTypeConceal, SbTimeGetMonotonicNow(),
+                                    NULL, NULL));
+#else  // SB_API_VERSION >= 13
+        DispatchAndDelete(new Event(kSbEventTypeConceal, NULL, NULL));
+#endif  // SB_API_VERSION >= 13
         if (window_) {
           window_->native_window = NULL;
         }
@@ -277,17 +314,17 @@ void ApplicationAndroid::ProcessAndroidCommand() {
       // (because the user exits and enters the app) so we check
       // for changes here.
       SbAccessibilityDisplaySettings settings;
-      SbMemorySet(&settings, 0, sizeof(settings));
+      memset(&settings, 0, sizeof(settings));
       if (!SbAccessibilityGetDisplaySettings(&settings)) {
         break;
       }
 
       bool enabled = settings.has_high_contrast_text_setting &&
-          settings.is_high_contrast_text_enabled;
+                     settings.is_high_contrast_text_enabled;
 
       if (enabled != last_is_accessibility_high_contrast_text_enabled_) {
-        DispatchAndDelete(new Event(
-            kSbEventTypeAccessiblitySettingsChanged, NULL, NULL));
+        DispatchAndDelete(
+            new Event(kSbEventTypeAccessibilitySettingsChanged, NULL, NULL));
       }
       last_is_accessibility_high_contrast_text_enabled_ = enabled;
       break;
@@ -311,7 +348,12 @@ void ApplicationAndroid::ProcessAndroidCommand() {
           SbMemoryDeallocate(static_cast<void*>(deep_link));
         } else {
           SB_LOG(INFO) << "ApplicationAndroid Inject: kSbEventTypeLink";
+#if SB_API_VERSION >= 13
+          Inject(new Event(kSbEventTypeLink, SbTimeGetMonotonicNow(),
+              deep_link, SbMemoryDeallocate));
+#else  // SB_API_VERSION >= 13
           Inject(new Event(kSbEventTypeLink, deep_link, SbMemoryDeallocate));
+#endif  // SB_API_VERSION >= 13
         }
       }
       break;
@@ -319,44 +361,65 @@ void ApplicationAndroid::ProcessAndroidCommand() {
 
   // If there's a window, sync the app state to the Activity lifecycle, letting
   // DispatchAndDelete() inject events as needed if we missed a state.
-  if (native_window_) {
+#if SB_API_VERSION >= 13
+if (native_window_) {
     switch (sync_state) {
       case AndroidCommand::kStart:
-        DispatchAndDelete(new Event(kSbEventTypeResume, NULL, NULL));
+        DispatchAndDelete(new Event(kSbEventTypeReveal, SbTimeGetMonotonicNow(),
+                                    NULL, NULL));
         break;
       case AndroidCommand::kResume:
-        DispatchAndDelete(new Event(kSbEventTypeUnpause, NULL, NULL));
+        DispatchAndDelete(new Event(kSbEventTypeFocus, SbTimeGetMonotonicNow(),
+                                    NULL, NULL));
         break;
       case AndroidCommand::kPause:
-        DispatchAndDelete(new Event(kSbEventTypePause, NULL, NULL));
+        DispatchAndDelete(new Event(kSbEventTypeBlur, SbTimeGetMonotonicNow(),
+                                    NULL, NULL));
         break;
       case AndroidCommand::kStop:
-        if (state() != kStateSuspended) {
-          // We usually suspend when losing the window above, but if the window
+        if (state() != kStateConcealed && state() != kStateFrozen) {
+          // We usually conceal when losing the window above, but if the window
           // wasn't destroyed (e.g. when Daydream starts) then we still have to
-          // suspend when the Activity is stopped.
-          env->CallStarboardVoidMethodOrAbort("beforeSuspend", "()V");
-          DispatchAndDelete(new Event(kSbEventTypeSuspend, NULL, NULL));
+          // conceal when the Activity is stopped.
+          DispatchAndDelete(new Event(kSbEventTypeConceal, SbTimeGetMonotonicNow(),
+                                      NULL, NULL));
         }
         break;
       default:
         break;
     }
   }
+#else  // SB_API_VERSION >= 13
+  if (native_window_) {
+    switch (sync_state) {
+      case AndroidCommand::kStart:
+        DispatchAndDelete(new Event(kSbEventTypeReveal, NULL, NULL));
+        break;
+      case AndroidCommand::kResume:
+        DispatchAndDelete(new Event(kSbEventTypeFocus, NULL, NULL));
+        break;
+      case AndroidCommand::kPause:
+        DispatchAndDelete(new Event(kSbEventTypeBlur, NULL, NULL));
+        break;
+      case AndroidCommand::kStop:
+        if (state() != kStateConcealed && state() != kStateFrozen) {
+          // We usually conceal when losing the window above, but if the window
+          // wasn't destroyed (e.g. when Daydream starts) then we still have to
+          // conceal when the Activity is stopped.
+          DispatchAndDelete(new Event(kSbEventTypeConceal, NULL, NULL));
+        }
+        break;
+      default:
+        break;
+    }
+  }
+#endif  // SB_API_VERSION >= 13
 }
 
 void ApplicationAndroid::SendAndroidCommand(AndroidCommand::CommandType type,
                                             void* data) {
   SB_LOG(INFO) << "Send Android command: " << AndroidCommandName(type);
-  if (type == AndroidCommand::kNativeWindowDestroyed) {
-    // When this command is processed it will suspend Cobalt, so make the JNI
-    // call to StarboardBridge.beforeSuspend() early while still here on the
-    // Android main thread. This lets the MediaSession get released now without
-    // having to wait to bounce between threads.
-    JniEnvExt* env = JniEnvExt::Get();
-    env->CallStarboardVoidMethod("beforeSuspend", "()V");
-  }
-  AndroidCommand cmd {type, data};
+  AndroidCommand cmd{type, data};
   ScopedLock lock(android_command_mutex_);
   write(android_command_writefd_, &cmd, sizeof(cmd));
   // Synchronization only necessary when managing resources.
@@ -383,7 +446,7 @@ void ApplicationAndroid::ProcessAndroidInput() {
     SB_LOG(INFO) << "Android input: type="
                  << AInputEvent_getType(android_event);
     if (AInputQueue_preDispatchEvent(input_queue_, android_event)) {
-        continue;
+      continue;
     }
     if (!input_events_generator_) {
       SB_DLOG(WARNING) << "Android input event ignored without an SbWindow.";
@@ -523,7 +586,7 @@ void ApplicationAndroid::SbWindowSendInputEvent(const char* input_text,
                                                 bool is_composing) {
   char* text = SbStringDuplicate(input_text);
   SbInputData* data = new SbInputData();
-  SbMemorySet(data, 0, sizeof(*data));
+  memset(data, 0, sizeof(*data));
   data->window = window_;
   data->type = kSbInputEventTypeInput;
   data->device_type = kSbInputDeviceTypeOnScreenKeyboard;
@@ -539,7 +602,7 @@ void ApplicationAndroid::SbWindowSendInputEvent(const char* input_text,
 bool ApplicationAndroid::OnSearchRequested() {
   for (int i = 0; i < 2; i++) {
     SbInputData* data = new SbInputData();
-    SbMemorySet(data, 0, sizeof(*data));
+    memset(data, 0, sizeof(*data));
     data->window = window_;
     data->key = kSbKeyBrowserSearch;
     data->type = (i == 0) ? kSbInputEventTypePress : kSbInputEventTypeUnpress;
@@ -548,9 +611,10 @@ bool ApplicationAndroid::OnSearchRequested() {
   return true;
 }
 
-extern "C" SB_EXPORT_PLATFORM
-jboolean Java_dev_cobalt_coat_StarboardBridge_nativeOnSearchRequested(
-    JniEnvExt* env, jobject unused_this) {
+extern "C" SB_EXPORT_PLATFORM jboolean
+Java_dev_cobalt_coat_StarboardBridge_nativeOnSearchRequested(
+    JniEnvExt* env,
+    jobject unused_this) {
   return ApplicationAndroid::Get()->OnSearchRequested();
 }
 
@@ -565,19 +629,59 @@ void ApplicationAndroid::HandleDeepLink(const char* link_url) {
   SendAndroidCommand(AndroidCommand::kDeepLink, deep_link);
 }
 
-extern "C" SB_EXPORT_PLATFORM
-void Java_dev_cobalt_coat_StarboardBridge_nativeHandleDeepLink(
-    JniEnvExt* env, jobject unused_this, jstring j_url) {
+extern "C" SB_EXPORT_PLATFORM void
+Java_dev_cobalt_coat_StarboardBridge_nativeHandleDeepLink(JniEnvExt* env,
+                                                          jobject unused_this,
+                                                          jstring j_url) {
   if (j_url) {
     std::string utf_str = env->GetStringStandardUTFOrAbort(j_url);
     ApplicationAndroid::Get()->HandleDeepLink(utf_str.c_str());
   }
 }
 
-extern "C" SB_EXPORT_PLATFORM
-void Java_dev_cobalt_coat_StarboardBridge_nativeStopApp(
-    JniEnvExt* env, jobject unused_this, jint error_level) {
+extern "C" SB_EXPORT_PLATFORM void
+Java_dev_cobalt_coat_StarboardBridge_nativeStopApp(JniEnvExt* env,
+                                                   jobject unused_this,
+                                                   jint error_level) {
   ApplicationAndroid::Get()->Stop(error_level);
+}
+
+void ApplicationAndroid::SendLowMemoryEvent() {
+  Inject(new Event(kSbEventTypeLowMemory, NULL, NULL));
+}
+
+extern "C" SB_EXPORT_PLATFORM void
+Java_dev_cobalt_coat_CobaltActivity_nativeLowMemoryEvent(JNIEnv* env,
+                                                         jobject unused_clazz) {
+  ApplicationAndroid::Get()->SendLowMemoryEvent();
+}
+
+void ApplicationAndroid::OsNetworkStatusChange(bool became_online) {
+  if (state() == kStateUnstarted) {
+    // Injecting events before application starts is error-prone.
+    return;
+  }
+  if (became_online) {
+    Inject(new Event(kSbEventTypeOsNetworkConnected, NULL, NULL));
+  } else {
+    Inject(new Event(kSbEventTypeOsNetworkDisconnected, NULL, NULL));
+  }
+}
+
+SbTimeMonotonic ApplicationAndroid::GetAppStartTimestamp() {
+  JniEnvExt* env = JniEnvExt::Get();
+  jlong app_start_timestamp =
+      env->CallStarboardLongMethodOrAbort("getAppStartTimestamp",
+                                          "()J");
+  return app_start_timestamp;
+}
+
+extern "C" SB_EXPORT_PLATFORM jlong
+Java_dev_cobalt_coat_StarboardBridge_nativeSbTimeGetMonotonicNow(
+    JNIEnv* env,
+    jobject jcaller,
+    jboolean online) {
+  return SbTimeGetMonotonicNow();
 }
 
 }  // namespace shared

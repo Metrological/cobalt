@@ -35,7 +35,7 @@ class OverlayInfoRegistryImpl {
   void RetrieveAndClear(std::string* infos);
 
  private:
-  // Reserve enough data for |infos_| to avoid extra allcations.
+  // Reserve enough data for |infos_| to avoid extra allocations.
   static const size_t kReservedSize = 4096;
 
   OverlayInfoRegistryImpl() = default;
@@ -64,13 +64,12 @@ void OverlayInfoRegistryImpl::Disable() {
 }
 
 void OverlayInfoRegistryImpl::Register(const char* category, const char* data) {
-  DCHECK(SbStringFindCharacter(
-             category, static_cast<char>(OverlayInfoRegistry::kDelimiter)) ==
+  DCHECK(strchr(category, static_cast<char>(OverlayInfoRegistry::kDelimiter)) ==
          NULL)
       << "Category " << category
       << " cannot contain the delimiter:" << OverlayInfoRegistry::kDelimiter;
-  DCHECK(SbStringFindCharacter(
-             data, static_cast<char>(OverlayInfoRegistry::kDelimiter)) == NULL)
+  DCHECK(strchr(data, static_cast<char>(OverlayInfoRegistry::kDelimiter)) ==
+         NULL)
       << "Data " << data
       << " cannot contain the delimiter:" << OverlayInfoRegistry::kDelimiter;
   if (!infos_.empty()) {

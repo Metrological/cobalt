@@ -59,14 +59,10 @@ typedef enum SbSocketError {
   // clever and wait on it with a SbSocketWaiter.
   kSbSocketPending,
 
-#if SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) || \
-    SB_API_VERSION >= 9
   // This socket error is generated when the connection is reset unexpectedly
   // and the connection is now invalid.
   // This might happen for example if an read packet has the "TCP RST" bit set.
   kSbSocketErrorConnectionReset,
-#endif  // SB_HAS(SOCKET_ERROR_CONNECTION_RESET_SUPPORT) ||
-        // SB_API_VERSION >= 9
 
   // The operation failed for some other reason not specified above.
   kSbSocketErrorFailed,
@@ -256,7 +252,7 @@ SB_EXPORT bool SbSocketGetLocalAddress(SbSocket socket,
 // |kSbSocketAddressTypeIpv6| then any IPv6 local interface that is up and not
 // loopback or a link-local IP is a valid return value.  However, in the case of
 // IPv6, the address with the biggest scope must be returned.  E.g., a globally
-// scoped and routable IP is prefered over a unique local address (ULA).  Also,
+// scoped and routable IP is preferred over a unique local address (ULA).  Also,
 // the IP address that is returned must be permanent.
 //
 // If destination address is NULL, then any IP address that is valid for
@@ -421,11 +417,5 @@ SB_EXPORT void SbSocketFreeResolution(SbSocketResolution* resolution);
 #ifdef __cplusplus
 }  // extern "C"
 #endif
-
-#if defined(__cplusplus) && SB_API_VERSION < 11
-extern "C++" {
-#include "starboard/common/socket.h"
-}  // extern "C++"
-#endif  // defined(__cplusplus) && SB_API_VERSION < 11
 
 #endif  // STARBOARD_SOCKET_H_

@@ -38,7 +38,7 @@ bool StartsWithAnnexBHeader(const uint8_t* annex_b_data,
   if (annex_b_data_size < sizeof(kAnnexBHeader)) {
     return false;
   }
-  return SbMemoryCompare(annex_b_data, kAnnexBHeader, sizeof(kAnnexBHeader)) ==
+  return memcmp(annex_b_data, kAnnexBHeader, sizeof(kAnnexBHeader)) ==
          0;
 }
 
@@ -117,10 +117,12 @@ AvcParameterSets::AvcParameterSets(Format format,
       }
       parameter_sets_.push_back(nalu);
       combined_size_in_bytes_ += nalu.size();
-    } else {
+    } else if (nalu[kAnnexBHeaderSizeInBytes] == kIdrStartCode) {
       break;
     }
   }
+  SB_LOG_IF(ERROR, first_sps_index_ == -1 || first_pps_index_ == -1)
+      << "AVC parameter set NALUs not found.";
 }
 
 AvcParameterSets AvcParameterSets::ConvertTo(Format new_format) const {
@@ -201,7 +203,7 @@ bool ConvertAnnexBToAvcc(const uint8_t* annex_b_source,
     avcc_destination[1] = static_cast<uint8_t>((payload_size & 0xff0000) >> 16);
     avcc_destination[2] = static_cast<uint8_t>((payload_size & 0xff00) >> 8);
     avcc_destination[3] = static_cast<uint8_t>(payload_size & 0xff);
-    SbMemoryCopy(avcc_destination + kAvccLengthInBytes,
+    memcpy(avcc_destination + kAvccLengthInBytes,
                  last_source + kAnnexBHeaderSizeInBytes, payload_size);
     avcc_destination += annex_b_source - last_source;
     last_source = annex_b_source;

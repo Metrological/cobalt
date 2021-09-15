@@ -15,9 +15,9 @@
 #include <string>
 #include <vector>
 
+#include "starboard/common/file.h"
 #include "starboard/common/log.h"
 #include "starboard/configuration.h"
-#include "starboard/file.h"
 #include "starboard/memory.h"
 #include "starboard/nplb/nplb_evergreen_compat_tests/checks.h"
 #include "starboard/system.h"
@@ -69,11 +69,11 @@ TEST_F(StorageTest, VerifyStorageDirectory) {
   SB_LOG(INFO) << "file: " << file_path;
 
   std::vector<char> buf(kBufSize);
-  SbMemorySet(buf.data(), 'A', kBufSize);
+  memset(buf.data(), 'A', kBufSize);
 
   WriteBuffer(file_path.c_str(), buf.data(), kBufSize);
 
-  SbMemorySet(buf.data(), 0, kBufSize);
+  memset(buf.data(), 0, kBufSize);
 
   ReadBuffer(file_path.c_str(), buf.data(), kBufSize);
 

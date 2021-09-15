@@ -85,9 +85,11 @@ Loader::Loader(const FetcherCreator& fetcher_creator,
   DCHECK(!decoder_creator_.is_null());
   DCHECK(!on_load_complete_.is_null());
 
+  load_timing_info_ = net::LoadTimingInfo();
+
   std::unique_ptr<Decoder> decoder = decoder_creator_.Run(
       base::Bind(&Loader::LoadComplete, base::Unretained(this)));
-  // We are doing this bizzare check because decoder_ used to be a scoped_ptr
+  // We are doing this bizarre check because decoder_ used to be a scoped_ptr
   // and scoped_ptr checks equality of held raw pointer and only delete rhs if
   // not equal.
   if (decoder.get() == decoder_.get()) {
@@ -158,6 +160,11 @@ void Loader::Start() {
       base::Bind(&Loader::LoadComplete, base::Unretained(this))));
   fetcher_ = fetcher_creator_.Run(fetcher_handler_to_decoder_adaptor_.get());
 
+  if (fetcher_) {
+    fetcher_->SetLoadTimingInfoCallback(base::Bind(&Loader::set_load_timing_info,
+                                                   base::Unretained(this)));
+  }
+
   // Post the error callback on the current message loop in case the loader is
   // destroyed in the callback.
   if (!fetcher_) {
@@ -167,6 +174,14 @@ void Loader::Start() {
     base::MessageLoop::current()->task_runner()->PostTask(
         FROM_HERE, fetcher_creator_error_closure_.callback());
   }
+}
+
+void Loader::set_load_timing_info(const net::LoadTimingInfo& timing_info) {
+  load_timing_info_ = timing_info;
+}
+
+net::LoadTimingInfo Loader::get_load_timing_info() {
+  return load_timing_info_;
 }
 
 }  // namespace loader

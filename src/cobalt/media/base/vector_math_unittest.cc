@@ -163,7 +163,7 @@ class EWMATestScenario {
         smoothing_factor_(smoothing_factor),
         expected_final_avg_(initial_value),
         expected_max_(0.0f) {
-    if (data_len_ > 0) SbMemoryCopy(data_.get(), src, len * sizeof(float));
+    if (data_len_ > 0) memcpy(data_.get(), src, len * sizeof(float));
   }
 
   // Copy constructor and assignment operator for ::testing::Values(...).
@@ -176,7 +176,7 @@ class EWMATestScenario {
     } else {
       this->data_.reset(static_cast<float*>(base::AlignedAlloc(
           other.data_len_ * sizeof(float), vector_math::kRequiredAlignment)));
-      SbMemoryCopy(this->data_.get(), other.data_.get(),
+      memcpy(this->data_.get(), other.data_.get(),
                    other.data_len_ * sizeof(float));
     }
     this->data_len_ = other.data_len_;
@@ -285,7 +285,7 @@ INSTANTIATE_TEST_CASE_P(
         EWMATestScenario(0.0f, kOnes, 32, 0.0f).HasExpectedResult(0.0f, 1.0f),
         EWMATestScenario(1.0f, kZeros, 32, 0.0f).HasExpectedResult(1.0f, 0.0f),
 
-        // Smothing factor of one: Result = last sample squared.
+        // Smoothing factor of one: Result = last sample squared.
         EWMATestScenario(0.0f, kCheckerboard, 32, 1.0f)
             .ScaledBy(2.0f)
             .HasExpectedResult(4.0f, 4.0f),
@@ -356,7 +356,7 @@ INSTANTIATE_TEST_CASE_P(
         EWMATestScenario(0.0f, kInverseCheckerboard, 15, 0.25f)
             .HasExpectedResult(0.56570137f, 1.0f),
 
-        // Smoothing factor of 1/4, impluse signal.
+        // Smoothing factor of 1/4, impulse signal.
         EWMATestScenario(0.0f, kZeros, 3, 0.25f)
             .WithImpulse(2.0f, 0)
             .HasExpectedResult(0.562500f, 4.0f),

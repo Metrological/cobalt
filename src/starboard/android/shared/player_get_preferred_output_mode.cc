@@ -56,7 +56,7 @@ SbPlayerOutputMode SbPlayerGetPreferredOutputMode(
       creation_param->video_sample_info.max_video_capabilities;
 
   // Sub players must use decode-to-texture on Android.
-  if (max_video_capabilities && SbStringGetLength(max_video_capabilities) > 0) {
+  if (max_video_capabilities && strlen(max_video_capabilities) > 0) {
     if (VideoDecoder::OutputModeSupported(kSbPlayerOutputModeDecodeToTexture,
                                           codec, drm_system)) {
       return kSbPlayerOutputModeDecodeToTexture;
@@ -85,7 +85,9 @@ SbPlayerOutputMode SbPlayerGetPreferredOutputMode(
     return output_modes_to_check[1];
   }
 
-  SB_NOTREACHED();
+  SB_LOG(WARNING) << "creation_param->video_sample_info.codec ("
+                  << creation_param->video_sample_info.codec
+                  << ") is not supported";
   return kSbPlayerOutputModeInvalid;
 }
 

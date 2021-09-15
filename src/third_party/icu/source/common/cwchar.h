@@ -1,3 +1,5 @@
+// © 2016 and later: Unicode, Inc. and others.
+// License & terms of use: http://www.unicode.org/copyright.html
 /*  
 ******************************************************************************
 *
@@ -6,7 +8,7 @@
 *
 ******************************************************************************
 *   file name:  cwchar.h
-*   encoding:   US-ASCII
+*   encoding:   UTF-8
 *   tab size:   8 (not used)
 *   indentation:4
 *
@@ -40,10 +42,9 @@
 
 /* The following are not available on all systems, defined in wchar.h or string.h. */
 #if defined(STARBOARD)
-#   include "starboard/string.h"
-#   define uprv_wcscpy SbStringCopyWide
-#   define uprv_wcscat SbStringConcatWide
-#   define uprv_wcslen SbStringGetLengthWide
+#   define uprv_wcscpy wcscpy
+#   define uprv_wcscat wcscat
+#   define uprv_wcslen wcslen
 #elif U_HAVE_WCSCPY
 #   define uprv_wcscpy wcscpy
 #   define uprv_wcscat wcscat

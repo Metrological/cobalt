@@ -28,6 +28,7 @@
 #include "cobalt/account/account_manager.h"
 #include "cobalt/base/accessibility_caption_settings_changed_event.h"
 #include "cobalt/base/application_state.h"
+#include "cobalt/base/date_time_configuration_changed_event.h"
 #include "cobalt/base/message_queue.h"
 #include "cobalt/base/on_screen_keyboard_blurred_event.h"
 #include "cobalt/base/on_screen_keyboard_focused_event.h"
@@ -65,6 +66,7 @@
 #include "cobalt/system_window/system_window.h"
 #include "cobalt/webdriver/session_driver.h"
 #include "starboard/configuration.h"
+#include "starboard/time.h"
 #include "starboard/window.h"
 #include "url/gurl.h"
 
@@ -129,7 +131,7 @@ class BrowserModule {
   std::string GetUserAgent() { return network_module_->GetUserAgent(); }
 
   // Recreates web module with the given URL. In the case where Cobalt is
-  // currently suspended, this defers the navigation and instead sets
+  // currently frozen, this defers the navigation and instead sets
   // |pending_navigate_url_| to the specified url, which will trigger a
   // navigation when Cobalt resumes.
   void Navigate(const GURL& url_reference);
@@ -174,11 +176,12 @@ class BrowserModule {
   void SetProxy(const std::string& proxy_rules);
 
   // LifecycleObserver-similar interface.
-  void Start();
-  void Pause();
-  void Unpause();
-  void Suspend();
-  void Resume();
+  void Blur(SbTimeMonotonic timestamp);
+  void Conceal(SbTimeMonotonic timestamp);
+  void Freeze(SbTimeMonotonic timestamp);
+  void Unfreeze(SbTimeMonotonic timestamp);
+  void Reveal(SbTimeMonotonic timestamp);
+  void Focus(SbTimeMonotonic timestamp);
 
   // Attempt to reduce overall memory consumption. Called in response to a
   // system indication that memory usage is nearing a critical level.
@@ -191,10 +194,8 @@ class BrowserModule {
   // |javascript_reserved_memory_|.
   void UpdateJavaScriptHeapStatistics();
 
-#if SB_API_VERSION >= 8
   // Called when a kSbEventTypeWindowSizeChange event is fired.
   void OnWindowSizeChanged(const cssom::ViewportSize& viewport_size);
-#endif  // SB_API_VERSION >= 8
 
 #if SB_API_VERSION >= 12 || SB_HAS(ON_SCREEN_KEYBOARD)
   void OnOnScreenKeyboardShown(const base::OnScreenKeyboardShownEvent* event);
@@ -203,10 +204,8 @@ class BrowserModule {
       const base::OnScreenKeyboardFocusedEvent* event);
   void OnOnScreenKeyboardBlurred(
       const base::OnScreenKeyboardBlurredEvent* event);
-#if SB_API_VERSION >= 11
   void OnOnScreenKeyboardSuggestionsUpdated(
       const base::OnScreenKeyboardSuggestionsUpdatedEvent* event);
-#endif  // SB_API_VERSION >= 11
 #endif  // SB_API_VERSION >= 12 ||
         // SB_HAS(ON_SCREEN_KEYBOARD)
 
@@ -215,6 +214,14 @@ class BrowserModule {
       const base::AccessibilityCaptionSettingsChangedEvent* event);
 #endif  // SB_API_VERSION >= 12 || SB_HAS(CAPTIONS)
 
+  void OnWindowOnOnlineEvent(const base::Event* event);
+  void OnWindowOnOfflineEvent(const base::Event* event);
+
+#if SB_API_VERSION >= 13
+  void OnDateTimeConfigurationChanged(
+      const base::DateTimeConfigurationChangedEvent* event);
+#endif
+
   bool IsWebModuleLoaded() { return web_module_loaded_.IsSignaled(); }
 
   // Parses url and defines a mapping of parameter values of the form
@@ -222,6 +229,11 @@ class BrowserModule {
   static void GetParamMap(const std::string& url,
                           std::map<std::string, std::string>& map);
 
+  // Pass the application preload or start timestamps from Starboard.
+  void SetApplicationStartOrPreloadTimestamp(bool is_preload,
+                                             SbTimeMonotonic timestamp);
+  // Pass the deeplink timestamp from Starboard.
+  void SetDeepLinkTimestamp(SbTimeMonotonic timestamp);
  private:
 #if SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
   static void CoreDumpHandler(void* browser_module_as_void);
@@ -390,6 +402,9 @@ class BrowserModule {
   // Gets the current resource provider.
   render_tree::ResourceProvider* GetResourceProvider();
 
+  // Initialize all components without initializing system window.
+  void InitializeComponents();
+
   // Initializes the system window, and all components that require it.
   void InitializeSystemWindow();
 
@@ -399,21 +414,42 @@ class BrowserModule {
   // Destroys the renderer module and dependent objects.
   void DestroyRendererModule();
 
+  // Freeze Media module and dependent objects.
+  void FreezeMediaModule();
+
+  // Attempt to navigate to its specified URL.
+  void NavigatePendingURL();
+
+  // Reset qr_code_overlay, main_web_module_layer, splash_screen_layer
+  // and qr_overlay_info_layer etc resources.
+  void ResetResources();
+
   // Update web modules with the current viewport size.
   void UpdateScreenSize();
 
-  // Does all the steps for either a Suspend or the first half of a Start.
-  void SuspendInternal(bool is_start);
+  // Does all the steps for half of a Conceal that happen prior to
+  // the app state update.
+  void ConcealInternal(SbTimeMonotonic timestamp);
 
-  // Does all the steps for either a Resume or the second half of a Start that
-  // happen prior to the app state update.
-  void StartOrResumeInternalPreStateUpdate(bool is_start);
-  // Does all the steps for either a Resume or the second half of a Start that
-  // happen after the app state update.
-  void StartOrResumeInternalPostStateUpdate();
+  // Does all the steps for half of a Freeze that happen prior to
+  // the app state update.
+  void FreezeInternal(SbTimeMonotonic timestamp);
+
+  // Does all the steps for half of a Reveal that happen prior to
+  // the app state update.
+  void RevealInternal(SbTimeMonotonic timestamp);
+
+  // Does all the steps for half of a Unfreeze that happen prior to
+  // the app state update.
+  void UnfreezeInternal(SbTimeMonotonic timestamp);
+
+  // Check debug console, splash screen and web module if they are
+  // ready to freeze at Concealed state. If so, call SystemRequestFreeze
+  // to freeze Cobalt.
+  void OnMaybeFreeze();
 
   // Gets a viewport size to use for now. This may change depending on the
-  // current application state. While preloading, this returns the requested
+  // current application state. While concealed, this returns the requested
   // viewport size. If there was no requested viewport size, it returns a
   // default viewport size of 1280x720 (720p). Once a system window is created,
   // it returns the confirmed size of the window.
@@ -434,13 +470,14 @@ class BrowserModule {
   // Get the SbWindow via |system_window_| or potentially NULL.
   SbWindow GetSbWindow();
 
-  // This returns the render tree of the most recent submission, with animations
-  // applied according to the current time.
-  scoped_refptr<render_tree::Node> GetLastSubmissionAnimated();
-
   // Sets the fallback splash screen url to a topic-specific URL, if applicable.
   // Returns the topic used, or an empty Optional if a topic isn't found.
   base::Optional<std::string> SetSplashScreenTopicFallback(const GURL& url);
+
+  // Function that creates the H5vcc object that will be injected into WebModule
+  scoped_refptr<script::Wrappable> CreateH5vcc(
+      const scoped_refptr<dom::Window>& window,
+      script::GlobalEnvironment* global_environment);
 
   // TODO:
   //     WeakPtr usage here can be avoided if BrowserModule has a thread to
@@ -478,6 +515,8 @@ class BrowserModule {
 
   base::EventDispatcher* event_dispatcher_;
 
+  account::AccountManager* account_manager_;
+
   // Whether the browser module has yet rendered anything. On the very first
   // render, we hide the system splash screen.
   bool is_rendered_;
@@ -495,7 +534,7 @@ class BrowserModule {
   std::unique_ptr<renderer::RendererModule> renderer_module_;
 
   // A stub implementation of ResourceProvider that can be used until a real
-  // ResourceProvider is created. Only valid in the Preloading state.
+  // ResourceProvider is created. Only valid in the Concealed state.
   base::Optional<render_tree::ResourceProviderStub> resource_provider_stub_;
 
   // Controls all media playback related objects/resources.
@@ -618,10 +657,10 @@ class BrowserModule {
 #endif
 
   // The URL that Cobalt will attempt to navigate to during an OnErrorRetry()
-  // and also when starting from a preloaded state or resuming from a suspended
-  // state. This url is set within OnError() and also when a navigation is
-  // deferred as a result of Cobalt being suspended; it is cleared when a
-  // navigation occurs.
+  // and also when starting from a concealed state or unfreezing from a
+  // frozen state. This url is set within OnError() and also when a
+  // navigation is deferred as a result of Cobalt being frozen; it is
+  // cleared when a navigation occurs.
   GURL pending_navigate_url_;
 
   // The number of OnErrorRetry() calls that have occurred since the last
@@ -679,10 +718,9 @@ class BrowserModule {
   int current_splash_screen_timeline_id_;
   int current_main_web_module_timeline_id_;
 
-  // Remember the first set value for JavaScript's GC threshold setting computed
-  // by automem.  We want this so that we can check that it never changes, since
-  // we do not have the ability to modify it after startup.
-  base::Optional<int64_t> javascript_gc_threshold_in_bytes_;
+  // Save the current window size before transitioning to Concealed state,
+  // and reuse this value to recreate the window.
+  math::Size window_size_;
 };
 
 }  // namespace browser

@@ -38,16 +38,9 @@
 // platforms, and Starboard is not available there.  So we define these
 // "reverse poems" to move past this issue for host builds.  For why we don't
 // just use poems, see the comment in the #else clause.
-#define SbMemoryCopy memcpy
-#define SbMemoryMove memmove
-#define SbStringGetLength strlen
-#define SbStringCopyUnsafe strcpy
-#define PoemFindCharacterInString strchr
+
 #define SbStringFormatF snprintf
 #define SbStringFormatUnsafeF sprintf
-#define SbStringParseUnsignedInteger strtoul
-#define SbStringParseSignedInteger strtol
-#define SbStringParseDouble strtod
 
 #else  // STARBOARD
 
@@ -55,19 +48,6 @@
 
 #include "starboard/common/string.h"
 #include "starboard/memory.h"
-
-#undef __builtin_strlen
-#define __builtin_strlen SbStringGetLength
-#undef strlen
-#define strlen SbStringGetLength
-
-// We avoid using poems here because a subsequent #include of math.h may
-// result, on some platforms, of the indirect inclusion of stdlib.h, which
-// will then conflict with our poem includes.
-#define POEM_NO_EMULATION
-// For access to PoemFindCharacterInString() as a replacement for strchr().
-#include "starboard/client_porting/poem/string_poem.h"
-#undef POEM_NO_EMULATION
 
 #endif  // STARBOARD
 
@@ -312,7 +292,7 @@ static void JoinStringsIterator(const ITERATOR& start,
                                 string* result) {
   GOOGLE_CHECK(result != NULL);
   result->clear();
-  int delim_length = SbStringGetLength(delim);
+  int delim_length = strlen(delim);
 
   // Precompute resulting length so we can reserve() memory in one shot.
   int length = 0;
@@ -683,7 +663,7 @@ string CHexEscape(const string& src) {
 int32 strto32_adaptor(const char *nptr, char **endptr, int base) {
   const int saved_errno = errno;
   errno = 0;
-  const long result = SbStringParseSignedInteger(nptr, endptr, base);
+  const long result = strtol(nptr, endptr, base);
   if (errno == ERANGE && result == LONG_MIN) {
     return kint32min;
   } else if (errno == ERANGE && result == LONG_MAX) {
@@ -703,7 +683,7 @@ int32 strto32_adaptor(const char *nptr, char **endptr, int base) {
 uint32 strtou32_adaptor(const char *nptr, char **endptr, int base) {
   const int saved_errno = errno;
   errno = 0;
-  const unsigned long result = SbStringParseUnsignedInteger(nptr, endptr, base);
+  const unsigned long result = strtoul(nptr, endptr, base);
   if (errno == ERANGE && result == ULONG_MAX) {
     return kuint32max;
   } else if (errno == 0 && result > kuint32max) {
@@ -1268,7 +1248,7 @@ static inline bool IsValidFloatChar(char c) {
 void DelocalizeRadix(char* buffer) {
   // Fast check:  if the buffer has a normal decimal point, assume no
   // translation is needed.
-  if (PoemFindCharacterInString(buffer, '.') != NULL) return;
+  if (strchr(buffer, '.') != NULL) return;
 
   // Find the first unknown character.
   while (IsValidFloatChar(*buffer)) ++buffer;
@@ -1288,7 +1268,7 @@ void DelocalizeRadix(char* buffer) {
     // extra bytes.
     char* target = buffer;
     do { ++buffer; } while (!IsValidFloatChar(*buffer) && *buffer != '\0');
-    SbMemoryMove(target, buffer, SbStringGetLength(buffer) + 1);
+    memmove(target, buffer, strlen(buffer) + 1);
   }
 }
 
@@ -1300,13 +1280,13 @@ char* DoubleToBuffer(double value, char* buffer) {
   GOOGLE_COMPILE_ASSERT(DBL_DIG < 20, DBL_DIG_is_too_big);
 
   if (value == numeric_limits<double>::infinity()) {
-    SbStringCopyUnsafe(buffer, "inf");
+    strcpy(buffer, "inf");
     return buffer;
   } else if (value == -numeric_limits<double>::infinity()) {
-    SbStringCopyUnsafe(buffer, "-inf");
+    strcpy(buffer, "-inf");
     return buffer;
   } else if (MathLimits<double>::IsNaN(value)) {
-    SbStringCopyUnsafe(buffer, "nan");
+    strcpy(buffer, "nan");
     return buffer;
   }
 
@@ -1323,7 +1303,7 @@ char* DoubleToBuffer(double value, char* buffer) {
   // of a double.  This long double may have extra bits that make it compare
   // unequal to "value" even though it would be exactly equal if it were
   // truncated to a double.
-  volatile double parsed_value = SbStringParseDouble(buffer, NULL);
+  volatile double parsed_value = strtod(buffer, NULL);
   if (parsed_value != value) {
     int snprintf_result =
       SbStringFormatF(buffer, kDoubleToBufferSize, "%.*g", DBL_DIG+2, value);
@@ -1374,8 +1354,8 @@ bool safe_strtob(StringPiece str, bool* value) {
 bool safe_strtof(const char* str, float* value) {
   char* endptr;
   errno = 0;  // errno only gets set on errors
-#if defined(_WIN32) || defined (__hpux) || defined(STARBOARD)  // has no strtof()
-  *value = SbStringParseDouble(str, &endptr);
+#if defined(_WIN32) || defined (__hpux)
+  *value = strtod(str, &endptr);
 #else
   *value = strtof(str, &endptr);
 #endif
@@ -1384,7 +1364,7 @@ bool safe_strtof(const char* str, float* value) {
 
 bool safe_strtod(const char* str, double* value) {
   char* endptr;
-  *value = SbStringParseDouble(str, &endptr);
+  *value = strtod(str, &endptr);
   if (endptr != str) {
     while (ascii_isspace(*endptr)) ++endptr;
   }
@@ -1418,13 +1398,13 @@ char* FloatToBuffer(float value, char* buffer) {
   GOOGLE_COMPILE_ASSERT(FLT_DIG < 10, FLT_DIG_is_too_big);
 
   if (value == numeric_limits<double>::infinity()) {
-    SbStringCopyUnsafe(buffer, "inf");
+    strcpy(buffer, "inf");
     return buffer;
   } else if (value == -numeric_limits<double>::infinity()) {
-    SbStringCopyUnsafe(buffer, "-inf");
+    strcpy(buffer, "-inf");
     return buffer;
   } else if (MathLimits<float>::IsNaN(value)) {
-    SbStringCopyUnsafe(buffer, "nan");
+    strcpy(buffer, "nan");
     return buffer;
   }
 
@@ -1478,35 +1458,35 @@ AlphaNum::AlphaNum(strings::Hex hex) {
 //    of a mix of raw C strings, C++ strings, and integer values.
 // ----------------------------------------------------------------------
 
-// Append is merely a version of SbMemoryCopy that returns the address of the byte
+// Append is merely a version of memcpy that returns the address of the byte
 // after the area just overwritten.  It comes in multiple flavors to minimize
 // call overhead.
 static char *Append1(char *out, const AlphaNum &x) {
-  SbMemoryCopy(out, x.data(), x.size());
+  memcpy(out, x.data(), x.size());
   return out + x.size();
 }
 
 static char *Append2(char *out, const AlphaNum &x1, const AlphaNum &x2) {
-  SbMemoryCopy(out, x1.data(), x1.size());
+  memcpy(out, x1.data(), x1.size());
   out += x1.size();
 
-  SbMemoryCopy(out, x2.data(), x2.size());
+  memcpy(out, x2.data(), x2.size());
   return out + x2.size();
 }
 
 static char *Append4(char *out,
                      const AlphaNum &x1, const AlphaNum &x2,
                      const AlphaNum &x3, const AlphaNum &x4) {
-  SbMemoryCopy(out, x1.data(), x1.size());
+  memcpy(out, x1.data(), x1.size());
   out += x1.size();
 
-  SbMemoryCopy(out, x2.data(), x2.size());
+  memcpy(out, x2.data(), x2.size());
   out += x2.size();
 
-  SbMemoryCopy(out, x3.data(), x3.size());
+  memcpy(out, x3.data(), x3.size());
   out += x3.size();
 
-  SbMemoryCopy(out, x4.data(), x4.size());
+  memcpy(out, x4.data(), x4.size());
   return out + x4.size();
 }
 
@@ -2312,7 +2292,7 @@ int EncodeAsUTF8Char(uint32 code_point, char* output) {
     len = 4;
   }
   tmp = ghtonl(tmp);
-  SbMemoryCopy(output, reinterpret_cast<const char*>(&tmp) + sizeof(tmp) - len, len);
+  memcpy(output, reinterpret_cast<const char*>(&tmp) + sizeof(tmp) - len, len);
   return len;
 }
 
