@@ -55,6 +55,12 @@ bool Reset(ResetType resetType)
     return status;
 }
 
+void Stop()
+{
+    Application::WaitForInit();
+    Application::Get()->Stop();
+}
+
 }  // namespace shared
 }  // namespace wpe
 }  // namespace starboard

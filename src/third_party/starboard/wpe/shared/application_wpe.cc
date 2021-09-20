@@ -167,6 +167,10 @@ void Application::Inject(Event* e) {
   QueueApplication::Inject(e);
 }
 
+void Application::Stop() {
+  SbSystemRequestStop(0);
+}
+
 }  // namespace shared
 }  // namespace wpe
 }  // namespace starboard
