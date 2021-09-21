@@ -32,6 +32,7 @@ void DeepLink(const char* link_data);
 void Resume();
 void Suspend();
 bool Reset(ResetType resetType);
+void Stop();
 
 }  // namespace shared
 }  // namespace wpe

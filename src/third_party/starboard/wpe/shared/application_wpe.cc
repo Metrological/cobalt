@@ -113,14 +113,12 @@ void Application::DeepLink(const char* link_data) {
 
 void Application::Suspend()
 {
-#if SB_API_VERSION < 13
   suspend_lock_.lock();
-  ::starboard::shared::starboard::Application::Pause(this, nullptr);
-  ::starboard::shared::starboard::Application::Suspend(this,
+  ::starboard::shared::starboard::Application::Blur(this, nullptr);
+  ::starboard::shared::starboard::Application::Freeze(this,
     [](void* application) {
       reinterpret_cast<Application*>(application)->suspend_lock_.unlock();
     });
-#endif
 }
 
 void Application::OnSuspend()
@@ -134,10 +132,9 @@ void Application::OnSuspend()
 
 void Application::Resume()
 {
-#if SB_API_VERSION < 13
   suspend_lock_.lock();
 
-  ::starboard::shared::starboard::Application::Unpause(this,
+  ::starboard::shared::starboard::Application::Focus(this,
     [](void* application) {
       // Send OnDeepLink event
       auto deep_link =  reinterpret_cast<Application*>(application)->deep_link_;
@@ -145,11 +142,10 @@ void Application::Resume()
         ::starboard::shared::starboard::Application::Get()->Link(deep_link.c_str());
     });
 
-  ::starboard::shared::starboard::Application::Resume(this,
+  ::starboard::shared::starboard::Application::Reveal(this,
     [](void* application) {
       reinterpret_cast<Application*>(application)->suspend_lock_.unlock();
     });
-#endif
 }
 
 void Application::OnResume()
@@ -169,6 +165,10 @@ void Application::WaitForInit() {
 
 void Application::Inject(Event* e) {
   QueueApplication::Inject(e);
+}
+
+void Application::Stop() {
+  SbSystemRequestStop(0);
 }
 
 }  // namespace shared

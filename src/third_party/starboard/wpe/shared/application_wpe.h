@@ -49,6 +49,7 @@ class Application : public ::starboard::shared::starboard::QueueApplication {
   void DeepLink(const char* link_data);
   void Suspend();
   void Resume();
+  void Stop();
 
  protected:
   // --- Application overrides ---
