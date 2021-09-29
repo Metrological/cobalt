@@ -42,8 +42,11 @@
         ],
       }],
       ['<(has_provision)==1', {
-        'pkg_libs': [
-          'provisionproxy',
+        'common_linker_flags': [
+          '-Wl,--whole-archive',
+          '-lprovisionproxy',
+          '-lprovision',
+          '-Wl,--no-whole-archive',
         ],
       }],
     ],
