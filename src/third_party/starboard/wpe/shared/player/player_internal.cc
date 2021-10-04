@@ -10,6 +10,11 @@
 #include <gst/gst.h>
 #include <gst/video/videooverlay.h>
 
+#if defined(WAYLAND_SINK)
+#include <gst/wayland/wayland.h>
+#include <wayland-egl-backend.h>
+#endif
+
 #include <map>
 #include <string>
 
@@ -105,8 +110,7 @@ GType gst_cobalt_src_get_type(void);
 
 G_END_DECLS
 
-#define GST_COBALT_SRC_GET_PRIVATE(obj) \
-  (G_TYPE_INSTANCE_GET_PRIVATE((obj), GST_COBALT_TYPE_SRC, GstCobaltSrcPrivate))
+#define GST_COBALT_SRC_GET_PRIVATE(obj) static_cast<GstCobaltSrcPrivate*>(gst_cobalt_src_get_instance_private(obj))
 
 struct _GstCobaltSrcPrivate {
   gchar* uri;
@@ -129,6 +133,7 @@ static void gst_cobalt_src_uri_handler_init(gpointer gIface,
 G_DEFINE_TYPE_WITH_CODE(GstCobaltSrc,
                         gst_cobalt_src,
                         GST_TYPE_BIN,
+                        G_ADD_PRIVATE(GstCobaltSrc)
                         G_IMPLEMENT_INTERFACE(GST_TYPE_URI_HANDLER,
                                               gst_cobalt_src_uri_handler_init));
 
@@ -769,9 +774,11 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   static void ElementAdded(GstElement* pipeline,
                            GstElement* element,
                            PlayerImpl* self);
+#if defined(SB_NEEDS_VIDEO_OVERLAY_SURFACE)
   static GstBusSyncReply CreateVideoOverlay(GstBus* bus,
                                             GstMessage* message,
                                             gpointer user_data);
+#endif
   bool ChangePipelineState(GstState state) const;
   void DispatchOnWorkerThread(Task* task) const;
   gint64 GetPosition() const;
@@ -930,7 +937,9 @@ PlayerImpl::PlayerImpl(SbPlayer player,
 
   GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline_));
   bus_watch_id_ = gst_bus_add_watch(bus, &PlayerImpl::BusMessageCallback, this);
+#if defined(SB_NEEDS_VIDEO_OVERLAY_SURFACE)
   gst_bus_set_sync_handler(bus, &PlayerImpl::CreateVideoOverlay, this, nullptr);
+#endif
   gst_object_unref(bus);
 
   video_appsrc_ = gst_element_factory_make("appsrc", "vidsrc");
@@ -1156,29 +1165,50 @@ gboolean PlayerImpl::BusMessageCallback(GstBus* bus,
   return TRUE;
 }
 
+#if defined(SB_NEEDS_VIDEO_OVERLAY_SURFACE)
 // static
 GstBusSyncReply PlayerImpl::CreateVideoOverlay(GstBus* bus,
                                                GstMessage* message,
                                                gpointer user_data) {
-  if (!gst_is_video_overlay_prepare_window_handle_message(message))
-    return GST_BUS_PASS;
-
   PlayerImpl* self = reinterpret_cast<PlayerImpl*>(user_data);
-  GstVideoOverlay* overlay = GST_VIDEO_OVERLAY(GST_MESSAGE_SRC(message));
   SbWindowPrivate* window_private = self->window_;
-  self->video_overlay_ = window_private->CreateVideoOverlay();
-  gst_video_overlay_set_window_handle(overlay,
-                                      (guintptr)self->video_overlay_->Native());
+#if defined(WAYLAND_SINK)
+  if (gst_is_wayland_display_handle_need_context_message(message)) {
+     struct wl_display* display_handle = static_cast<struct wl_display *>(window_private->GetDisplay()->Native());
+     GstContext* context = gst_wayland_display_handle_context_new(display_handle);
+     gst_element_set_context(GST_ELEMENT(GST_MESSAGE_SRC(message)), context);
 
-  self->gst_video_overlay_ = GST_ELEMENT(overlay);
-  GST_INFO("Has video overlay");
-  if (!self->pending_bounds_.IsEmpty()) {
-    self->SetBounds(0, self->pending_bounds_.x, self->pending_bounds_.y,
-                    self->pending_bounds_.w, self->pending_bounds_.h);
-    self->pending_bounds_ = PendingBounds{};
+    return GST_BUS_DROP;
+  } else
+#endif
+  {
+
+    if (gst_is_video_overlay_prepare_window_handle_message(message)) {
+
+      GstVideoOverlay* overlay = GST_VIDEO_OVERLAY(GST_MESSAGE_SRC(message));
+      self->video_overlay_ = window_private->CreateVideoOverlay();
+      if (self->video_overlay_) {
+#if defined(WAYLAND_SINK)
+          struct wl_egl_window* native = reinterpret_cast<struct wl_egl_window*>(self->video_overlay_->Native());
+          gst_video_overlay_set_window_handle(overlay, (guintptr)native->surface);
+#else
+          gst_video_overlay_set_window_handle(overlay, (guintptr)self->video_overlay_->Native());
+#endif
+          self->gst_video_overlay_ = GST_ELEMENT(overlay);
+          GST_INFO("Has video overlay");
+      }
+      if (!self->pending_bounds_.IsEmpty()) {
+        self->SetBounds(0, self->pending_bounds_.x, self->pending_bounds_.y,
+                        self->pending_bounds_.w, self->pending_bounds_.h);
+        self->pending_bounds_ = PendingBounds{};
+      }
+      return GST_BUS_DROP;
+    } else {
+      return GST_BUS_PASS;
+    }
   }
-  return GST_BUS_DROP;
 }
+#endif
 
 // static
 void* PlayerImpl::ThreadEntryPoint(void* context) {

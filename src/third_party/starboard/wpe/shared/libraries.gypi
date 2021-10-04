@@ -15,6 +15,7 @@
   'variables': {
     'has_ocdm': '<!(echo $COBALT_HAS_OCDM)',
     'has_provision': '<!(echo $COBALT_HAS_PROVISION)',
+    'has_waylandsink': '<!(echo $COBALT_HAS_WAYLANDSINK)',
     'common_libs': [
       '-lpthread',
     ],
@@ -48,6 +49,11 @@
           '-lprovision',
           '-Wl,--no-whole-archive',
         ],
+      }],
+      ['<(has_waylandsink)==1', {
+          'common_libs': [
+            '-lgstwayland-1.0',
+          ],
       }],
     ],
   },

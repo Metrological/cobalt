@@ -15,6 +15,7 @@
   'variables': {
     'has_ocdm': '<!(echo $COBALT_HAS_OCDM)',
     'has_provision': '<!(echo $COBALT_HAS_PROVISION)',
+    'has_waylandsink': '<!(echo $COBALT_HAS_WAYLANDSINK)',
     'common_defines': [],
     'use_system_libjpeg': 1,
     'audio_sink_sources': [
@@ -476,6 +477,12 @@
       ['<(has_provision)==1', {
         'common_defines': [
           'HAS_PROVISION',
+        ],
+      }],
+      ['<(has_waylandsink)==1', {
+        'common_defines': [
+          'WAYLAND_SINK',
+          'GST_USE_UNSTABLE_API'
         ],
       }],
     ],

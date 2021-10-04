@@ -533,8 +533,16 @@ SbWindowPrivate::SbWindowPrivate(const SbWindowOptions* options) {
   CreateDisplay();
 }
 
+WPEFramework::Compositor::IDisplay* SbWindowPrivate::GetDisplay() {
+  return third_party::starboard::wpe::shared::window::GetDisplay();
+}
+
 void SbWindowPrivate::CreateDisplay() {
 
+  std::string window_name = third_party::starboard::wpe::shared::window::DisplayName();
+
+#if !defined(WAYLAND_SINK)
+  window_name += ":graphics";
 #if defined(SB_NEEDS_VIDEO_OVERLAY_SURFACE)
   // The sufraces are stacked in order they are
   // created with by default so make sure video is under gfx by creating
@@ -544,11 +552,10 @@ void SbWindowPrivate::CreateDisplay() {
           third_party::starboard::wpe::shared::window::DisplayName() + ":"
               + std::string("video"), window_width_, window_height_);
 #endif
+#endif
 
   auto* display = third_party::starboard::wpe::shared::window::GetDisplay();
-  window_ = display->Create(
-      third_party::starboard::wpe::shared::window::DisplayName() + ":"
-          + std::string("graphics"), window_width_, window_height_);
+  window_ = display->Create(window_name, window_width_, window_height_);
   kb_handler_.SetWindow(this);
 
   third_party::starboard::wpe::shared::SystemEvents::Get().AddEventSource(display->FileDescriptor());
@@ -579,7 +586,11 @@ void SbWindowPrivate::DestroyDisplay() {
 
 WPEFramework::Compositor::IDisplay::ISurface*
 SbWindowPrivate::CreateVideoOverlay() {
+#if defined(WAYLAND_SINK)
+  return window_;
+#else
   return video_overlay_;
+#endif
 }
 
 void SbWindowPrivate::DestroyVideoOverlay(
