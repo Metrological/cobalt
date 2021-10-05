@@ -110,7 +110,8 @@ GType gst_cobalt_src_get_type(void);
 
 G_END_DECLS
 
-#define GST_COBALT_SRC_GET_PRIVATE(obj) static_cast<GstCobaltSrcPrivate*>(gst_cobalt_src_get_instance_private(obj))
+#define GST_COBALT_SRC_GET_PRIVATE(obj) \
+   (G_TYPE_INSTANCE_GET_PRIVATE((obj), GST_COBALT_TYPE_SRC, GstCobaltSrcPrivate))
 
 struct _GstCobaltSrcPrivate {
   gchar* uri;
@@ -133,7 +134,6 @@ static void gst_cobalt_src_uri_handler_init(gpointer gIface,
 G_DEFINE_TYPE_WITH_CODE(GstCobaltSrc,
                         gst_cobalt_src,
                         GST_TYPE_BIN,
-                        G_ADD_PRIVATE(GstCobaltSrc)
                         G_IMPLEMENT_INTERFACE(GST_TYPE_URI_HANDLER,
                                               gst_cobalt_src_uri_handler_init));
 
