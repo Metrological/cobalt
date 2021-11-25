@@ -1769,7 +1769,7 @@ bool PlayerImpl::SetRate(double rate) {
 
 void PlayerImpl::GetInfo(SbPlayerInfo2* out_player_info) {
   gint64 duration = 0;
-  if (gst_element_query_duration(pipeline_, GST_FORMAT_TIME, &duration) &&
+  if ((GST_STATE(pipeline_) >= GST_STATE_PAUSED) && gst_element_query_duration(pipeline_, GST_FORMAT_TIME, &duration) &&
       GST_CLOCK_TIME_IS_VALID(duration)) {
     out_player_info->duration = duration;
   } else {
