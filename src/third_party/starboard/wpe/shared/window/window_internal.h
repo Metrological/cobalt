@@ -20,7 +20,6 @@
 #include "starboard/time.h"
 #include "starboard/window.h"
 
-#define EGL_NO_X11
 #include "WPEFramework/compositor/Client.h"
 
 namespace third_party {
