@@ -50,6 +50,7 @@
 
       # To support large files
       '-D_FILE_OFFSET_BITS=64',
+      '-DEGL_NO_X11',
 
       # Suppress some warnings that will be hard to fix.
       '-Wno-unused-local-typedefs',
@@ -66,6 +67,11 @@
       # matters: Wall implies Wunused-parameter and Wno-unused-parameter
       # has no effect if specified before Wall.
       '-Wno-unused-parameter',
+      '-Wno-expansion-to-defined',
+      '-Wimplicit-fallthrough=0',
+      '-Wno-ignored-qualifiers',
+      '-Wno-error=class-memaccess',
+      '-Wno-error=deprecated-copy',
 
       # For some reason Thumb build is broken
       '-marm',

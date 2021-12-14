@@ -65,6 +65,11 @@
       # matters: Wall implies Wunused-parameter and Wno-unused-parameter
       # has no effect if specified before Wall.
       '-Wno-unused-parameter',
+      '-Wno-expansion-to-defined',
+      '-Wimplicit-fallthrough=0',
+      '-Wno-ignored-qualifiers',
+      '-Wno-error=class-memaccess',
+      '-Wno-error=deprecated-copy',
 
       # For some reason Thumb build is broken
       '-marm',
