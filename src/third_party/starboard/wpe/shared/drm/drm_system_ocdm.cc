@@ -576,6 +576,33 @@ std::string DrmSystemOcdm::SessionIdByKeyId(const uint8_t* key,
   return session ? opencdm_session_id(session.get()) : std::string{};
 }
 
+#if SB_API_VERSION >= 12
+bool DrmSystemOcdm::Decrypt(const std::string& id,
+                            _GstBuffer* buffer,
+                            _GstBuffer* sub_sample,
+                            uint32_t sub_sample_count,
+                            _GstBuffer* iv,
+                            _GstBuffer* key,
+                            SbDrmEncryptionScheme* scheme,
+                            SbDrmEncryptionPattern* pattern) {
+  session::Session* session = GetSessionById(id);
+  DCHECK(session);
+  EncryptionScheme encScheme;
+
+  EncryptionPattern encPattern;
+  encPattern.encrypted_blocks = pattern->crypt_byte_block;
+  encPattern.clear_blocks = pattern->skip_byte_block;
+  if (*scheme == kSbDrmEncryptionSchemeAesCtr) {
+     encScheme = AesCtr_Cenc;
+  }  
+  else if(*scheme == kSbDrmEncryptionSchemeAesCbc) {
+      encScheme = AesCbc_Cbcs;
+  }
+  return opencdm_gstreamer_session_decrypt_v2(session->OcdmSession(), buffer,
+                                           sub_sample, sub_sample_count, encScheme, encPattern, iv,
+                                           key, 0) == ERROR_NONE;
+}
+#else
 bool DrmSystemOcdm::Decrypt(const std::string& id,
                             _GstBuffer* buffer,
                             _GstBuffer* sub_sample,
@@ -588,6 +615,8 @@ bool DrmSystemOcdm::Decrypt(const std::string& id,
                                            sub_sample, sub_sample_count, iv,
                                            key, 0) == ERROR_NONE;
 }
+#endif
+
 
 }  // namespace drm
 }  // namespace shared

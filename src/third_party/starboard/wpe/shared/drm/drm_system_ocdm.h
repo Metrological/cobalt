@@ -83,7 +83,12 @@ class DrmSystemOcdm : public SbDrmSystemPrivate {
                _GstBuffer* sub_sample,
                uint32_t sub_sample_count,
                _GstBuffer* iv,
-               _GstBuffer* key_id);
+               _GstBuffer* key_id
+               #if SB_API_VERSION >= 12
+               , SbDrmEncryptionScheme* scheme
+               , SbDrmEncryptionPattern* pattern
+               #endif
+               );
   std::set<std::string> GetReadyKeys() const;
   KeysWithStatus GetSessionKeys(const std::string& session_id) const;
 
