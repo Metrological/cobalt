@@ -464,8 +464,7 @@ public class CobaltMediaSession
         // focus if |explicitUserActionRequired| is true. Currently we're not able to recognize
         // it. But if we don't have window focus, we know the user is not interacting with our app
         // and we should not request media focus.
-        if (!explicitUserActionRequired
-            || (activityHolder.get() != null && activityHolder.get().hasWindowFocus())) {
+        if (!explicitUserActionRequired || activityHolder.get().hasWindowFocus()) {
           explicitUserActionRequired = false;
           configureMediaFocus(playbackState);
         } else {
@@ -479,7 +478,7 @@ public class CobaltMediaSession
     }
 
     // Ignore updates to the MediaSession metadata if playback is stopped.
-    if (playbackState == PLAYBACK_STATE_NONE || mediaSession == null) {
+    if (playbackState == PLAYBACK_STATE_NONE) {
       return;
     }
 
@@ -521,10 +520,6 @@ public class CobaltMediaSession
   }
 
   private void updateMetadata(boolean resetMetadataWithEmptyBuilder) {
-    if (mediaSession == null) {
-      return;
-    }
-
     MediaMetadataCompat.Builder metadataBuilder = new MediaMetadataCompat.Builder();
     // Reset the metadata to make sure the artwork update correctly.
     if (resetMetadataWithEmptyBuilder) mediaSession.setMetadata(metadataBuilder.build());

@@ -18,7 +18,7 @@
 namespace starboard {
 namespace nplb {
 
-TEST(SbAudioSinkDestroyTest, DestroyInvalidAudioSink) {
+TEST(SbAudioSinkCreateTest, DestroyInvalidAudioSink) {
   SbAudioSinkDestroy(kSbAudioSinkInvalid);
 }
 

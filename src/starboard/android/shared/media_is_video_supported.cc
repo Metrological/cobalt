@@ -42,13 +42,13 @@ bool IsHDRTransferCharacteristicsSupported(SbMediaVideoCodec video_codec,
     return false;
   }
   JniEnvExt* env = JniEnvExt::Get();
-  ScopedLocalJavaRef<jstring> j_mime(env->NewStringStandardUTFOrAbort(mime));
 
   // An HDR capable VP9 or AV1 decoder is needed to handle HDR at all.
   bool has_hdr_capable_decoder =
       JniEnvExt::Get()->CallStaticBooleanMethodOrAbort(
           "dev/cobalt/media/MediaCodecUtil", "hasHdrCapableVideoDecoder",
-          "(Ljava/lang/String;)Z", j_mime.Get()) == JNI_TRUE;
+          "(Ljava/lang/String;)Z",
+          env->NewStringStandardUTFOrAbort(mime)) == JNI_TRUE;
   if (!has_hdr_capable_decoder) {
     return false;
   }
@@ -95,34 +95,29 @@ bool SbMediaIsVideoSupported(SbMediaVideoCodec video_codec,
   if (!mime) {
     return false;
   }
-  // Check extended parameters for correctness and return false if any invalid
-  // invalid params are found.
   MimeType mime_type(content_type);
-  if (strlen(content_type) > 0) {
-    // Allows for enabling tunneled playback. Disabled by default.
-    // https://source.android.com/devices/tv/multimedia-tunneling
-    mime_type.RegisterBoolParameter("tunnelmode");
-    // Override endianness on HDR Info header. Defaults to little.
-    mime_type.RegisterStringParameter("hdrinfoendianness", "big|little");
-
-    if (!mime_type.is_valid()) {
-      return false;
-    }
-  }
-
-  bool must_support_tunnel_mode =
-      mime_type.GetParamBoolValue("tunnelmode", false);
-  if (must_support_tunnel_mode && decode_to_texture_required) {
+  // Allows for enabling tunneled playback. Disabled by default.
+  // (https://source.android.com/devices/tv/multimedia-tunneling)
+  auto enable_tunnel_mode_parameter_value =
+      mime_type.GetParamStringValue("tunnelmode", "");
+  if (!enable_tunnel_mode_parameter_value.empty() &&
+      enable_tunnel_mode_parameter_value != "true" &&
+      enable_tunnel_mode_parameter_value != "false") {
+    SB_LOG(INFO) << "Invalid value for video mime parameter \"tunnelmode\": "
+                 << enable_tunnel_mode_parameter_value << ".";
+    return false;
+  } else if (enable_tunnel_mode_parameter_value == "true" &&
+             decode_to_texture_required) {
     SB_LOG(WARNING) << "Tunnel mode is rejected because output mode decode to "
                        "texture is required but not supported.";
     return false;
   }
-
   JniEnvExt* env = JniEnvExt::Get();
   ScopedLocalJavaRef<jstring> j_mime(env->NewStringStandardUTFOrAbort(mime));
   const bool must_support_hdr = (transfer_id != kSbMediaTransferIdBt709 &&
                                  transfer_id != kSbMediaTransferIdUnspecified);
-
+  const bool must_support_tunnel_mode =
+      enable_tunnel_mode_parameter_value == "true";
   // We assume that if a device supports a format for clear playback, it will
   // also support it for encrypted playback. However, some devices require
   // tunneled playback to be encrypted, so we must align the tunnel mode

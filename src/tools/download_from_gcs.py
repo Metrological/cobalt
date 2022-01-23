@@ -57,13 +57,11 @@ def _DownloadFromGcsAndCheckSha1(bucket, sha1):
   context = create_default_context()
 
   try:
-    res = urllib.urlopen(
-        url, context=context) if context else urllib.urlopen(url)
+    res = urllib.urlopen(url, context=context) if context else urllib.urlopen(url)
   except urllib.URLError:
-    from ssl import _create_unverified_context  # pylint:disable=import-outside-toplevel
+    from ssl import _create_unverified_context
     context = _create_unverified_context()
-    res = urllib.urlopen(
-        url, context=context) if context else urllib.urlopen(url)
+    res = urllib.urlopen(url, context=context) if context else urllib.urlopen(url)
 
   if not res:
     logging.error('Could not reach %s', url)

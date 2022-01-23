@@ -567,11 +567,6 @@ LayoutUnit Box::GetPaddingBoxTopEdgeOffsetFromMarginBox() const {
   return margin_top() + border_top_width();
 }
 
-void Box::SetPaddingInsets(LayoutUnit left, LayoutUnit top, LayoutUnit right,
-                           LayoutUnit bottom) {
-  padding_insets_.SetInsets(left, top, right, bottom);
-}
-
 RectLayoutUnit Box::GetContentBoxFromMarginBox() const {
   return RectLayoutUnit(GetContentBoxLeftEdgeOffsetFromMarginBox(),
                         GetContentBoxTopEdgeOffsetFromMarginBox(), width(),
@@ -987,11 +982,20 @@ void SetupBackgroundColorNodeFromStyle(
   }
 }
 
+bool IsBorderStyleNoneOrHidden(
+    const scoped_refptr<cssom::PropertyValue>& border_style) {
+  if (border_style == cssom::KeywordValue::GetNone() ||
+      border_style == cssom::KeywordValue::GetHidden()) {
+    return true;
+  }
+  return false;
+}
+
 render_tree::BorderStyle GetRenderTreeBorderStyle(
     const scoped_refptr<cssom::PropertyValue>& border_style) {
   render_tree::BorderStyle render_tree_border_style =
       render_tree::kBorderStyleNone;
-  if (!Box::IsBorderStyleNoneOrHidden(border_style)) {
+  if (!IsBorderStyleNoneOrHidden(border_style)) {
     DCHECK_EQ(border_style, cssom::KeywordValue::GetSolid());
     render_tree_border_style = render_tree::kBorderStyleSolid;
   }
@@ -999,26 +1003,25 @@ render_tree::BorderStyle GetRenderTreeBorderStyle(
   return render_tree_border_style;
 }
 
-Border CreateBorderFromUsedStyle(
-    const scoped_refptr<const cssom::CSSComputedStyleData>& style,
-    InsetsLayoutUnit border_insets) {
+Border CreateBorderFromStyle(
+    const scoped_refptr<const cssom::CSSComputedStyleData>& style) {
   render_tree::BorderSide left(
-      border_insets.left().toFloat(),
+      GetUsedNonNegativeLength(style->border_left_width()).toFloat(),
       GetRenderTreeBorderStyle(style->border_left_style()),
       GetUsedColor(style->border_left_color()));
 
   render_tree::BorderSide right(
-      border_insets.right().toFloat(),
+      GetUsedNonNegativeLength(style->border_right_width()).toFloat(),
       GetRenderTreeBorderStyle(style->border_right_style()),
       GetUsedColor(style->border_right_color()));
 
   render_tree::BorderSide top(
-      border_insets.top().toFloat(),
+      GetUsedNonNegativeLength(style->border_top_width()).toFloat(),
       GetRenderTreeBorderStyle(style->border_top_style()),
       GetUsedColor(style->border_top_color()));
 
   render_tree::BorderSide bottom(
-      border_insets.bottom().toFloat(),
+      GetUsedNonNegativeLength(style->border_bottom_width()).toFloat(),
       GetRenderTreeBorderStyle(style->border_bottom_style()),
       GetUsedColor(style->border_bottom_color()));
 
@@ -1030,35 +1033,38 @@ void PopulateBaseStyleForBorderNode(
     const scoped_refptr<cssom::MutableCSSComputedStyleData>&
         destination_style) {
   // NOTE: Properties set by PopulateBaseStyleForBorderNode() should match the
-  // properties used by SetupBorderNodeFromUsedStyle(), except for the border
-  // width which is not used to determine the render tree border.
+  // properties used by SetupBorderNodeFromStyle().
 
   // Left
+  destination_style->set_border_left_width(source_style->border_left_width());
   destination_style->set_border_left_style(source_style->border_left_style());
   destination_style->set_border_left_color(source_style->border_left_color());
 
   // Right
+  destination_style->set_border_right_width(source_style->border_right_width());
   destination_style->set_border_right_style(source_style->border_right_style());
   destination_style->set_border_right_color(source_style->border_right_color());
 
   // Top
+  destination_style->set_border_top_width(source_style->border_top_width());
   destination_style->set_border_top_style(source_style->border_top_style());
   destination_style->set_border_top_color(source_style->border_top_color());
 
   // Bottom
+  destination_style->set_border_bottom_width(
+      source_style->border_bottom_width());
   destination_style->set_border_bottom_style(
       source_style->border_bottom_style());
   destination_style->set_border_bottom_color(
       source_style->border_bottom_color());
 }
 
-void SetupBorderNodeFromUsedStyle(
+void SetupBorderNodeFromStyle(
     const base::Optional<RoundedCorners>& rounded_corners,
-    const InsetsLayoutUnit border_insets,
     const scoped_refptr<const cssom::CSSComputedStyleData>& style,
     RectNode::Builder* rect_node_builder) {
-  rect_node_builder->border = std::unique_ptr<Border>(
-      new Border(CreateBorderFromUsedStyle(style, border_insets)));
+  rect_node_builder->border =
+      std::unique_ptr<Border>(new Border(CreateBorderFromStyle(style)));
 
   if (rounded_corners) {
     rect_node_builder->rounded_corners =
@@ -1352,7 +1358,7 @@ void Box::UpdateBorders() {
       IsBorderStyleNoneOrHidden(computed_style()->border_top_style()) &&
       IsBorderStyleNoneOrHidden(computed_style()->border_right_style()) &&
       IsBorderStyleNoneOrHidden(computed_style()->border_bottom_style())) {
-    ResetBorderInsets();
+    border_insets_ = InsetsLayoutUnit();
     return;
   }
 
@@ -1625,25 +1631,18 @@ void Box::RenderAndAnimateBorder(
 
   math::RectF rect(GetClampedBorderBoxSize());
   RectNode::Builder rect_node_builder(rect);
-
-  // When an inline box is split, margins, borders, and padding
-  // have no visual effect where the split occurs. (or at any split, when there
-  // are several).
-  //   https://www.w3.org/TR/CSS21/visuren.html#inline-formatting
-
-  SetupBorderNodeFromUsedStyle(rounded_corners, border_insets_,
-                               computed_style(), &rect_node_builder);
+  SetupBorderNodeFromStyle(rounded_corners, computed_style(),
+                           &rect_node_builder);
 
   scoped_refptr<RectNode> border_node(
       new RectNode(std::move(rect_node_builder)));
   border_node_builder->AddChild(border_node);
 
   if (has_animated_border) {
-    AddAnimations<RectNode>(base::Bind(&PopulateBaseStyleForBorderNode),
-                            base::Bind(&SetupBorderNodeFromUsedStyle,
-                                       rounded_corners, border_insets_),
-                            *css_computed_style_declaration(), border_node,
-                            animate_node_builder);
+    AddAnimations<RectNode>(
+        base::Bind(&PopulateBaseStyleForBorderNode),
+        base::Bind(&SetupBorderNodeFromStyle, rounded_corners),
+        *css_computed_style_declaration(), border_node, animate_node_builder);
   }
 }
 
@@ -2115,20 +2114,6 @@ void Box::UpdateHorizontalMarginsAssumingBlockLevelInFlowBox(
     set_margin_left(horizontal_margin);
     set_margin_right(horizontal_margin);
   }
-}
-
-void Box::SetBorderInsets(LayoutUnit left, LayoutUnit top, LayoutUnit right,
-                          LayoutUnit bottom) {
-  border_insets_.SetInsets(left, top, right, bottom);
-}
-
-bool Box::IsBorderStyleNoneOrHidden(
-    const scoped_refptr<cssom::PropertyValue>& border_style) {
-  if (border_style == cssom::KeywordValue::GetNone() ||
-      border_style == cssom::KeywordValue::GetHidden()) {
-    return true;
-  }
-  return false;
 }
 
 bool Box::ApplyTransformActionToCoordinate(TransformAction action,

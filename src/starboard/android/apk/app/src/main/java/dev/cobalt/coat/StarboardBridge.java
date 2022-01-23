@@ -24,7 +24,6 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.hardware.input.InputManager;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.net.ConnectivityManager;
@@ -34,7 +33,6 @@ import android.os.Build;
 import android.util.Size;
 import android.util.SizeF;
 import android.view.Display;
-import android.view.InputDevice;
 import android.view.accessibility.AccessibilityManager;
 import android.view.accessibility.CaptioningManager;
 import androidx.annotation.Nullable;
@@ -96,8 +94,6 @@ public class StarboardBridge {
   private final HashMap<String, CobaltService.Factory> cobaltServiceFactories = new HashMap<>();
   private final HashMap<String, CobaltService> cobaltServices = new HashMap<>();
 
-  private final long timeNanosecondsPerMicrosecond = 1000;
-
   public StarboardBridge(
       Context appContext,
       Holder<Activity> activityHolder,
@@ -126,8 +122,6 @@ public class StarboardBridge {
   }
 
   private native boolean nativeInitialize();
-
-  private native long nativeSbTimeGetMonotonicNow();
 
   protected void onActivityStart(Activity activity, KeyboardEditor keyboardEditor) {
     activityHolder.set(activity);
@@ -173,10 +167,6 @@ public class StarboardBridge {
   protected void startMediaPlaybackService() {
     Service service = serviceHolder.get();
     if (service == null) {
-      if (appContext == null) {
-        Log.w(TAG, "Activiy already destroyed.");
-        return;
-      }
       Log.i(TAG, "Cold start - Instantiating a MediaPlaybackService.");
       Intent intent = new Intent(appContext, MediaPlaybackService.class);
       appContext.startService(intent);
@@ -252,7 +242,6 @@ public class StarboardBridge {
   @UsedByNative
   public void requestStop(int errorLevel) {
     if (!starboardStopped) {
-      Log.i(TAG, "Request to stop");
       nativeStopApp(errorLevel);
     }
   }
@@ -264,7 +253,6 @@ public class StarboardBridge {
   public void requestSuspend() {
     Activity activity = activityHolder.get();
     if (activity != null) {
-      Log.i(TAG, "Request to suspend");
       activity.finish();
     }
   }
@@ -439,21 +427,7 @@ public class StarboardBridge {
     // connected input audio device is a microphone.
     AudioManager audioManager = (AudioManager) appContext.getSystemService(AUDIO_SERVICE);
     AudioDeviceInfo[] devices = audioManager.getDevices(GET_DEVICES_INPUTS);
-    if (devices.length > 0) {
-      return true;
-    }
-
-    // fallback to check for BT voice capable RCU
-    InputManager inputManager = (InputManager) appContext.getSystemService(Context.INPUT_SERVICE);
-    final int[] inputDeviceIds = inputManager.getInputDeviceIds();
-    for (int inputDeviceId : inputDeviceIds) {
-      final InputDevice inputDevice = inputManager.getInputDevice(inputDeviceId);
-      final boolean hasMicrophone = inputDevice.hasMicrophone();
-      if (hasMicrophone) {
-        return true;
-      }
-    }
-    return false;
+    return devices.length > 0;
   }
 
   /**
@@ -698,20 +672,5 @@ public class StarboardBridge {
   @UsedByNative
   void closeCobaltService(String serviceName) {
     cobaltServices.remove(serviceName);
-  }
-
-  /** Returns the application start timestamp. */
-  @SuppressWarnings("unused")
-  @UsedByNative
-  protected long getAppStartTimestamp() {
-    Activity activity = activityHolder.get();
-    if (activity instanceof CobaltActivity) {
-      long javaStartTimestamp = ((CobaltActivity) activity).getAppStartTimestamp();
-      long cppTimestamp = nativeSbTimeGetMonotonicNow();
-      long javaStopTimestamp = System.nanoTime();
-      return cppTimestamp
-          - (javaStartTimestamp - javaStopTimestamp) / timeNanosecondsPerMicrosecond;
-    }
-    return 0;
   }
 }

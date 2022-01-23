@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 # Copyright 2019 The Cobalt Authors. All Rights Reserved.
 #
@@ -16,15 +16,12 @@
 #
 """Tests the generate_sabi_id module."""
 
-import json
+import _env  # pylint: disable=unused-import
+
 import os
-import sys
 import tempfile
 import unittest
 
-sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
-
-# pylint: disable=wrong-import-position
 from starboard.sabi import generate_sabi_id
 from starboard.tools import paths
 
@@ -36,7 +33,7 @@ _TEST_SABI_ID_OMAHA = '"\\\\{\\"alignment_char\\":1,\\"alignment_double\\":8,\\"
 class GenerateSabiIdTest(unittest.TestCase):
 
   def testRainyDayNoFileNoPlatform(self):
-    with self.assertRaises(TypeError):
+    with self.assertRaises(SystemExit):
       generate_sabi_id.DoMain([])
 
   def testRainyDayNonexistentFile(self):
@@ -44,10 +41,14 @@ class GenerateSabiIdTest(unittest.TestCase):
       generate_sabi_id.DoMain(['-f', 'invalid_filename'])
 
   def testRainyDayBadFile(self):
-    bad_sabi_json = tempfile.NamedTemporaryFile(mode='w')
+    bad_sabi_json = tempfile.NamedTemporaryFile()
     bad_sabi_json.write('{}')
-    with self.assertRaises(json.decoder.JSONDecodeError):
+    with self.assertRaises(ValueError):
       generate_sabi_id.DoMain(['-f', bad_sabi_json.name])
+
+  def testRainyDayBadPlatform(self):
+    with self.assertRaises(ValueError):
+      generate_sabi_id.DoMain(['-p', 'ms-dos'])
 
   def testSunnyDayNotOmaha(self):
     sabi_id = generate_sabi_id.DoMain(['-f', _TEST_SABI])

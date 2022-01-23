@@ -21,6 +21,8 @@
 #include <string>
 
 #include "base/time/default_tick_clock.h"
+#include "base/threading/thread.h"
+#include "base/threading/thread_checker.h"
 #include "cobalt/base/application_state.h"
 #include "cobalt/base/clock.h"
 #include "cobalt/dom/event_target.h"
@@ -135,8 +137,6 @@ class Performance : public EventTarget {
 
   void SetApplicationStartOrPreloadTimestamp(
       bool is_preload, SbTimeMonotonic timestamp);
-
-  void SetDeepLinkTimestamp(SbTimeMonotonic timestamp);
 
   void TraceMembers(script::Tracer* tracer) override;
   DEFINE_WRAPPABLE_TYPE(Performance);

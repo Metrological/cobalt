@@ -12,12 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <cmath>
-#include <random>
-#include <vector>
-
 #include "starboard/media.h"
-#include "starboard/memory.h"
 #include "starboard/nplb/performance_helpers.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -43,44 +38,14 @@ constexpr SbMediaVideoCodec kVideoCodecs[] = {
     kSbMediaVideoCodecNone,
 
     kSbMediaVideoCodecH264,   kSbMediaVideoCodecH265, kSbMediaVideoCodecMpeg2,
-    kSbMediaVideoCodecTheora, kSbMediaVideoCodecVc1,  kSbMediaVideoCodecAv1,
+    kSbMediaVideoCodecTheora, kSbMediaVideoCodecVc1,
+    kSbMediaVideoCodecAv1,
     kSbMediaVideoCodecVp8,    kSbMediaVideoCodecVp9,
 };
 
 constexpr SbMediaType kMediaTypes[] = {
     kSbMediaTypeAudio, kSbMediaTypeVideo,
 };
-
-// Minimum audio and video budgets required by the 2020 Youtube Software
-// Requirements.
-constexpr int kMinAudioBudget = 5 * 1024 * 1024;
-constexpr int kMinVideoBudget = 30 * 1024 * 1024;
-
-std::vector<void*> TryToAllocateMemory(int size,
-                                       int allocation_unit,
-                                       int alignment) {
-  int total_allocated = 0;
-  std::vector<void*> allocated_ptrs;
-  if (allocation_unit != 0) {
-    allocated_ptrs.reserve(std::ceil(size / allocation_unit));
-  }
-  while (total_allocated < size) {
-    // When |allocation_unit| == 0, randomly allocate a size between 100k -
-    // 500k.
-    int allocation_increment = allocation_unit != 0
-                                   ? allocation_unit
-                                   : (std::rand() % 500 + 100) * 1024;
-    void* allocated_memory =
-        SbMemoryAllocateAligned(alignment, allocation_increment);
-    EXPECT_NE(allocated_memory, nullptr);
-    if (!allocated_memory) {
-      return allocated_ptrs;
-    }
-    allocated_ptrs.push_back(allocated_memory);
-    total_allocated += allocation_increment;
-  }
-  return allocated_ptrs;
-}
 
 }  // namespace
 
@@ -118,60 +83,28 @@ TEST(SbMediaBufferTest, MediaTypes) {
 TEST(SbMediaBufferTest, Alignment) {
   for (auto type : kMediaTypes) {
     int alignment = SbMediaGetBufferAlignment(type);
-    EXPECT_GE(alignment, 1);
+    // TODO: This currently accepts 0 or a power of 2. We should disallow 0 here
+    // when we change the default value to be 1 instead of 0.
+    EXPECT_GE(alignment, 0);
     EXPECT_EQ(alignment & (alignment - 1), 0)
         << "Alignment must always be a power of 2";
   }
 }
 
 TEST(SbMediaBufferTest, AllocationUnit) {
+  // TODO: impose more bounds.
   EXPECT_GE(SbMediaGetBufferAllocationUnit(), 0);
-
-  if (SbMediaGetBufferAllocationUnit() != 0) {
-    EXPECT_GE(SbMediaGetBufferAllocationUnit(), 64 * 1024);
-  }
-
-  int allocation_unit = SbMediaGetBufferAllocationUnit();
-  std::vector<void*> allocated_ptrs;
-  int initial_buffer_capacity = SbMediaGetInitialBufferCapacity();
-  if (initial_buffer_capacity > 0) {
-    allocated_ptrs =
-        TryToAllocateMemory(initial_buffer_capacity, allocation_unit, 1);
-  }
-
-  if (!HasNonfatalFailure()) {
-    for (SbMediaType type : kMediaTypes) {
-      int alignment = SbMediaGetBufferAlignment(type);
-      EXPECT_EQ(alignment & (alignment - 1), 0)
-          << "Alignment must always be a power of 2";
-      if (HasNonfatalFailure()) {
-        break;
-      }
-      int media_budget = type == SbMediaType::kSbMediaTypeAudio
-                             ? kMinAudioBudget
-                             : kMinVideoBudget;
-      std::vector<void*> media_buffer_allocated_memory =
-          TryToAllocateMemory(media_budget, allocation_unit, alignment);
-      allocated_ptrs.insert(allocated_ptrs.end(),
-                            media_buffer_allocated_memory.begin(),
-                            media_buffer_allocated_memory.end());
-      if (HasNonfatalFailure()) {
-        break;
-      }
-    }
-  }
-
-  for (void* ptr : allocated_ptrs) {
-    SbMemoryFreeAligned(ptr);
-  }
 }
 
 TEST(SbMediaBufferTest, AudioBudget) {
-  EXPECT_GE(SbMediaGetAudioBufferBudget(), kMinAudioBudget);
+  // TODO: refine this lower bound.
+  const int kMinAudioBudget = 1 * 1024 * 1024;
+  EXPECT_GT(SbMediaGetAudioBufferBudget(), kMinAudioBudget);
 }
 
 TEST(SbMediaBufferTest, GarbageCollectionDurationThreshold) {
-  int kMinGarbageCollectionDurationThreshold = 30 * kSbTimeSecond;
+  // TODO: impose reasonable bounds here.
+  int kMinGarbageCollectionDurationThreshold = 10 * kSbTimeSecond;
   int kMaxGarbageCollectionDurationThreshold = 240 * kSbTimeSecond;
   int threshold = SbMediaGetBufferGarbageCollectionDurationThreshold();
   EXPECT_GE(threshold, kMinGarbageCollectionDurationThreshold);
@@ -183,9 +116,7 @@ TEST(SbMediaBufferTest, InitialCapacity) {
 }
 
 TEST(SbMediaBufferTest, MaxCapacity) {
-  // TODO: Limit EXPECT statements to only codecs and resolutions that are
-  // supported by the platform. If unsupported, still call
-  // SbMediaGetMaxBufferCapacity() to ensure there isn't a crash.
+  // TODO: set a reasonable upper bound.
   for (auto resolution : kVideoResolutions) {
     for (auto bits_per_pixel : kBitsPerPixelValues) {
       for (auto codec : kVideoCodecs) {
@@ -247,10 +178,12 @@ TEST(SbMediaBufferTest, UsingMemoryPool) {
 }
 
 TEST(SbMediaBufferTest, VideoBudget) {
+  // TODO: refine this lower bound.
+  const int kMinVideoBudget = 1 * 1024 * 1024;
   for (auto codec : kVideoCodecs) {
     for (auto resolution : kVideoResolutions) {
       for (auto bits_per_pixel : kBitsPerPixelValues) {
-        EXPECT_GE(SbMediaGetVideoBufferBudget(codec, resolution[0],
+        EXPECT_GT(SbMediaGetVideoBufferBudget(codec, resolution[0],
                                               resolution[1], bits_per_pixel),
                   kMinVideoBudget);
       }

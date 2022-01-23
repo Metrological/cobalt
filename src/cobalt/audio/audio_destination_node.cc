@@ -62,15 +62,11 @@ void AudioDestinationNode::OnInputNodeConnected() {
     SB_LOG(INFO) << "Created audio device " << audio_device_.get() << '.';
     context()->PreventGarbageCollection();
   }
-  delete_audio_device_ = false;
+  audio_device_to_delete_ = NULL;
 }
 
 void AudioDestinationNode::FillAudioBus(bool all_consumed, AudioBus* audio_bus,
                                         bool* silence) {
-  if (delete_audio_device_) {
-    return;
-  }
-
   // This is called on Audio thread.
   AudioLock::AutoLock lock(audio_lock());
 
@@ -78,10 +74,11 @@ void AudioDestinationNode::FillAudioBus(bool all_consumed, AudioBus* audio_bus,
   DCHECK_EQ(number_of_inputs(), 1u);
   bool all_finished = true;
   Input(0)->FillAudioBus(audio_bus, silence, &all_finished);
-  if (all_consumed && all_finished) {
+  if (all_consumed && all_finished &&
+      audio_device_to_delete_ != audio_device_.get()) {
     SB_LOG(INFO) << "Schedule to destroy audio device " << audio_device_.get()
                  << '.';
-    delete_audio_device_ = true;
+    audio_device_to_delete_ = audio_device_.get();
     message_loop_->task_runner()->PostTask(
         FROM_HERE, base::Bind(&AudioDestinationNode::DestroyAudioDevice,
                               base::Unretained(this)));
@@ -93,11 +90,10 @@ void AudioDestinationNode::DestroyAudioDevice() {
   if (!audio_device_.get()) {
     return;
   }
-  if (delete_audio_device_) {
+  if (audio_device_.get() == audio_device_to_delete_) {
     SB_LOG(INFO) << "Destroying audio device " << audio_device_.get() << '.';
     audio_device_.reset();
     context()->AllowGarbageCollection();
-    delete_audio_device_ = false;
   }
 }
 

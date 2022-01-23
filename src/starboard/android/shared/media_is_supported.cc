@@ -30,12 +30,11 @@ bool SbMediaIsSupported(SbMediaVideoCodec video_codec,
     return false;
   }
 
-  // We support all codecs except Opus in L1.  Use allow list to avoid
-  // accidentally introducing the support of a codec brought in in future.
+  // Filter anything other then aac as we only support paid content on aac.
+  // TODO: Add support of Opus if we are going to support software based drm
+  // systems.
   if (audio_codec != kSbMediaAudioCodecNone &&
-      audio_codec != kSbMediaAudioCodecAac &&
-      audio_codec != kSbMediaAudioCodecAc3 &&
-      audio_codec != kSbMediaAudioCodecEac3) {
+      audio_codec != kSbMediaAudioCodecAac) {
     return false;
   }
   if (!IsWidevineL1(key_system)) {

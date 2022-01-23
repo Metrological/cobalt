@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "starboard/android/shared/audio_sink_min_required_frames_tester.h"
-#include "starboard/android/shared/audio_track_bridge.h"
 #include "starboard/android/shared/jni_env_ext.h"
 #include "starboard/android/shared/jni_utils.h"
 #include "starboard/audio_sink.h"
@@ -68,7 +67,7 @@ class AudioTrackAudioSinkType : public SbAudioSinkPrivate::Type {
       SbAudioSinkPrivate::ErrorFunc error_func,
       SbTime start_time,
       int tunnel_mode_audio_session_id,
-      bool enable_audio_device_callback,
+      bool enable_audio_routing,
       void* context);
 
   bool IsValid(SbAudioSink audio_sink) override {
@@ -111,11 +110,11 @@ class AudioTrackAudioSink : public SbAudioSinkPrivate {
       SbAudioSinkPrivate::ErrorFunc error_func,
       SbTime start_media_time,
       int tunnel_mode_audio_session_id,
-      bool enable_audio_device_callback,
+      bool enable_audio_routing,
       void* context);
   ~AudioTrackAudioSink() override;
 
-  bool IsAudioTrackValid() const { return bridge_.is_valid(); }
+  bool IsAudioTrackValid() const { return j_audio_track_bridge_; }
   bool IsType(Type* type) override { return type_ == type; }
   void SetPlaybackRate(double playback_rate) override;
 
@@ -126,7 +125,7 @@ class AudioTrackAudioSink : public SbAudioSinkPrivate {
   static void* ThreadEntryPoint(void* context);
   void AudioThreadFunc();
 
-  int WriteData(JniEnvExt* env, const void* buffer, int size, SbTime sync_time);
+  int WriteData(JniEnvExt* env, void* buffer, int size, SbTime sync_time);
 
   Type* const type_;
   const int channels_;
@@ -140,11 +139,11 @@ class AudioTrackAudioSink : public SbAudioSinkPrivate {
   const SbTime start_time_;
   const int tunnel_mode_audio_session_id_;
   const int max_frames_per_request_;
+
   void* const context_;
-
-  AudioTrackBridge bridge_;
-
   int last_playback_head_position_ = 0;
+  jobject j_audio_track_bridge_ = nullptr;
+  jobject j_audio_data_ = nullptr;
 
   volatile bool quit_ = false;
   SbThread audio_out_thread_ = kSbThreadInvalid;

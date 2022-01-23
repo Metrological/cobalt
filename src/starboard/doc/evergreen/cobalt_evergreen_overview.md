@@ -111,12 +111,12 @@ architecture, ABI and Starboard version.
 The gyp variable `sb_evergreen` is set to 1 when building `libcobalt.so`.
 
 The partner port of Starboard is built with the partner’s toolchain and is
-linked into the `loader_app` which knows how to dynamically load
+linked into the **`loader_app` which knows how to dynamically load
 `libcobalt.so`, and the `crashpad_handler` which handles crashes.
 
 ```
-$ cobalt/build/gyp_cobalt <partner_port_name>
-$ ninja -C out/<partner_port_name>_qa loader_app crashpad_handler
+cobalt/build/gyp_cobalt <partner_port_name>
+ninja -C out/<partner_port_name>_qa loader_app crashpad_handler
 ```
 
 Partners should set `sb_evergreen_compatible` to 1 in their gyp platform config.
@@ -254,7 +254,7 @@ For example, building these targets for the Raspberry Pi 2 would use the
 ## Verifying Platform Requirements
 
 In order to verify the platform requirements you should run the
-`nplb_evergreen_compat_tests`. These tests ensure that the platform is
+‘nplb\_evergreen\_compat\_tests’. These tests ensure that the platform is
 configured appropriately for Evergreen.
 
 To enable the test, set the `sb_evergreen_compatible gyp` variable to 1 in the
@@ -263,44 +263,6 @@ Pi 2 gyp files.
 
 There is a reference implementation available for Raspberry Pi 2 with
 instructions available [here](cobalt_evergreen_reference_port_raspi2.md).
-
-### Verifying Crashpad Uploads
-
-1. Build the `crashpad_database_util` target and deploy it onto the device.
-```
-$ cobalt/build/gyp_cobalt <partner_port_name>
-$ ninja -C out/<partner_port_name>_qa crashpad_database_util
-```
-2. Remove the existing state for crashpad as it throttles uploads to 1 per hour:
-```
-$ rm -rf <kSbSystemPathCacheDirectory>/crashpad_database/
-
-```
-3. Launch Cobalt.
-4. Trigger crash by sending `abort` signal to the `loader_app` process:
-```
-$ kill -6 <pid>
-```
-5. Verify the crash was uploaded through running `crashpad_database_util` on the device
-pointing it to the cache directory, where the crash data is stored.
-
-```
-$ crashpad_database_util -d <kSbSystemPathCacheDirectory>/crashpad_database/ --show-completed-reports --show-all-report-info
-```
-
-```
-8c3af145-30a0-43c7-a3a5-0952dea230e4:
-  Path: cobalt/cache/crashpad_database/completed/8c3af145-30a0-43c7-a3a5-0952dea230e4.dmp
-  Remote ID: c9b14b489a895093
-  Creation time: 2021-06-01 17:01:19 HDT
-  Uploaded: true
-  Last upload attempt time: 2021-06-01 17:01:19 HDT
-  Upload attempts: 1
-```
-
-In this example the minidump was successfully uploaded because we see `Uploaded: true`.
-
-Reference for [crashpad_database_util](https://chromium.googlesource.com/crashpad/crashpad/+/refs/heads/main/tools/crashpad_database_util.md)
 
 ## System Design
 
@@ -408,7 +370,7 @@ NOTE: 3-slots is the DEFAULT configuration.
 
 The number of installation slots is directly controlled using
 `kMaxNumInstallations`, defined in
-[loader\_app.cc](../../loader_app/loader_app.cc).
+[loader\_app.cc](https://cobalt.googlesource.com/cobalt/+/refs/heads/master/src/starboard/loader_app/loader_app.cc).
 
 It is worth noting that all slot configurations specify that the first
 installation slot (`SLOT_0`) will always be the read-only factory system image.
@@ -503,17 +465,16 @@ reference.
 
 ### Fonts
 The system font directory `kSbSystemPathFontDirectory` should be configured to
-point to either the system fonts on the device or the Cobalt `standard` (23MB)
-or the Cobalt `limited` (3.1MB) font packages. An easy way to use the Cobalt
-fonts is to set `kSbSystemPathFontDirectory` to point to
-`kSbSystemPathContentDirectory/fonts` and configure `cobalt_font_package` to
-`standard` or `limited` in your port.
+point to the `standard` (23MB) or the `limited` (3.1MB) cobalt font packages. An
+easy way to do that is to use the `kSbSystemPathContentDirectory` to contain
+the system font directory and setting the `cobalt_font_package` to `standard` or
+`limited` in your port.
 
 Cobalt Evergreen (built by Google), will by default use the `empty` font
 package to minimize storage requirements. A separate
 `cobalt_font_package` variable is set to `empty` in the Evergreen platform.
 
-On Raspberry Pi the Cobalt fonts are configured the following way:
+On Raspberry Pi this is:
 
 `empty` set of fonts under:
 ```
@@ -550,7 +511,7 @@ that on platforms that support suspending the platform should check
  suspending if there is a pending restart.
 
 Please see
-[`suspend_signals.cc`](../../shared/signal/suspend_signals.cc)
+[`suspend_signals.cc`](https://cobalt.googlesource.com/cobalt/+/refs/heads/master/src/starboard/shared/signal/suspend_signals.cc)
 for an example.
 
 ### Multi-App Support
@@ -645,7 +606,7 @@ loader_app --csp_mode=disable --allow_http --url="file:///<PATH_TO_APP_3>/index.
 ```
 
 Please see
-[`loader_app_switches.cc`](../../loader_app/loader_app.cc)
+[`loader_app_switches.cc`](https://cobalt.googlesource.com/cobalt/+/refs/heads/master/src/starboard/loader_app/loader_app.cc)
 for full list of available command-line flags.
 
 ### Platform Security

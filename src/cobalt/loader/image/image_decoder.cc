@@ -54,49 +54,32 @@ void CacheMessage(std::string* result, const std::string& message) {
   result->append(message);
 }
 
-// Returns true if the ResourceProvider is ResourceProviderStub.
-bool IsResourceProviderStub(render_tree::ResourceProvider* resource_provider) {
-  if (resource_provider == nullptr) {
-    return true;
-  }
-  return resource_provider->GetTypeId() ==
-         base::GetTypeId<render_tree::ResourceProviderStub>();
-}
-
-}  // namespace
-
 // Determine the ImageType of an image from its signature.
 ImageDecoder::ImageType DetermineImageType(const uint8* header) {
   if (!memcmp(header, "\xFF\xD8\xFF", 3)) {
     return ImageDecoder::kImageTypeJPEG;
   } else if (!memcmp(header, "GIF87a", 6) || !memcmp(header, "GIF89a", 6)) {
     return ImageDecoder::kImageTypeGIF;
+  } else if (!memcmp(header, "{", 1)) {
+    // TODO: Improve heuristics for determining whether the file contains valid
+    // Lottie JSON.
+    return ImageDecoder::kImageTypeJSON;
   } else if (!memcmp(header, "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A", 8)) {
     return ImageDecoder::kImageTypePNG;
   } else if (!memcmp(header, "RIFF", 4) && !memcmp(header + 8, "WEBPVP", 6)) {
     return ImageDecoder::kImageTypeWebP;
   } else {
-    const std::string header_str = reinterpret_cast<const char*>(header);
-    std::string::size_type first_non_white_space_pos =
-        header_str.find_first_not_of(" \t\r\n");
-    if (first_non_white_space_pos + 1 < header_str.size()) {
-      if (header_str[first_non_white_space_pos] == '{' ||
-          header_str[first_non_white_space_pos] ==
-              '[') {  // json can start with either object hash or an array
-        std::string::size_type second_non_white_space_pos =
-            header_str.find_first_not_of(" \t\r\n",
-                                         first_non_white_space_pos + 1);
-        if (second_non_white_space_pos + 1 < header_str.size()) {
-          if (header_str[second_non_white_space_pos] == '"' &&
-              isalnum(header_str[second_non_white_space_pos + 1])) {
-            return ImageDecoder::kImageTypeJSON;
-          }
-        }
-      }
-    }
     return ImageDecoder::kImageTypeInvalid;
   }
 }
+
+// Returns true if the ResourceProvider is ResourceProviderStub.
+bool IsResourceProviderStub(render_tree::ResourceProvider* resource_provider) {
+  return resource_provider->GetTypeId() ==
+         base::GetTypeId<render_tree::ResourceProviderStub>();
+}
+
+}  // namespace
 
 ImageDecoder::ImageDecoder(
     render_tree::ResourceProvider* resource_provider,
@@ -111,7 +94,6 @@ ImageDecoder::ImageDecoder(
       state_(resource_provider_ ? kWaitingForHeader : kSuspended),
       is_deletion_pending_(false) {
   signature_cache_.position = 0;
-  use_failure_image_decoder_ = IsResourceProviderStub(resource_provider);
 }
 
 ImageDecoder::ImageDecoder(
@@ -128,7 +110,6 @@ ImageDecoder::ImageDecoder(
       state_(resource_provider_ ? kWaitingForHeader : kSuspended),
       is_deletion_pending_(false) {
   signature_cache_.position = 0;
-  use_failure_image_decoder_ = IsResourceProviderStub(resource_provider);
 }
 
 LoadResponseType ImageDecoder::OnResponseStarted(
@@ -246,7 +227,11 @@ void ImageDecoder::Resume(render_tree::ResourceProvider* resource_provider) {
   DCHECK_EQ(state_, kSuspended);
   DCHECK(!resource_provider_);
   DCHECK(resource_provider);
-  use_failure_image_decoder_ = IsResourceProviderStub(resource_provider);
+  if (IsResourceProviderStub(resource_provider)) {
+    use_failure_image_decoder_ = true;
+  } else {
+    use_failure_image_decoder_ = false;
+  }
   state_ = kWaitingForHeader;
   resource_provider_ = resource_provider;
 }

@@ -63,9 +63,6 @@ class NetworkFetcher {
       ResponseStartedCallback response_started_callback,
       ProgressCallback progress_callback,
       DownloadToFileCompleteCallback download_to_file_complete_callback) = 0;
-#if defined(STARBOARD)
-  virtual void CancelDownloadToFile() = 0;
-#endif
 
  protected:
   NetworkFetcher() = default;

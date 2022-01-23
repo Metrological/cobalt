@@ -106,9 +106,10 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
                                       value_length, kUnknownValue);
     case kSbSystemPropertyModelYear: {
       char key1[PROP_VALUE_MAX] = "";
-      GetAndroidSystemProperty("ro.oem.key1", key1, PROP_VALUE_MAX,
-                               kUnknownValue);
-      if (strcmp(key1, kUnknownValue) == 0 || strlen(key1) < 10) {
+      SB_DCHECK(GetAndroidSystemProperty("ro.oem.key1", key1, PROP_VALUE_MAX,
+                                         kUnknownValue));
+      if (strcmp(key1, kUnknownValue) == 0 ||
+          strlen(key1) < 10) {
         return CopyStringAndTestIfSuccess(out_value, value_length,
                                           kUnknownValue);
       }

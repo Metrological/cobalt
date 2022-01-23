@@ -171,21 +171,17 @@ enum AdditionalSpecialKey {
   kSpecialKey_MediaPrevTrack,
   kSpecialKey_MediaStop,
   kSpecialKey_MediaPlayPause,
-  kSpecialKey_MediaRewind,
-  kSpecialKey_MediaFastForward,
-  kLastAdditionalSpecialKey = kSpecialKey_MediaFastForward,
+  kLastAdditionalSpecialKey = kSpecialKey_MediaPlayPause,
 };
 
 // Mapping from an additional special keycode to virtual keycode. Subtract
 // kFirstAdditionalSpecialKey from the integer value of the WebDriver keycode
 // and index into this table.
 const int32 additional_special_keycode_mapping[] = {
-    dom::keycode::kMediaNextTrack,    // kMediaNextTrack,
-    dom::keycode::kMediaPrevTrack,    // kMediaPrevTrack,
-    dom::keycode::kMediaStop,         // kMediaStop,
-    dom::keycode::kMediaPlayPause,    // kMediaPlayPause,
-    dom::keycode::kMediaRewind,       // kMediaRewind,
-    dom::keycode::kMediaFastForward,  // kMediaFastForward,
+    dom::keycode::kMediaNextTrack,  // kSpecialKey_MediaNextTrack,
+    dom::keycode::kMediaPrevTrack,  // kSpecialKey_MediaPrevTrack,
+    dom::keycode::kMediaStop,       // kSpecialKey_MediaStop,
+    dom::keycode::kMediaPlayPause,  // kSpecialKey_MediaPlayPause,
 };
 
 // Check that the mapping is the expected size.

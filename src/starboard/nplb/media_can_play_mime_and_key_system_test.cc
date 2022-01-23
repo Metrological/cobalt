@@ -175,57 +175,55 @@ TEST(SbMediaCanPlayMimeAndKeySystem, Invalid) {
 TEST(SbMediaCanPlayMimeAndKeySystem, MinimumSupport) {
   // H.264 High Profile Level 4.2
   SbMediaSupportType result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"avc1.64002a\"; width=1920; height=1080; "
-      "framerate=30; bitrate=20000000",
+      "video/mp4; codecs=\"avc1.64402a\"; width=1920; height=1080; "
+      "framerate=30; bitrate=20000",
       "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
   // H.264 Main Profile Level 4.2
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"avc1.4d002a\"; width=1920; height=1080; "
+      "video/mp4; codecs=\"avc1.4d402a\"; width=1920; height=1080; "
       "framerate=30;",
       "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"avc1.4d002a\"; width=0; height=0; "
+      "video/mp4; codecs=\"avc1.4d402a\"; width=0; height=0; "
       "framerate=0; bitrate=0",
       "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"avc1.4d002a\"; width=-0; height=-0; "
+      "video/mp4; codecs=\"avc1.4d402a\"; width=-0; height=-0; "
       "framerate=-0; bitrate=-0",
       "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
   // H.264 Main Profile Level 2.1
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"avc1.4d0015\"; width=432; height=240; "
+      "video/mp4; codecs=\"avc1.4d4015\"; width=432; height=240; "
       "framerate=15;",
       "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
   // AV1 Main Profile 1080p
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"av01.0.09M.08\"; width=1920; height=1080; "
-      "framerate=30; bitrate=20000000",
+      "video/mp4; codecs=\"av01.0.05M.08\"; width=1920; height=1080; "
+      "framerate=30; bitrate=20000",
       "");
 
   // VP9 1080p
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/webm; codecs=\"vp9\"; width=1920; height=1080; framerate=60; "
-      "bitrate=20000000",
-      "");
+      "video/webm; codecs=\"vp9\"; width=1920; height=1080; framerate=60", "");
 
   // AAC-LC
   result = SbMediaCanPlayMimeAndKeySystem(
-      "audio/mp4; codecs=\"mp4a.40.2\"; channels=2; bitrate=256000;", "");
+      "audio/mp4; codecs=\"mp4a.40.2\"; channels=2; bitrate=256;", "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
   // HE-AAC
   result = SbMediaCanPlayMimeAndKeySystem(
-      "audio/mp4; codecs=\"mp4a.40.5\"; channels=2; bitrate=48000;", "");
+      "audio/mp4; codecs=\"mp4a.40.5\"; channels=2; bitrate=48;", "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 }
 
@@ -288,7 +286,6 @@ TEST(SbMediaCanPlayMimeAndKeySystem, KeySystemWithAttributes) {
   }
 }
 
-// TODO: Create an abstraction to shorten the length of this test.
 TEST(SbMediaCanPlayMimeAndKeySystem, PrintMaximumSupport) {
   // AVC
   std::string avc_resolution = "Unsupported";
@@ -301,14 +298,14 @@ TEST(SbMediaCanPlayMimeAndKeySystem, PrintMaximumSupport) {
     avc_resolution = "1080p";
     // 2K
     result = SbMediaCanPlayMimeAndKeySystem(
-        "video/mp4; codecs=\"avc1.64002a\"; width=2560; height=1440; "
+        "video/mp4; codecs=\"avc1.64402a\"; width=2560; height=1440; "
         "framerate=30",
         "");
     if (result == kSbMediaSupportTypeProbably) {
       avc_resolution = "2K";
       // 4K
       result = SbMediaCanPlayMimeAndKeySystem(
-          "video/mp4; codecs=\"avc1.64002a\"; width=3840; height=2160; "
+          "video/mp4; codecs=\"avc1.64402a\"; width=3840; height=2160; "
           "framerate=30",
           "");
       if (result == kSbMediaSupportTypeProbably) {
@@ -395,7 +392,7 @@ TEST(SbMediaCanPlayMimeAndKeySystem, PrintMaximumSupport) {
   // 1080p
   result = SbMediaCanPlayMimeAndKeySystem(
       "video/webm; codecs=\"vp09.02.51.10.01.09.16.09.00\"; width=1920; "
-      "height=1080; framerate=30",
+      "height=1080",
       "");
   if (result == kSbMediaSupportTypeProbably) {
     vp9_hdr_resolution = "1080p";
@@ -421,21 +418,21 @@ TEST(SbMediaCanPlayMimeAndKeySystem, PrintMaximumSupport) {
   std::string av1_resolution = "Unsupported";
   // 1080p
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"av01.0.09M.08\"; width=1920; "
+      "video/mp4; codecs=\"av01.0.08M.08\"; width=1920; "
       "height=1080; framerate=30",
       "");
   if (result == kSbMediaSupportTypeProbably) {
     av1_resolution = "1080p";
     // 2K
     result = SbMediaCanPlayMimeAndKeySystem(
-        "video/mp4; codecs=\"av01.0.12M.08\"; width=2560; "
+        "video/mp4; codecs=\"av01.0.08M.08\"; width=2560; "
         "height=1440; framerate=30",
         "");
     if (result == kSbMediaSupportTypeProbably) {
       av1_resolution = "2K";
       // 4K
       result = SbMediaCanPlayMimeAndKeySystem(
-          "video/mp4; codecs=\"av01.0.12M.08\"; width=3840; "
+          "video/mp4; codecs=\"av01.0.08M.08\"; width=3840; "
           "height=2160; framerate=30",
           "");
       if (result == kSbMediaSupportTypeProbably) {
@@ -447,22 +444,22 @@ TEST(SbMediaCanPlayMimeAndKeySystem, PrintMaximumSupport) {
   std::string av1_hfr_resolution = "Unsupported";
   // 1080p
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"av01.0.09M.08\"; width=1920; height=1080; "
-      "framerate=60",
+      "video/mp4; codecs=\"av01.0.08M.08\"; width=1920; "
+      "height=1080; framerate=60",
       "");
   if (result == kSbMediaSupportTypeProbably) {
     av1_hfr_resolution = "1080p";
     // 2K
     result = SbMediaCanPlayMimeAndKeySystem(
-        "video/mp4; codecs=\"av01.0.12M.08\"; width=2560; height=1440; "
-        "framerate=60",
+        "video/mp4; codecs=\"av01.0.08M.08\"; width=2560; "
+        "height=1440; framerate=60",
         "");
     if (result == kSbMediaSupportTypeProbably) {
       av1_hfr_resolution = "2K";
       // 4K
       result = SbMediaCanPlayMimeAndKeySystem(
-          "video/mp4; codecs=\"av01.0.13M.08\"; width=3840; height=2160; "
-          "framerate=60",
+          "video/mp4; codecs=\"av01.0.08M.08\"; width=3840; "
+          "height=2160; framerate=60",
           "");
       if (result == kSbMediaSupportTypeProbably) {
         av1_hfr_resolution = "4K";
@@ -475,21 +472,21 @@ TEST(SbMediaCanPlayMimeAndKeySystem, PrintMaximumSupport) {
   // 1080p
   result = SbMediaCanPlayMimeAndKeySystem(
       "video/mp4; codecs=\"av01.0.09M.10.0.110.09.16.09.0\"; width=1920; "
-      "height=1080",
+      "height=1080; framerate=30",
       "");
   if (result == kSbMediaSupportTypeProbably) {
     av1_hdr_resolution = "1080p";
     // 2K
     result = SbMediaCanPlayMimeAndKeySystem(
         "video/mp4; codecs=\"av01.0.12M.10.0.110.09.16.09.0\"; width=2560; "
-        "height=1440",
+        "height=1440; framerate=30",
         "");
     if (result == kSbMediaSupportTypeProbably) {
       av1_hdr_resolution = "2K";
       // 4K
       result = SbMediaCanPlayMimeAndKeySystem(
           "video/mp4; codecs=\"av01.0.13M.10.0.110.09.16.09.0\"; width=3840; "
-          "height=2160",
+          "height=2160; framerate=30",
           "");
       if (result == kSbMediaSupportTypeProbably) {
         av1_hdr_resolution = "4K";
@@ -517,7 +514,7 @@ TEST(SbMediaCanPlayMimeAndKeySystem, PrintMaximumSupport) {
   std::string opus_support = "Unsupported";
   result = SbMediaCanPlayMimeAndKeySystem(
       "audio/webm; codecs=\"opus\"; "
-      "channels=2; bitrate=128000;",
+      "channels=2; bitrate=576;",
       "");
   if (result == kSbMediaSupportTypeProbably) {
     opus_support = "Supported";
@@ -527,7 +524,7 @@ TEST(SbMediaCanPlayMimeAndKeySystem, PrintMaximumSupport) {
   std::string opus51_support = "Unsupported";
   result = SbMediaCanPlayMimeAndKeySystem(
       "audio/webm; codecs=\"opus\"; "
-      "channels=6; bitrate=576000;",
+      "channels=6; bitrate=576;",
       "");
   if (result == kSbMediaSupportTypeProbably) {
     opus51_support = "Supported";
@@ -536,7 +533,7 @@ TEST(SbMediaCanPlayMimeAndKeySystem, PrintMaximumSupport) {
   // AC-3
   std::string ac3_support = "Unsupported";
   result = SbMediaCanPlayMimeAndKeySystem(
-      "audio/mp4; codecs=\"ac-3\"; channels=6; bitrate=512000", "");
+      "audio/mp4; codecs=\"ac-3\"; channels=2", "");
   if (result == kSbMediaSupportTypeProbably) {
     ac3_support = "Supported";
   }
@@ -544,7 +541,7 @@ TEST(SbMediaCanPlayMimeAndKeySystem, PrintMaximumSupport) {
   // E-AC-3
   std::string eac3_support = "Unsupported";
   result = SbMediaCanPlayMimeAndKeySystem(
-      "audio/mp4; codecs=\"ec-3\"; channels=6; bitrate=512000", "");
+      "audio/mp4; codecs=\"ec-3\"; channels=2", "");
   if (result == kSbMediaSupportTypeProbably) {
     eac3_support = "Supported";
   }
@@ -564,60 +561,59 @@ TEST(SbMediaCanPlayMimeAndKeySystem, PrintMaximumSupport) {
                << "\n\tAC-3: " << ac3_support << "\n\tE-AC-3: " << eac3_support;
 }
 
-// TODO: Create an abstraction to shorten the length of this test.
 TEST(SbMediaCanPlayMimeAndKeySystem, ValidateQueriesUnderPeakCapability) {
   // H.264 High Profile Level 4.2 1080p 25 fps
   SbMediaSupportType result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"avc1.64002a\"; width=1920; height=1080; "
+      "video/mp4; codecs=\"avc1.64402a\"; width=1920; height=1080; "
       "framerate=25",
       "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
   // H.264 High Profile Level 4.2 1080p 24 fps
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"avc1.64002a\"; width=1920; height=1080; "
+      "video/mp4; codecs=\"avc1.64402a\"; width=1920; height=1080; "
       "framerate=24",
       "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
   // H.264 High Profile Level 4.2 1920x818
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"avc1.64002a\"; width=1920; height=818; "
+      "video/mp4; codecs=\"avc1.64402a\"; width=1920; height=818; "
       "framerate=30",
       "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
   // H.264 High Profile Level 4.2 720p
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"avc1.64002a\"; width=1280; height=720; "
+      "video/mp4; codecs=\"avc1.64402a\"; width=1280; height=720; "
       "framerate=30",
       "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
   // H.264 High Profile Level 4.2 480p
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"avc1.64002a\"; width=640; height=480; "
+      "video/mp4; codecs=\"avc1.64402a\"; width=640; height=480; "
       "framerate=30",
       "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
   // H.264 High Profile Level 4.2 360p
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"avc1.64002a\"; width=480; height=360; "
+      "video/mp4; codecs=\"avc1.64402a\"; width=480; height=360; "
       "framerate=30",
       "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
   // H.264 High Profile Level 4.2 240p
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"avc1.64002a\"; width=352; height=240; "
+      "video/mp4; codecs=\"avc1.64402a\"; width=352; height=240; "
       "framerate=30",
       "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
   // H.264 High Profile Level 4.2 144p
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"avc1.64002a\"; width=256; height=144; "
+      "video/mp4; codecs=\"avc1.64402a\"; width=256; height=144; "
       "framerate=30",
       "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
@@ -639,78 +635,78 @@ TEST(SbMediaCanPlayMimeAndKeySystem, ValidateQueriesUnderPeakCapability) {
 
   // AV1 Main Profile 4K
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"av01.0.12M.08\"; width=3840; height=2160; "
-      "framerate=30",
+      "video/mp4; codecs=\"av01.0.13M.10.0.110.09.16.09.0\"; width=3840; "
+      "height=2160; framerate=30",
       "");
 
   if (result == kSbMediaSupportTypeProbably) {
     // AV1 Main Profile 1440p
     result = SbMediaCanPlayMimeAndKeySystem(
-        "video/mp4; codecs=\"av01.0.12M.08\"; width=2560; height=1440; "
-        "framerate=30",
+        "video/mp4; codecs=\"av01.0.12M.10.0.110.09.16.09.0\"; width=2560; "
+        "height=1440; framerate=30",
         "");
     ASSERT_EQ(result, kSbMediaSupportTypeProbably);
   }
   // AV1 Main Profile 1080p
   result = SbMediaCanPlayMimeAndKeySystem(
-      "video/mp4; codecs=\"av01.0.09M.08\"; width=1920; height=1080; "
-      "framerate=30",
+      "video/mp4; codecs=\"av01.0.09M.08.0.110.09.16.09.0\"; width=1920; "
+      "height=1080; framerate=30",
       "");
 
   if (result == kSbMediaSupportTypeProbably) {
     // AV1 Main Profile 1080p 25 fps
     result = SbMediaCanPlayMimeAndKeySystem(
-        "video/mp4; codecs=\"av01.0.09M.08\"; width=1920; height=1080; "
-        "framerate=25",
+        "video/mp4; codecs=\"av01.0.09M.08.0.110.09.16.09.0\"; width=1920; "
+        "height=1080; framerate=25",
         "");
     ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
     // AV1 Main Profile 1080p 24 fps
     result = SbMediaCanPlayMimeAndKeySystem(
-        "video/mp4; codecs=\"av01.0.09M.08\"; width=1920; height=1080; "
-        "framerate=24",
+        "video/mp4; codecs=\"av01.0.09M.08.0.110.09.16.09.0\"; width=1920; "
+        "height=1080; framerate=24",
         "");
     ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
     // AV1 Main Profile 1920x818
     result = SbMediaCanPlayMimeAndKeySystem(
-        "video/mp4; codecs=\"av01.0.09M.08\"; width=1920; height=818; "
-        "framerate=30",
+        "video/mp4; codecs=\"av01.0.09M.08.0.110.09.16.09.0\"; width=1920; "
+        "height=818; framerate=30",
         "");
     ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
     // AV1 Main Profile 720p
     result = SbMediaCanPlayMimeAndKeySystem(
-        "video/mp4; codecs=\"av01.0.05M.08\"; width=1280; height=720; "
-        "framerate=30",
+        "video/mp4; codecs=\"av01.0.08M.10.0.110.09.16.09.0\"; width=1280; "
+        "height=720; framerate=30",
         "");
     ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
     // AV1 Main Profile 480p
     result = SbMediaCanPlayMimeAndKeySystem(
-        "video/mp4; codecs=\"av01.0.04M.08\"; width=854; height=480; "
-        "framerate=30",
+        "video/mp4; codecs=\"av01.0.04M.10.0.110.09.16.09.0\"; width=854; "
+        "height=480; framerate=30",
         "");
     ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
     // AV1 Main Profile 360p
     result = SbMediaCanPlayMimeAndKeySystem(
-        "video/mp4; codecs=\"av01.0.01M.08\"; width=640; height=360; "
-        "framerate=30",
+        "video/mp4; codecs=\"av01.0.01M.10.0.110.09.16.09.0\"; width=640; "
+        "height=360; framerate=30",
         "");
     ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
     // AV1 Main Profile 240p
     result = SbMediaCanPlayMimeAndKeySystem(
-        "video/mp4; codecs=\"av01.0.00M.08\"; width=426; height=240; "
-        "framerate=30",
+        "video/mp4; codecs=\"av01.0.00M.10.0.110.09.16.09.0\"; width=426; "
+        "height=240; framerate=30",
         "");
     ASSERT_EQ(result, kSbMediaSupportTypeProbably);
 
     // AV1 Main Profile 144p
     result = SbMediaCanPlayMimeAndKeySystem(
-        "video/mp4; codecs=\"av01.0.00M.08\"; width=256; height=144; "
-        "framerate=30",
+        "video/mp4; codecs=\"av01.0.00M.10.0.110.09.16.09.0\"; width=256; "
+        "height=144; framerate=30",
         "");
     ASSERT_EQ(result, kSbMediaSupportTypeProbably);
   }

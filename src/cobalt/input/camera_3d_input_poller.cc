@@ -19,7 +19,6 @@
 #include <algorithm>
 #include <cmath>
 
-#include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/input/create_default_camera_3d.h"
 #include "third_party/glm/glm/gtc/matrix_transform.hpp"
 #include "third_party/glm/glm/gtc/quaternion.hpp"
@@ -90,13 +89,6 @@ void Camera3DInputPoller::Reset() {
   roll_in_radians_ = 0.0f;
   pitch_in_radians_ = 0.0f;
   yaw_in_radians_ = 0.0f;
-}
-
-void Camera3DInputPoller::SetInput(const scoped_refptr<Camera3D>& other) {
-  base::AutoLock lock(mutex_);
-  Camera3DInputPoller* other_camera =
-      base::polymorphic_downcast<Camera3DInputPoller*>(other.get());
-  input_poller_ = other_camera ? other_camera->input_poller_ : nullptr;
 }
 
 void Camera3DInputPoller::AccumulateOrientation() {

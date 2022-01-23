@@ -18,14 +18,12 @@
 Primarily used for looking at the differences between GYP and GN builds during
 the GN migration.
 
-To test, first generate the ".ninja" build files, then use
+To test, first generate a the ninja build files, then use
 
 ninja -t compdb > out.json
 
-in the build directory to generate a JSON file (out.json) containing all actions
-ninja would run. Then, run this script on the out.json file to generate the
-normalized_out.json file. Diff this normalized_out.json file with another
-generated from GYP/GN to see differences in actions, build flags, etc.
+in the build directory to generate a JSON file containing all actions ninja
+would run. The run this script on that file and diff it with another.
 """
 
 import argparse
@@ -35,7 +33,6 @@ import os
 from typing import List, Tuple
 
 _ACTION_COMPONENTS = ['directory', 'command', 'file', 'output']
-STRIP = 0
 
 
 def make_path_absolute(path: str, directory: str) -> str:
@@ -46,9 +43,6 @@ def make_path_absolute(path: str, directory: str) -> str:
 
 
 def remove_directory_path(path: str, directory: str) -> str:
-  if STRIP :
-    dirsplit = directory.split(os.path.sep)
-    directory = os.path.sep.join(dirsplit[:-(STRIP)])
   if os.path.commonpath([path, directory]) != directory:
     return path
 
@@ -119,10 +113,7 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('json_filename', type=str)
   parser.add_argument('-o', '--output', type=str)
-  parser.add_argument('-p', '--strip', type=int)
   args = parser.parse_args()
-  if args.strip:
-    STRIP = int(args.strip)
   output = args.output if args.output else 'normalized_' + os.path.basename(
       args.json_filename)
   main(args.json_filename, output)

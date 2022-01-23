@@ -30,42 +30,42 @@ using starboard::shared::starboard::media::MimeType;
 bool SbMediaIsAudioSupported(SbMediaAudioCodec audio_codec,
                              const char* content_type,
                              int64_t bitrate) {
-  if (bitrate >= kSbMediaMaxAudioBitrateInBitsPerSecond) {
-    return false;
-  }
-
   // Android now uses libopus based opus decoder.
-  if (audio_codec == kSbMediaAudioCodecOpus) {
+  if (audio_codec == kSbMediaAudioCodecOpus &&
+      bitrate < kSbMediaMaxAudioBitrateInBitsPerSecond) {
     return true;
   }
-
-  bool is_passthrough = false;
-  const char* mime =
-      SupportedAudioCodecToMimeType(audio_codec, &is_passthrough);
+  const char* mime = SupportedAudioCodecToMimeType(audio_codec);
   if (!mime) {
     return false;
   }
-
   MimeType mime_type(content_type);
-  if (strlen(content_type) > 0) {
-    // Allows for disabling the use of the AudioDeviceCallback API to detect
-    // when audio peripherals are connected. Enabled by default.
-    // (https://developer.android.com/reference/android/media/AudioDeviceCallback)
-    mime_type.RegisterBoolParameter("enableaudiodevicecallback");
-    // Allows for enabling tunneled playback. Disabled by default.
-    // (https://source.android.com/devices/tv/multimedia-tunneling)
-    mime_type.RegisterBoolParameter("tunnelmode");
-    // Enables audio passthrough if the codec supports it.
-    mime_type.RegisterBoolParameter("audiopassthrough");
-
-    if (!mime_type.is_valid()) {
-      return false;
-    }
+  // Allows for disabling the use of the AudioRouting API to detect when audio
+  // peripherals are connected. Enabled by default.
+  // (https://developer.android.com/reference/android/media/AudioRouting)
+  auto enable_audio_routing_parameter_value =
+      mime_type.GetParamStringValue("enableaudiorouting", "");
+  if (!enable_audio_routing_parameter_value.empty() &&
+      enable_audio_routing_parameter_value != "true" &&
+      enable_audio_routing_parameter_value != "false") {
+    SB_LOG(INFO)
+        << "Invalid value for audio mime parameter \"enableaudiorouting\": "
+        << enable_audio_routing_parameter_value << ".";
+    return false;
   }
-
-  bool enable_tunnel_mode = mime_type.GetParamBoolValue("tunnelmode", false);
-  if (enable_tunnel_mode && !SbAudioSinkIsAudioSampleTypeSupported(
-                                kSbMediaAudioSampleTypeInt16Deprecated)) {
+  // Allows for enabling tunneled playback. Disabled by default.
+  // (https://source.android.com/devices/tv/multimedia-tunneling)
+  auto enable_tunnel_mode_parameter_value =
+      mime_type.GetParamStringValue("tunnelmode", "");
+  if (!enable_tunnel_mode_parameter_value.empty() &&
+      enable_tunnel_mode_parameter_value != "true" &&
+      enable_tunnel_mode_parameter_value != "false") {
+    SB_LOG(INFO) << "Invalid value for audio mime parameter \"tunnelmode\": "
+                 << enable_tunnel_mode_parameter_value << ".";
+    return false;
+  } else if (enable_tunnel_mode_parameter_value == "true" &&
+             !SbAudioSinkIsAudioSampleTypeSupported(
+                 kSbMediaAudioSampleTypeInt16Deprecated)) {
     SB_LOG(WARNING)
         << "Tunnel mode is rejected because int16 sample is required "
            "but not supported.";
@@ -74,42 +74,10 @@ bool SbMediaIsAudioSupported(SbMediaAudioCodec audio_codec,
 
   JniEnvExt* env = JniEnvExt::Get();
   ScopedLocalJavaRef<jstring> j_mime(env->NewStringStandardUTFOrAbort(mime));
-  auto media_codec_supported =
-      env->CallStaticBooleanMethodOrAbort(
-          "dev/cobalt/media/MediaCodecUtil", "hasAudioDecoderFor",
-          "(Ljava/lang/String;IZ)Z", j_mime.Get(), static_cast<jint>(bitrate),
-          enable_tunnel_mode) == JNI_TRUE;
-  if (!media_codec_supported) {
-    return false;
-  }
-
-  if (!is_passthrough) {
-    return true;
-  }
-
-  if (!mime_type.GetParamBoolValue("audiopassthrough", true)) {
-    SB_LOG(INFO) << "Passthrough codec is rejected because passthrough is "
-                    "disabled through mime param.";
-    return false;
-  }
-
-  SbMediaAudioCodingType coding_type;
-  switch (audio_codec) {
-    case kSbMediaAudioCodecAc3:
-      coding_type = kSbMediaAudioCodingTypeAc3;
-      break;
-    case kSbMediaAudioCodecEac3:
-      coding_type = kSbMediaAudioCodingTypeDolbyDigitalPlus;
-      break;
-    default:
-      return false;
-  }
-  int encoding =
-      ::starboard::android::shared::GetAudioFormatSampleType(coding_type);
-  ScopedLocalJavaRef<jobject> j_audio_output_manager(
-      env->CallStarboardObjectMethodOrAbort(
-          "getAudioOutputManager", "()Ldev/cobalt/media/AudioOutputManager;"));
-  return env->CallBooleanMethodOrAbort(j_audio_output_manager.Get(),
-                                       "hasPassthroughSupportFor", "(I)Z",
-                                       encoding) == JNI_TRUE;
+  const bool must_support_tunnel_mode =
+      enable_tunnel_mode_parameter_value == "true";
+  return env->CallStaticBooleanMethodOrAbort(
+             "dev/cobalt/media/MediaCodecUtil", "hasAudioDecoderFor",
+             "(Ljava/lang/String;IZ)Z", j_mime.Get(),
+             static_cast<jint>(bitrate), must_support_tunnel_mode) == JNI_TRUE;
 }

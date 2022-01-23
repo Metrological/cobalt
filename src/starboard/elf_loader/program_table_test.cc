@@ -14,7 +14,6 @@
 
 #include "starboard/elf_loader/program_table.h"
 
-#include <string>
 #include <vector>
 
 #include "starboard/common/scoped_ptr.h"
@@ -42,11 +41,7 @@ class DummyFile : public File {
   explicit DummyFile(const std::vector<FileChunk>& file_chunks)
       : file_chunks_(file_chunks), read_index_(0) {}
 
-  bool Open(const char* name) {
-    name_ = name;
-    return true;
-  }
-
+  bool Open(const char* name) { return true; }
   bool ReadFromOffset(int64_t offset, char* buffer, int size) {
     SB_LOG(INFO) << "ReadFromOffset offset=" << offset << " size=" << size
                  << " read_index_=" << read_index_;
@@ -70,20 +65,17 @@ class DummyFile : public File {
   }
   void Close() {}
 
-  const std::string& GetName() { return name_; }
-
  private:
   int file_offset_;
   const char* buffer_;
   int size_;
   std::vector<FileChunk> file_chunks_;
   int read_index_;
-  std::string name_;
 };
 
 class ProgramTableTest : public ::testing::Test {
  protected:
-  ProgramTableTest() { program_table_.reset(new ProgramTable(nullptr)); }
+  ProgramTableTest() { program_table_.reset(new ProgramTable()); }
   ~ProgramTableTest() {}
 
   void HelperMethod() {}
@@ -144,13 +136,14 @@ TEST_F(ProgramTableTest, LoadSegments) {
 
   char program_table_page[PAGE_SIZE];
   memset(program_table_page, 0, sizeof(program_table_page));
-  memcpy(program_table_page, program_table_data, sizeof(program_table_data));
+  memcpy(program_table_page, program_table_data,
+               sizeof(program_table_data));
 
   char segment_file_data1[2 * PAGE_SIZE];
   char segment_file_data2[3 * PAGE_SIZE];
 
   memcpy(segment_file_data1 + 250, dynamic_table_data,
-         sizeof(dynamic_table_data));
+               sizeof(dynamic_table_data));
 
   std::vector<DummyFile::FileChunk> file_chunks;
   file_chunks.push_back(

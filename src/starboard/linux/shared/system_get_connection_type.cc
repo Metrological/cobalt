@@ -14,31 +14,9 @@
 
 #include "starboard/system.h"
 
-#include "starboard/linux/shared/routes.h"
-
-using starboard::shared::Routes;
+#include "starboard/common/log.h"
 
 SbSystemConnectionType SbSystemGetConnectionType() {
-  Routes routes;
-
-  if (!routes.RequestDump()) {
-    return kSbSystemConnectionTypeUnknown;
-  }
-
-  // Find the top priority route and return if the corresponding route uses a
-  // wireless interface.
-  int priority = INT_MAX;
-  bool is_wireless = false;
-  while (auto route = routes.GetNextRoute()) {
-    if (Routes::IsDefaultRoute(*route)) {
-      if (route->priority < priority) {
-        priority = route->priority;
-        is_wireless = Routes::IsWirelessInterface(*route);
-      }
-    }
-  }
-  if (priority != INT_MAX)
-    return is_wireless ? kSbSystemConnectionTypeWireless
-                       : kSbSystemConnectionTypeWired;
+  SB_NOTIMPLEMENTED();
   return kSbSystemConnectionTypeUnknown;
 }

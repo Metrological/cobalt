@@ -1461,7 +1461,8 @@ void BrowserModule::Blur(SbTimeMonotonic timestamp) {
   DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
   DCHECK(application_state_ == base::kApplicationStateStarted);
   application_state_ = base::kApplicationStateBlurred;
-  FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_, Blur(timestamp));
+  FOR_EACH_OBSERVER(LifecycleObserver,
+                    lifecycle_observers_, Blur(timestamp));
 }
 
 void BrowserModule::Conceal(SbTimeMonotonic timestamp) {
@@ -1470,13 +1471,15 @@ void BrowserModule::Conceal(SbTimeMonotonic timestamp) {
   DCHECK(application_state_ == base::kApplicationStateBlurred);
   application_state_ = base::kApplicationStateConcealed;
   ConcealInternal(timestamp);
+  OnMaybeFreeze();
 }
 
 void BrowserModule::Focus(SbTimeMonotonic timestamp) {
   TRACE_EVENT0("cobalt::browser", "BrowserModule::Focus()");
   DCHECK_EQ(base::MessageLoop::current(), self_message_loop_);
   DCHECK(application_state_ == base::kApplicationStateBlurred);
-  FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_, Focus(timestamp));
+  FOR_EACH_OBSERVER(LifecycleObserver,
+                    lifecycle_observers_, Focus(timestamp));
   application_state_ = base::kApplicationStateStarted;
 }
 
@@ -1627,12 +1630,12 @@ void BrowserModule::InitializeComponents() {
                                                options_.media_module_options));
 
     if (web_module_) {
+      web_module_->SetCamera3D(input_device_manager_->camera_3d());
       web_module_->SetMediaModule(media_module_.get());
     }
   }
 
   if (web_module_) {
-    web_module_->UpdateCamera3D(input_device_manager_->camera_3d());
     web_module_->GetUiNavRoot()->SetContainerWindow(
         system_window_->GetSbWindow());
   }
@@ -1641,7 +1644,7 @@ void BrowserModule::InitializeComponents() {
 void BrowserModule::InitializeSystemWindow() {
   TRACE_EVENT0("cobalt::browser", "BrowserModule::InitializeSystemWindow()");
   DCHECK(!system_window_);
-  if (media_module_ && !window_size_.IsEmpty()) {
+  if (media_module_) {
     system_window_.reset(
         new system_window::SystemWindow(event_dispatcher_, window_size_));
   } else {
@@ -1780,7 +1783,8 @@ void BrowserModule::FreezeInternal(SbTimeMonotonic timestamp) {
   FreezeMediaModule();
   // First freeze all our web modules which implies that they will release
   // their resource provider and all resources created through it.
-  FOR_EACH_OBSERVER(LifecycleObserver, lifecycle_observers_, Freeze(timestamp));
+  FOR_EACH_OBSERVER(LifecycleObserver,
+                    lifecycle_observers_, Freeze(timestamp));
 }
 
 void BrowserModule::RevealInternal(SbTimeMonotonic timestamp) {
@@ -1820,7 +1824,7 @@ void BrowserModule::UnfreezeInternal(SbTimeMonotonic timestamp) {
 }
 
 void BrowserModule::OnMaybeFreeze() {
-  TRACE_EVENT0("cobalt::browser", "BrowserModule::OnMaybeFreeze()");
+  TRACE_EVENT0("cobalt::browser", "BrowserModule::MaybeFreeze()");
   if (base::MessageLoop::current() != self_message_loop_) {
     self_message_loop_->task_runner()->PostTask(
         FROM_HERE,
@@ -1842,7 +1846,6 @@ void BrowserModule::OnMaybeFreeze() {
       web_module_ready_to_freeze &&
       application_state_ == base::kApplicationStateConcealed) {
 #if SB_API_VERSION >= 13
-    DLOG(INFO) << "System request to freeze the app.";
     SbSystemRequestFreeze();
 #endif  // SB_API_VERSION >= 13
   }
@@ -2092,14 +2095,10 @@ scoped_refptr<script::Wrappable> BrowserModule::CreateH5vcc(
 }
 
 void BrowserModule::SetApplicationStartOrPreloadTimestamp(
-    bool is_preload, SbTimeMonotonic timestamp) {
+  bool is_preload, SbTimeMonotonic timestamp) {
   DCHECK(web_module_);
-  web_module_->SetApplicationStartOrPreloadTimestamp(is_preload, timestamp);
-}
-
-void BrowserModule::SetDeepLinkTimestamp(SbTimeMonotonic timestamp) {
-  DCHECK(web_module_);
-  web_module_->SetDeepLinkTimestamp(timestamp);
+  web_module_->SetApplicationStartOrPreloadTimestamp(
+      is_preload, timestamp);
 }
 
 }  // namespace browser

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 # Copyright 2020 The Cobalt Authors. All Rights Reserved.
 #
@@ -15,14 +15,14 @@
 # limitations under the License.
 """Generates the ID of a specified Starboard ABI JSON file."""
 
+import _env  # pylint: disable=unused-import
+
 import argparse
 import json
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
-
-from starboard.sabi import sabi_utils  # pylint:disable=wrong-import-position
+from starboard.sabi import sabi_utils
 
 
 def _GenerateSabiId(sabi_json, omaha):
@@ -62,7 +62,7 @@ def DoMain(argv=None):
   )
   sabi_utils.AddSabiArguments(arg_parser)
   args, _ = arg_parser.parse_known_args(argv)
-  sabi_json = sabi_utils.LoadSabi(args.filename)
+  sabi_json = sabi_utils.LoadSabi(args.filename, args.platform)
   return _GenerateSabiId(sabi_json, args.omaha)
 
 

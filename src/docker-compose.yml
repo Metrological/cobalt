@@ -167,6 +167,19 @@ services:
       USE_CCACHE: ${USE_CCACHE:-1}
       NINJA_STATUS: ${NINJA_STATUS}
 
+  linux-x64x11-sbversion12-evergreen:
+    <<: *build-common-definitions
+    build:
+      context: ./docker/linux
+      dockerfile: linux-x64x11/Dockerfile
+      args:
+        - FROM_IMAGE=cobalt-build-evergreen
+    image: cobalt-build-linux-x64x11-evergreen
+    environment:
+      <<: *shared-build-env
+      PLATFORM: linux-x64x11-sbversion-12
+      CONFIG: ${CONFIG:-debug}
+
   # Define common build container for Android
   build-android:
     <<: *build-common-definitions
@@ -254,17 +267,6 @@ services:
       context: ./docker/linux/raspi
       dockerfile: ./Dockerfile
     image: cobalt-build-raspi
-    environment:
-      <<: *shared-build-env
-      PLATFORM: ${PLATFORM:-raspi-2}
-      CONFIG: ${CONFIG:-debug}
-
-  raspi-gn:
-    <<: *build-common-definitions
-    build:
-      context: ./docker/linux/raspi
-      dockerfile: ./gn/Dockerfile
-    image: cobalt-build-raspi-gn
     environment:
       <<: *shared-build-env
       PLATFORM: ${PLATFORM:-raspi-2}

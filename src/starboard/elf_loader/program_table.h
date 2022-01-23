@@ -17,7 +17,6 @@
 
 #include <vector>
 
-#include "cobalt/extension/memory_mapped_file.h"
 #include "starboard/elf_loader/elf.h"
 #include "starboard/elf_loader/file.h"
 
@@ -37,8 +36,7 @@ namespace elf_loader {
 
 class ProgramTable {
  public:
-  explicit ProgramTable(
-      const CobaltExtensionMemoryMappedFileApi* memory_mapped_file_extension);
+  ProgramTable();
 
   // Loads the program header.
   bool LoadProgramHeader(const Ehdr* elf_header, File* elf_file);
@@ -91,8 +89,6 @@ class ProgramTable {
   // The base memory address. All virtual addresses
   // from the ELF file are offsets from this address.
   Addr base_memory_address_;
-
-  const CobaltExtensionMemoryMappedFileApi* memory_mapped_file_extension_;
 
   ProgramTable(const ProgramTable&) = delete;
   void operator=(const ProgramTable&) = delete;

@@ -57,8 +57,6 @@ namespace {
 
 static const int kRetryDelayAtSuspendInMilliseconds = 100;
 
-unsigned int g_pipeline_identifier_counter = 0;
-
 // Used to post parameters to SbPlayerPipeline::StartTask() as the number of
 // parameters exceed what base::Bind() can support.
 struct StartTaskParameters {
@@ -327,8 +325,7 @@ SbPlayerPipeline::SbPlayerPipeline(
         get_decode_target_graphics_context_provider_func,
     bool allow_resume_after_suspend, MediaLog* media_log,
     VideoFrameProvider* video_frame_provider)
-    : pipeline_identifier_(
-          base::StringPrintf("%X", g_pipeline_identifier_counter++)),
+    : pipeline_identifier_(base::StringPrintf("%p", this)),
       task_runner_(task_runner),
       allow_resume_after_suspend_(allow_resume_after_suspend),
       window_(window),
@@ -535,9 +532,9 @@ void SbPlayerPipeline::Stop(const base::Closure& stop_cb) {
       player = std::move(player_);
     }
 
-    LOG(INFO) << "Destroying SbPlayer.";
+    DLOG(INFO) << "Destroying SbPlayer.";
     player.reset();
-    LOG(INFO) << "SbPlayer destroyed.";
+    DLOG(INFO) << "SbPlayer destroyed.";
   }
 
   // When Stop() is in progress, we no longer need to call |error_cb_|.
@@ -904,25 +901,19 @@ void SbPlayerPipeline::CreateUrlPlayer(const std::string& source_url) {
   // TODO:  Check |suspended_| here as the pipeline can be suspended before the
   // player is created.  In this case we should delay creating the player as the
   // creation of player may fail.
-  std::string error_message;
+
   {
     base::AutoLock auto_lock(lock_);
-    LOG(INFO) << "Creating StarboardPlayer with url: " << source_url;
+    DLOG(INFO) << "StarboardPlayer created with url: " << source_url;
     player_.reset(new StarboardPlayer(
         task_runner_, source_url, window_, this, set_bounds_helper_.get(),
         allow_resume_after_suspend_, *decode_to_texture_output_mode_,
         on_encrypted_media_init_data_encountered_cb_, video_frame_provider_));
-    if (player_->IsValid()) {
-      SetPlaybackRateTask(playback_rate_);
-      SetVolumeTask(volume_);
-    } else {
-      error_message = player_->GetPlayerCreationErrorMessage();
-      player_.reset();
-      LOG(INFO) << "Failed to create a valid StarboardPlayer.";
-    }
+    SetPlaybackRateTask(playback_rate_);
+    SetVolumeTask(volume_);
   }
 
-  if (player_ && player_->IsValid()) {
+  if (player_->IsValid()) {
     base::Closure output_mode_change_cb;
     {
       base::AutoLock auto_lock(lock_);
@@ -933,10 +924,10 @@ void SbPlayerPipeline::CreateUrlPlayer(const std::string& source_url) {
     return;
   }
 
+  player_.reset();
   CallSeekCB(DECODER_ERROR_NOT_SUPPORTED,
-             "SbPlayerPipeline::CreateUrlPlayer failed to create a valid "
-             "StarboardPlayer:" +
-                 (error_message.empty() ? "" : " Error: " + error_message));
+             "SbPlayerPipeline::CreateUrlPlayer failed: "
+             "player_->IsValid() is false.");
 }
 
 void SbPlayerPipeline::SetDrmSystem(SbDrmSystem drm_system) {
@@ -944,7 +935,8 @@ void SbPlayerPipeline::SetDrmSystem(SbDrmSystem drm_system) {
 
   base::AutoLock auto_lock(lock_);
   if (!player_) {
-    LOG(INFO) << "Player not set before calling SbPlayerPipeline::SetDrmSystem";
+    DLOG(INFO)
+        << "Player not set before calling SbPlayerPipeline::SetDrmSystem";
     return;
   }
 
@@ -992,7 +984,6 @@ void SbPlayerPipeline::CreatePlayer(SbDrmSystem drm_system) {
         video_stream_->video_decoder_config());
   }
 
-  std::string error_message;
   {
     base::AutoLock auto_lock(lock_);
     SB_DCHECK(!player_);
@@ -1000,45 +991,39 @@ void SbPlayerPipeline::CreatePlayer(SbDrmSystem drm_system) {
     // available, reset the existing player first to reduce the number of active
     // players.
     player_.reset();
-    LOG(INFO) << "Creating StarboardPlayer.";
     player_.reset(new StarboardPlayer(
         task_runner_, get_decode_target_graphics_context_provider_func_,
         audio_config, video_config, window_, drm_system, this,
         set_bounds_helper_.get(), allow_resume_after_suspend_,
         *decode_to_texture_output_mode_, video_frame_provider_,
         max_video_capabilities_));
-    if (player_->IsValid()) {
-      SetPlaybackRateTask(playback_rate_);
-      SetVolumeTask(volume_);
-    } else {
-      error_message = player_->GetPlayerCreationErrorMessage();
+
+    if (!player_->IsValid()) {
       player_.reset();
-      LOG(INFO) << "Failed to create a valid StarboardPlayer.";
+      CallErrorCB(DECODER_ERROR_NOT_SUPPORTED,
+                  "SbPlayerPipeline::CreatePlayer failed: "
+                  "player_->IsValid() is false.");
+      return;
     }
+
+    SetPlaybackRateTask(playback_rate_);
+    SetVolumeTask(volume_);
   }
 
-  if (player_ && player_->IsValid()) {
-    base::Closure output_mode_change_cb;
-    {
-      base::AutoLock auto_lock(lock_);
-      DCHECK(!output_mode_change_cb_.is_null());
-      output_mode_change_cb = std::move(output_mode_change_cb_);
-    }
-    output_mode_change_cb.Run();
-
-    if (audio_stream_) {
-      UpdateDecoderConfig(audio_stream_);
-    }
-    if (video_stream_) {
-      UpdateDecoderConfig(video_stream_);
-    }
-    return;
+  base::Closure output_mode_change_cb;
+  {
+    base::AutoLock auto_lock(lock_);
+    DCHECK(!output_mode_change_cb_.is_null());
+    output_mode_change_cb = std::move(output_mode_change_cb_);
   }
+  output_mode_change_cb.Run();
 
-  CallSeekCB(DECODER_ERROR_NOT_SUPPORTED,
-             "SbPlayerPipeline::CreatePlayer failed to create a valid "
-             "StarboardPlayer:" +
-                 (error_message.empty() ? "" : " Error: " + error_message));
+  if (audio_stream_) {
+    UpdateDecoderConfig(audio_stream_);
+  }
+  if (video_stream_) {
+    UpdateDecoderConfig(video_stream_);
+  }
 }
 
 void SbPlayerPipeline::OnDemuxerInitialized(PipelineStatus status) {
@@ -1441,12 +1426,7 @@ void SbPlayerPipeline::ResumeTask(PipelineWindow window,
   if (player_) {
     player_->Resume(window);
     if (!player_->IsValid()) {
-      {
-        base::AutoLock auto_lock(lock_);
-        player_.reset();
-      }
-      // TODO: Determine if CallSeekCB() may be used here, as |seek_cb_| may be
-      // available if the app is suspended before a seek is completed.
+      player_.reset();
       CallErrorCB(DECODER_ERROR_NOT_SUPPORTED,
                   "SbPlayerPipeline::ResumeTask failed: "
                   "player_->IsValid() is false.");

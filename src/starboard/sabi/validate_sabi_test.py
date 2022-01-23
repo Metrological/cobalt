@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 # Copyright 2019 The Cobalt Authors. All Rights Reserved.
 #
@@ -16,22 +16,21 @@
 #
 """Tests the validate_sabi module."""
 
+import _env  # pylint: disable=unused-import
+
 import copy
 import os
-import sys
 import unittest
 
-sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
-
-# pylint: disable=wrong-import-position
 from starboard.sabi import sabi_utils
 from starboard.sabi import validate_sabi
 from starboard.tools import paths
 
 _TEST_SABI_JSON = sabi_utils.LoadSabi(
-    os.path.join(paths.STARBOARD_ROOT, 'sabi', 'test', 'sabi.json'))
+    os.path.join(paths.STARBOARD_ROOT, 'sabi', 'test', 'sabi.json'), None)
 _TEST_SABI_SCHEMA = sabi_utils.LoadSabiSchema(
-    os.path.join(paths.STARBOARD_ROOT, 'sabi', 'test', 'sabi.schema.json'))
+    os.path.join(paths.STARBOARD_ROOT, 'sabi', 'test', 'sabi.schema.json'),
+    None)
 
 
 class ValidateSabiTest(unittest.TestCase):
@@ -50,8 +49,8 @@ class ValidateSabiTest(unittest.TestCase):
           sabi_schema_path = os.path.join(
               sabi_utils.SABI_SCHEMA_PATH,
               'sabi-v{}.schema.json'.format(match.group(1)))
-          sabi_json = sabi_utils.LoadSabi(os.path.join(root, f))
-          sabi_schema = sabi_utils.LoadSabiSchema(sabi_schema_path)
+          sabi_json = sabi_utils.LoadSabi(os.path.join(root, f), None)
+          sabi_schema = sabi_utils.LoadSabiSchema(sabi_schema_path, None)
           self.assertTrue(validate_sabi.ValidateSabi(sabi_json, sabi_schema))
 
   def testRainyDayValidateSabiSabiJsonWithMissingEntry(self):
@@ -66,7 +65,7 @@ class ValidateSabiTest(unittest.TestCase):
 
   def testRainyDayValidateSabiSabiJsonWithInvalidEntry(self):
     sabi_json = copy.deepcopy(_TEST_SABI_JSON)
-    sabi_json[list(sabi_json.keys())[0]] = 'invalid_value'
+    sabi_json[sabi_json.keys()[0]] = 'invalid_value'
     self.assertFalse(validate_sabi.ValidateSabi(sabi_json, _TEST_SABI_SCHEMA))
 
 

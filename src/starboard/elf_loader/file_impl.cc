@@ -39,7 +39,6 @@ FileImpl::~FileImpl() {
 
 bool FileImpl::Open(const char* name) {
   SB_DLOG(INFO) << "Loading: " << name;
-  name_ = name;
   file_ = SbFileOpen(name, kSbFileOpenOnly | kSbFileRead, NULL, NULL);
   if (!file_) {
     return false;
@@ -71,10 +70,6 @@ void FileImpl::Close() {
   if (file_) {
     SbFileClose(file_);
   }
-}
-
-const std::string& FileImpl::GetName() {
-  return name_;
 }
 
 }  // namespace elf_loader

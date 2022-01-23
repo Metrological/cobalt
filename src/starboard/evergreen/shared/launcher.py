@@ -236,6 +236,3 @@ class Launcher(abstract_launcher.AbstractLauncher):
 
   def GetDeviceIp(self):
     return self.launcher.GetDeviceIp()
-
-  def GetDeviceOutputPath(self):
-    return self.launcher.GetDeviceOutputPath()

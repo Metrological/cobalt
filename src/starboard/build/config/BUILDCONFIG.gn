@@ -24,11 +24,6 @@ declare_args() {
   is_starboard = true
 
   cobalt_fastbuild = getenv("IS_CI") == 1
-
-  is_internal_build = false
-
-  # TODO: Remove this flag when the affected targets can be built.
-  can_build_evergreen_loader_apps = true
 }
 
 is_debug = build_type == "debug"
@@ -104,12 +99,11 @@ import("//starboard/build/config/build_assertions.gni")
 default_compiler_configs = [
   "//build/config/compiler:default_include_dirs",
   "//build/config/compiler:no_exceptions",
-  "//$starboard_path/platform_configuration",
   "//starboard/build/config:base",
   "//starboard/build/config:host",
   "//starboard/build/config:size",
   "//starboard/build/config:target",
-  "//starboard/build/config:no_pedantic_warnings",
+  "//$starboard_path/platform_configuration",
 ]
 
 if (is_starboard) {

@@ -74,7 +74,7 @@ class AudioDestinationNode : public AudioNode,
   uint32 max_channel_count_;
 
   std::unique_ptr<AudioDevice> audio_device_;
-  std::atomic_bool delete_audio_device_ = {false};
+  AudioDevice* audio_device_to_delete_ = NULL;
 
   DISALLOW_COPY_AND_ASSIGN(AudioDestinationNode);
 };

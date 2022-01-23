@@ -28,17 +28,12 @@ namespace egl {
 
 ShaderProgramManager::ShaderProgramManager() {
   // These are shaders that get instantiated during video playback when the
-  // user starts interacting with the transport controls. They are preloaded
+  // users starts interacting with the transport controls. They are preloaded
   // to prevent UI-hiccups.
   // These shaders are generated from egl/generated_shader_impl.h
   Preload<ShaderVertexOffsetRcorner, ShaderFragmentColorBlurRrects>();
   Preload<ShaderVertexColorOffset, ShaderFragmentColorInclude>();
   Preload<ShaderVertexRcornerTexcoord, ShaderFragmentRcornerTexcoordColor>();
-  Preload<ShaderVertexRcornerTexcoord,
-          ShaderFragmentRcornerTexcoordColorYuv3>();
-  Preload<ShaderVertexRcorner, ShaderFragmentRcornerColor>();
-  Preload<ShaderVertexColorTexcoord, ShaderFragmentColorTexcoord>();
-  Preload<ShaderVertexColorTexcoord, ShaderFragmentColorTexcoordYuv3>();
 }
 
 ShaderProgramManager::~ShaderProgramManager() {

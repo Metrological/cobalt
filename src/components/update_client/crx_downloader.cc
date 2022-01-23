@@ -120,12 +120,6 @@ void CrxDownloader::StartDownload(const std::vector<GURL>& urls,
   DoStartDownload(*current_url_);
 }
 
-#if defined(STARBOARD)
-void CrxDownloader::CancelDownload() {
-  DoCancelDownload();
-}
-#endif
-
 void CrxDownloader::OnDownloadComplete(
     bool is_handled,
     const Result& result,

@@ -403,8 +403,6 @@ class Box : public base::RefCounted<Box> {
       bool transform_forms_root) const;
   Vector2dLayoutUnit GetBorderBoxOffsetFromMarginBox() const;
 
-  void ResetBorderInsets() { border_insets_ = InsetsLayoutUnit(); }
-
   // Padding box.
   LayoutUnit padding_left() const { return padding_insets_.left(); }
   LayoutUnit padding_top() const { return padding_insets_.top(); }
@@ -420,11 +418,6 @@ class Box : public base::RefCounted<Box> {
   Vector2dLayoutUnit GetPaddingBoxOffsetFromBorderBox() const;
   LayoutUnit GetPaddingBoxLeftEdgeOffsetFromMarginBox() const;
   LayoutUnit GetPaddingBoxTopEdgeOffsetFromMarginBox() const;
-
-  // Set padding insets in InlineContainerBox UpdatePaddings to an empty
-  // LayoutUnit or the computed_style value using is_split_on_*_.
-  void SetPaddingInsets(LayoutUnit left, LayoutUnit top, LayoutUnit right,
-                        LayoutUnit bottom);
 
   // Content box.
   LayoutUnit width() const { return content_size_.width(); }
@@ -736,9 +729,6 @@ class Box : public base::RefCounted<Box> {
   base::Optional<LayoutUnit> collapsed_margin_bottom_;
   base::Optional<LayoutUnit> collapsed_empty_margin_;
 
-  static bool IsBorderStyleNoneOrHidden(
-      const scoped_refptr<cssom::PropertyValue>& border_style);
-
  protected:
   UsedStyleProvider* used_style_provider() const {
     return used_style_provider_;
@@ -817,11 +807,6 @@ class Box : public base::RefCounted<Box> {
       const base::Optional<LayoutUnit>& possibly_overconstrained_margin_left,
       const base::Optional<LayoutUnit>& possibly_overconstrained_margin_right);
 
-  // Set border insets in InlineContainerBox UpdateBorders to an empty
-  // LayoutUnit or the computed_style value using is_split_on_*_.
-  void SetBorderInsets(LayoutUnit left, LayoutUnit top, LayoutUnit right,
-                       LayoutUnit bottom);
-
  private:
   struct CachedRenderTreeNodeInfo {
     explicit CachedRenderTreeNodeInfo(const math::Vector2dF& offset)
@@ -832,9 +817,9 @@ class Box : public base::RefCounted<Box> {
   };
 
   // Updates used values of "border" properties.
-  virtual void UpdateBorders();
+  void UpdateBorders();
   // Updates used values of "padding" properties.
-  virtual void UpdatePaddings(const LayoutParams& layout_params);
+  void UpdatePaddings(const LayoutParams& layout_params);
 
   // Computes the normalized "outer" rounded corners (if there are any) from the
   // border radii.

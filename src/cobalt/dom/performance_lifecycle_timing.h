@@ -31,7 +31,7 @@ class Performance;
 class PerformanceLifecycleTiming : public PerformanceEntry {
  public:
   PerformanceLifecycleTiming(const std::string& name,
-                             const DOMHighResTimeStamp time_origin);
+                             base::TimeTicks time_origin);
 
   // Web API.
   DOMHighResTimeStamp app_preload() const;
@@ -42,7 +42,6 @@ class PerformanceLifecycleTiming : public PerformanceEntry {
   DOMHighResTimeStamp app_reveal() const;
   DOMHighResTimeStamp app_freeze() const;
   DOMHighResTimeStamp app_unfreeze() const;
-  DOMHighResTimeStamp app_deeplink() const;
   std::string current_state() const;
   std::string last_state() const;
 
@@ -55,7 +54,6 @@ class PerformanceLifecycleTiming : public PerformanceEntry {
                            SbTimeMonotonic timestamp);
   void SetApplicationStartOrPreloadTimestamp(
       bool is_preload, SbTimeMonotonic timestamp);
-  void SetDeepLinkTimestamp(SbTimeMonotonic timestamp);
 
   DEFINE_WRAPPABLE_TYPE(PerformanceLifecycleTiming);
 
@@ -63,7 +61,7 @@ class PerformanceLifecycleTiming : public PerformanceEntry {
   void SetLifecycleTimingInfoState(base::ApplicationState state);
   DOMHighResTimeStamp ReportDOMHighResTimeStamp(
       SbTimeMonotonic timestamp) const;
-  base::ApplicationState GetCurrentState() const;
+  base::ApplicationState GetLastState() const;
  struct LifecycleTimingInfo {
   SbTimeMonotonic app_preload = 0;
   SbTimeMonotonic app_start = 0;
@@ -73,7 +71,6 @@ class PerformanceLifecycleTiming : public PerformanceEntry {
   SbTimeMonotonic app_reveal = 0;
   SbTimeMonotonic app_freeze = 0;
   SbTimeMonotonic app_unfreeze = 0;
-  SbTimeMonotonic app_deeplink = 0;
 
   base::ApplicationState current_state =
       base::kApplicationStateStopped;
@@ -83,7 +80,7 @@ class PerformanceLifecycleTiming : public PerformanceEntry {
 
   LifecycleTimingInfo lifecycle_timing_info_;
 
-  DOMHighResTimeStamp time_origin_;
+  base::TimeTicks time_origin_;
 
   DISALLOW_COPY_AND_ASSIGN(PerformanceLifecycleTiming);
 };

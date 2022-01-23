@@ -33,9 +33,6 @@ namespace {
 // Delay to re-query position state after an action has been invoked.
 const base::TimeDelta kUpdateDelay = base::TimeDelta::FromMilliseconds(250);
 
-// Delay to check if the media session state is not active.
-const base::TimeDelta kMaybeFreezeDelay = base::TimeDelta::FromMilliseconds(1500);
-
 // Guess the media position state for the media session.
 void GuessMediaPositionState(MediaSessionState* session_state,
                              const media::WebMediaPlayer** guess_player,
@@ -70,8 +67,7 @@ void GuessMediaPositionState(MediaSessionState* session_state,
 
 MediaSessionClient::MediaSessionClient(MediaSession* media_session)
     : media_session_(media_session),
-      platform_playback_state_(kMediaSessionPlaybackStateNone),
-      sequence_number_(0) {
+      platform_playback_state_(kMediaSessionPlaybackStateNone) {
   extension_ = static_cast<const CobaltExtensionMediaSessionApi*>(
       SbSystemGetExtension(kCobaltExtensionMediaSessionName));
   if (extension_) {
@@ -175,13 +171,6 @@ MediaSessionClient::ComputeAvailableActions() const {
   return result;
 }
 
-void MediaSessionClient::PostDelayedTaskForMaybeFreezeCallback() {
-  media_session_->task_runner_->PostDelayedTask(
-      FROM_HERE, base::Bind(&MediaSessionClient::RunMaybeFreezeCallback,
-                            base::Unretained(this), ++sequence_number_),
-                            kMaybeFreezeDelay);
-}
-
 void MediaSessionClient::UpdatePlatformPlaybackState(
     CobaltExtensionMediaSessionPlaybackState state) {
   DCHECK(media_session_->task_runner_);
@@ -196,12 +185,6 @@ void MediaSessionClient::UpdatePlatformPlaybackState(
   if (session_state_.actual_playback_state() != ComputeActualPlaybackState()) {
     UpdateMediaSessionState();
   }
-
-  PostDelayedTaskForMaybeFreezeCallback();
-}
-
-void MediaSessionClient::RunMaybeFreezeCallback(int sequence_number) {
-  if (sequence_number != sequence_number_) return;
 
   if (!is_active() && !maybe_freeze_callback_.is_null()) {
     maybe_freeze_callback_.Run();

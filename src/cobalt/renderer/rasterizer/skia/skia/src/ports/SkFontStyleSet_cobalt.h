@@ -135,9 +135,6 @@ class SkFontStyleSet_Cobalt : public SkFontStyleSet {
   SkLanguage language_;
   font_character_map::PageRanges page_ranges_;
 
-  // Used when the styles in the styleset have different character mappings.
-  bool disable_character_map_;
-
   // NOTE: The following characters require locking when being accessed.
   bool is_character_map_generated_;
   scoped_refptr<font_character_map::CharacterMap> character_map_;

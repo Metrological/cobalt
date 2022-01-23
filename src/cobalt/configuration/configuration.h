@@ -53,6 +53,7 @@ class Configuration {
   float CobaltImageCacheCapacityMultiplierWhenPlayingVideo();
   int CobaltSkiaGlyphAtlasWidth();
   int CobaltSkiaGlyphAtlasHeight();
+  int CobaltJsGarbageCollectionThresholdInBytes();
   int CobaltReduceCpuMemoryBy();
   int CobaltReduceGpuMemoryBy();
   bool CobaltGcZeal();

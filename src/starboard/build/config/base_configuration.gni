@@ -21,7 +21,11 @@ declare_args() {
 
   # The Starboard API version of the current build configuration. The default
   # value is meant to be overridden by a Starboard ABI file.
-  sb_api_version = 13
+  sb_api_version = 14
+
+  # Enabling this variable enables pedantic levels of warnings for the current
+  # toolchain.
+  sb_pedantic_warnings = false
 
   # Enables embedding Cobalt as a shared library within another app. This
   # requires a 'lib' starboard implementation for the corresponding platform.
@@ -98,7 +102,4 @@ declare_args() {
   static_library_configs = []
   source_set_configs = []
   loadable_module_configs = []
-
-  # Whether or not to build drm test suites.
-  has_drm_support = true
 }

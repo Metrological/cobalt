@@ -38,19 +38,11 @@ config("sabi") {
                   ],
                   "trim string")
 
-  sabi_id = exec_script("//starboard/sabi/generate_sabi_id.py",
-                        [
-                          "-f",
-                          rebase_path(sabi_path, root_build_dir),
-                        ],
-                        "trim string")
+  mock_sabi_id = "\"MOCK_SABI_ID\""
 
   defines = [
-    "SB_SABI_JSON_ID=R\"($sabi_id)\"",
+    "SB_SABI_JSON_ID=$mock_sabi_id",
     "SB_API_VERSION=$sb_api_version",
-
-    "SB_SABI_TARGET_ARCH=\"${target_cpu}\"",
-    "SB_SABI_WORD_SIZE=\"${word_size}\"",
 
     "SB_IS_ARCH_${arch_uppercase}=1",
     "SB_HAS_${calling_convention_uppercase}_CALLING=1",

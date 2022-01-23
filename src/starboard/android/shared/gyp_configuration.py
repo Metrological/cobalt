@@ -277,6 +277,7 @@ class AndroidConfiguration(PlatformConfiguration):
   # A map of failing or crashing tests per target.
   __FILTERED_TESTS = {  # pylint: disable=invalid-name
       'player_filter_tests': [
+
           # GetMaxNumberOfCachedFrames() on Android is device dependent,
           # and Android doesn't provide an API to get it. So, this function
           # doesn't make sense on Android. But HoldFramesUntilFull tests depend
@@ -295,9 +296,6 @@ class AndroidConfiguration(PlatformConfiguration):
 
           # The video pipeline will hang if it doesn't receive any input.
           'PlayerComponentsTests/PlayerComponentsTest.EOSWithoutInput/*',
-
-          # The e/eac3 audio time reporting during pause will be revisitied.
-          'PlayerComponentsTests/PlayerComponentsTest.Pause/15',
       ],
       'nplb': [
           # This test is failing because localhost is not defined for IPv6 in
@@ -318,17 +316,6 @@ class AndroidConfiguration(PlatformConfiguration):
           # These tests are disabled due to not receiving the kEndOfStream
           # player state update within the specified timeout.
           'SbPlayerWriteSampleTests/SbPlayerWriteSampleTest.NoInput/*',
-
-          # Android does not use SbDrmSessionClosedFunc, which these tests
-          # depend on.
-          'SbDrmSessionTest.SunnyDay',
-          'SbDrmSessionTest.CloseDrmSessionBeforeUpdateSession',
-
-          # This test is failing because Android calls the
-          # SbDrmSessionUpdateRequestFunc with SbDrmStatus::kSbDrmStatusSuccess
-          # when invalid initialization data is passed to
-          # SbDrmGenerateSessionUpdateRequest().
-          'SbDrmSessionTest.InvalidSessionUpdateRequestParams',
       ],
   }
 

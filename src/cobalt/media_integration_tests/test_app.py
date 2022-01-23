@@ -13,6 +13,7 @@
 # limitations under the License.
 """A module to support fundamental communications with Cobalt application."""
 
+import enum
 import json
 import logging
 import threading
@@ -30,8 +31,6 @@ WAIT_INTERVAL_SECONDS = 0.5
 WAIT_UNTIL_REACH_STATE_DEFAULT_TIMEOUT_SECONDS = 30
 WAIT_UNTIL_ADS_END_DEFAULT_TIMEOUT_SECONDS = 120
 WAIT_UNTIL_MEDIA_TIME_REACHED_DEFAULT_TIMEOUT_SECONDS = 30
-
-ACCOUNT_SELECTOR_ADD_ACCOUNT_TEXT = u'Add account'
 
 
 def GetValueFromQueryResult(query_result, key, default):
@@ -84,12 +83,10 @@ class AdditionalKeys():
   MEDIA_NEXT_TRACK = u'\uf000'
   MEDIA_PREV_TRACK = u'\uf001'
   MEDIA_STOP = u'\uf002'
-  MEDIA_PLAY_PAUSE = u'\uf003'
-  MEDIA_REWIND = u'\uf004'
-  MEDIA_FAST_FORWARD = u'\uf005'
+  MEDIA_PLAYPAUSE = u'\uf003'
 
 
-class Features():
+class Features(enum.Enum):
   """Set of platform features."""
   SUSPEND_AND_RESUME = 1
   SEND_KEYS = 2
@@ -152,7 +149,7 @@ class ApplicationStateHandler():
       self._NotifyHandlersOnStateChanged()
 
 
-class PipelinePlayerState(int):
+class PipelinePlayerState(enum.IntEnum):
   """Set of pipeline states, equals to SbPlayerState."""
   INITIALIZED = 0  # kSbPlayerStateInitialized
   PREROLLING = 1  # kSbPlayerStatePrerolling
@@ -253,12 +250,11 @@ class PipelineState():
       const primary_pipeline_keys = h5vcc.cVal.keys().filter(key =>
         key.startsWith("Media.Pipeline.") &&
         key.endsWith("MaxVideoCapabilities") &&
-        h5vcc.cVal.getValue(key).length === 0);
+        h5vcc.cVal.getValue(key).length === 0)
       if (primary_pipeline_keys.length == 0) {
-        return "null";
+        return "null"
       }
-      const key_prefix = primary_pipeline_keys[0].slice(0,
-                          -".MaxVideoCapabilities".length);
+      const key_prefix = primary_pipeline_keys[0].slice(0, -".MaxVideoCapabilities".length)
       return {
         identifier: key_prefix.slice("Media.Pipeline.".length),
         is_started: h5vcc.cVal.getValue(key_prefix + '.Started'),
@@ -270,8 +266,7 @@ class PipelineState():
         playback_rate: h5vcc.cVal.getValue(key_prefix + '.PlaybackRate'),
         duration: h5vcc.cVal.getValue(key_prefix + '.Duration'),
         last_media_time: h5vcc.cVal.getValue(key_prefix + '.LastMediaTime'),
-        max_video_capabilities: h5vcc.cVal.getValue(
-                                key_prefix + '.MaxVideoCapabilities'),
+        max_video_capabilities: h5vcc.cVal.getValue(key_prefix + '.MaxVideoCapabilities'),
         seek_time: h5vcc.cVal.getValue(key_prefix + '.SeekTime'),
         first_written_audio_timestamp:
             h5vcc.cVal.getValue(key_prefix + '.FirstWrittenAudioTimestamp'),
@@ -283,13 +278,11 @@ class PipelineState():
             h5vcc.cVal.getValue(key_prefix + '.LastWrittenVideoTimestamp'),
         video_width: h5vcc.cVal.getValue(key_prefix + '.VideoWidth'),
         video_height: h5vcc.cVal.getValue(key_prefix + '.VideoHeight'),
-        is_audio_eos_written: h5vcc.cVal.getValue(key_prefix +
-                              '.IsAudioEOSWritten'),
-        is_video_eos_written: h5vcc.cVal.getValue(key_prefix +
-                              '.IsVideoEOSWritten'),
+        is_audio_eos_written: h5vcc.cVal.getValue(key_prefix + '.IsAudioEOSWritten'),
+        is_video_eos_written: h5vcc.cVal.getValue(key_prefix + '.IsVideoEOSWritten'),
         pipeline_status: h5vcc.cVal.getValue(key_prefix + '.PipelineStatus'),
         error_message: h5vcc.cVal.getValue(key_prefix + '.ErrorMessage'),
-      };
+      }
     """
 
   def IsPlaying(self):
@@ -297,22 +290,16 @@ class PipelineState():
             not self.is_ended and not self.is_suspended and not self.is_stopped)
 
 
-class MediaSessionPlaybackState(int):
+class MediaSessionPlaybackState(enum.Enum):
   """Set of media session playback states."""
   NONE = 0
   PAUSED = 1
   PLAYING = 2
 
-  @staticmethod
-  def FromString(str):
-    if str == 'none':
-      return 0
-    if str == 'paused':
-      return 1
-    if str == 'playing':
-      return 2
-    raise NotImplementedError(
-        '"%s" is not a valid media session playback state.' % str)
+  # Aliases to convert string to the enum.
+  none = 0
+  paused = 1
+  playing = 2
 
 
 class MediaSessionState():
@@ -332,8 +319,8 @@ class MediaSessionState():
     self.title = GetValueFromQueryResult(metadata, 'title', '')
     self.artist = GetValueFromQueryResult(metadata, 'artist', '')
     self.album = GetValueFromQueryResult(metadata, 'album', '')
-    self.playback_state = MediaSessionPlaybackState.FromString(
-        GetValueFromQueryResult(query_result, 'playbackState', 'none'))
+    self.playback_state = MediaSessionPlaybackState[GetValueFromQueryResult(
+        query_result, 'playbackState', 'none')]
 
   def __eq__(self, other):
     if not isinstance(other, self.__class__):
@@ -353,7 +340,7 @@ class MediaSessionState():
       return {
           metadata: navigator.mediaSession.metadata,
           playbackState: navigator.mediaSession.playbackState,
-        };
+        }
     """
 
 
@@ -404,8 +391,8 @@ class VideoElementState():
       const players = document.querySelectorAll("video");
       if (players && players.length > 0) {
         for (let i = 0; i < players.length; i++) {
-          const player = players[i];
-          const rect = player.getBoundingClientRect();
+          const player = players[i]
+          const rect = player.getBoundingClientRect()
           if (rect.width === window.innerWidth ||
               rect.height === window.innerHeight) {
             const quality = player.getVideoPlaybackQuality();
@@ -417,11 +404,11 @@ class VideoElementState():
               volume: player.volume,
               dropped_video_frames: quality.droppedVideoFrames,
               total_video_frames: quality.totalVideoFrames,
-            };
+            }
           }
         }
       }
-      return "null";
+      return "null"
     """
 
 
@@ -483,7 +470,7 @@ class PlayerStateHandler():
       self._NotifyHandlersOnStateChanged()
 
 
-class AdsState(int):
+class AdsState(enum.IntEnum):
   """Set of ads states. The numeric values are used in ads state query."""
   NONE = 0
   PLAYING = 1
@@ -535,16 +522,8 @@ class TestApp():
 
   def __exit__(self, *args):
     self.should_exit.set()
-    if self.periodic_query_thread.is_alive():
-      self.periodic_query_thread.join(THREAD_EXIT_TIMEOUT_SECONDS)
+    self.periodic_query_thread.join(THREAD_EXIT_TIMEOUT_SECONDS)
     return self.runner.__exit__(*args)
-
-  def ExecuteScript(self, script):
-    try:
-      result = self.runner.webdriver.execute_script(script)
-    except Exception as e:
-      raise RuntimeError('Fail to excute script with error (%s).' % (str(e)))
-    return result
 
   def _OnNewLogLine(self, line):
     # Note that the function is called on cobalt runner reader thread.
@@ -605,7 +584,7 @@ class TestApp():
     self.player_state_handler.AddPlayerStateChangeHandler(handler)
 
   def RemovePlayerStateChangeHandler(self, handler):
-    self.player_state_handler.RemovePlayerStateChangeHandler(handler)
+    self.player_state_handler.RemoveAppStateChangeHandler(handler)
 
   # The handler will receive parameters (TestApp, String, Dictionary).
   def RegisterPeriodicQuery(self, query_name, query_js_code, result_handler):
@@ -641,7 +620,12 @@ class TestApp():
         # Generate javascript code and execute it.
         js_code = self._GeneratePeriodicQueryJsCode(local_is_queries_changed,
                                                     local_periodic_queries)
-        result = self.ExecuteScript(js_code)
+        try:
+          result = self.runner.webdriver.execute_script(js_code)
+        except Exception as e:
+          raise RuntimeError('Periodic queries failed with error (%s)' %
+                             (str(e)))
+
         for query_name in local_periodic_queries.keys():
           if not result.get(query_name):
             raise RuntimeError(
@@ -652,11 +636,11 @@ class TestApp():
       time.sleep(PERIODIC_QUERIES_INTERVAL_SECONDS)
 
   _PERIODIC_QUERIES_JS_CODE = """
-    let ret = {};
-    for(let key in _media_integration_testing_queries) {
-      ret[key] = _media_integration_testing_queries[key]();
+    var ret = {}
+    for(var key in _media_integration_testing_queries) {
+      ret[key] = _media_integration_testing_queries[key]()
     }
-    return ret;
+    return ret
   """
 
   def _GeneratePeriodicQueryJsCode(self, is_queries_changed, periodic_queries):
@@ -674,10 +658,7 @@ class TestApp():
     return js_code
 
   # The first input of |state_lambda| is an instance of TestApp.
-  def WaitUntilReachState(
-      self,
-      state_lambda,
-      timeout=WAIT_UNTIL_REACH_STATE_DEFAULT_TIMEOUT_SECONDS):
+  def WaitUntilReachState(self, state_lambda, timeout=WAIT_UNTIL_REACH_STATE_DEFAULT_TIMEOUT_SECONDS):
     start_time = time.time()
     while not state_lambda(self) and time.time() - start_time < timeout:
       time.sleep(WAIT_INTERVAL_SECONDS)
@@ -686,94 +667,36 @@ class TestApp():
       raise RuntimeError('WaitUntilReachState timed out after (%f) seconds.' %
                          (execute_interval))
 
-  # The result is an array of overlay header text contents.
-  _OVERLAY_QUERY_JS_CODE = """
-    let result = [];
-    if (document.getElementsByTagName(
-         "YTLR-OVERLAY-PANEL-HEADER-RENDERER").length > 0) {
-      let childNodes = document.getElementsByTagName(
-         "YTLR-OVERLAY-PANEL-HEADER-RENDERER")[0].childNodes;
-      for (let i = 0; i < childNodes.length; i++) {
-        result.push(childNodes[i].textContent);
-      }
-    }
-    return result;
-  """
-
-  def WaitUntilPlayerStart(
-      self, timeout=WAIT_UNTIL_REACH_STATE_DEFAULT_TIMEOUT_SECONDS):
-
-    def PlayerStateCheckCallback(app):
-      # Check if it's showing account selector page.
-      is_showing_account_selector = self.ExecuteScript(
-          'return document.getElementsByTagName("YTLR-ACCOUNT-SELECTOR")'
-          '.length > 0;')
-      if is_showing_account_selector:
-        active_element_label_attr = self.ExecuteScript(
-            'return document.activeElement.getAttribute("aria-label");')
-        if active_element_label_attr != ACCOUNT_SELECTOR_ADD_ACCOUNT_TEXT:
-          logging.info('Select an account (%s) to continue the test.',
-                       active_element_label_attr)
-          self.SendKeys(webdriver_keys.Keys.ENTER)
-        else:
-          logging.info('Current selected item is "Add acount", move to next'
-                       ' item.')
-          self.SendKeys(webdriver_keys.Keys.ARROW_RIGHT)
-        return False
-      # Check if it's showing a playback survey.
-      is_showing_skip_button = self.ExecuteScript(
-          'return document.getElementsByTagName("YTLR-SKIP-BUTTON-RENDERER")'
-          '.length > 0;')
-      # When there's a skip button and no running player, it's showing a
-      # survey.
-      if (is_showing_skip_button and
-          not app.player_state_handler.IsPlayerPlaying()):
-        self.SendKeys(webdriver_keys.Keys.ENTER)
-        logging.info('Send enter key event to skip the survey.')
-        return False
-      # Check if it's showing an overlay.
-      overlay_query_result = self.ExecuteScript(self._OVERLAY_QUERY_JS_CODE)
-      if len(overlay_query_result) > 0:
-        # Note that if there're playback errors, after close the overlay,
-        # the test will end with timeout error.
-        self.SendKeys(webdriver_keys.Keys.ENTER)
-        logging.info(
-            'Send enter key event to close the overlay. Overlay '
-            'headers : %r', overlay_query_result)
-        return False
-
-      return app.player_state_handler.IsPlayerPlaying()
-
-    self.WaitUntilReachState(PlayerStateCheckCallback, timeout)
-
-  def WaitUntilPlayerDestroyed(
-      self, timeout=WAIT_UNTIL_REACH_STATE_DEFAULT_TIMEOUT_SECONDS):
-    current_identifier = self.PlayerState().pipeline_state.identifier
-    if not current_identifier or len(current_identifier) == 0:
-      raise RuntimeError('No existing player when calling'
-                         'WaitUntilPlayerDestroyed.')
+  def WaitUntilPlayerStart(self,
+                           timeout=WAIT_UNTIL_REACH_STATE_DEFAULT_TIMEOUT_SECONDS
+                          ):
     self.WaitUntilReachState(
-        lambda _app: _app.PlayerState().pipeline_state.identifier !=
-        current_identifier, timeout)
+        lambda _app: _app.player_state_handler.IsPlayerPlaying(), timeout)
 
+  # TODO: Need to verify if it works without corp network.
+  # TODO: Needs to recognize and skip survery.
   """
     The return values of the query, exact mapping of AdsState defined earlier
     in this file.
   """
   _GET_ADS_STATE_QUERY_JS_CODE = """
-    if (document.getElementsByTagName("YTLR-AD-PREVIEW-RENDERER").length > 0) {
-      return 1;
+    if( document.getElementsByTagName("YTLR-AD-PREVIEW-RENDERER").length > 0 ) {
+      return 1
     }
-    if (document.getElementsByTagName("YTLR-SKIP-BUTTON-RENDERER").length > 0) {
-      return 2;
+    else if( document.getElementsByTagName("YTLR-SKIP-BUTTON-RENDERER").length > 0 ) {
+      return 2
     }
-    return 0;
+    return 0
   """
 
   def GetAdsState(self):
     if not self.runner.test_script_started.is_set():
       raise RuntimeError('Webdriver is not ready yet')
-    result = self.ExecuteScript(self._GET_ADS_STATE_QUERY_JS_CODE)
+    try:
+      result = self.runner.webdriver.execute_script(
+          self._GET_ADS_STATE_QUERY_JS_CODE)
+    except Exception as e:
+      raise RuntimeError('Ads query failed with error (%s)' % (str(e)))
     return AdsState(result)
 
   def WaitUntilAdsEnd(self, timeout=WAIT_UNTIL_ADS_END_DEFAULT_TIMEOUT_SECONDS):
@@ -807,49 +730,15 @@ class TestApp():
     if start_media_time > media_time:
       return
 
-    # Wait until playback starts.
+    # Wait until playback starts, otherwise playback rate could be 0.
     self.WaitUntilReachState(
-        lambda _app: _app.PlayerState().pipeline_state.playback_rate > 0,
-        timeout)
+        lambda _app: _app.CurrentMediaTime() > start_media_time, timeout)
 
-    duration = self.PlayerState().video_element_state.duration
-    if media_time > duration:
-      logging.info(
-          'Requested media time (%f) is greater than the duration (%f)',
-          media_time, duration)
-      media_time = duration
-
-    time_to_play = max(media_time - self.CurrentMediaTime(), 0)
     playback_rate = self.PlayerState().pipeline_state.playback_rate
-    adjusted_timeout = time_to_play / playback_rate + timeout
+    if playback_rate == 0:
+      raise NotImplementedError
+
+    adjusted_timeout = (media_time -
+                        self.CurrentMediaTime()) / playback_rate + timeout
     self.WaitUntilReachState(lambda _app: _app.CurrentMediaTime() > media_time,
                              adjusted_timeout)
-
-  def IsMediaTypeSupported(self, mime):
-    return self.ExecuteScript('return MediaSource.isTypeSupported("%s");' %
-                              (mime))
-
-  def PlayOrPause(self):
-    self.SendKeys(AdditionalKeys.MEDIA_PLAY_PAUSE)
-
-  def Fastforward(self):
-    # The first fastforward will only bring up the progress bar.
-    self.SendKeys(AdditionalKeys.MEDIA_FAST_FORWARD)
-    # The second fastforward will forward the playback by 10 seconds.
-    self.SendKeys(AdditionalKeys.MEDIA_FAST_FORWARD)
-    # Press play button to start the playback.
-    self.SendKeys(AdditionalKeys.MEDIA_PLAY_PAUSE)
-
-  def Rewind(self):
-    # The first rewind will only bring up the progress bar.
-    self.SendKeys(AdditionalKeys.MEDIA_REWIND)
-    # The second rewind will rewind the playback by 10 seconds.
-    self.SendKeys(AdditionalKeys.MEDIA_REWIND)
-    # It needs to press play button to start the playback.
-    self.SendKeys(AdditionalKeys.MEDIA_PLAY_PAUSE)
-
-  def PlayPrevious(self):
-    self.SendKeys(AdditionalKeys.MEDIA_PREV_TRACK)
-
-  def PlayNext(self):
-    self.SendKeys(AdditionalKeys.MEDIA_NEXT_TRACK)

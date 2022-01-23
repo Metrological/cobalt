@@ -95,9 +95,6 @@ class MediaSessionClient {
     media_session_ = media_session;
   }
 
-  // Post a delayed task for running MaybeFreeze callback.
-  void PostDelayedTaskForMaybeFreezeCallback();
-
  private:
   THREAD_CHECKER(thread_checker_);
   MediaSession* media_session_;
@@ -134,15 +131,7 @@ class MediaSessionClient {
   MediaSessionAction ConvertMediaSessionAction(
       CobaltExtensionMediaSessionAction action);
 
-  // If the media session is not active, then run MaybeFreezeCallback to
-  // suspend the App.
-  void RunMaybeFreezeCallback(int sequence_number);
-
   base::Closure maybe_freeze_callback_;
-
-  // This is for checking the sequence number of PostDelayedTask. It should be
-  // aligned with a single thread.
-  int sequence_number_;
 
   DISALLOW_COPY_AND_ASSIGN(MediaSessionClient);
 };

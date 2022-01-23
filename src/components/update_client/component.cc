@@ -300,13 +300,6 @@ void Component::Handle(CallbackHandleComplete callback_handle_complete) {
       base::BindOnce(&Component::ChangeState, base::Unretained(this)));
 }
 
-#if defined(STARBOARD)
-void Component::Cancel() {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  state_->Cancel();
-}
-#endif
-
 void Component::ChangeState(std::unique_ptr<State> next_state) {
   DCHECK(thread_checker_.CalledOnValidThread());
 
@@ -539,14 +532,6 @@ void Component::State::Handle(CallbackNextState callback_next_state) {
   DoHandle();
 }
 
-#if defined(STARBOARD)
-void Component::State::Cancel() {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  // Further work may be needed to ensure cancelation during any state results
-  // in a clear result and no memory leaks.
-}
-#endif
-
 void Component::State::TransitionState(std::unique_ptr<State> next_state) {
   DCHECK(thread_checker_.CalledOnValidThread());
   DCHECK(next_state);
@@ -741,13 +726,6 @@ Component::StateDownloadingDiff::~StateDownloadingDiff() {
   DCHECK(thread_checker_.CalledOnValidThread());
 }
 
-#if defined(STARBOARD)
-void Component::StateDownloadingDiff::Cancel() {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  crx_downloader_->CancelDownload();
-}
-#endif
-
 void Component::StateDownloadingDiff::DoHandle() {
   DCHECK(thread_checker_.CalledOnValidThread());
 
@@ -821,13 +799,6 @@ Component::StateDownloading::StateDownloading(Component* component)
 Component::StateDownloading::~StateDownloading() {
   DCHECK(thread_checker_.CalledOnValidThread());
 }
-
-#if defined(STARBOARD)
-void Component::StateDownloading::Cancel() {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  crx_downloader_->CancelDownload();
-}
-#endif
 
 void Component::StateDownloading::DoHandle() {
   DCHECK(thread_checker_.CalledOnValidThread());

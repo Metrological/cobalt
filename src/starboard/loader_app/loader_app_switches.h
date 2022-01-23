@@ -32,12 +32,6 @@ extern const char kURL[];
 // Run Evergreen Lite by loading the system image and disabling the updater.
 extern const char kEvergreenLite[];
 
-// Print the loader_app version on the command line.
-extern const char kLoaderAppVersion[];
-
-// Print the loader_app Starboard ABI string on the command line.
-extern const char kShowSABI[];
-
 }  // namespace loader_app
 }  // namespace starboard
 
