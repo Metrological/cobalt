@@ -1,0 +1,92 @@
+# Copyright 2021 The Cobalt Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+group("gn_all") {
+  testonly = true
+  deps = [
+    ":default",
+    "//cobalt/layout:layout_test",
+    "//cobalt/web_animations:web_animations_test",
+    "//cobalt/websocket:websocket_test",
+    "//cobalt/xhr:xhr_test",
+  ]
+}
+
+group("default") {
+  deps = [
+    "//cobalt/account",
+    "//cobalt/audio",
+    "//cobalt/base",
+    "//cobalt/browser",
+    "//cobalt/css_parser",
+    "//cobalt/dom",
+    "//cobalt/dom_parser",
+    "//cobalt/encoding:text_encoding",
+    "//cobalt/fetch",
+    "//cobalt/h5vcc",
+    "//cobalt/input",
+    "//cobalt/layout",
+    "//cobalt/math",
+    "//cobalt/media",
+    "//cobalt/media_capture",
+    "//cobalt/media_session",
+    "//cobalt/network",
+    "//cobalt/network_bridge",
+    "//cobalt/overlay_info",
+    "//cobalt/render_tree",
+    "//cobalt/renderer:default_options",
+    "//cobalt/renderer/backend:renderer_backend",
+    "//cobalt/renderer/rasterizer",
+    "//cobalt/renderer/rasterizer/egl/shaders",
+    "//cobalt/renderer/test/png_utils",
+    "//cobalt/script",
+    "//cobalt/script:engine",
+    "//cobalt/script:engine_shell",
+    "//cobalt/sso",
+    "//cobalt/storage",
+    "//cobalt/storage:storage_constants",
+    "//cobalt/subtlecrypto",
+    "//cobalt/trace_event",
+    "//cobalt/ui_navigation",
+    "//cobalt/webdriver",
+    "//cobalt/websocket",
+    "//cobalt/xhr",
+    "//content/browser/speech",
+    "//crypto",
+    "//nb",
+    "//third_party/brotli:dec",
+    "//third_party/brotli:dec_no_dictionary_data",
+    "//third_party/flac",
+    "//third_party/freetype2",
+    "//third_party/harfbuzz-ng",
+    "//third_party/libpng",
+    "//third_party/libwebp",
+    "//third_party/ots",
+    "//third_party/skia/third_party/skcms",
+    "//third_party/v8",
+    "//third_party/woff2:woff2_dec",
+  ]
+
+  if (sb_is_evergreen) {
+    deps += [
+      "//base/util/values:values_util",
+      "//components/prefs",
+      "//third_party/llvm-project/compiler-rt:compiler_rt",
+      "//third_party/llvm-project/libcxx:cxx",
+      "//third_party/llvm-project/libcxxabi:cxxabi",
+      "//third_party/llvm-project/libunwind:unwind_evergreen",
+      "//third_party/musl:c",
+    ]
+  }
+}

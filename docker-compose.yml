@@ -1,0 +1,417 @@
+# Copyright 2021 The Cobalt Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+version: '2.4'
+
+volumes:
+  android-debug-keystore:
+  container-ccache:
+
+x-common-definitions: &common-definitions
+  stdin_open: true
+  tty: true
+
+x-build-volumes: &build-volumes
+  volumes:
+    - ${COBALT_SRC:-.}:/code/
+    - android-debug-keystore:/root/.android/
+    - ${CCACHE_DIR:-container-ccache}:/root/ccache
+
+x-build-common-definitions: &build-common-definitions
+  <<: *common-definitions
+  <<: *build-volumes
+  depends_on:
+    - build-base
+
+x-shared-build-env: &shared-build-env
+  NINJA_PARALLEL: ${NINJA_PARALLEL:-32}
+  IS_CI: ${IS_CI:-0}
+
+services:
+#### Tools
+  pre-commit:
+    build:
+      context: ./docker/precommit_hooks
+      dockerfile: Dockerfile
+    image: pre-commit
+    volumes:
+    - ${COBALT_SRC:-.}:/code/
+    environment:
+      FROM_REF: ${FROM_REF:-HEAD^1}
+      TO_REF: ${TO_REF:-HEAD}
+
+#### Cobalt build containers
+  base:
+    build:
+      args:
+        - BASE_OS
+      context: ./docker/linux
+      dockerfile: base/Dockerfile
+    image: cobalt-base
+    scale: 0
+
+  base-bionic:
+    build:
+      args:
+        - BASE_OS=gcr.io/cloud-marketplace-containers/google/ubuntu1804
+        - BASE_OS_TAG=latest
+      context: ./docker/linux
+      dockerfile: base/Dockerfile
+    image: base-bionic
+    scale: 0
+
+  # Define common build container for Linux
+  build-base:
+    build:
+      context: ./docker/linux
+      dockerfile: base/build/Dockerfile
+      args:
+        # Should match version pinned by Starboard
+        - CLANG_VER=${CLANG_VER:-365097-f7e52fbd-8}
+    image: cobalt-build-base
+    depends_on:
+      - base
+    scale: 0
+
+  build-base-bionic:
+    build:
+      context: ./docker/linux
+      dockerfile: base/build/Dockerfile
+      args:
+        - FROM_IMAGE=base-bionic
+        - CLANG_VER=${CLANG_VER:-365097-f7e52fbd-8}
+    image: build-base-bionic
+    depends_on:
+      - base-bionic
+    scale: 0
+
+  stub:
+    <<: *build-common-definitions
+    build:
+      context: ./docker/linux
+      dockerfile: stub/Dockerfile
+    image: cobalt-build-linux-stub
+    depends_on: [ build-base ]
+    environment:
+      <<: *shared-build-env
+      PLATFORM: stub
+      CONFIG: ${CONFIG:-debug}
+
+  stub-gn:
+    <<: *build-common-definitions
+    build:
+      context: ./docker/linux
+      dockerfile: stub/gn/Dockerfile
+    image: cobalt-build-linux-stub-gn
+    depends_on: [ stub ]
+    environment:
+      <<: *shared-build-env
+      PLATFORM: stub
+      CONFIG: ${CONFIG:-debug}
+
+  linux-x64x11:
+    <<: *build-common-definitions
+    build:
+      context: ./docker/linux
+      dockerfile: linux-x64x11/Dockerfile
+    image: cobalt-build-linux
+    depends_on: [ build-base ]
+    environment:
+      <<: *shared-build-env
+      PLATFORM: linux-x64x11
+      CONFIG: ${CONFIG:-debug}
+      TARGET: ${TARGET:-cobalt_deploy}
+
+  linux-x64x11-gn:
+    <<: *build-common-definitions
+    build:
+      context: ./docker/linux
+      dockerfile: linux-x64x11/gn/Dockerfile
+    image: cobalt-build-linux-gn
+    depends_on: [ linux-x64x11 ]
+    environment:
+      <<: *shared-build-env
+      PLATFORM: linux-x64x11
+      CONFIG: ${CONFIG:-debug}
+
+  linux-x64x11-bionic:
+    <<: *common-definitions
+    <<: *build-volumes
+    build:
+      context: ./docker/linux
+      dockerfile: linux-x64x11/Dockerfile
+      args:
+        - FROM_IMAGE=build-base-bionic
+    image: linux-x64x11-bionic
+    depends_on:
+      - build-base-bionic
+    scale: 0
+
+  linux-x64x11-gcc:
+    <<: *common-definitions
+    <<: *build-volumes
+    build:
+      context: ./docker/linux
+      dockerfile: gcc-6-3/Dockerfile
+    image: cobalt-build-linux-gcc
+    environment:
+      <<: *shared-build-env
+      PLATFORM: linux-x64x11-gcc-6-3
+      CONFIG: ${CONFIG:-debug}
+    depends_on:
+      - linux-x64x11-bionic
+
+  linux-x64x11-clang-3-9:
+    <<: *common-definitions
+    <<: *build-volumes
+    build:
+      context: ./docker/linux/
+      dockerfile: clang-3-9/Dockerfile
+    image: cobalt-build-linux-clang-3-9
+    environment:
+      <<: *shared-build-env
+      PLATFORM: linux-x64x11-clang-3-9
+      CONFIG: ${CONFIG:-debug}
+    depends_on:
+      - linux-x64x11-bionic
+
+  # Define common build container for Android
+  build-android:
+    <<: *build-common-definitions
+    build:
+      context: ./docker/linux/android
+      dockerfile: ./Dockerfile
+    image: cobalt-build-android
+    scale: 0
+
+  android-x86:
+    <<: *build-common-definitions
+    image: cobalt-build-android
+    depends_on: [ build-android ]
+    environment:
+      <<: *shared-build-env
+      IS_DOCKER: 1
+      PLATFORM: android-x86
+      CONFIG: ${CONFIG:-debug}
+
+  android-x86-gn:
+    <<: *build-common-definitions
+    image: cobalt-build-android-gn
+    depends_on: [ android-x86 ]
+    build:
+      context: ./docker/linux/android
+      dockerfile: ./gn/Dockerfile
+    environment:
+      <<: *shared-build-env
+      IS_DOCKER: 1
+      PLATFORM: android-x86
+      CONFIG: ${CONFIG:-debug}
+      TARGET_CPU: ${TARGET_CPU:-x86}
+
+  android-arm:
+    <<: *build-common-definitions
+    image: cobalt-build-android
+    depends_on: [ build-android ]
+    environment:
+      <<: *shared-build-env
+      IS_DOCKER: 1
+      PLATFORM: android-arm
+      CONFIG: ${CONFIG:-debug}
+
+  android-arm-gn:
+    <<: *build-common-definitions
+    image: cobalt-build-android-gn
+    depends_on: [ android-arm ]
+    build:
+      context: ./docker/linux/android
+      dockerfile: ./gn/Dockerfile
+    environment:
+      <<: *shared-build-env
+      IS_DOCKER: 1
+      PLATFORM: android-arm
+      CONFIG: ${CONFIG:-debug}
+      TARGET_CPU: ${TARGET_CPU:-arm}
+
+  android-arm64:
+    <<: *build-common-definitions
+    image: cobalt-build-android
+    depends_on: [ build-android ]
+    environment:
+      <<: *shared-build-env
+      IS_DOCKER: 1
+      PLATFORM: android-arm64
+      CONFIG: ${CONFIG:-debug}
+
+  android-arm64-gn:
+    <<: *build-common-definitions
+    image: cobalt-build-android-gn
+    depends_on: [ android-arm64 ]
+    build:
+      context: ./docker/linux/android
+      dockerfile: ./gn/Dockerfile
+    environment:
+      <<: *shared-build-env
+      IS_DOCKER: 1
+      PLATFORM: android-arm64
+      CONFIG: ${CONFIG:-debug}
+      TARGET_CPU: ${TARGET_CPU:-arm64}
+
+  raspi:
+    <<: *build-common-definitions
+    build:
+      context: ./docker/linux/raspi
+      dockerfile: ./Dockerfile
+    image: cobalt-build-raspi
+    environment:
+      <<: *shared-build-env
+      PLATFORM: ${PLATFORM:-raspi-2}
+      CONFIG: ${CONFIG:-debug}
+
+  raspi-gn:
+    <<: *build-common-definitions
+    build:
+      context: ./docker/linux/raspi
+      dockerfile: ./gn/Dockerfile
+    image: cobalt-build-raspi-gn
+    environment:
+      <<: *shared-build-env
+      PLATFORM: ${PLATFORM:-raspi-2}
+      CONFIG: ${CONFIG:-debug}
+
+  # Define common build container for Evergreen
+  build-evergreen:
+    <<: *build-common-definitions
+    build:
+      context: ./docker/linux
+      dockerfile: evergreen/Dockerfile
+    image: cobalt-build-evergreen
+    depends_on: [ build-base ]
+    environment:
+      <<: *shared-build-env
+
+  evergreen-x64:
+    <<: *build-common-definitions
+    image: cobalt-build-evergreen
+    depends_on: [ build-evergreen ]
+    environment:
+      <<: *shared-build-env
+      PLATFORM: evergreen-x64
+
+  evergreen-x64-sbversion-12:
+    <<: *build-common-definitions
+    image: cobalt-build-evergreen
+    depends_on: [ build-evergreen ]
+    environment:
+      <<: *shared-build-env
+      PLATFORM: evergreen-x64-sbversion-12
+
+  evergreen-x86:
+    <<: *build-common-definitions
+    image: cobalt-build-evergreen
+    depends_on: [ build-evergreen ]
+    environment:
+      <<: *shared-build-env
+      PLATFORM: evergreen-x86
+
+  evergreen-x86-sbversion-12:
+    <<: *build-common-definitions
+    image: cobalt-build-evergreen
+    depends_on: [ build-evergreen ]
+    environment:
+      <<: *shared-build-env
+      PLATFORM: evergreen-x86-sbversion-12
+
+  evergreen-arm64:
+    <<: *build-common-definitions
+    image: cobalt-build-evergreen
+    depends_on: [ build-evergreen ]
+    environment:
+      <<: *shared-build-env
+      PLATFORM: evergreen-arm64
+
+  evergreen-arm64-sbversion-12:
+    <<: *build-common-definitions
+    image: cobalt-build-evergreen
+    depends_on: [ build-evergreen ]
+    environment:
+      <<: *shared-build-env
+      PLATFORM: evergreen-arm64-sbversion-12
+
+  evergreen-arm-hardfp:
+    <<: *build-common-definitions
+    image: cobalt-build-evergreen
+    depends_on: [ build-evergreen ]
+    environment:
+      <<: *shared-build-env
+      PLATFORM: evergreen-arm-hardfp
+
+  evergreen-arm-hardfp-sbversion-12:
+    <<: *build-common-definitions
+    image: cobalt-build-evergreen
+    depends_on: [ build-evergreen ]
+    environment:
+      <<: *shared-build-env
+      PLATFORM: evergreen-arm-hardfp-sbversion-12
+
+  evergreen-arm-softfp:
+    <<: *build-common-definitions
+    image: cobalt-build-evergreen
+    depends_on: [ build-evergreen ]
+    environment:
+      <<: *shared-build-env
+      PLATFORM: evergreen-arm-softfp
+
+  evergreen-arm-softfp-sbversion-12:
+    <<: *build-common-definitions
+    image: cobalt-build-evergreen
+    depends_on: [ build-evergreen ]
+    environment:
+      <<: *shared-build-env
+      PLATFORM: evergreen-arm-softfp-sbversion-12
+
+  linux-x64x11-sbversion12-evergreen:
+    <<: *build-common-definitions
+    build:
+      context: ./docker/linux
+      dockerfile: linux-x64x11/Dockerfile
+      args:
+        - FROM_IMAGE=cobalt-build-evergreen
+    image: cobalt-build-linux-x64x11-evergreen
+    depends_on: [ build-evergreen ]
+    environment:
+      <<: *shared-build-env
+      PLATFORM: linux-x64x11-sbversion-12
+      CONFIG: ${CONFIG:-debug}
+
+  # Example usage of unittest:
+  # 1. Build the containers for which you want to unittest
+  # docker-compose up --build --no-start linux-x64x11 unittest
+  # 2. Build the 'all' target for the platform you want to test
+  # PLATFORM=linux-x64x11 CONFIG=devel TARGET=all docker-compose run linux-x64x11
+  # 3. Run the unittests for that target.
+  # PLATFORM=linux-x64x11 CONFIG=devel TARGET=all docker-compose run unittest
+  unittest:
+    <<: *common-definitions
+    build:
+      context: ./docker/linux
+      dockerfile: unittest/Dockerfile
+    image: cobalt-unittest
+    environment:
+      - PLATFORM=${PLATFORM:-linux-x64x11}
+      - CONFIG=${CONFIG:-debug}
+    volumes:
+      - ${COBALT_SRC:-.}/out/${PLATFORM:-linux-x64x11}_${CONFIG:-debug}:/out
+    # TODO: Get NPLB unittests to run with IPv6 without using the host network.
+    network_mode: "host"
+    depends_on: [ base ]
