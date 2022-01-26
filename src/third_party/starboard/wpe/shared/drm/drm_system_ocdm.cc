@@ -1,6 +1,13 @@
 #if defined(HAS_OCDM)
 #include "third_party/starboard/wpe/shared/drm/drm_system_ocdm.h"
 
+#include <glib.h>
+#include <gst/app/gstappsrc.h>
+#include <gst/audio/streamvolume.h>
+#include <gst/base/gstbytewriter.h>
+#include <gst/gst.h>
+#include <gst/video/videooverlay.h>
+
 #include "base/logging.h"
 #include "starboard/common/mutex.h"
 #include "starboard/shared/starboard/thread_checker.h"
@@ -576,46 +583,70 @@ std::string DrmSystemOcdm::SessionIdByKeyId(const uint8_t* key,
   return session ? opencdm_session_id(session.get()) : std::string{};
 }
 
-#if SB_API_VERSION >= 12
 bool DrmSystemOcdm::Decrypt(const std::string& id,
                             _GstBuffer* buffer,
-                            _GstBuffer* sub_sample,
-                            uint32_t sub_sample_count,
-                            _GstBuffer* iv,
-                            _GstBuffer* key,
-                            SbDrmEncryptionScheme* scheme,
-                            SbDrmEncryptionPattern* pattern) {
+                            const SbDrmSampleInfo* drm_info) {
   session::Session* session = GetSessionById(id);
   DCHECK(session);
+  constexpr int kMaxIvSize = 16;
+  _GstBuffer* sub_sample;
+  _GstBuffer* iv;
+  _GstBuffer* key;
+  int32_t subsamples_count = 0u;
+  key = gst_buffer_new_allocate(
+        nullptr, drm_info->identifier_size, nullptr);
+    gst_buffer_fill(key, 0, drm_info->identifier,
+                    drm_info->identifier_size);
+    size_t iv_size = drm_info->initialization_vector_size;
+    const int8_t kEmptyArray[kMaxIvSize / 2] = {0};
+    if (iv_size == kMaxIvSize &&
+        memcmp(drm_info->initialization_vector + kMaxIvSize / 2,
+               kEmptyArray, kMaxIvSize / 2) == 0)
+      iv_size /= 2;
+
+    iv = gst_buffer_new_allocate(nullptr, iv_size, nullptr);
+    gst_buffer_fill(iv, 0, drm_info->initialization_vector,
+                    iv_size);
+    subsamples_count = drm_info->subsample_count;
+    auto subsamples_raw_size =
+        subsamples_count * (sizeof(guint16) + sizeof(guint32));
+    guint8* subsamples_raw =
+        static_cast<guint8*>(g_malloc(subsamples_raw_size));
+    GstByteWriter writer;
+    gst_byte_writer_init_with_data(&writer, subsamples_raw, subsamples_raw_size,
+                                   FALSE);
+    for (int32_t i = 0; i < subsamples_count; ++i) {
+      if (!gst_byte_writer_put_uint16_be(
+              &writer,
+              drm_info->subsample_mapping[i].clear_byte_count))
+        GST_ERROR("Failed writing clear subsample info at %d", i);
+      if (!gst_byte_writer_put_uint32_be(&writer,
+                                             drm_info->subsample_mapping[i]
+                                             .encrypted_byte_count))
+        GST_ERROR("Failed writing encrypted subsample info at %d", i);
+    }
+    sub_sample = gst_buffer_new_wrapped(subsamples_raw, subsamples_raw_size);
+  #if SB_API_VERSION >=12
   EncryptionScheme encScheme;
 
   EncryptionPattern encPattern;
-  encPattern.encrypted_blocks = pattern->crypt_byte_block;
-  encPattern.clear_blocks = pattern->skip_byte_block;
-  if (*scheme == kSbDrmEncryptionSchemeAesCtr) {
+  encPattern.encrypted_blocks = drm_info->encryption_pattern.crypt_byte_block;
+  encPattern.clear_blocks = drm_info->encryption_pattern.skip_byte_block;
+  if (drm_info->encryption_scheme == kSbDrmEncryptionSchemeAesCtr) {
      encScheme = AesCtr_Cenc;
   }  
-  else if(*scheme == kSbDrmEncryptionSchemeAesCbc) {
+  else if(drm_info->encryption_scheme == kSbDrmEncryptionSchemeAesCbc) {
       encScheme = AesCbc_Cbcs;
   }
   return opencdm_gstreamer_session_decrypt_v2(session->OcdmSession(), buffer,
-                                           sub_sample, sub_sample_count, encScheme, encPattern, iv,
+                                           sub_sample, subsamples_count, encScheme, encPattern, iv,
                                            key, 0) == ERROR_NONE;
-}
-#else
-bool DrmSystemOcdm::Decrypt(const std::string& id,
-                            _GstBuffer* buffer,
-                            _GstBuffer* sub_sample,
-                            uint32_t sub_sample_count,
-                            _GstBuffer* iv,
-                            _GstBuffer* key) {
-  session::Session* session = GetSessionById(id);
-  DCHECK(session);
+  #else
   return opencdm_gstreamer_session_decrypt(session->OcdmSession(), buffer,
-                                           sub_sample, sub_sample_count, iv,
+                                           sub_sample, subsamples_count, iv,
                                            key, 0) == ERROR_NONE;
+  #endif
 }
-#endif
 
 
 }  // namespace drm

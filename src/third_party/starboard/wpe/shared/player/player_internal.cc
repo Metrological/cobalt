@@ -664,109 +664,71 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   };
 
   class PendingSample {
-   public:
-    PendingSample() = delete;
-    PendingSample& operator=(const PendingSample&) = delete;
-    PendingSample(const PendingSample&) = delete;
+    public:
+      PendingSample() = delete;
+      PendingSample& operator=(const PendingSample&) = delete;
+      PendingSample& operator=(PendingSample&& other) {
+        type_ = other.type_;
+        buffer_ = other.buffer_;
+        other.buffer_ = nullptr;
+        buffer_copy_ = other.buffer_copy_;
+        other.buffer_copy_ = nullptr;
+        #if SB_API_VERSION >=12
+        drmInfo_.encryption_scheme = other.drmInfo_.encryption_scheme;
+        drmInfo_.encryption_pattern.crypt_byte_block = other.drmInfo_.encryption_pattern.crypt_byte_block;
+        drmInfo_.encryption_pattern.skip_byte_block = other.drmInfo_.encryption_pattern.skip_byte_block;
+        #endif
+        memcpy(drmInfo_.initialization_vector, other.drmInfo_.initialization_vector, sizeof(other.drmInfo_.initialization_vector));
+        memset(other.drmInfo_.initialization_vector, 0, sizeof(other.drmInfo_.initialization_vector));
+        drmInfo_.initialization_vector_size = other.drmInfo_.initialization_vector_size;
+        other.drmInfo_.initialization_vector_size = 0;
+        memcpy(drmInfo_.identifier, other.drmInfo_.identifier, sizeof(other.drmInfo_.identifier));
+        memset(other.drmInfo_.identifier,0, sizeof(other.drmInfo_.identifier));
+        drmInfo_.identifier_size = other.drmInfo_.identifier_size;
+        other.drmInfo_.identifier_size = 0;
+        drmInfo_.subsample_count = other.drmInfo_.subsample_count;
+        drmInfo_.subsample_mapping = other.drmInfo_.subsample_mapping;
+        other.drmInfo_.subsample_mapping = nullptr;
+        return *this;
+      }
 
-    PendingSample& operator=(PendingSample&& other) {
-      type_ = other.type_;
-      buffer_ = other.buffer_;
-      other.buffer_ = nullptr;
-      buffer_copy_ = other.buffer_copy_;
-      other.buffer_copy_ = nullptr;
-      iv_ = other.iv_;
-      other.iv_ = nullptr;
-      subsamples_ = other.subsamples_;
-      other.subsamples_ = nullptr;
-      subsamples_count_ = other.subsamples_count_;
-      other.subsamples_count_ = 0;
-      key_ = other.key_;
-      other.key_ = nullptr;
-      #if SB_API_VERSION >= 12
-      scheme_ = other.scheme_;
-      pattern_ = other.pattern_;
-      other.scheme_ = nullptr;
-      other.pattern_ = nullptr;
-      #endif
-      return *this;
-    }
+      PendingSample(PendingSample&& other) { operator=(std::move(other)); }
 
-    PendingSample(PendingSample&& other) { operator=(std::move(other)); }
-
-    PendingSample(SbMediaType type,
-                  GstBuffer* buffer,
-                  GstBuffer* iv,
-                  GstBuffer* subsamples,
-                  int32_t subsamples_count,
-                  GstBuffer* key
-                  #if SB_API_VERSION >= 12
-                  , SbDrmEncryptionScheme* scheme
-                  , SbDrmEncryptionPattern* pattern
-                  #endif
-                  )
-        : type_(type),
-          buffer_(buffer),
-          iv_(iv),
-          subsamples_(subsamples),
-          subsamples_count_(subsamples_count),
-          key_(key)
-          #if SB_API_VERSION >= 12
-          , scheme_(scheme)
-          , pattern_(pattern)
-          #endif
-          {
-      DCHECK(gst_buffer_is_writable(buffer));
-      buffer_copy_ = gst_buffer_copy_deep(buffer);
-    }
-
-    ~PendingSample() {
-      if (key_)
-        gst_buffer_unref(key_);
-      if (subsamples_)
-        gst_buffer_unref(subsamples_);
-      if (iv_)
-        gst_buffer_unref(iv_);
-      if (buffer_)
-        gst_buffer_unref(buffer_);
-      if (buffer_copy_)
-        gst_buffer_unref(buffer_copy_);
-      #if SB_API_VERSION >= 12
-      if(scheme_)
-        delete scheme_;
-      if(pattern_)
-        delete pattern_;
-      #endif
-    }
-
-    void Written() { buffer_copy_ = gst_buffer_copy_deep(buffer_); }
-
-    SbMediaType Type() const { return type_; }
-    GstBuffer* Buffer() const { return buffer_copy_; }
-    GstBuffer* Iv() const { return iv_; }
-    GstBuffer* Subsamples() const { return subsamples_; }
-    int32_t SubsamplesCount() const { return subsamples_count_; }
-    GstBuffer* Key() const { return key_; }
-    #if SB_API_VERSION >= 12
-    SbDrmEncryptionScheme* GetEncryptionScheme() const { return scheme_;}
-    SbDrmEncryptionPattern* GetEncryptionPattern() const { return pattern_;}
-    #endif
-
-   private:
-    SbMediaType type_;
-    GstBuffer* buffer_;
-    GstBuffer* buffer_copy_;
-    GstBuffer* iv_;
-    GstBuffer* subsamples_;
-    int32_t subsamples_count_;
-    GstBuffer* key_;
-    #if SB_API_VERSION >= 12
-    // The encryption scheme of this sample.
-    SbDrmEncryptionScheme* scheme_;
-
-    // The encryption pattern of this sample.
-    SbDrmEncryptionPattern* pattern_;
-    #endif  // SB_API_VERSION >= 12
+      PendingSample(SbMediaType type,
+                    GstBuffer* buffer,
+                    const SbDrmSampleInfo* drmInfo):type_(type),
+                                                    buffer_(buffer),
+                                                    drmInfo_() {
+        DCHECK_NE(drmInfo, nullptr);
+        DCHECK(gst_buffer_is_writable(buffer));
+        buffer_copy_ = gst_buffer_copy_deep(buffer);
+        #if SB_API_VERSION >=12
+        drmInfo_.encryption_scheme = drmInfo->encryption_scheme;
+        drmInfo_.encryption_pattern.crypt_byte_block = drmInfo->encryption_pattern.crypt_byte_block;
+        drmInfo_.encryption_pattern.skip_byte_block = drmInfo->encryption_pattern.skip_byte_block;
+        #endif
+        memcpy(drmInfo_.initialization_vector, drmInfo->initialization_vector, sizeof(drmInfo->initialization_vector));
+        drmInfo_.initialization_vector_size = drmInfo->initialization_vector_size;
+        memcpy(drmInfo_.identifier, drmInfo->identifier, sizeof(drmInfo->identifier));
+        drmInfo_.identifier_size = drmInfo->identifier_size;
+        drmInfo_.subsample_count = drmInfo->subsample_count;
+        SbDrmSubSampleMapping* subsample_mapping = (SbDrmSubSampleMapping*)g_malloc(drmInfo->subsample_count * (sizeof(guint16) + sizeof(guint32)));
+        for(int index = 0; index < drmInfo->subsample_count; index ++) {
+          subsample_mapping[index].clear_byte_count = drmInfo->subsample_mapping[index].clear_byte_count;
+          subsample_mapping[index].encrypted_byte_count = drmInfo->subsample_mapping[index].encrypted_byte_count;
+        }
+        drmInfo_.subsample_mapping = subsample_mapping;
+      }
+      void Written() { buffer_copy_ = gst_buffer_copy_deep(buffer_); }
+      SbMediaType Type() const { return type_; }
+      GstBuffer* Buffer() const { return buffer_copy_; }
+      const SbDrmSampleInfo* DrmSampleInfo() const { return &drmInfo_;}
+      ~PendingSample() { g_free((gpointer)drmInfo_.subsample_mapping);}
+    private:
+      SbMediaType type_;
+      GstBuffer* buffer_;
+      GstBuffer* buffer_copy_;
+      SbDrmSampleInfo drmInfo_;
   };
 
   struct PendingBounds {
@@ -818,15 +780,8 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   bool WriteSample(SbMediaType sample_type,
                    GstBuffer* buffer,
                    const std::string& session_id,
-                   GstBuffer* subsample = nullptr,
-                   int32_t subsamples_count = 0,
-                   GstBuffer* iv = nullptr,
-                   GstBuffer* key = nullptr
-                   #if SB_API_VERSION >= 12
-                   ,SbDrmEncryptionScheme* scheme = nullptr
-                   ,SbDrmEncryptionPattern* pattern = nullptr
-                   #endif
-                   );
+                   const SbDrmSampleInfo* drmInfo
+                  );
   MediaType GetBothMediaTypeTakingCodecsIntoAccount() const;
   void RecordTimestamp(SbMediaType type, SbTime timestamp);
   SbTime MinTimestamp(MediaType* origin) const;
@@ -1443,19 +1398,11 @@ void PlayerImpl::MarkEOS(SbMediaType stream_type) {
   gst_app_src_end_of_stream(GST_APP_SRC(src));
   RecordTimestamp(stream_type, kSbTimeMax);
 }
-
 bool PlayerImpl::WriteSample(SbMediaType sample_type,
-                             GstBuffer* buffer,
-                             const std::string& session_id,
-                             GstBuffer* subsample,
-                             int32_t subsample_count,
-                             GstBuffer* iv,
-                             GstBuffer* key
-                             #if SB_API_VERSION >= 12
-                             , SbDrmEncryptionScheme* scheme
-                             , SbDrmEncryptionPattern* pattern
-                             #endif
-                            ) {
+                   GstBuffer* buffer,
+                   const std::string& session_id,
+                   const SbDrmSampleInfo* drmInfo) {
+
   GstElement* src = nullptr;
   if (sample_type == kSbMediaTypeVideo) {
     src = video_appsrc_;
@@ -1464,22 +1411,13 @@ bool PlayerImpl::WriteSample(SbMediaType sample_type,
   }
 
   GST_TRACE_OBJECT(src,
-                   "SampleType:%d %" GST_TIME_FORMAT " b:%p, s:%p, iv:%p, k:%p",
+                   "SampleType:%d %" GST_TIME_FORMAT " b:%p",
                    sample_type, GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(buffer)),
-                   buffer, subsample, iv, key);
+                   buffer);
 
   bool decrypted = true;
   if (!session_id.empty()) {
-    GST_LOG_OBJECT(src, "Decrypting using %s...", session_id.c_str());
-    DCHECK(drm_system_ && subsample && subsample_count && iv && key);
-    #if SB_API_VERSION >= 12
-
-    decrypted = drm_system_->Decrypt(session_id, buffer, subsample,
-                                     subsample_count, iv, key, scheme, pattern);
-    #else
-    decrypted = drm_system_->Decrypt(session_id, buffer, subsample,
-                                     subsample_count, iv, key);
-    #endif
+    decrypted = drm_system_->Decrypt(session_id, buffer, drmInfo);
     if (!decrypted)
       GST_ERROR_OBJECT(src, "Failed decrypting");
   }
@@ -1512,7 +1450,6 @@ bool PlayerImpl::WriteSample(SbMediaType sample_type,
 
   return decrypted;
 }
-
 void PlayerImpl::WriteSample(SbMediaType sample_type,
                              const SbPlayerSampleInfo* sample_infos,
                              int number_of_sample_infos) {
@@ -1612,6 +1549,7 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
             sample_infos[0].drm_info->identifier,
             sample_infos[0].drm_info->identifier_size);
     if (session_id.empty() || keep_samples) {
+      #if 0
       GST_INFO("No session/pending flushing operation. Storing sample");
       GST_INFO("SampleType:%d %" GST_TIME_FORMAT " b:%p, s:%p, iv:%p, k:%p",
                sample_type, GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(buffer)), buffer,
@@ -1628,6 +1566,8 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
       PendingSample sample(sample_type, buffer, iv, subsamples,
                            subsamples_count, key);
       #endif
+      #else
+      PendingSample sample(sample_type, buffer, sample_infos[0].drm_info);
       key_str = {
           reinterpret_cast<const char*>(sample_infos[0].drm_info->identifier),
           sample_infos[0].drm_info->identifier_size};
@@ -1635,6 +1575,7 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
       pending_[key_str].emplace_back(std::move(sample));
       if (session_id.empty())
         return;
+      #endif
     }
   } else {
     GST_TRACE("Encounterd clear sample");
@@ -1644,10 +1585,14 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
       GST_INFO("SampleType:%d %" GST_TIME_FORMAT " b:%p, s:%p, iv:%p, k:%p",
                sample_type, GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(buffer)), buffer,
                subsamples, iv, key);
+      #if 0
       #if SB_API_VERSION >= 12
       PendingSample sample(sample_type, buffer, nullptr, nullptr, 0, nullptr, nullptr, nullptr);
       #else
       PendingSample sample(sample_type, buffer, nullptr, nullptr, 0, nullptr);
+      #endif
+      #else
+      PendingSample sample(sample_type, buffer, nullptr);
       #endif
       key_str = {kClearSamplesKey};
       pending_[key_str].emplace_back(std::move(sample));
@@ -1662,19 +1607,9 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
     }
 
     auto& sample = local_samples.back();
-    #if SB_API_VERSION >= 12
-    if (WriteSample(sample.Type(), sample.Buffer(), session_id,
-                    sample.Subsamples(), sample.SubsamplesCount(), sample.Iv(),
-                    sample.Key(), sample.GetEncryptionScheme(), sample.GetEncryptionPattern())) {
+    if(WriteSample(sample.Type(), sample.Buffer(), session_id, sample.DrmSampleInfo())){
       sample.Written();
     }
-    #else
-    if (WriteSample(sample.Type(), sample.Buffer(), session_id,
-                    sample.Subsamples(), sample.SubsamplesCount(), sample.Iv(),
-                    sample.Key())) {
-      sample.Written();
-    }
-    #endif
 
     {
       ::starboard::ScopedLock lock(mutex_);
@@ -1682,13 +1617,7 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
                 std::back_inserter(pending_[key_str]));
     }
   } else {
-    #if SB_API_VERSION >= 12
-    WriteSample(sample_type, buffer, session_id, subsamples, subsamples_count,
-                iv, key, &encryption_scheme, &encryption_pattern);
-    #else
-    WriteSample(sample_type, buffer, session_id, subsamples, subsamples_count,
-                iv, key);
-    #endif
+    WriteSample(sample_type, buffer, session_id, sample_infos[0].drm_info);
   }
 
   if (!session_id.empty() && !keep_samples) {
@@ -2030,21 +1959,13 @@ void PlayerImpl::OnKeyReady(const uint8_t* key, size_t key_len) {
               });
     GstClockTime prev_ts = -1;
     for (auto& sample : local_samples) {
-      GST_INFO("Writing pending: SampleType:%d %" GST_TIME_FORMAT
-               " b:%p, s:%p, iv:%p, k:%p",
-               sample.Type(),
-               GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(sample.Buffer())),
-               sample.Buffer(), sample.Subsamples(), sample.Iv(), sample.Key());
       if (prev_ts == GST_BUFFER_TIMESTAMP(sample.Buffer())) {
         GST_WARNING("Skipping %" GST_TIME_FORMAT ". Already written.",
                     GST_TIME_ARGS(prev_ts));
         continue;
       }
       prev_ts = GST_BUFFER_TIMESTAMP(sample.Buffer());
-      if (WriteSample(sample.Type(), sample.Buffer(), session_id,
-                      sample.Subsamples(), sample.SubsamplesCount(),
-                      sample.Iv(), sample.Key())) {
-        GST_INFO("Pending sample was written.");
+      if (WriteSample(sample.Type(), sample.Buffer(), session_id, sample.DrmSampleInfo())){
         sample.Written();
       }
     }
