@@ -1549,24 +1549,6 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
             sample_infos[0].drm_info->identifier,
             sample_infos[0].drm_info->identifier_size);
     if (session_id.empty() || keep_samples) {
-      #if 0
-      GST_INFO("No session/pending flushing operation. Storing sample");
-      GST_INFO("SampleType:%d %" GST_TIME_FORMAT " b:%p, s:%p, iv:%p, k:%p",
-               sample_type, GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(buffer)), buffer,
-               subsamples, iv, key);
-      #if SB_API_VERSION >= 12
-      SbDrmEncryptionScheme* pEncScheme = new SbDrmEncryptionScheme;
-      SbDrmEncryptionPattern* pEncPattern = new SbDrmEncryptionPattern;
-      *pEncScheme = encryption_scheme;
-      pEncPattern->crypt_byte_block = encryption_pattern.crypt_byte_block;
-      pEncPattern->skip_byte_block = encryption_pattern.skip_byte_block;
-      PendingSample sample(sample_type, buffer, iv, subsamples,
-                           subsamples_count, key, pEncScheme, pEncPattern);
-      #else
-      PendingSample sample(sample_type, buffer, iv, subsamples,
-                           subsamples_count, key);
-      #endif
-      #else
       PendingSample sample(sample_type, buffer, sample_infos[0].drm_info);
       key_str = {
           reinterpret_cast<const char*>(sample_infos[0].drm_info->identifier),
@@ -1575,7 +1557,6 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
       pending_[key_str].emplace_back(std::move(sample));
       if (session_id.empty())
         return;
-      #endif
     }
   } else {
     GST_TRACE("Encounterd clear sample");
@@ -1585,15 +1566,7 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
       GST_INFO("SampleType:%d %" GST_TIME_FORMAT " b:%p, s:%p, iv:%p, k:%p",
                sample_type, GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(buffer)), buffer,
                subsamples, iv, key);
-      #if 0
-      #if SB_API_VERSION >= 12
-      PendingSample sample(sample_type, buffer, nullptr, nullptr, 0, nullptr, nullptr, nullptr);
-      #else
-      PendingSample sample(sample_type, buffer, nullptr, nullptr, 0, nullptr);
-      #endif
-      #else
       PendingSample sample(sample_type, buffer, nullptr);
-      #endif
       key_str = {kClearSamplesKey};
       pending_[key_str].emplace_back(std::move(sample));
     }
