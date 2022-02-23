@@ -409,6 +409,15 @@ BrowserModule::BrowserModule(const GURL& url,
 #endif  // ENABLE_DEBUGGER
     }
   }
+
+  if (command_line->HasSwitch(switches::kDisableMediaEncryptionSchemes)) {
+    std::string encryption_schemes = command_line->GetSwitchValueASCII(
+        switches::kDisableMediaEncryptionSchemes);
+    if (!encryption_schemes.empty()) {
+      can_play_type_handler_->SetDisabledMediaEncryptionSchemes(
+          encryption_schemes);
+    }
+  }
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
 
   if (application_state_ == base::kApplicationStateStarted ||
@@ -1757,22 +1766,31 @@ void BrowserModule::ConcealInternal(SbTimeMonotonic timestamp) {
 
   ResetResources();
 
+  // Suspend media module and update system window and resource provider.
+  if (media_module_) {
+    DCHECK(system_window_);
+    window_size_ = system_window_->GetWindowSize();
+#if SB_API_VERSION >= 13
+    // This needs to be done before destroying the renderer module as it
+    // may use the renderer module to release assets during the update.
+    media_module_->UpdateSystemWindowAndResourceProvider(NULL,
+                                                         GetResourceProvider());
+#endif  // SB_API_VERSION >= 13
+  }
+
   if (renderer_module_) {
     // Destroy the renderer module into so that it releases all its graphical
     // resources.
     DestroyRendererModule();
   }
 
-  if (media_module_) {
-    DCHECK(system_window_);
-    window_size_ = system_window_->GetWindowSize();
 #if SB_API_VERSION >= 13
+  // Reset system window after renderer module destroyed.
+  if (media_module_) {
     input_device_manager_.reset();
     system_window_.reset();
-    media_module_->UpdateSystemWindowAndResourceProvider(NULL,
-                                                         GetResourceProvider());
-#endif  // SB_API_VERSION >= 13
   }
+#endif  // SB_API_VERSION >= 13
 }
 
 void BrowserModule::FreezeInternal(SbTimeMonotonic timestamp) {

@@ -90,7 +90,12 @@ MediaDecoder::MediaDecoder(Host* host,
     SB_LOG(ERROR) << "Failed to create audio media codec bridge.";
     return;
   }
-  if (audio_sample_info.audio_specific_config_size > 0) {
+  // When |audio_codec| == kSbMediaAudioCodecOpus, we instead send the audio
+  // specific configuration when we create the MediaCodec object.
+  // TODO: Determine if we should send the audio specific configuration here
+  // only when |audio_codec| == kSbMediaAudioCodecAac.
+  if (audio_codec != kSbMediaAudioCodecOpus &&
+      audio_sample_info.audio_specific_config_size > 0) {
     // |audio_sample_info.audio_specific_config| is guaranteed to be outlived
     // the decoder as it is stored in |FilterBasedPlayerWorkerHandler|.
     pending_tasks_.push_back(Event(
@@ -165,6 +170,10 @@ void MediaDecoder::Initialize(const ErrorCB& error_cb) {
   SB_DCHECK(!error_cb_);
 
   error_cb_ = error_cb;
+
+  if (error_occurred_) {
+    Schedule(std::bind(error_cb_, error_, error_message_));
+  }
 }
 
 void MediaDecoder::WriteInputBuffer(
@@ -440,7 +449,7 @@ bool MediaDecoder::ProcessOneInputBuffer(
           " greater than |byte_buffer.capacity()| (%d).",
           size, static_cast<int>(byte_buffer.capacity()));
       SB_LOG(ERROR) << error_message;
-      error_cb_(kSbPlayerErrorDecode, error_message);
+      ReportError(kSbPlayerErrorDecode, error_message);
       return false;
     }
     byte_buffer.CopyInto(data, size);
@@ -507,13 +516,13 @@ void MediaDecoder::HandleError(const char* action_name, jint status) {
     drm_system_->OnInsufficientOutputProtection();
   } else {
     if (media_type_ == kSbMediaTypeAudio) {
-      error_cb_(kSbPlayerErrorDecode,
-                FormatString("%s failed with status %d (audio).", action_name,
-                             status));
+      ReportError(kSbPlayerErrorDecode,
+                  FormatString("%s failed with status %d (audio).", action_name,
+                               status));
     } else {
-      error_cb_(kSbPlayerErrorDecode,
-                FormatString("%s failed with status %d (video).", action_name,
-                             status));
+      ReportError(kSbPlayerErrorDecode,
+                  FormatString("%s failed with status %d (video).", action_name,
+                               status));
     }
   }
 
@@ -527,6 +536,24 @@ void MediaDecoder::HandleError(const char* action_name, jint status) {
   }
 }
 
+void MediaDecoder::ReportError(const SbPlayerError error,
+                               const std::string error_message) {
+  if (!BelongsToCurrentThread()) {
+    Schedule(std::bind(&MediaDecoder::ReportError, this, error, error_message));
+    return;
+  }
+  if (error_occurred_) {
+    // Avoid to report error multiple times.
+    return;
+  }
+  error_occurred_ = true;
+  error_ = error;
+  error_message_ = error_message;
+  if (error_cb_) {
+    error_cb_(error_, error_message_);
+  }
+}
+
 void MediaDecoder::OnMediaCodecError(bool is_recoverable,
                                      bool is_transient,
                                      const std::string& diagnostic_info) {
@@ -534,16 +561,17 @@ void MediaDecoder::OnMediaCodecError(bool is_recoverable,
                   << (is_recoverable ? "recoverable, " : "unrecoverable, ")
                   << (is_transient ? "transient " : "intransient ")
                   << " error with message: " << diagnostic_info;
-
+  // The callback may be called on a different thread and before |error_cb_| is
+  // initialized.
   if (!is_transient) {
     if (media_type_ == kSbMediaTypeAudio) {
-      error_cb_(kSbPlayerErrorDecode,
-                "OnMediaCodecError (audio): " + diagnostic_info +
-                    (is_recoverable ? ", recoverable " : ", unrecoverable "));
+      ReportError(kSbPlayerErrorDecode,
+                  "OnMediaCodecError (audio): " + diagnostic_info +
+                      (is_recoverable ? ", recoverable " : ", unrecoverable "));
     } else {
-      error_cb_(kSbPlayerErrorDecode,
-                "OnMediaCodecError (video): " + diagnostic_info +
-                    (is_recoverable ? ", recoverable " : ", unrecoverable "));
+      ReportError(kSbPlayerErrorDecode,
+                  "OnMediaCodecError (video): " + diagnostic_info +
+                      (is_recoverable ? ", recoverable " : ", unrecoverable "));
     }
   }
 }
