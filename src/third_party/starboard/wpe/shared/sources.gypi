@@ -299,7 +299,6 @@
         '<(DEPTH)/starboard/shared/starboard/link_receiver.cc',
 
         # STUB
-        '<(DEPTH)/starboard/shared/stub/system_get_extensions.cc',
         '<(DEPTH)/starboard/shared/stub/system_get_total_gpu_memory.cc',
         '<(DEPTH)/starboard/shared/stub/system_get_used_gpu_memory.cc',
         '<(DEPTH)/starboard/shared/stub/system_hide_splash_screen.cc',
@@ -319,6 +318,9 @@
         '<(DEPTH)/third_party/starboard/wpe/shared/system/system_get_property.cc',
         '<(DEPTH)/third_party/starboard/wpe/shared/system/system_has_capability.cc',
         '<(DEPTH)/third_party/starboard/wpe/shared/system/system_reset.cc',
+        '<(DEPTH)/third_party/starboard/wpe/shared/configuration.cc',
+        '<(DEPTH)/third_party/starboard/wpe/shared/ext/system_get_extensions.cc',
+        '<(DEPTH)/third_party/starboard/wpe/shared/ext/get_platform_service_api.cc',
     ],
 
     'time_sources': [
