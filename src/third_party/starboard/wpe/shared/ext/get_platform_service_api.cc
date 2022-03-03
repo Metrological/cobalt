@@ -14,19 +14,20 @@
 
 #include "third_party/starboard/wpe/shared/ext/get_platform_service_api.h"
 
-#include <algorithm>
-#include <memory>
-#include <vector>
-
 #include "cobalt/extension/platform_service.h"
 #include "starboard/common/log.h"
-#include "starboard/common/mutex.h"
-#include "starboard/common/string.h"
-#include "starboard/event.h"
-#include "starboard/memory.h"
-#include "starboard/window.h"
 
-#include "cobalt/extension/platform_service.h"
+typedef struct CobaltExtensionPlatformServicePrivate {
+  void* context;
+  ReceiveMessageCallback receive_callback;
+  const char* name;
+
+  ~CobaltExtensionPlatformServicePrivate() {
+    if (name) {
+      delete name;
+    }
+  }
+} CobaltExtensionPlatformServicePrivate;
 
 namespace third_party {
 namespace starboard {
@@ -42,19 +43,23 @@ bool HasPlatformService(const char* name) {
 
 CobaltExtensionPlatformService OpenPlatformService(
     void* context,
-    const char* name_c_str,
+    const char* name,
     ReceiveMessageCallback receive_callback) {
-  // name_c_str is allocated by Cobalt, but must be freed here.
-  std::unique_ptr<const char[]> service_name(name_c_str);
 
   SB_DCHECK(context);
-  SB_LOG(INFO) << "Open " << service_name.get();
+  if (!HasPlatformService(name)) {
+    SB_LOG(ERROR) << "Can't open Service " << name;
+    return kCobaltExtensionPlatformServiceInvalid;
+  }
 
-  return reinterpret_cast<CobaltExtensionPlatformService>(~0);
+  CobaltExtensionPlatformService service =
+      new CobaltExtensionPlatformServicePrivate(
+          {context, receive_callback, name});
+  return service;
 }
 
 void ClosePlatformService(CobaltExtensionPlatformService service) {
-  SB_DCHECK(service);
+  delete static_cast<CobaltExtensionPlatformServicePrivate*>(service);
 }
 
 void* SendToPlatformService(CobaltExtensionPlatformService service,
@@ -62,16 +67,17 @@ void* SendToPlatformService(CobaltExtensionPlatformService service,
                             uint64_t length,
                             uint64_t* output_length,
                             bool* invalid_state) {
-  SB_DCHECK(service);
   SB_DCHECK(data);
   SB_DCHECK(output_length);
   SB_DCHECK(invalid_state);
 
-  std::vector<uint8_t> buffer(static_cast<uint8_t*>(data),
-                              static_cast<uint8_t*>(data) + length);
-  std::vector<uint8_t> response = std::vector<uint8_t>();
-
-  return response.data();
+  *invalid_state = false;
+  *output_length = length;
+  uint8_t* output = new uint8_t[*output_length];
+  for (int i = 0; i < length; i++) {
+    output[i] = static_cast<uint8_t*>(data)[i] * 2;
+  }
+  return output;
 }
 
 const CobaltExtensionPlatformServiceApi kPlatformServiceApi = {
