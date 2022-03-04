@@ -114,7 +114,6 @@ void Application::DeepLink(const char* link_data) {
 void Application::Suspend()
 {
   suspend_lock_.lock();
-  ::starboard::shared::starboard::Application::Blur(this, nullptr);
   ::starboard::shared::starboard::Application::Freeze(this,
     [](void* application) {
       reinterpret_cast<Application*>(application)->suspend_lock_.unlock();
@@ -133,17 +132,12 @@ void Application::OnSuspend()
 void Application::Resume()
 {
   suspend_lock_.lock();
-
   ::starboard::shared::starboard::Application::Focus(this,
     [](void* application) {
       // Send OnDeepLink event
       auto deep_link =  reinterpret_cast<Application*>(application)->deep_link_;
       if (!deep_link.empty())
         ::starboard::shared::starboard::Application::Get()->Link(deep_link.c_str());
-    });
-
-  ::starboard::shared::starboard::Application::Reveal(this,
-    [](void* application) {
       reinterpret_cast<Application*>(application)->suspend_lock_.unlock();
     });
 }
