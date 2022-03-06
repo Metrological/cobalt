@@ -24,6 +24,7 @@
       'WPEFrameworkDefinitions',
       'WPEFrameworkPlugins',
       'compositorclient',
+      'securityagent',
       'deviceinfo',
       'gstreamer-1.0',
       'gstreamer-app-1.0',
@@ -55,6 +56,12 @@
             '-lgstwayland-1.0',
           ],
       }],
+    ],
+    'cobalt_webapi_extension_source_idl_files': [
+      '<(DEPTH)/third_party/starboard/wpe/shared/web_extension/thunder.idl'
+    ],
+    'cobalt_webapi_extension_gyp_target': [
+      '<(DEPTH)/third_party/starboard/wpe/shared/web_extension/web_extension.gyp:web_extension'
     ],
   },
 }
