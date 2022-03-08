@@ -40,6 +40,9 @@
     'cobalt_webapi_extension_gyp_target': [
       '<(DEPTH)/third_party/starboard/wpe/shared/web_extension/web_extension.gyp:web_extension'
     ],
+    'cobalt_webapi_extension_source_idl_files': [
+      '<(DEPTH)/third_party/starboard/wpe/shared/web_extension/automation.idl'
+    ],
     'conditions': [
       ['<(has_ocdm)==1', {
         'pkg_libs': [

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef COBALT_WEBAPI_EXTENSION_THUNDER_H_
-#define COBALT_WEBAPI_EXTENSION_THUNDER_H_
+#ifndef COBALT_WEBAPI_EXTENSION_AUTOMATION_H_
+#define COBALT_WEBAPI_EXTENSION_AUTOMATION_H_
 
 #include "base/message_loop/message_loop.h"
 #include "cobalt/base/polymorphic_downcast.h"
@@ -23,22 +23,22 @@
 namespace cobalt {
 namespace webapi_extension {
 
-class Thunder : public script::Wrappable {
+class Automation : public script::Wrappable {
  public:
-  Thunder(script::GlobalEnvironment* environment);
-  ~Thunder();
+  Automation(script::GlobalEnvironment* environment);
+  ~Automation();
 
-  static std::string Token(script::EnvironmentSettings* settings);
+  static void Milestone(script::EnvironmentSettings* settings, std::string arg1, std::string arg2, std::string arg3);
 
-  DEFINE_WRAPPABLE_TYPE(Thunder);
+  DEFINE_WRAPPABLE_TYPE(Automation);
 
  private:
   script::GlobalEnvironment* environment_;
   scoped_refptr<base::SingleThreadTaskRunner> const main_message_loop_;
-  base::WeakPtrFactory<Thunder> weak_ptr_factory_;
-  base::WeakPtr<Thunder> weak_this_;
+  base::WeakPtrFactory<Automation> weak_ptr_factory_;
+  base::WeakPtr<Automation> weak_this_;
 };
 }  // namespace webapi_extension
 }  // namespace cobalt
 
-#endif  // COBALT_WEBAPI_EXTENSION_THUNDER_H_
+#endif  // COBALT_WEBAPI_EXTENSION_AUTOMATION_H_

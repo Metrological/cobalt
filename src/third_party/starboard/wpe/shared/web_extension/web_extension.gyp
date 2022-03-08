@@ -17,7 +17,10 @@
     {
       'target_name': 'web_extension',
       'type': 'static_library',
-      'sources': [],
+      'sources': [
+        'automation.cc',
+        'automation.h',
+      ],
       'dependencies': [
         '<(DEPTH)/cobalt/dom/dom.gyp:dom',
         '<(DEPTH)/cobalt/script/script.gyp:script',
