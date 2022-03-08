@@ -17,14 +17,19 @@
     {
       'target_name': 'web_extension',
       'type': 'static_library',
-      'sources': [
-        'thunder.cc',
-        'thunder.h',
-      ],
+      'sources': [],
       'dependencies': [
         '<(DEPTH)/cobalt/dom/dom.gyp:dom',
         '<(DEPTH)/cobalt/script/script.gyp:script',
         '<(DEPTH)/base/base.gyp:base',
+      ],
+      'conditions': [
+        ['has_securityagent == 1', {
+          'sources': [
+            'thunder.cc',
+            'thunder.h',
+          ],
+        }],
       ],
     },
   ],

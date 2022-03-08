@@ -16,6 +16,7 @@
     'has_ocdm': '<!(echo $COBALT_HAS_OCDM)',
     'has_provision': '<!(echo $COBALT_HAS_PROVISION)',
     'has_waylandsink': '<!(echo $COBALT_HAS_WAYLANDSINK)',
+    'has_securityagent': '<!(echo $COBALT_HAS_SECURITYAGENT)',
     'common_libs': [
       '-lpthread',
     ],
@@ -24,7 +25,6 @@
       'WPEFrameworkDefinitions',
       'WPEFrameworkPlugins',
       'compositorclient',
-      'securityagent',
       'deviceinfo',
       'gstreamer-1.0',
       'gstreamer-app-1.0',
@@ -36,6 +36,9 @@
     ],
     'common_linker_flags': [
       '-Wl,--wrap=eglGetDisplay',
+    ],
+    'cobalt_webapi_extension_gyp_target': [
+      '<(DEPTH)/third_party/starboard/wpe/shared/web_extension/web_extension.gyp:web_extension'
     ],
     'conditions': [
       ['<(has_ocdm)==1', {
@@ -56,12 +59,14 @@
             '-lgstwayland-1.0',
           ],
       }],
-    ],
-    'cobalt_webapi_extension_source_idl_files': [
-      '<(DEPTH)/third_party/starboard/wpe/shared/web_extension/thunder.idl'
-    ],
-    'cobalt_webapi_extension_gyp_target': [
-      '<(DEPTH)/third_party/starboard/wpe/shared/web_extension/web_extension.gyp:web_extension'
+      ['<(has_securityagent)==1', {
+        'pkg_libs': [
+          'securityagent',
+        ],
+        'cobalt_webapi_extension_source_idl_files': [
+          '<(DEPTH)/third_party/starboard/wpe/shared/web_extension/thunder.idl'
+        ],
+      }],
     ],
   },
 }
