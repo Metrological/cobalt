@@ -165,6 +165,24 @@ void Application::Stop() {
   SbSystemRequestStop(0);
 }
 
+void Application::Visibility(const bool visible)
+{
+  ::starboard::ScopedLock lock(window_lock_);
+  if (window_) {
+    window_->Visibility(visible);
+  }
+}
+
+bool Application::Visibility()
+{
+  bool visible = false;
+  ::starboard::ScopedLock lock(window_lock_);
+  if (window_) {
+    visible = window_->Visibility();
+  }
+  return visible;
+}
+
 }  // namespace shared
 }  // namespace wpe
 }  // namespace starboard

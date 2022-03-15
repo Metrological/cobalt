@@ -50,6 +50,8 @@ class Application : public ::starboard::shared::starboard::QueueApplication {
   void Suspend();
   void Resume();
   void Stop();
+  void Visibility(const bool visible);
+  bool Visibility();
 
  protected:
   // --- Application overrides ---

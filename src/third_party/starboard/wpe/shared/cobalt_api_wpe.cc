@@ -61,6 +61,18 @@ void Stop()
     Application::Get()->Stop();
 }
 
+void Visibility(const bool visible)
+{
+    Application::WaitForInit();
+    Application::Get()->Visibility(visible);
+}
+
+bool Visibility()
+{
+    Application::WaitForInit();
+    return Application::Get()->Visibility();
+}
+
 }  // namespace shared
 }  // namespace wpe
 }  // namespace starboard

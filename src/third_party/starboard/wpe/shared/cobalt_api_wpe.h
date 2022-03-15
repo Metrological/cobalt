@@ -33,6 +33,9 @@ void Resume();
 void Suspend();
 bool Reset(ResetType resetType);
 void Stop();
+void Visibility(const bool visible);
+bool Visibility();
+
 
 }  // namespace shared
 }  // namespace wpe

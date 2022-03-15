@@ -584,6 +584,19 @@ void SbWindowPrivate::DestroyDisplay() {
   third_party::starboard::wpe::shared::window::DestroyDisplay();
 }
 
+void SbWindowPrivate::Visibility(const bool visible)
+{
+  visible_ = visible;
+  if (window_) {
+    window_->Visibility(visible_);
+  }
+}
+
+bool SbWindowPrivate::Visibility()
+{
+  return visible_;
+}
+
 WPEFramework::Compositor::IDisplay::ISurface*
 SbWindowPrivate::CreateVideoOverlay() {
 #if defined(WAYLAND_SINK)

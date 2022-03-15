@@ -86,6 +86,8 @@ struct SbWindowPrivate {
   WPEFramework::Compositor::IDisplay* GetDisplay();
   void CreateDisplay();
   void DestroyDisplay();
+  void Visibility(const bool visible);
+  bool Visibility();
   void PollNextSystemEvent();
 
   WPEFramework::Compositor::IDisplay::ISurface* CreateVideoOverlay();
@@ -95,6 +97,7 @@ struct SbWindowPrivate {
   WPEFramework::Compositor::IDisplay::ISurface* video_overlay_{nullptr};
   int window_width_{0};
   int window_height_{0};
+  bool visible_{true};
   third_party::starboard::wpe::shared::window::KeyboardHandler kb_handler_;
 };
 
