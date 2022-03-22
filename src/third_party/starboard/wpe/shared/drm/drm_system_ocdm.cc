@@ -589,6 +589,7 @@ bool DrmSystemOcdm::Decrypt(const std::string& id,
   session::Session* session = GetSessionById(id);
   DCHECK(session);
   constexpr int kMaxIvSize = 16;
+  bool retVal = false;
   _GstBuffer* sub_sample;
   _GstBuffer* iv;
   _GstBuffer* key;
@@ -638,14 +639,18 @@ bool DrmSystemOcdm::Decrypt(const std::string& id,
   else if(drm_info->encryption_scheme == kSbDrmEncryptionSchemeAesCbc) {
       encScheme = AesCbc_Cbcs;
   }
-  return opencdm_gstreamer_session_decrypt_v2(session->OcdmSession(), buffer,
+  retVal = opencdm_gstreamer_session_decrypt_v2(session->OcdmSession(), buffer,
                                            sub_sample, subsamples_count, encScheme, encPattern, iv,
                                            key, 0) == ERROR_NONE;
   #else
-  return opencdm_gstreamer_session_decrypt(session->OcdmSession(), buffer,
+  retVal = opencdm_gstreamer_session_decrypt(session->OcdmSession(), buffer,
                                            sub_sample, subsamples_count, iv,
                                            key, 0) == ERROR_NONE;
   #endif
+  gst_buffer_unref(key);
+  gst_buffer_unref(iv);
+  gst_buffer_unref(sub_sample);
+  return retVal;
 }
 
 

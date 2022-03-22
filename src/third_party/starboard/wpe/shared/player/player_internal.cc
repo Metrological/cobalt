@@ -26,6 +26,7 @@
 #include "third_party/starboard/wpe/shared/media/gst_media_utils.h"
 #include "third_party/starboard/wpe/shared/window/window_internal.h"
 
+
 namespace third_party {
 namespace starboard {
 namespace wpe {
@@ -699,31 +700,40 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
                     const SbDrmSampleInfo* drmInfo):type_(type),
                                                     buffer_(buffer),
                                                     drmInfo_() {
-        DCHECK_NE(drmInfo, nullptr);
         DCHECK(gst_buffer_is_writable(buffer));
         buffer_copy_ = gst_buffer_copy_deep(buffer);
-        #if SB_API_VERSION >=12
-        drmInfo_.encryption_scheme = drmInfo->encryption_scheme;
-        drmInfo_.encryption_pattern.crypt_byte_block = drmInfo->encryption_pattern.crypt_byte_block;
-        drmInfo_.encryption_pattern.skip_byte_block = drmInfo->encryption_pattern.skip_byte_block;
-        #endif
-        memcpy(drmInfo_.initialization_vector, drmInfo->initialization_vector, sizeof(drmInfo->initialization_vector));
-        drmInfo_.initialization_vector_size = drmInfo->initialization_vector_size;
-        memcpy(drmInfo_.identifier, drmInfo->identifier, sizeof(drmInfo->identifier));
-        drmInfo_.identifier_size = drmInfo->identifier_size;
-        drmInfo_.subsample_count = drmInfo->subsample_count;
-        SbDrmSubSampleMapping* subsample_mapping = (SbDrmSubSampleMapping*)g_malloc(drmInfo->subsample_count * (sizeof(guint16) + sizeof(guint32)));
-        for(int index = 0; index < drmInfo->subsample_count; index ++) {
-          subsample_mapping[index].clear_byte_count = drmInfo->subsample_mapping[index].clear_byte_count;
-          subsample_mapping[index].encrypted_byte_count = drmInfo->subsample_mapping[index].encrypted_byte_count;
+        memset(&drmInfo_, 0, sizeof(drmInfo_));
+        if (drmInfo != nullptr) {
+          #if SB_API_VERSION >=12
+          drmInfo_.encryption_scheme = drmInfo->encryption_scheme;
+          drmInfo_.encryption_pattern.crypt_byte_block = drmInfo->encryption_pattern.crypt_byte_block;
+          drmInfo_.encryption_pattern.skip_byte_block = drmInfo->encryption_pattern.skip_byte_block;
+          #endif
+          memcpy(drmInfo_.initialization_vector, drmInfo->initialization_vector, sizeof(drmInfo->initialization_vector));
+          drmInfo_.initialization_vector_size = drmInfo->initialization_vector_size;
+          memcpy(drmInfo_.identifier, drmInfo->identifier, sizeof(drmInfo->identifier));
+          drmInfo_.identifier_size = drmInfo->identifier_size;
+          drmInfo_.subsample_count = drmInfo->subsample_count;
+          SbDrmSubSampleMapping* subsample_mapping = (SbDrmSubSampleMapping*)g_malloc(drmInfo->subsample_count * (sizeof(SbDrmSubSampleMapping)));
+          for(int index = 0; index < drmInfo->subsample_count; index ++) {
+            subsample_mapping[index].clear_byte_count = drmInfo->subsample_mapping[index].clear_byte_count;
+            subsample_mapping[index].encrypted_byte_count = drmInfo->subsample_mapping[index].encrypted_byte_count;
+          }
+          drmInfo_.subsample_mapping = subsample_mapping;
         }
-        drmInfo_.subsample_mapping = subsample_mapping;
       }
       void Written() { buffer_copy_ = gst_buffer_copy_deep(buffer_); }
       SbMediaType Type() const { return type_; }
       GstBuffer* Buffer() const { return buffer_copy_; }
       const SbDrmSampleInfo* DrmSampleInfo() const { return &drmInfo_;}
-      ~PendingSample() { g_free((gpointer)drmInfo_.subsample_mapping);}
+      ~PendingSample() { 
+        if(buffer_)
+          gst_buffer_unref(buffer_);
+        if (buffer_copy_)
+          gst_buffer_unref(buffer_copy_);
+        if(drmInfo_.subsample_mapping != nullptr){
+          g_free((gpointer)drmInfo_.subsample_mapping);}
+        }
     private:
       SbMediaType type_;
       GstBuffer* buffer_;
@@ -1450,6 +1460,7 @@ bool PlayerImpl::WriteSample(SbMediaType sample_type,
 
   return decrypted;
 }
+
 void PlayerImpl::WriteSample(SbMediaType sample_type,
                              const SbPlayerSampleInfo* sample_infos,
                              int number_of_sample_infos) {
@@ -1465,9 +1476,6 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
       sample_infos[0].timestamp * kSbTimeNanosecondsPerMicrosecond;
   sample_deallocate_func_(player_, context_, sample_infos[0].buffer);
 
-  GstBuffer* subsamples = nullptr;
-  GstBuffer* iv = nullptr;
-  GstBuffer* key = nullptr;
   int32_t subsamples_count = 0u;
   std::string session_id;
 
@@ -1506,44 +1514,6 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
     keep_samples = is_seek_pending_ || pending_rate_ != .0;
   }
   if (sample_infos[0].drm_info) {
-    GST_LOG("Encounterd encrypted %s sample",
-            sample_type == kSbMediaTypeVideo ? "video" : "audio");
-    DCHECK(drm_system_);
-    key = gst_buffer_new_allocate(
-        nullptr, sample_infos[0].drm_info->identifier_size, nullptr);
-    gst_buffer_fill(key, 0, sample_infos[0].drm_info->identifier,
-                    sample_infos[0].drm_info->identifier_size);
-    size_t iv_size = sample_infos[0].drm_info->initialization_vector_size;
-    const int8_t kEmptyArray[kMaxIvSize / 2] = {0};
-    if (iv_size == kMaxIvSize &&
-        memcmp(sample_infos[0].drm_info->initialization_vector + kMaxIvSize / 2,
-               kEmptyArray, kMaxIvSize / 2) == 0)
-      iv_size /= 2;
-
-    iv = gst_buffer_new_allocate(nullptr, iv_size, nullptr);
-    gst_buffer_fill(iv, 0, sample_infos[0].drm_info->initialization_vector,
-                    iv_size);
-    subsamples_count = sample_infos[0].drm_info->subsample_count;
-    auto subsamples_raw_size =
-        subsamples_count * (sizeof(guint16) + sizeof(guint32));
-    guint8* subsamples_raw =
-        static_cast<guint8*>(g_malloc(subsamples_raw_size));
-    GstByteWriter writer;
-    gst_byte_writer_init_with_data(&writer, subsamples_raw, subsamples_raw_size,
-                                   FALSE);
-    for (int32_t i = 0; i < subsamples_count; ++i) {
-      if (!gst_byte_writer_put_uint16_be(
-              &writer,
-              sample_infos[0].drm_info->subsample_mapping[i].clear_byte_count))
-        GST_ERROR("Failed writing clear subsample info at %d", i);
-      if (!gst_byte_writer_put_uint32_be(&writer,
-                                         sample_infos[0]
-                                             .drm_info->subsample_mapping[i]
-                                             .encrypted_byte_count))
-        GST_ERROR("Failed writing encrypted subsample info at %d", i);
-    }
-    subsamples = gst_buffer_new_wrapped(subsamples_raw, subsamples_raw_size);
-
     if (drm_system_)
         session_id = drm_system_->SessionIdByKeyId(
             sample_infos[0].drm_info->identifier,
@@ -1563,9 +1533,6 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
     if (keep_samples) {
       ::starboard::ScopedLock lock(mutex_);
       GST_INFO("Pending flushing operation. Storing sample");
-      GST_INFO("SampleType:%d %" GST_TIME_FORMAT " b:%p, s:%p, iv:%p, k:%p",
-               sample_type, GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(buffer)), buffer,
-               subsamples, iv, key);
       PendingSample sample(sample_type, buffer, nullptr);
       key_str = {kClearSamplesKey};
       pending_[key_str].emplace_back(std::move(sample));
@@ -1591,13 +1558,6 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
     }
   } else {
     WriteSample(sample_type, buffer, session_id, sample_infos[0].drm_info);
-  }
-
-  if (!session_id.empty() && !keep_samples) {
-    GST_TRACE("Wrote sample. Cleaning up.");
-    gst_buffer_unref(iv);
-    gst_buffer_unref(key);
-    gst_buffer_unref(subsamples);
   }
 }
 
