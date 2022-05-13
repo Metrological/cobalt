@@ -452,8 +452,6 @@ static void gst_cobalt_src_class_init(GstCobaltSrcClass* klass) {
 // ********************************* Player ******************************** //
 namespace {
 
-const int kMaxIvSize = 16;
-
 enum class MediaType {
   kNone = 0,
   kAudio = 1,
@@ -667,6 +665,7 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   class PendingSample {
     public:
       PendingSample() = delete;
+      PendingSample(const PendingSample&) = delete;
       PendingSample& operator=(const PendingSample&) = delete;
       PendingSample& operator=(PendingSample&& other) {
         type_ = other.type_;
@@ -678,6 +677,8 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
         drmInfo_.encryption_scheme = other.drmInfo_.encryption_scheme;
         drmInfo_.encryption_pattern.crypt_byte_block = other.drmInfo_.encryption_pattern.crypt_byte_block;
         drmInfo_.encryption_pattern.skip_byte_block = other.drmInfo_.encryption_pattern.skip_byte_block;
+        other.drmInfo_.encryption_pattern.crypt_byte_block = 0;
+        other.drmInfo_.encryption_pattern.skip_byte_block = 0;
         #endif
         memcpy(drmInfo_.initialization_vector, other.drmInfo_.initialization_vector, sizeof(other.drmInfo_.initialization_vector));
         memset(other.drmInfo_.initialization_vector, 0, sizeof(other.drmInfo_.initialization_vector));
@@ -688,6 +689,7 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
         drmInfo_.identifier_size = other.drmInfo_.identifier_size;
         other.drmInfo_.identifier_size = 0;
         drmInfo_.subsample_count = other.drmInfo_.subsample_count;
+        other.drmInfo_.subsample_count = 0;
         drmInfo_.subsample_mapping = other.drmInfo_.subsample_mapping;
         other.drmInfo_.subsample_mapping = nullptr;
         return *this;
@@ -733,7 +735,7 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
           gst_buffer_unref(buffer_copy_);
         if(drmInfo_.subsample_mapping != nullptr){
           g_free((gpointer)drmInfo_.subsample_mapping);}
-        }
+      }
     private:
       SbMediaType type_;
       GstBuffer* buffer_;
@@ -1427,6 +1429,7 @@ bool PlayerImpl::WriteSample(SbMediaType sample_type,
 
   bool decrypted = true;
   if (!session_id.empty()) {
+    DCHECK(drm_system_);
     decrypted = drm_system_->Decrypt(session_id, buffer, drmInfo);
     if (!decrypted)
       GST_ERROR_OBJECT(src, "Failed decrypting");
@@ -1476,7 +1479,6 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
       sample_infos[0].timestamp * kSbTimeNanosecondsPerMicrosecond;
   sample_deallocate_func_(player_, context_, sample_infos[0].buffer);
 
-  int32_t subsamples_count = 0u;
   std::string session_id;
 
   if (sample_infos[0].type == kSbMediaTypeVideo) {
@@ -1496,16 +1498,6 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
               GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(buffer)));
     ChangePipelineState(GST_STATE_PLAYING);
   }
-  #if SB_API_VERSION >= 12
-  SbDrmEncryptionScheme encryption_scheme;
-  SbDrmEncryptionPattern encryption_pattern;
-  if(sample_infos != NULL && sample_infos->drm_info != NULL && sample_infos->drm_info->subsample_mapping != NULL)
-  {
-    encryption_scheme = sample_infos->drm_info->encryption_scheme;
-    encryption_pattern.crypt_byte_block = sample_infos->drm_info->encryption_pattern.crypt_byte_block;
-    encryption_pattern.skip_byte_block = sample_infos->drm_info->encryption_pattern.skip_byte_block;
-  }
-  #endif
 
   std::string key_str;
   bool keep_samples = false;
@@ -1514,6 +1506,7 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
     keep_samples = is_seek_pending_ || pending_rate_ != .0;
   }
   if (sample_infos[0].drm_info) {
+    DCHECK(drm_system_);
     if (drm_system_)
         session_id = drm_system_->SessionIdByKeyId(
             sample_infos[0].drm_info->identifier,

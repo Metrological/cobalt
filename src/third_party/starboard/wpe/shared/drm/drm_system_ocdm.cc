@@ -1,12 +1,8 @@
 #if defined(HAS_OCDM)
 #include "third_party/starboard/wpe/shared/drm/drm_system_ocdm.h"
 
-#include <glib.h>
-#include <gst/app/gstappsrc.h>
-#include <gst/audio/streamvolume.h>
 #include <gst/base/gstbytewriter.h>
 #include <gst/gst.h>
-#include <gst/video/videooverlay.h>
 
 #include "base/logging.h"
 #include "starboard/common/mutex.h"
@@ -596,37 +592,38 @@ bool DrmSystemOcdm::Decrypt(const std::string& id,
   int32_t subsamples_count = 0u;
   key = gst_buffer_new_allocate(
         nullptr, drm_info->identifier_size, nullptr);
-    gst_buffer_fill(key, 0, drm_info->identifier,
+  gst_buffer_fill(key, 0, drm_info->identifier,
                     drm_info->identifier_size);
-    size_t iv_size = drm_info->initialization_vector_size;
-    const int8_t kEmptyArray[kMaxIvSize / 2] = {0};
-    if (iv_size == kMaxIvSize &&
+  size_t iv_size = drm_info->initialization_vector_size;
+  const int8_t kEmptyArray[kMaxIvSize / 2] = {0};
+  if (iv_size == kMaxIvSize &&
         memcmp(drm_info->initialization_vector + kMaxIvSize / 2,
                kEmptyArray, kMaxIvSize / 2) == 0)
-      iv_size /= 2;
+    iv_size /= 2;
 
-    iv = gst_buffer_new_allocate(nullptr, iv_size, nullptr);
-    gst_buffer_fill(iv, 0, drm_info->initialization_vector,
-                    iv_size);
-    subsamples_count = drm_info->subsample_count;
-    auto subsamples_raw_size =
-        subsamples_count * (sizeof(guint16) + sizeof(guint32));
-    guint8* subsamples_raw =
-        static_cast<guint8*>(g_malloc(subsamples_raw_size));
-    GstByteWriter writer;
-    gst_byte_writer_init_with_data(&writer, subsamples_raw, subsamples_raw_size,
-                                   FALSE);
-    for (int32_t i = 0; i < subsamples_count; ++i) {
-      if (!gst_byte_writer_put_uint16_be(
-              &writer,
-              drm_info->subsample_mapping[i].clear_byte_count))
-        GST_ERROR("Failed writing clear subsample info at %d", i);
-      if (!gst_byte_writer_put_uint32_be(&writer,
-                                             drm_info->subsample_mapping[i]
-                                             .encrypted_byte_count))
-        GST_ERROR("Failed writing encrypted subsample info at %d", i);
-    }
-    sub_sample = gst_buffer_new_wrapped(subsamples_raw, subsamples_raw_size);
+  iv = gst_buffer_new_allocate(nullptr, iv_size, nullptr);
+  gst_buffer_fill(iv, 0, drm_info->initialization_vector,
+                  iv_size);
+  subsamples_count = drm_info->subsample_count;
+  auto subsamples_raw_size =
+      subsamples_count * (sizeof(guint16) + sizeof(guint32));
+  guint8* subsamples_raw =
+      static_cast<guint8*>(g_malloc(subsamples_raw_size));
+  GstByteWriter writer;
+  gst_byte_writer_init_with_data(&writer, subsamples_raw, subsamples_raw_size,
+                                 FALSE);
+  for (int32_t i = 0; i < subsamples_count; ++i) {
+    if (!gst_byte_writer_put_uint16_be(
+            &writer,
+            drm_info->subsample_mapping[i].clear_byte_count))
+      GST_ERROR("Failed writing clear subsample info at %d", i);
+    if (!gst_byte_writer_put_uint32_be(&writer,
+                                           drm_info->subsample_mapping[i]
+                                           .encrypted_byte_count))
+      GST_ERROR("Failed writing encrypted subsample info at %d", i);
+  }
+  sub_sample = gst_buffer_new_wrapped(subsamples_raw, subsamples_raw_size);
+  DCHECK(buffer && sub_sample && subsamples_count && iv && key);
   #if SB_API_VERSION >=12
   EncryptionScheme encScheme;
 
