@@ -78,6 +78,11 @@ UpdateClientImpl::~UpdateClientImpl() {
   DCHECK(task_queue_.empty());
   DCHECK(tasks_.empty());
 
+#if defined(STARBOARD)
+  LOG(INFO) << "UpdateClientImpl::~UpdateClientImpl: task_queue_.size="
+            << task_queue_.size() << " tasks.size=" << tasks_.size();
+#endif
+
   config_ = nullptr;
 }
 
@@ -135,6 +140,10 @@ void UpdateClientImpl::OnTaskComplete(Callback callback,
   DCHECK(thread_checker_.CalledOnValidThread());
   DCHECK(task);
 
+#if defined(STARBOARD)
+  LOG(INFO) << "UpdateClientImpl::OnTaskComplete";
+#endif
+
   base::ThreadTaskRunnerHandle::Get()->PostTask(
       FROM_HERE, base::BindOnce(std::move(callback), error));
 
@@ -167,6 +176,12 @@ void UpdateClientImpl::RemoveObserver(Observer* observer) {
 void UpdateClientImpl::NotifyObservers(Observer::Events event,
                                        const std::string& id) {
   DCHECK(thread_checker_.CalledOnValidThread());
+#if defined(STARBOARD)
+  if (is_stopped_) {
+    LOG(WARNING) << "UpdateClientImpl::NotifyObservers: already stopped";
+    return;
+  }
+#endif
   for (auto& observer : observer_list_)
     observer.OnEvent(event, id);
 }

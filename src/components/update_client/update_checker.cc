@@ -20,10 +20,13 @@
 #include "base/strings/stringprintf.h"
 #include "base/task/post_task.h"
 #include "base/threading/thread_checker.h"
+#if defined(STARBOARD)
+#include "base/threading/thread_id_name_manager.h"
+#include "cobalt/extension/free_space.h"
+#endif
 #include "base/threading/thread_task_runner_handle.h"
 #include "build/build_config.h"
 #if defined(STARBOARD)
-#include "cobalt/extension/installation_manager.h"
 #include "cobalt/updater/utils.h"
 #include "components/update_client/cobalt_slot_management.h"
 #endif
@@ -98,6 +101,10 @@ class UpdateCheckerImpl : public UpdateChecker {
       const IdToComponentPtrMap& components,
       const base::flat_map<std::string, std::string>& additional_attributes,
       bool enabled_component_updates);
+#if defined(STARBOARD)
+  void Cancel() ;
+  virtual bool SkipUpdate(const CobaltExtensionInstallationManagerApi* installation_api);
+#endif
   void OnRequestSenderComplete(int error,
                                const std::string& response,
                                int retry_after_sec);
@@ -121,10 +128,17 @@ class UpdateCheckerImpl : public UpdateChecker {
 
 UpdateCheckerImpl::UpdateCheckerImpl(scoped_refptr<Configurator> config,
                                      PersistedData* metadata)
-    : config_(config), metadata_(metadata) {}
+    : config_(config), metadata_(metadata) {
+#if defined(STARBOARD)
+  LOG(INFO) << "UpdateCheckerImpl::UpdateCheckerImpl";
+#endif
+}
 
 UpdateCheckerImpl::~UpdateCheckerImpl() {
   DCHECK(thread_checker_.CalledOnValidThread());
+#if defined(STARBOARD)
+  LOG(INFO) << "UpdateCheckerImpl::~UpdateCheckerImpl";
+#endif
 }
 
 void UpdateCheckerImpl::CheckForUpdates(
@@ -135,6 +149,9 @@ void UpdateCheckerImpl::CheckForUpdates(
     bool enabled_component_updates,
     UpdateCheckCallback update_check_callback) {
   DCHECK(thread_checker_.CalledOnValidThread());
+#if defined(STARBOARD)
+  LOG(INFO) << "UpdateCheckerImpl::CheckForUpdates";
+#endif
 
   ids_checked_ = ids_checked;
   update_check_callback_ = std::move(update_check_callback);
@@ -150,6 +167,11 @@ void UpdateCheckerImpl::CheckForUpdates(
 
 // This function runs on the blocking pool task runner.
 void UpdateCheckerImpl::ReadUpdaterStateAttributes() {
+#if defined(STARBOARD)
+  LOG(INFO) << "UpdateCheckerImpl::ReadUpdaterStateAttributes current_thread="
+    << base::ThreadIdNameManager::GetInstance()->GetNameForCurrentThread();
+#endif
+
 #if defined(OS_WIN)
   // On Windows, the Chrome and the updater install modes are matched by design.
   updater_state_attributes_ =
@@ -168,6 +190,9 @@ void UpdateCheckerImpl::CheckForUpdatesHelper(
     const base::flat_map<std::string, std::string>& additional_attributes,
     bool enabled_component_updates) {
   DCHECK(thread_checker_.CalledOnValidThread());
+#if defined(STARBOARD)
+  LOG(INFO) << "UpdateCheckerImpl::CheckForUpdatesHelper";
+#endif
 
   auto urls(config_->UpdateUrl());
   if (IsEncryptionRequired(components))
@@ -204,22 +229,20 @@ void UpdateCheckerImpl::CheckForUpdatesHelper(
 
     base::Version current_version = crx_component->version;
 #if defined(STARBOARD)
-    std::string unpacked_version =
-        GetPersistedData()->GetLastUnpackedVersion(app_id);
-    // If the version of the last unpacked update package is higher than the
-    // version of the running binary, use the former to indicate the current
-    // update version in the update check request.
-    if (!unpacked_version.empty() &&
-        base::Version(unpacked_version).CompareTo(current_version) > 0) {
-      current_version = base::Version(unpacked_version);
-    }
-
     // Check if there is an available update already for quick roll-forward
     auto installation_api =
         static_cast<const CobaltExtensionInstallationManagerApi*>(
             SbSystemGetExtension(kCobaltExtensionInstallationManagerName));
     if (!installation_api) {
-      SB_LOG(ERROR) << "Failed to get installation manager extension.";
+      LOG(ERROR) << "UpdaterChecker: "
+                 << "Failed to get installation manager extension.";
+      return;
+    }
+
+    if (SkipUpdate(installation_api)) {
+      LOG(WARNING) << "UpdaterChecker is skipping";
+      UpdateCheckFailed(ErrorCategory::kUpdateCheck,
+        static_cast<int>(UpdateCheckError::OUT_OF_SPACE), -1);
       return;
     }
 
@@ -235,6 +258,15 @@ void UpdateCheckerImpl::CheckForUpdatesHelper(
       return;
     }
 
+    std::string last_installed_version =
+        GetPersistedData()->GetLastInstalledVersion(app_id);
+    // If the version of the last installed update package is higher than the
+    // version of the running binary, use the former to indicate the current
+    // update version in the update check request.
+    if (!last_installed_version.empty() &&
+        base::Version(last_installed_version).CompareTo(current_version) > 0) {
+      current_version = base::Version(last_installed_version);
+    }
 // If the quick roll forward update slot candidate doesn't exist, continue
 // with update check.
 #endif
@@ -273,6 +305,33 @@ void UpdateCheckerImpl::CheckForUpdatesHelper(
   config_->CompareAndSwapChannelChanged(1, 0);
 #endif
 }
+
+#if defined(STARBOARD)
+void UpdateCheckerImpl::Cancel() {
+  LOG(INFO) << "UpdateCheckerImpl::Cancel";
+  if (request_sender_.get()) {
+    request_sender_->Cancel();
+  }
+}
+
+bool UpdateCheckerImpl::SkipUpdate(
+  const CobaltExtensionInstallationManagerApi* installation_api) {
+  auto free_space_ext = static_cast<const CobaltExtensionFreeSpaceApi*>(
+      SbSystemGetExtension(kCobaltExtensionFreeSpaceName));
+  if (!installation_api) {
+    LOG(WARNING) << "UpdaterChecker::SkipUpdate: missing installation api";
+     return false;
+  }
+  if (!free_space_ext) {
+    LOG(WARNING) << "UpdaterChecker::SkipUpdate: No FreeSpace Cobalt extension";
+    return false;
+  }
+
+  return CobaltSkipUpdate(installation_api, config_->GetMinFreeSpaceBytes(),
+     free_space_ext->MeasureFreeSpace(kSbSystemPathStorageDirectory),
+     CobaltInstallationCleanupSize(installation_api)) ;
+}
+#endif
 
 void UpdateCheckerImpl::OnRequestSenderComplete(int error,
                                                 const std::string& response,

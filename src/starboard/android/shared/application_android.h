@@ -18,6 +18,7 @@
 #include <android/looper.h>
 #include <android/native_window.h>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "starboard/android/shared/input_events_generator.h"
@@ -96,6 +97,18 @@ class ApplicationAndroid
 
   void SendDateTimeConfigurationChangedEvent();
 
+  // Methods to get the Runtime Resource Overlay variables.
+  // All RRO variables which can be retrieved here must be defined
+  // in res/values/rro_variables.xml and be loaded in
+  // dev/cobalt/coat/ResourceOverlay.java.
+  int GetOverlayedIntValue(const char* var_name);
+  std::string GetOverlayedStringValue(const char* var_name);
+  bool GetOverlayedBoolValue(const char* var_name);
+
+  // Methods to start/stop Media playback service.
+  void StartMediaPlaybackService();
+  void StopMediaPlaybackService();
+
  protected:
   // --- Application overrides ---
   void Initialize() override;
@@ -135,14 +148,17 @@ class ApplicationAndroid
 
   bool last_is_accessibility_high_contrast_text_enabled_;
 
+  jobject resource_overlay_;
+
+  Mutex overlay_mutex_;
+  std::unordered_map<std::string, bool> overlayed_bool_variables_;
+  std::unordered_map<std::string, int> overlayed_int_variables_;
+  std::unordered_map<std::string, std::string> overlayed_string_variables_;
+
   // Methods to process pipes attached to the Looper.
   void ProcessAndroidCommand();
   void ProcessAndroidInput();
   void ProcessKeyboardInject();
-
-  // Methods to start/stop Media playback service.
-  void StartMediaPlaybackService();
-  void StopMediaPlaybackService();
 };
 
 }  // namespace shared

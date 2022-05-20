@@ -31,7 +31,7 @@ limitations under the License.
       return;
     }
 
-    if (currentChannel == "qa") {
+    if (currentChannel == "prod") {
       window.h5vcc.updater.setUpdaterChannel(targetChannel);
       console.log("channel was changed to " + targetChannel);
       return;
@@ -53,6 +53,9 @@ limitations under the License.
   }
 
   query.forEach(part => {
+    if (part.startsWith("min_storage=")) {
+      window.h5vcc.settings.set("Updater.MinFreeSpaceBytes", part.split("=")[1]);
+    }
     if (changeChannel) {
       return;
     }
@@ -61,6 +64,7 @@ limitations under the License.
       targetChannel = part.split("=")[1];
       changeChannel = setInterval(tryChangeChannel, 500);
     }
+
   });
 </script>
 </html>

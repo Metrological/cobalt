@@ -31,6 +31,7 @@ import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.os.Build;
+import android.os.Build.VERSION;
 import android.util.Size;
 import android.util.SizeF;
 import android.view.Display;
@@ -50,8 +51,10 @@ import dev.cobalt.util.Holder;
 import dev.cobalt.util.Log;
 import dev.cobalt.util.UsedByNative;
 import java.lang.reflect.Method;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Locale;
+import java.util.TimeZone;
 
 /** Implementation of the required JNI methods called by the Starboard C++ code. */
 public class StarboardBridge {
@@ -71,6 +74,7 @@ public class StarboardBridge {
   private AudioPermissionRequester audioPermissionRequester;
   private KeyboardEditor keyboardEditor;
   private NetworkStatus networkStatus;
+  private ResourceOverlay resourceOverlay;
 
   static {
     // Even though NativeActivity already loads our library from C++,
@@ -96,6 +100,7 @@ public class StarboardBridge {
   private final HashMap<String, CobaltService.Factory> cobaltServiceFactories = new HashMap<>();
   private final HashMap<String, CobaltService> cobaltServices = new HashMap<>();
 
+  private static final TimeZone DEFAULT_TIME_ZONE = TimeZone.getTimeZone("America/Los_Angeles");
   private final long timeNanosecondsPerMicrosecond = 1000;
 
   public StarboardBridge(
@@ -123,6 +128,7 @@ public class StarboardBridge {
         new CobaltMediaSession(appContext, activityHolder, audioOutputManager);
     this.audioPermissionRequester = new AudioPermissionRequester(appContext, activityHolder);
     this.networkStatus = new NetworkStatus(appContext);
+    this.resourceOverlay = new ResourceOverlay(appContext);
   }
 
   private native boolean nativeInitialize();
@@ -171,6 +177,11 @@ public class StarboardBridge {
   @SuppressWarnings("unused")
   @UsedByNative
   protected void startMediaPlaybackService() {
+    if (cobaltMediaSession == null || !cobaltMediaSession.isActive()) {
+      Log.w(TAG, "Do not start a MediaPlaybackService when the MediSsession is null or inactive.");
+      return;
+    }
+
     Service service = serviceHolder.get();
     if (service == null) {
       if (appContext == null) {
@@ -179,9 +190,18 @@ public class StarboardBridge {
       }
       Log.i(TAG, "Cold start - Instantiating a MediaPlaybackService.");
       Intent intent = new Intent(appContext, MediaPlaybackService.class);
-      appContext.startService(intent);
+      try {
+        if (VERSION.SDK_INT >= 26) {
+          appContext.startForegroundService(intent);
+        } else {
+          appContext.startService(intent);
+        }
+      } catch (SecurityException e) {
+        Log.e(TAG, "Failed to start MediaPlaybackService with intent.", e);
+        return;
+      }
     } else {
-      Log.i(TAG, "Warm start - Restarting the service.");
+      Log.i(TAG, "Warm start - Restarting the MediaPlaybackService.");
       ((MediaPlaybackService) service).startService();
     }
   }
@@ -191,7 +211,7 @@ public class StarboardBridge {
   protected void stopMediaPlaybackService() {
     Service service = serviceHolder.get();
     if (service != null) {
-      Log.i(TAG, "Stopping the Media playback service.");
+      Log.i(TAG, "Stopping the MediaPlaybackService.");
       ((MediaPlaybackService) service).stopService();
     }
   }
@@ -222,6 +242,9 @@ public class StarboardBridge {
       for (CobaltService service : cobaltServices.values()) {
         service.beforeSuspend();
       }
+      // We need to stop MediaPlaybackService before suspending so that this foreground service
+      // would not prevent releasing activity's memory consumption.
+      stopMediaPlaybackService();
     } catch (Throwable e) {
       Log.i(TAG, "Caught exception in beforeSuspend: " + e.getMessage());
     }
@@ -345,7 +368,9 @@ public class StarboardBridge {
     return ttsHelper;
   }
 
-  /** @return A new CaptionSettings object with the current system caption settings. */
+  /**
+   * @return A new CaptionSettings object with the current system caption settings.
+   */
   @SuppressWarnings("unused")
   @UsedByNative
   CaptionSettings getCaptionSettings() {
@@ -363,6 +388,18 @@ public class StarboardBridge {
 
   @SuppressWarnings("unused")
   @UsedByNative
+  String getTimeZoneId() {
+    Locale locale = Locale.getDefault();
+    Calendar calendar = Calendar.getInstance(locale);
+    TimeZone timeZone = DEFAULT_TIME_ZONE;
+    if (calendar != null) {
+      timeZone = calendar.getTimeZone();
+    }
+    return timeZone.getID();
+  }
+
+  @SuppressWarnings("unused")
+  @UsedByNative
   SizeF getDisplayDpi() {
     return DisplayUtil.getDisplayDpi();
   }
@@ -371,6 +408,12 @@ public class StarboardBridge {
   @UsedByNative
   Size getDisplaySize() {
     return DisplayUtil.getSystemDisplaySize();
+  }
+
+  @SuppressWarnings("unused")
+  @UsedByNative
+  public ResourceOverlay getResourceOverlay() {
+    return resourceOverlay;
   }
 
   @Nullable
@@ -468,7 +511,9 @@ public class StarboardBridge {
     return audioManager.isMicrophoneMute();
   }
 
-  /** @return true if we have an active network connection and it's on an wireless network. */
+  /**
+   * @return true if we have an active network connection and it's on an wireless network.
+   */
   @SuppressWarnings("unused")
   @UsedByNative
   boolean isCurrentNetworkWireless() {

@@ -37,10 +37,6 @@ const std::size_t kAllocationRecordGranularity = 512 * 1024;
 // be different.
 const std::size_t kSmallAllocationThreshold = 512;
 
-bool IsLargeAllocation(std::size_t size) {
-  return size > kSmallAllocationThreshold;
-}
-
 }  // namespace
 
 DecoderBufferAllocator::DecoderBufferAllocator()
@@ -64,12 +60,8 @@ DecoderBufferAllocator::DecoderBufferAllocator()
   // We cannot call SbMediaGetMaxBufferCapacity because |video_codec_| is not
   // set yet. Use 0 (unbounded) until |video_codec_| is updated in
   // UpdateVideoConfig().
-  int max_capacity = 0;
-  reuse_allocator_.reset(new ReuseAllocator(
-      &fallback_allocator_, initial_capacity_, allocation_unit_, max_capacity));
-  DLOG(INFO) << "Allocated " << initial_capacity_
-             << " bytes for media buffer pool as its initial buffer, with max"
-             << " capacity set to " << max_capacity;
+  starboard::ScopedLock scoped_lock(mutex_);
+  CreateReuseAllocator(0);
 }
 
 DecoderBufferAllocator::~DecoderBufferAllocator() {
@@ -84,6 +76,36 @@ DecoderBufferAllocator::~DecoderBufferAllocator() {
   if (reuse_allocator_) {
     DCHECK_EQ(reuse_allocator_->GetAllocated(), 0);
     reuse_allocator_.reset();
+  }
+}
+
+void DecoderBufferAllocator::Suspend() {
+  if (!using_memory_pool_ || is_memory_pool_allocated_on_demand_) {
+    return;
+  }
+
+  TRACK_MEMORY_SCOPE("Media");
+
+  starboard::ScopedLock scoped_lock(mutex_);
+
+  if (reuse_allocator_ && reuse_allocator_->GetAllocated() == 0) {
+    DLOG(INFO) << "Freed " << reuse_allocator_->GetCapacity()
+               << " bytes of media buffer pool `on suspend`.";
+    reuse_allocator_.reset();
+  }
+}
+
+void DecoderBufferAllocator::Resume() {
+  if (!using_memory_pool_ || is_memory_pool_allocated_on_demand_) {
+    return;
+  }
+
+  TRACK_MEMORY_SCOPE("Media");
+
+  starboard::ScopedLock scoped_lock(mutex_);
+
+  if (!reuse_allocator_) {
+    CreateReuseAllocator(0);
   }
 }
 
@@ -109,12 +131,7 @@ DecoderBuffer::Allocator::Allocations DecoderBufferAllocator::Allocate(
       max_capacity = SbMediaGetMaxBufferCapacity(
           video_codec_, resolution_width_, resolution_height_, bits_per_pixel_);
     }
-    reuse_allocator_.reset(new ReuseAllocator(&fallback_allocator_,
-                                              initial_capacity_,
-                                              allocation_unit_, max_capacity));
-    DLOG(INFO) << "Allocated " << initial_capacity_
-               << " bytes for media buffer pool, with max capacity set to "
-               << max_capacity;
+    CreateReuseAllocator(max_capacity);
   }
 
   void* p = reuse_allocator_->Allocate(size, alignment);
@@ -189,48 +206,6 @@ void DecoderBufferAllocator::UpdateVideoConfig(
              << reuse_allocator_->GetCapacity();
 }
 
-DecoderBufferAllocator::ReuseAllocator::ReuseAllocator(
-    Allocator* fallback_allocator, std::size_t initial_capacity,
-    std::size_t allocation_increment, std::size_t max_capacity)
-    : BidirectionalFitReuseAllocator(fallback_allocator, initial_capacity,
-                                     kSmallAllocationThreshold,
-                                     allocation_increment, max_capacity) {}
-
-DecoderBufferAllocator::ReuseAllocator::FreeBlockSet::iterator
-DecoderBufferAllocator::ReuseAllocator::FindBestFreeBlock(
-    std::size_t size, std::size_t alignment, intptr_t context,
-    FreeBlockSet::iterator begin, FreeBlockSet::iterator end,
-    bool* allocate_from_front) {
-  DCHECK(allocate_from_front);
-
-  auto free_block_iter =
-      FindFreeBlock(size, alignment, begin, end, allocate_from_front);
-  if (free_block_iter != end) {
-    return free_block_iter;
-  }
-
-  *allocate_from_front = size > kSmallAllocationThreshold;
-  *allocate_from_front = context == 1;
-  if (*allocate_from_front) {
-    for (FreeBlockSet::iterator it = begin; it != end; ++it) {
-      if (it->CanFulfill(1, alignment)) {
-        return it;
-      }
-    }
-
-    return end;
-  }
-
-  FreeBlockSet::reverse_iterator rbegin(end);
-  FreeBlockSet::reverse_iterator rend(begin);
-  for (FreeBlockSet::reverse_iterator it = rbegin; it != rend; ++it) {
-    if (it->CanFulfill(1, alignment)) {
-      return --it.base();
-    }
-  }
-  return end;
-}
-
 std::size_t DecoderBufferAllocator::GetAllocatedMemory() const {
   if (!using_memory_pool_) {
     return sbmemory_bytes_used_.load();
@@ -260,6 +235,17 @@ std::size_t DecoderBufferAllocator::GetMaximumMemoryCapacity() const {
              ? reuse_allocator_->max_capacity()
              : SbMediaGetMaxBufferCapacity(video_codec_, resolution_width_,
                                            resolution_height_, bits_per_pixel_);
+}
+
+void DecoderBufferAllocator::CreateReuseAllocator(int max_capacity) {
+  mutex_.DCheckAcquired();
+
+  reuse_allocator_.reset(new nb::BidirectionalFitReuseAllocator(
+      &fallback_allocator_, initial_capacity_, kSmallAllocationThreshold,
+      allocation_unit_, max_capacity));
+  DLOG(INFO) << "Allocated " << initial_capacity_
+             << " bytes for media buffer pool, with max capacity set to "
+             << max_capacity;
 }
 
 bool DecoderBufferAllocator::UpdateAllocationRecord() const {

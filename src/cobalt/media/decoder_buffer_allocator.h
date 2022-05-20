@@ -37,6 +37,9 @@ class DecoderBufferAllocator : public DecoderBuffer::Allocator,
   DecoderBufferAllocator();
   ~DecoderBufferAllocator() override;
 
+  void Suspend();
+  void Resume();
+
   Allocations Allocate(size_t size, size_t alignment,
                        intptr_t context) override;
   void Free(Allocations allocations) override;
@@ -46,16 +49,7 @@ class DecoderBufferAllocator : public DecoderBuffer::Allocator,
   size_t GetMaximumMemoryCapacity() const override;
 
  private:
-  class ReuseAllocator : public nb::BidirectionalFitReuseAllocator {
-   public:
-    ReuseAllocator(Allocator* fallback_allocator, std::size_t initial_capacity,
-                   std::size_t allocation_increment, std::size_t max_capacity);
-
-    FreeBlockSet::iterator FindBestFreeBlock(
-        std::size_t size, std::size_t alignment, intptr_t context,
-        FreeBlockSet::iterator begin, FreeBlockSet::iterator end,
-        bool* allocate_from_front) override;
-  };
+  void CreateReuseAllocator(int max_capacity);
 
   // Update the Allocation record, and return false if allocation exceeds the
   // max buffer capacity, or true otherwise.
@@ -68,7 +62,7 @@ class DecoderBufferAllocator : public DecoderBuffer::Allocator,
 
   starboard::Mutex mutex_;
   nb::StarboardMemoryAllocator fallback_allocator_;
-  std::unique_ptr<ReuseAllocator> reuse_allocator_;
+  std::unique_ptr<nb::BidirectionalFitReuseAllocator> reuse_allocator_;
 
   SbMediaVideoCodec video_codec_ = kSbMediaVideoCodecNone;
   int resolution_width_ = -1;

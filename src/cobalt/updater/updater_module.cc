@@ -26,15 +26,18 @@
 #include "base/run_loop.h"
 #include "base/stl_util.h"
 #include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/task/post_task.h"
 #include "base/task_runner.h"
 #include "base/threading/thread_task_runner_handle.h"
 #include "base/version.h"
+#include "cobalt/browser/switches.h"
 #include "cobalt/extension/installation_manager.h"
 #include "cobalt/updater/crash_client.h"
 #include "cobalt/updater/crash_reporter.h"
 #include "cobalt/updater/utils.h"
 #include "components/crx_file/crx_verifier.h"
+#include "components/update_client/cobalt_slot_management.h"
 #include "components/update_client/utils.h"
 #include "starboard/common/file.h"
 #include "starboard/configuration_constants.h"
@@ -42,6 +45,7 @@
 namespace {
 
 using update_client::ComponentState;
+using update_client::CobaltSlotManagement;
 
 // The SHA256 hash of the "cobalt_evergreen_public" key.
 constexpr uint8_t kCobaltPublicKeyHash[] = {
@@ -65,12 +69,21 @@ ComponentStateToCobaltExtensionUpdaterNotificationState(
       return kCobaltExtensionUpdaterNotificationStateDownloaded;
     case ComponentState::kUpdating:
       return kCobaltExtensionUpdaterNotificationStateInstalling;
+#if SB_API_VERSION > 13
+    case ComponentState::kUpdated:
+      return kCobaltExtensionUpdaterNotificationStateUpdated;
+    case ComponentState::kUpToDate:
+      return kCobaltExtensionUpdaterNotificationStateUpToDate;
+    case ComponentState::kUpdateError:
+      return kCobaltExtensionUpdaterNotificationStateUpdateFailed;
+#else
     case ComponentState::kUpdated:
       return kCobaltExtensionUpdaterNotificationStatekUpdated;
     case ComponentState::kUpToDate:
-      return kCobaltExtensionUpdaterNotificationStatekUpdated;
+      return kCobaltExtensionUpdaterNotificationStatekUpToDate;
     case ComponentState::kUpdateError:
       return kCobaltExtensionUpdaterNotificationStatekUpdateFailed;
+#endif
     default:
       return kCobaltExtensionUpdaterNotificationStateNone;
   }
@@ -81,7 +94,11 @@ ComponentStateToCobaltExtensionUpdaterNotificationState(
 namespace cobalt {
 namespace updater {
 
+// The delay in seconds before the first update check.
+const uint64_t kDefaultUpdateCheckDelaySeconds = 15;
+
 void Observer::OnEvent(Events event, const std::string& id) {
+  LOG(INFO) << "Observer::OnEvent id=" << id;
   std::string status;
   if (update_client_->GetCrxUpdateState(id, &crx_update_item_)) {
     auto status_iterator =
@@ -112,35 +129,51 @@ void Observer::OnEvent(Events event, const std::string& id) {
     status = "No status available";
   }
   updater_configurator_->SetUpdaterStatus(status);
-  SB_LOG(INFO) << "Updater status is " << status;
+  LOG(INFO) << "Updater status is " << status;
 }
 
-UpdaterModule::UpdaterModule(network::NetworkModule* network_module)
-    : updater_thread_("updater"), network_module_(network_module) {
-  updater_thread_.StartWithOptions(
+UpdaterModule::UpdaterModule(network::NetworkModule* network_module,
+                             uint64_t update_check_delay_sec)
+    : network_module_(network_module),
+      update_check_delay_sec_(update_check_delay_sec) {
+  LOG(INFO) << "UpdaterModule::UpdaterModule";
+  updater_thread_.reset(new base::Thread("Updater"));
+  updater_thread_->StartWithOptions(
       base::Thread::Options(base::MessageLoop::TYPE_IO, 0));
 
   DETACH_FROM_THREAD(thread_checker_);
   // Initialize the underlying update client.
   is_updater_running_ = true;
-  updater_thread_.task_runner()->PostTask(
+  updater_thread_->task_runner()->PostTask(
       FROM_HERE,
       base::Bind(&UpdaterModule::Initialize, base::Unretained(this)));
+
+  // Mark the current installation as successful.
+  updater_thread_->task_runner()->PostTask(
+      FROM_HERE,
+      base::Bind(&UpdaterModule::MarkSuccessful, base::Unretained(this)));
 }
 
 UpdaterModule::~UpdaterModule() {
+  LOG(INFO) << "UpdaterModule::~UpdaterModule";
   if (is_updater_running_) {
     is_updater_running_ = false;
-    updater_thread_.task_runner()->PostBlockingTask(
+    updater_thread_->task_runner()->PostBlockingTask(
         FROM_HERE,
         base::Bind(&UpdaterModule::Finalize, base::Unretained(this)));
   }
+
+  // Upon destruction the thread will allow all queued tasks to complete before
+  // the thread is terminated. The thread is destroyed before returning from
+  // this destructor to prevent one of the thread's tasks from accessing member
+  // fields after they are destroyed.
+  updater_thread_.reset();
 }
 
 void UpdaterModule::Suspend() {
   if (is_updater_running_) {
     is_updater_running_ = false;
-    updater_thread_.task_runner()->PostBlockingTask(
+    updater_thread_->task_runner()->PostBlockingTask(
         FROM_HERE,
         base::Bind(&UpdaterModule::Finalize, base::Unretained(this)));
   }
@@ -149,7 +182,7 @@ void UpdaterModule::Suspend() {
 void UpdaterModule::Resume() {
   if (!is_updater_running_) {
     is_updater_running_ = true;
-    updater_thread_.task_runner()->PostTask(
+    updater_thread_->task_runner()->PostTask(
         FROM_HERE,
         base::Bind(&UpdaterModule::Initialize, base::Unretained(this)));
   }
@@ -165,13 +198,17 @@ void UpdaterModule::Initialize() {
   update_client_->AddObserver(updater_observer_.get());
 
   // Schedule the first update check.
-  updater_thread_.task_runner()->PostDelayedTask(
+
+  LOG(INFO) << "Scheduling UpdateCheck with delay " << update_check_delay_sec_
+            << " seconds";
+  updater_thread_->task_runner()->PostDelayedTask(
       FROM_HERE, base::Bind(&UpdaterModule::Update, base::Unretained(this)),
-      base::TimeDelta::FromMinutes(1));
+      base::TimeDelta::FromSeconds(update_check_delay_sec_));
 }
 
 void UpdaterModule::Finalize() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  LOG(INFO) << "UpdaterModule::Finalize begin";
   update_client_->RemoveObserver(updater_observer_.get());
   updater_observer_.reset();
   update_client_->Stop();
@@ -186,27 +223,39 @@ void UpdaterModule::Finalize() {
   }
 
   updater_configurator_ = nullptr;
+
+  // Cleanup drain files
+  const auto installation_manager =
+      static_cast<const CobaltExtensionInstallationManagerApi*>(
+          SbSystemGetExtension(kCobaltExtensionInstallationManagerName));
+  if (installation_manager) {
+    CobaltSlotManagement cobalt_slot_management;
+    if (cobalt_slot_management.Init(installation_manager)) {
+      cobalt_slot_management.CleanupAllDrainFiles();
+    }
+  }
+  LOG(INFO) << "UpdaterModule::Finalize end";
 }
 
 void UpdaterModule::MarkSuccessful() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  LOG(INFO) << "UpdaterModule::MarkSuccessful";
 
   auto installation_manager =
       static_cast<const CobaltExtensionInstallationManagerApi*>(
           SbSystemGetExtension(kCobaltExtensionInstallationManagerName));
   if (!installation_manager) {
-    SB_LOG(ERROR) << "Updater failed to get installation manager extension.";
+    LOG(ERROR) << "Updater failed to get installation manager extension.";
     return;
   }
   int index = installation_manager->GetCurrentInstallationIndex();
   if (index == IM_EXT_ERROR) {
-    SB_LOG(ERROR) << "Updater failed to get current installation index.";
+    LOG(ERROR) << "Updater failed to get current installation index.";
     return;
   }
   if (installation_manager->MarkInstallationSuccessful(index) !=
       IM_EXT_SUCCESS) {
-    SB_LOG(ERROR)
-        << "Updater failed to mark the current installation successful";
+    LOG(ERROR) << "Updater failed to mark the current installation successful";
   }
 }
 
@@ -221,7 +270,7 @@ void UpdaterModule::Update() {
 
   const base::Version manifest_version(GetCurrentEvergreenVersion());
   if (!manifest_version.IsValid()) {
-    SB_LOG(ERROR) << "Updater failed to get the current update version.";
+    LOG(ERROR) << "Updater failed to get the current update version.";
     return;
   }
 
@@ -250,11 +299,6 @@ void UpdaterModule::Update() {
           },
           base::Bind(base::DoNothing::Repeatedly())));
 
-  // Mark the current installation as successful.
-  updater_thread_.task_runner()->PostTask(
-      FROM_HERE,
-      base::Bind(&UpdaterModule::MarkSuccessful, base::Unretained(this)));
-
   IncrementUpdateCheckCount();
 
   int kNextUpdateCheckHours = 0;
@@ -267,7 +311,7 @@ void UpdaterModule::Update() {
     // hours.
     kNextUpdateCheckHours = 24;
   }
-  updater_thread_.task_runner()->PostDelayedTask(
+  updater_thread_->task_runner()->PostDelayedTask(
       FROM_HERE, base::Bind(&UpdaterModule::Update, base::Unretained(this)),
       base::TimeDelta::FromHours(kNextUpdateCheckHours));
 }
@@ -280,26 +324,41 @@ void UpdaterModule::CompareAndSwapChannelChanged(int old_value, int new_value) {
 }
 
 std::string UpdaterModule::GetUpdaterChannel() const {
+  LOG(INFO) << "UpdaterModule::GetUpdaterChannel";
   auto config = updater_configurator_;
-  if (!config) return "";
+  if (!config) {
+    LOG(ERROR) << "UpdaterModule::GetUpdaterChannel: missing config";
+    return "";
+  }
 
-  return config->GetChannel();
+  std::string channel = config->GetChannel();
+  LOG(INFO) << "UpdaterModule::GetUpdaterChannel channel=" << channel;
+  return channel;
 }
 
 void UpdaterModule::SetUpdaterChannel(const std::string& updater_channel) {
+  LOG(INFO) << "UpdaterModule::SetUpdaterChannel updater_channel="
+            << updater_channel;
   auto config = updater_configurator_;
   if (config) config->SetChannel(updater_channel);
 }
 
 std::string UpdaterModule::GetUpdaterStatus() const {
+  LOG(INFO) << "UpdaterModule::GetUpdaterStatus";
   auto config = updater_configurator_;
-  if (!config) return "";
+  if (!config) {
+    LOG(ERROR) << "UpdaterModule::GetUpdaterStatus: missing configuration";
+    return "";
+  }
 
-  return config->GetUpdaterStatus();
+  std::string updater_status = config->GetUpdaterStatus();
+  LOG(INFO) << "UpdaterModule::GetUpdaterStatus updater_status="
+            << updater_status;
+  return updater_status;
 }
 
 void UpdaterModule::RunUpdateCheck() {
-  updater_thread_.task_runner()->PostTask(
+  updater_thread_->task_runner()->PostTask(
       FROM_HERE, base::Bind(&UpdaterModule::Update, base::Unretained(this)));
 }
 
@@ -308,21 +367,21 @@ void UpdaterModule::ResetInstallations() {
       static_cast<const CobaltExtensionInstallationManagerApi*>(
           SbSystemGetExtension(kCobaltExtensionInstallationManagerName));
   if (!installation_manager) {
-    SB_LOG(ERROR) << "Updater failed to get installation manager extension.";
+    LOG(ERROR) << "Updater failed to get installation manager extension.";
     return;
   }
   if (installation_manager->Reset() == IM_EXT_ERROR) {
-    SB_LOG(ERROR) << "Updater failed to reset installations.";
+    LOG(ERROR) << "Updater failed to reset installations.";
     return;
   }
   base::FilePath product_data_dir;
   if (!GetProductDirectoryPath(&product_data_dir)) {
-    SB_LOG(ERROR) << "Updater failed to get product directory path.";
+    LOG(ERROR) << "Updater failed to get product directory path.";
     return;
   }
   if (!starboard::SbFileDeleteRecursive(product_data_dir.value().c_str(),
                                         true)) {
-    SB_LOG(ERROR) << "Updater failed to clean the product directory.";
+    LOG(ERROR) << "Updater failed to clean the product directory.";
     return;
   }
 }
@@ -332,15 +391,22 @@ int UpdaterModule::GetInstallationIndex() const {
       static_cast<const CobaltExtensionInstallationManagerApi*>(
           SbSystemGetExtension(kCobaltExtensionInstallationManagerName));
   if (!installation_manager) {
-    SB_LOG(ERROR) << "Updater failed to get installation manager extension.";
+    LOG(ERROR) << "Updater failed to get installation manager extension.";
     return -1;
   }
   int index = installation_manager->GetCurrentInstallationIndex();
   if (index == IM_EXT_ERROR) {
-    SB_LOG(ERROR) << "Updater failed to get current installation index.";
+    LOG(ERROR) << "Updater failed to get current installation index.";
     return -1;
   }
   return index;
+}
+
+void UpdaterModule::SetMinFreeSpaceBytes(uint64_t bytes) {
+  LOG(INFO) << "UpdaterModule::SetMinFreeSpaceBytes bytes=" << bytes;
+  if (updater_configurator_) {
+    updater_configurator_->SetMinFreeSpaceBytes(bytes);
+  }
 }
 
 }  // namespace updater
