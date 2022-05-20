@@ -605,6 +605,11 @@ Application::Application(const base::Closure& quit_closure, bool should_preload,
 #endif  // defined(ENABLE_DEBUGGER) && defined(STARBOARD_ALLOWS_MEMORY_TRACKING)
 {
   DCHECK(!quit_closure_.is_null());
+  if (should_preload) {
+    preload_timestamp_ = timestamp;
+  } else {
+    start_timestamp_ = timestamp;
+  }
   // Check to see if a timed_trace has been set, indicating that we should
   // begin a timed trace upon startup.
   base::TimeDelta trace_duration = GetTimedTraceDuration();
@@ -823,6 +828,12 @@ Application::Application(const base::Closure& quit_closure, bool should_preload,
   options.web_module_options.csp_enforcement_mode = dom::kCspEnforcementEnable;
 
   options.requested_viewport_size = requested_viewport_size;
+
+  // Set callback to collect unload event time before firing document's unload
+  // event.
+  options.web_module_options.collect_unload_event_time_callback = base::Bind(
+      &Application::CollectUnloadEventTimingInfo, base::Unretained(this));
+
   account_manager_.reset(new account::AccountManager());
 
   storage_manager_.reset(new storage::StorageManager(
@@ -839,7 +850,21 @@ Application::Application(const base::Closure& quit_closure, bool should_preload,
 #if SB_IS(EVERGREEN)
   if (SbSystemGetExtension(kCobaltExtensionInstallationManagerName) &&
       !command_line->HasSwitch(switches::kDisableUpdaterModule)) {
-    updater_module_.reset(new updater::UpdaterModule(network_module_.get()));
+    uint64_t update_check_delay_sec =
+        cobalt::updater::kDefaultUpdateCheckDelaySeconds;
+    if (command_line->HasSwitch(browser::switches::kUpdateCheckDelaySeconds)) {
+      std::string seconds_value = command_line->GetSwitchValueASCII(
+          browser::switches::kUpdateCheckDelaySeconds);
+      if (!base::StringToUint64(seconds_value, &update_check_delay_sec)) {
+        LOG(WARNING) << "Invalid delay specified for the update check: "
+                     << seconds_value << ". Using default value: "
+                     << cobalt::updater::kDefaultUpdateCheckDelaySeconds;
+        update_check_delay_sec =
+            cobalt::updater::kDefaultUpdateCheckDelaySeconds;
+      }
+    }
+    updater_module_.reset(new updater::UpdaterModule(network_module_.get(),
+                                                     update_check_delay_sec));
   }
 #endif
   browser_module_.reset(new BrowserModule(
@@ -852,9 +877,6 @@ Application::Application(const base::Closure& quit_closure, bool should_preload,
 #endif
       options));
 
-  DCHECK(browser_module_);
-  browser_module_->SetApplicationStartOrPreloadTimestamp(should_preload,
-                                                         timestamp);
   UpdateUserAgent();
 
   // Register event callbacks.
@@ -1013,10 +1035,12 @@ void Application::Start(SbTimeMonotonic timestamp) {
         base::Bind(&Application::Start, base::Unretained(this), timestamp));
     return;
   }
+  DCHECK_CALLED_ON_VALID_THREAD(application_event_thread_checker_);
 
+  if (!start_timestamp_.has_value()) {
+    start_timestamp_ = timestamp;
+  }
   OnApplicationEvent(kSbEventTypeStart, timestamp);
-  browser_module_->SetApplicationStartOrPreloadTimestamp(false /*is_preload*/,
-                                                         timestamp);
 }
 
 void Application::Quit() {
@@ -1025,6 +1049,7 @@ void Application::Quit() {
         FROM_HERE, base::Bind(&Application::Quit, base::Unretained(this)));
     return;
   }
+  DCHECK_CALLED_ON_VALID_THREAD(application_event_thread_checker_);
 
   quit_closure_.Run();
 }
@@ -1395,14 +1420,34 @@ void Application::OnDateTimeConfigurationChangedEvent(
 }
 #endif
 
-void Application::WebModuleCreated() {
+void Application::WebModuleCreated(WebModule* web_module) {
   TRACE_EVENT0("cobalt::browser", "Application::WebModuleCreated()");
+  DCHECK(web_module);
+  if (preload_timestamp_.has_value()) {
+    web_module->SetApplicationStartOrPreloadTimestamp(
+        true, preload_timestamp_.value());
+  }
+  if (start_timestamp_.has_value()) {
+    web_module->SetApplicationStartOrPreloadTimestamp(false,
+                                                      start_timestamp_.value());
+  }
   DispatchDeepLinkIfNotConsumed();
 #if defined(ENABLE_WEBDRIVER)
   if (web_driver_module_) {
     web_driver_module_->OnWindowRecreated();
   }
 #endif
+  if (!unload_event_start_time_.is_null() ||
+      !unload_event_end_time_.is_null()) {
+    web_module->SetUnloadEventTimingInfo(unload_event_start_time_,
+                                         unload_event_end_time_);
+  }
+}
+
+void Application::CollectUnloadEventTimingInfo(base::TimeTicks start_time,
+                                               base::TimeTicks end_time) {
+  unload_event_start_time_ = start_time;
+  unload_event_end_time_ = end_time;
 }
 
 Application::CValStats::CValStats()

@@ -133,6 +133,9 @@ class Component {
   std::vector<base::Value> GetEvents() const;
 
  private:
+#if defined(STARBOARD)
+  bool is_cancelled_ = false;
+#endif
   friend class MockPingManagerImpl;
   friend class UpdateCheckerTest;
 
@@ -168,6 +171,41 @@ class Component {
 #endif
 
     ComponentState state() const { return state_; }
+
+#if defined(STARBOARD)
+    std::string state_name() {
+      switch (state_) {
+        case ComponentState::kNew:
+          return "New";
+        case ComponentState::kChecking:
+          return "Checking";
+        case ComponentState::kCanUpdate:
+          return "CanUpdate";
+        case ComponentState::kDownloadingDiff:
+          return "DownloadingDiff";
+        case ComponentState::kDownloading:
+          return "Downloaded";
+        case ComponentState::kUpdatingDiff:
+          return "UpdatingDiff";
+        case ComponentState::kUpdating:
+          return "Updating";
+        case ComponentState::kUpdated:
+          return "Updated";
+        case ComponentState::kUpToDate:
+          return  "UpToDate";
+        case ComponentState::kUpdateError:
+          return "UpdateError";
+        case ComponentState::kUninstalled:
+          return "Uninstalled";
+        case ComponentState::kRun:
+          return "Run";
+        case ComponentState::kLastStatus:
+          return "LastStatus";
+        default:
+          return "Unknown";
+      }
+    }
+#endif
 
    protected:
     // Initiates the transition to the new state.

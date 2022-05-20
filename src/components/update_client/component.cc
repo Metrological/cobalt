@@ -15,6 +15,9 @@
 #include "base/single_thread_task_runner.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/task/post_task.h"
+#if defined(STARBOARD)
+#include "base/threading/thread_id_name_manager.h"
+#endif
 #include "base/threading/thread_task_runner_handle.h"
 #include "base/values.h"
 #include "components/update_client/action_runner.h"
@@ -81,6 +84,10 @@ void InstallComplete(
     InstallOnBlockingTaskRunnerCompleteCallback callback,
     const base::FilePath& unpack_path,
     const CrxInstaller::Result& result) {
+#if defined(STARBOARD)
+    LOG(INFO) << "InstallComplete thread_name="
+              << base::ThreadIdNameManager::GetInstance()->GetNameForCurrentThread();
+#endif
   base::PostTaskWithTraits(
       FROM_HERE, {base::TaskPriority::BEST_EFFORT, base::MayBlock()},
       base::BindOnce(
@@ -88,7 +95,10 @@ void InstallComplete(
              InstallOnBlockingTaskRunnerCompleteCallback callback,
              const base::FilePath& unpack_path,
              const CrxInstaller::Result& result) {
-
+#if defined(STARBOARD)
+            LOG(INFO) << "Closure kicked off from InstallComplete thread_name="
+              << base::ThreadIdNameManager::GetInstance()->GetNameForCurrentThread();
+#endif
 // For Cobalt, don't delete the unpack_path, which is not a temp directory.
 // Cobalt uses a dedicated installation slot obtained from the Installation
 // Manager.
@@ -111,11 +121,19 @@ void InstallOnBlockingTaskRunner(
     const std::string& public_key,
 #if defined(STARBOARD)
     const int installation_index,
+    PersistedData* metadata,
+    const std::string& id,
+    const std::string& version,
 #endif
     const std::string& fingerprint,
     scoped_refptr<CrxInstaller> installer,
     InstallOnBlockingTaskRunnerCompleteCallback callback) {
   DCHECK(base::DirectoryExists(unpack_path));
+
+#if defined(STARBOARD)
+  LOG(INFO) << "InstallOnBlockingTaskRunner thread_name="
+              << base::ThreadIdNameManager::GetInstance()->GetNameForCurrentThread();
+#endif
 
 #if !defined(STARBOARD)
   // Acquire the ownership of the |unpack_path|.
@@ -141,11 +159,11 @@ void InstallOnBlockingTaskRunner(
       static_cast<const CobaltExtensionInstallationManagerApi*>(
           SbSystemGetExtension(kCobaltExtensionInstallationManagerName));
   if (!installation_api) {
-    SB_LOG(ERROR) << "Failed to get installation manager api.";
+    LOG(ERROR) << "Failed to get installation manager api.";
     // TODO: add correct error code.
     install_error = InstallError::GENERIC_ERROR;
   } else if (installation_index == IM_EXT_INVALID_INDEX) {
-    SB_LOG(ERROR) << "Installation index is invalid.";
+    LOG(ERROR) << "Installation index is invalid.";
     // TODO: add correct error code.
     install_error = InstallError::GENERIC_ERROR;
   } else {
@@ -155,8 +173,16 @@ void InstallOnBlockingTaskRunner(
       // TODO: add correct error code.
       install_error = InstallError::GENERIC_ERROR;
     } else {
-      if (!CobaltFinishInstallation(installation_api, installation_index,
+      if (CobaltFinishInstallation(installation_api, installation_index,
                                     unpack_path.value(), app_key)) {
+        // Write the version of the unpacked update package to the persisted data.
+        if (metadata != nullptr) {
+          main_task_runner->PostTask(
+              FROM_HERE, base::BindOnce(&PersistedData::SetLastInstalledVersion,
+                                        base::Unretained(metadata), id, version));
+        }
+      } else {
+
         // TODO: add correct error code.
         install_error = InstallError::GENERIC_ERROR;
       }
@@ -187,8 +213,9 @@ void UnpackCompleteOnBlockingTaskRunner(
     scoped_refptr<CrxInstaller> installer,
     InstallOnBlockingTaskRunnerCompleteCallback callback,
     const ComponentUnpacker::Result& result) {
-
 #if defined(STARBOARD)
+  LOG(INFO) << "UnpackCompleteOnBlockingTaskRunner thread_name="
+              << base::ThreadIdNameManager::GetInstance()->GetNameForCurrentThread();
   base::DeleteFile(crx_path, false);
 #else
   update_client::DeleteFileAndEmptyParentDirectory(crx_path);
@@ -199,8 +226,15 @@ void UnpackCompleteOnBlockingTaskRunner(
     // When there is an error unpacking the downloaded CRX, such as a failure to
     // verify the package, we should remember to clear out any drain files.
     if (base::DirectoryExists(crx_path.DirName())) {
-      CobaltSlotManagement cobalt_slot_management;
-      cobalt_slot_management.CleanupAllDrainFiles(crx_path.DirName());
+      const auto installation_api =
+        static_cast<const CobaltExtensionInstallationManagerApi*>(
+          SbSystemGetExtension(kCobaltExtensionInstallationManagerName));
+      if (installation_api) {
+        CobaltSlotManagement cobalt_slot_management;
+        if (cobalt_slot_management.Init(installation_api)) {
+          cobalt_slot_management.CleanupAllDrainFiles();
+        }
+      }
     }
 #endif
     main_task_runner->PostTask(
@@ -210,21 +244,15 @@ void UnpackCompleteOnBlockingTaskRunner(
     return;
   }
 
-#if defined(STARBOARD)
-  // Write the version of the unpacked update package to the persisted data.
-  if (metadata != nullptr) {
-    main_task_runner->PostTask(
-        FROM_HERE, base::BindOnce(&PersistedData::SetLastUnpackedVersion,
-                                  base::Unretained(metadata), id, version));
-  }
-#endif
-
   base::PostTaskWithTraits(
       FROM_HERE, kTaskTraits,
       base::BindOnce(&InstallOnBlockingTaskRunner, main_task_runner,
                      result.unpack_path, result.public_key,
 #if defined(STARBOARD)
                      installation_index,
+                     metadata,
+                     id,
+                     version,
 #endif
                      fingerprint, installer, std::move(callback)));
 }
@@ -245,6 +273,10 @@ void StartInstallOnBlockingTaskRunner(
     scoped_refptr<Patcher> patcher_,
     crx_file::VerifierFormat crx_format,
     InstallOnBlockingTaskRunnerCompleteCallback callback) {
+#if defined(STARBOARD)
+  LOG(INFO) << "StartInstallOnBlockingTaskRunner thread_name="
+              << base::ThreadIdNameManager::GetInstance()->GetNameForCurrentThread();
+#endif
   auto unpacker = base::MakeRefCounted<ComponentUnpacker>(
       pk_hash, crx_path, installer, std::move(unzipper_), std::move(patcher_),
       crx_format);
@@ -274,9 +306,17 @@ const char* DownloaderToString(CrxDownloader::DownloadMetrics::Downloader d) {
 Component::Component(const UpdateContext& update_context, const std::string& id)
     : id_(id),
       state_(std::make_unique<StateNew>(this)),
-      update_context_(update_context) {}
+      update_context_(update_context) {
+#if defined(STARBOARD)
+  LOG(INFO) << "Component::Component";
+#endif
+}
 
-Component::~Component() {}
+Component::~Component() {
+#if defined(STARBOARD)
+  LOG(INFO) << "Component::~Component";
+#endif
+}
 
 scoped_refptr<Configurator> Component::config() const {
   return update_context_.config;
@@ -293,7 +333,9 @@ bool Component::is_foreground() const {
 void Component::Handle(CallbackHandleComplete callback_handle_complete) {
   DCHECK(thread_checker_.CalledOnValidThread());
   DCHECK(state_);
-
+#if defined(STARBOARD)
+  LOG(INFO) << "Component::Handle";
+#endif
   callback_handle_complete_ = std::move(callback_handle_complete);
 
   state_->Handle(
@@ -303,12 +345,17 @@ void Component::Handle(CallbackHandleComplete callback_handle_complete) {
 #if defined(STARBOARD)
 void Component::Cancel() {
   DCHECK(thread_checker_.CalledOnValidThread());
+  is_cancelled_ = true;
   state_->Cancel();
 }
 #endif
 
 void Component::ChangeState(std::unique_ptr<State> next_state) {
   DCHECK(thread_checker_.CalledOnValidThread());
+#if defined(STARBOARD)
+  LOG(INFO) << "Component::ChangeState next_state="
+    << ((next_state)? next_state->state_name(): "nullptr");
+#endif
 
   previous_state_ = state();
   if (next_state)
@@ -413,7 +460,16 @@ void Component::AppendEvent(base::Value event) {
 
 void Component::NotifyObservers(UpdateClient::Observer::Events event) const {
   DCHECK(thread_checker_.CalledOnValidThread());
+
+#if defined(STARBOARD)
+  if (!is_cancelled_) {
+    update_context_.notify_observers_callback.Run(event, id_);
+  } else {
+    LOG(WARNING) << "Component::NotifyObservers: skip callback";
+  }
+#else
   update_context_.notify_observers_callback.Run(event, id_);
+#endif
 }
 
 base::TimeDelta Component::GetUpdateDuration() const {
@@ -533,6 +589,9 @@ Component::State::~State() {}
 
 void Component::State::Handle(CallbackNextState callback_next_state) {
   DCHECK(thread_checker_.CalledOnValidThread());
+#if defined(STARBOARD)
+  LOG(INFO) << "Component::State::Handle";
+#endif
 
   callback_next_state_ = std::move(callback_next_state);
 
@@ -542,7 +601,7 @@ void Component::State::Handle(CallbackNextState callback_next_state) {
 #if defined(STARBOARD)
 void Component::State::Cancel() {
   DCHECK(thread_checker_.CalledOnValidThread());
-  // Further work may be needed to ensure cancelation during any state results
+  // Further work may be needed to ensure cancellation during any state results
   // in a clear result and no memory leaks.
 }
 #endif
@@ -550,6 +609,10 @@ void Component::State::Cancel() {
 void Component::State::TransitionState(std::unique_ptr<State> next_state) {
   DCHECK(thread_checker_.CalledOnValidThread());
   DCHECK(next_state);
+#if defined(STARBOARD)
+  LOG(INFO) << "Component::State::TransitionState next_state="
+    << ((next_state)? next_state->state_name(): "nullptr");
+#endif
 
   base::ThreadTaskRunnerHandle::Get()->PostTask(
       FROM_HERE,
@@ -628,7 +691,7 @@ void Component::StateChecking::UpdateCheckComplete() {
                                   base::Unretained(metadata), component.id_,
                                   config->GetChannel()));
   } else {
-    SB_LOG(WARNING) << "Failed to get the persisted data store to write the "
+    LOG(WARNING) << "Failed to get the persisted data store to write the "
                        "updater channel.";
   }
 #endif
@@ -666,8 +729,15 @@ void Component::StateUpdateError::DoHandle() {
   DCHECK_NE(ErrorCategory::kNone, component.error_category_);
   DCHECK_NE(0, component.error_code_);
 
+#if defined(STARBOARD)
+  // Create an event when the server response included an update, or when it's
+  // an update check error, like quick roll-forward or out of space
+  if (component.IsUpdateAvailable() ||
+      component.error_category_ == ErrorCategory::kUpdateCheck)
+#else
   // Create an event only when the server response included an update.
   if (component.IsUpdateAvailable())
+#endif
     component.AppendEvent(component.MakeEventUpdateComplete());
 
   EndState();
@@ -972,13 +1042,16 @@ Component::StateUpdating::~StateUpdating() {
 }
 
 void Component::StateUpdating::DoHandle() {
+#if defined(STARBOARD)
+  LOG(INFO) << "Component::StateUpdating::DoHandle() thread_name="
+              << base::ThreadIdNameManager::GetInstance()->GetNameForCurrentThread();
+#endif
   DCHECK(thread_checker_.CalledOnValidThread());
 
   const auto& component = Component::State::component();
   const auto& update_context = component.update_context_;
 
   DCHECK(component.crx_component());
-
   component.NotifyObservers(Events::COMPONENT_UPDATE_READY);
 
   base::CreateSequencedTaskRunnerWithTraits(kTaskTraits)
@@ -998,6 +1071,7 @@ void Component::StateUpdating::DoHandle() {
                      component.crx_component()->crx_format_requirement,
                      base::BindOnce(&Component::StateUpdating::InstallComplete,
                                     base::Unretained(this))));
+
 }
 
 void Component::StateUpdating::InstallComplete(ErrorCategory error_category,

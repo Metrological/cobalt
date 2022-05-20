@@ -18,6 +18,10 @@
 #include "components/update_client/protocol_parser.h"
 #include "url/gurl.h"
 
+#if defined(STARBOARD)
+#include "cobalt/extension/installation_manager.h"
+#endif
+
 namespace update_client {
 
 class Configurator;
@@ -50,6 +54,11 @@ class UpdateChecker {
       const base::flat_map<std::string, std::string>& additional_attributes,
       bool enabled_component_updates,
       UpdateCheckCallback update_check_callback) = 0;
+
+#if defined(STARBOARD)
+  virtual void Cancel() = 0;
+  virtual bool SkipUpdate(const CobaltExtensionInstallationManagerApi* installation_api) = 0;
+#endif
 
   static std::unique_ptr<UpdateChecker> Create(
       scoped_refptr<Configurator> config,

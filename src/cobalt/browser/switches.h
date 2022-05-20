@@ -41,6 +41,8 @@ extern const char kDisableImageAnimationsHelp[];
 extern const char kForceDeterministicRendering[];
 extern const char kDisableMediaCodecs[];
 extern const char kDisableMediaCodecsHelp[];
+extern const char kDisableMediaEncryptionSchemes[];
+extern const char kDisableMediaEncryptionSchemesHelp[];
 extern const char kDisableRasterizerCaching[];
 extern const char kDisableSignIn[];
 extern const char kDisableSignInHelp[];
@@ -96,6 +98,8 @@ extern const char kDisableOnScreenKeyboardHelp[];
         // SB_HAS(ON_SCREEN_KEYBOARD)
 #endif  // ENABLE_DEBUG_COMMAND_LINE_SWITCHES
 
+extern const char kCompressUpdate[];
+extern const char kCompressUpdateHelp[];
 extern const char kDisableJavaScriptJit[];
 extern const char kDisableJavaScriptJitHelp[];
 extern const char kDisableMapToMesh[];
@@ -151,6 +155,8 @@ extern const char kFallbackSplashScreenURL[];
 extern const char kFallbackSplashScreenURLHelp[];
 extern const char kFallbackSplashScreenTopics[];
 extern const char kFallbackSplashScreenTopicsHelp[];
+extern const char kUpdateCheckDelaySeconds[];
+extern const char kUpdateCheckDelaySecondsHelp[];
 extern const char kVersion[];
 extern const char kVersionHelp[];
 extern const char kViewport[];

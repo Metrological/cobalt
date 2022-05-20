@@ -166,16 +166,24 @@ scoped_ptr<MediaCodecBridge> MediaCodecBridge::CreateAudioMediaCodecBridge(
     return scoped_ptr<MediaCodecBridge>(NULL);
   }
   JniEnvExt* env = JniEnvExt::Get();
+  ScopedLocalJavaRef<jbyteArray> configuration_data;
+  if (audio_codec == kSbMediaAudioCodecOpus &&
+      audio_sample_info.audio_specific_config_size != 0) {
+    configuration_data.Reset(env->NewByteArrayFromRaw(
+        static_cast<const jbyte*>(audio_sample_info.audio_specific_config),
+        audio_sample_info.audio_specific_config_size));
+  }
   ScopedLocalJavaRef<jstring> j_mime(env->NewStringStandardUTFOrAbort(mime));
   scoped_ptr<MediaCodecBridge> native_media_codec_bridge(
       new MediaCodecBridge(handler));
   jobject j_media_codec_bridge = env->CallStaticObjectMethodOrAbort(
       "dev/cobalt/media/MediaCodecBridge", "createAudioMediaCodecBridge",
-      "(JLjava/lang/String;ZZIILandroid/media/MediaCrypto;)Ldev/cobalt/media/"
+      "(JLjava/lang/String;IILandroid/media/MediaCrypto;[B)Ldev/cobalt/media/"
       "MediaCodecBridge;",
       reinterpret_cast<jlong>(native_media_codec_bridge.get()), j_mime.Get(),
-      !!j_media_crypto, false, audio_sample_info.samples_per_second,
-      audio_sample_info.number_of_channels, j_media_crypto);
+      audio_sample_info.samples_per_second,
+      audio_sample_info.number_of_channels, j_media_crypto,
+      configuration_data.Get());
 
   if (!j_media_codec_bridge) {
     return scoped_ptr<MediaCodecBridge>(NULL);
@@ -199,6 +207,7 @@ scoped_ptr<MediaCodecBridge> MediaCodecBridge::CreateVideoMediaCodecBridge(
     bool require_software_codec,
     int tunnel_mode_audio_session_id,
     bool force_big_endian_hdr_metadata,
+    bool force_improved_support_check,
     std::string* error_message) {
   SB_DCHECK(error_message);
 
@@ -248,16 +257,16 @@ scoped_ptr<MediaCodecBridge> MediaCodecBridge::CreateVideoMediaCodecBridge(
       new MediaCodecBridge(handler));
   env->CallStaticVoidMethodOrAbort(
       "dev/cobalt/media/MediaCodecBridge", "createVideoMediaCodecBridge",
-      "(JLjava/lang/String;ZZIIILandroid/view/Surface;"
+      "(JLjava/lang/String;ZZZIIILandroid/view/Surface;"
       "Landroid/media/MediaCrypto;"
       "Ldev/cobalt/media/MediaCodecBridge$ColorInfo;"
       "I"
       "Ldev/cobalt/media/MediaCodecBridge$CreateMediaCodecBridgeResult;)"
       "V",
       reinterpret_cast<jlong>(native_media_codec_bridge.get()), j_mime.Get(),
-      !!j_media_crypto, require_software_codec, width, height, fps, j_surface,
-      j_media_crypto, j_color_info.Get(), tunnel_mode_audio_session_id,
-      j_create_media_codec_bridge_result.Get());
+      !!j_media_crypto, require_software_codec, force_improved_support_check,
+      width, height, fps, j_surface, j_media_crypto, j_color_info.Get(),
+      tunnel_mode_audio_session_id, j_create_media_codec_bridge_result.Get());
 
   jobject j_media_codec_bridge = env->CallObjectMethodOrAbort(
       j_create_media_codec_bridge_result.Get(), "mediaCodecBridge",
@@ -338,11 +347,20 @@ jint MediaCodecBridge::QueueSecureInputBuffer(
   ScopedLocalJavaRef<jintArray> j_encrypted_bytes(
       env->NewIntArrayFromRaw(encrypted_bytes.get(), subsample_count));
 
+  jint cipher_mode = CRYPTO_MODE_AES_CTR;
+  jint blocks_to_encrypt = 0;
+  jint blocks_to_skip = 0;
+  if (drm_sample_info.encryption_scheme == kSbDrmEncryptionSchemeAesCbc) {
+    cipher_mode = CRYPTO_MODE_AES_CBC;
+    blocks_to_encrypt = drm_sample_info.encryption_pattern.crypt_byte_block;
+    blocks_to_skip = drm_sample_info.encryption_pattern.skip_byte_block;
+  }
+
   return env->CallIntMethodOrAbort(
       j_media_codec_bridge_, "queueSecureInputBuffer", "(II[B[B[I[IIIIIJ)I",
       index, offset, j_iv.Get(), j_key_id.Get(), j_clear_bytes.Get(),
-      j_encrypted_bytes.Get(), subsample_count, CRYPTO_MODE_AES_CTR, 0, 0,
-      presentation_time_microseconds);
+      j_encrypted_bytes.Get(), subsample_count, cipher_mode, blocks_to_encrypt,
+      blocks_to_skip, presentation_time_microseconds);
 }
 
 jobject MediaCodecBridge::GetOutputBuffer(jint index) {
