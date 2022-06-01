@@ -1429,6 +1429,7 @@ bool PlayerImpl::WriteSample(SbMediaType sample_type,
 
   bool decrypted = true;
   if (!session_id.empty()) {
+    GST_LOG_OBJECT(src, "Decrypting using %s...", session_id.c_str());
     DCHECK(drm_system_);
     decrypted = drm_system_->Decrypt(session_id, buffer, drmInfo);
     if (!decrypted)
@@ -1512,6 +1513,8 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
             sample_infos[0].drm_info->identifier,
             sample_infos[0].drm_info->identifier_size);
     if (session_id.empty() || keep_samples) {
+      GST_INFO("No session/pending flushing operation. Storing sample");
+      GST_INFO("SampleType:%d %" GST_TIME_FORMAT " b:%p ", sample_type, GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(buffer)), buffer);
       PendingSample sample(sample_type, buffer, sample_infos[0].drm_info);
       key_str = {
           reinterpret_cast<const char*>(sample_infos[0].drm_info->identifier),
@@ -1526,6 +1529,7 @@ void PlayerImpl::WriteSample(SbMediaType sample_type,
     if (keep_samples) {
       ::starboard::ScopedLock lock(mutex_);
       GST_INFO("Pending flushing operation. Storing sample");
+      GST_INFO("SampleType:%d %" GST_TIME_FORMAT " b:%p", sample_type, GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(buffer)), buffer);
       PendingSample sample(sample_type, buffer, nullptr);
       key_str = {kClearSamplesKey};
       pending_[key_str].emplace_back(std::move(sample));
@@ -1885,6 +1889,11 @@ void PlayerImpl::OnKeyReady(const uint8_t* key, size_t key_len) {
               });
     GstClockTime prev_ts = -1;
     for (auto& sample : local_samples) {
+      GST_INFO("Writing pending: SampleType:%d %" GST_TIME_FORMAT
+                " b:%p",
+                sample.Type(),
+                GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(sample.Buffer())),
+                sample.Buffer());
       if (prev_ts == GST_BUFFER_TIMESTAMP(sample.Buffer())) {
         GST_WARNING("Skipping %" GST_TIME_FORMAT ". Already written.",
                     GST_TIME_ARGS(prev_ts));
@@ -1892,6 +1901,7 @@ void PlayerImpl::OnKeyReady(const uint8_t* key, size_t key_len) {
       }
       prev_ts = GST_BUFFER_TIMESTAMP(sample.Buffer());
       if (WriteSample(sample.Type(), sample.Buffer(), session_id, sample.DrmSampleInfo())){
+        GST_INFO("Pending sample was written.");
         sample.Written();
       }
     }
