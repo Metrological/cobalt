@@ -173,10 +173,6 @@ bool SbSystemGetPath(SbSystemPathId path_id, char* out_path, int path_size) {
       SbDirectoryCreate(path);
       break;
 
-    case kSbSystemPathTestOutputDirectory:
-      return SbSystemGetPath(kSbSystemPathDebugOutputDirectory, out_path,
-                             path_size);
-
     case kSbSystemPathExecutableFile:
       return GetExecutablePath(out_path, path_size);
 

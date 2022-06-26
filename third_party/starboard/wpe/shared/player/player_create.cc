@@ -16,28 +16,18 @@
 #include "third_party/starboard/wpe/shared/player/player_internal.h"
 
 SbPlayer SbPlayerCreate(SbWindow window,
-                        SbMediaVideoCodec video_codec,
-                        SbMediaAudioCodec audio_codec,
-#if SB_API_VERSION < 10
-                        SbMediaTime /* duration_pts */,
-#endif  // SB_API_VERSION < 10
-                        SbDrmSystem drm_system,
-                        const SbMediaAudioSampleInfo* audio_sample_info,
-#if SB_API_VERSION >= 11
-                        const char* max_video_capabilities,
-#endif  // SB_API_VERSION >= 11
+                        const SbPlayerCreationParam* creation_param,
                         SbPlayerDeallocateSampleFunc sample_deallocate_func,
                         SbPlayerDecoderStatusFunc decoder_status_func,
                         SbPlayerStatusFunc player_status_func,
                         SbPlayerErrorFunc player_error_func,
                         void* context,
-                        SbPlayerOutputMode output_mode,
                         SbDecodeTargetGraphicsContextProvider* provider) {
   return new SbPlayerPrivate(
-      window, video_codec, audio_codec, drm_system, audio_sample_info,
+      window, creation_param->video_sample_info.codec, creation_param->audio_sample_info.codec, creation_param->drm_system, &creation_param->audio_sample_info,
 #if SB_API_VERSION >= 11
-      max_video_capabilities,
+      creation_param->video_sample_info.max_video_capabilities,
 #endif  // SB_API_VERSION >= 11
       sample_deallocate_func, decoder_status_func, player_status_func,
-      player_error_func, context, output_mode, provider);
+      player_error_func, context, creation_param->output_mode, provider);
 }

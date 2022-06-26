@@ -17,8 +17,7 @@
 #include "starboard/common/log.h"
 
 #if SB_API_VERSION >= 10
-int SbMediaGetBufferAlignment(SbMediaType type) {
-  SB_UNREFERENCED_PARAMETER(type);
+int SbMediaGetBufferAlignment() {
   return 1;
 }
 #endif  // SB_API_VERSION >= 10

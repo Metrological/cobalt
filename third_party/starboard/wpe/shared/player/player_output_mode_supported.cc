@@ -14,8 +14,8 @@
 
 #include "starboard/player.h"
 
-bool SbPlayerOutputModeSupported(SbPlayerOutputMode output_mode,
-                                 SbMediaVideoCodec /*codec*/,
-                                 SbDrmSystem /*drm_system*/) {
-  return output_mode == kSbPlayerOutputModePunchOut;
+#include "starboard/configuration.h"
+
+SbPlayerOutputMode SbPlayerGetPreferredOutputMode(const SbPlayerCreationParam* creation_param) {
+  return kSbPlayerOutputModePunchOut;
 }
