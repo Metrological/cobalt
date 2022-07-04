@@ -18,6 +18,8 @@
 #include <utility>
 
 #include "cobalt/script/environment_settings.h"
+#include "cobalt/web/message_port.h"
+#include "cobalt/worker/service_worker_global_scope.h"
 #include "cobalt/worker/service_worker_object.h"
 #include "cobalt/worker/service_worker_state.h"
 
@@ -28,6 +30,7 @@ ServiceWorker::ServiceWorker(script::EnvironmentSettings* settings,
                              worker::ServiceWorkerObject* worker)
     : web::EventTarget(settings),
       worker_(worker),
+      message_port_(new web::MessagePort(worker->worker_global_scope())),
       state_(kServiceWorkerStateParsed) {}
 
 }  // namespace worker
