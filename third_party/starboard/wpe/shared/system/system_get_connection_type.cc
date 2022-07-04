@@ -19,8 +19,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if SB_API_VERSION < 14
+
 SbSystemConnectionType SbSystemGetConnectionType() {
   // Check an environment variable for the current state.
   const char* value = ::getenv("COBALT_CONNECTION_TYPE");
   return ((value != nullptr) && (::strcmp(value, "wireless") == 0) ? kSbSystemConnectionTypeWireless : kSbSystemConnectionTypeWired);
 }
+
+#endif  // SB_API_VERSION < 14
