@@ -23,6 +23,9 @@ SB_EXPORT bool SbMediaIsAudioSupported(SbMediaAudioCodec audio_codec,
                                        const char* content_type,
 #endif  // SB_API_VERSION >= 12
                                        int64_t bitrate) {
+  if (audio_codec == kSbMediaAudioCodecOpus) {
+      return false;
+  }
   return bitrate < kSbMediaMaxAudioBitrateInBitsPerSecond &&
          third_party::starboard::wpe::shared::media::
              GstRegistryHasElementForMediaType(audio_codec);
