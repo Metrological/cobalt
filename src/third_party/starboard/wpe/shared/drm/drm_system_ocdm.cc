@@ -65,7 +65,7 @@ class Session {
       const SbDrmSessionClosedFunc session_closed_callback);
   ~Session();
   void Close();
-  void GenerateChallenge(const std::string& type,
+  SbDrmStatus GenerateChallenge(const std::string& type,
                          const void* initialization_data,
                          int initialization_data_size,
                          int ticket);
@@ -162,7 +162,7 @@ void Session::Close() {
   }
 }
 
-void Session::GenerateChallenge(const std::string& type,
+SbDrmStatus Session::GenerateChallenge(const std::string& type,
                                 const void* initialization_data,
                                 int initialization_data_size,
                                 int ticket) {
@@ -184,7 +184,7 @@ void Session::GenerateChallenge(const std::string& type,
                                      kSbDrmStatusUnknownError,
                                      kSbDrmSessionRequestTypeLicenseRequest,
                                      nullptr, nullptr, 0, nullptr, 0, nullptr);
-    return;
+    return kSbDrmStatusUnknownError;
   }
 
   session_.reset(session);
@@ -202,6 +202,9 @@ void Session::GenerateChallenge(const std::string& type,
   if (!challenge.empty()) {
     Session::ProcessChallenge(this, ticket, std::move(id), std::move(url),
                               std::move(challenge));
+    return kSbDrmStatusSuccess;
+  } else {
+    return kSbDrmStatusQuotaExceededError;
   }
 }
 
@@ -430,9 +433,18 @@ void DrmSystemOcdm::GenerateSessionUpdateRequest(
       new Session(this, ocdm_system_, context_,
                   session_update_request_callback_, session_updated_callback_,
                   key_statuses_changed_callback_, session_closed_callback_));
-  session->GenerateChallenge(type, initialization_data,
-                             initialization_data_size, ticket);
-  sessions_.push_back(std::move(session));
+  SbDrmStatus result = session->GenerateChallenge(type, initialization_data, initialization_data_size, ticket);
+  if (result == kSbDrmStatusSuccess) {
+    sessions_.push_back(std::move(session));
+  } else if (result == kSbDrmStatusQuotaExceededError) {
+    // Key rotation use-case: Max limit of 16 concurrent sessions is reached.
+    // Release previously created sessions and attempt again.
+    sessions_.erase(sessions_.begin(), std::prev(sessions_.end()));
+    SbDrmStatus result = session->GenerateChallenge(type, initialization_data, initialization_data_size, ticket);
+    if (result == kSbDrmStatusSuccess) {
+      sessions_.push_back(std::move(session));
+    }
+  }
 }
 
 void DrmSystemOcdm::UpdateSession(int ticket,
