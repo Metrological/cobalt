@@ -31,11 +31,11 @@ self.oninstall = function (e) {
   console.log('oninstall event received', e);
 
   console.log('self.clients.claim()');
-  self.clients.claim().then(function (clients) {
+  e.waitUntil(self.clients.claim().then(function (clients) {
     console.log('(Unexpected) self.clients.claim():', clients);
   }, function (error) {
     console.log(`(Expected) self.clients.claim() not yet activated: ${error}`, error);
-  });
+  }));
 
 }
 self.onactivate = function (e) {
@@ -43,28 +43,28 @@ self.onactivate = function (e) {
 
   // Claim should pass here, since the state is activating.
   console.log('self.clients.claim()');
-  self.clients.claim().then(function (clients) {
+  e.waitUntil(self.clients.claim().then(function (clients) {
     console.log('(Expected) self.clients.claim():', clients);
 
     var options = {
       includeUncontrolled: false, type: 'window'
     };
     console.log('self.clients.matchAll(options)');
-    self.clients.matchAll(options).then(function (clients) {
+    e.waitUntil(self.clients.matchAll(options).then(function (clients) {
       console.log('(Expected) self.clients.matchAll():', clients.length, clients);
       for (var i = 0; i < clients.length; i++) {
-        console.log('Client with url', clients[i].url);
-        console.log('Client with frameType', clients[i].frameType);
-        console.log('Client with id', clients[i].id);
-        console.log('Client with type', clients[i].type);
+        console.log('Client with url', clients[i].url,
+          'frameType', clients[i].frameType,
+          'id', clients[i].id,
+          'type', clients[i].type);
       }
     }, function (error) {
       console.log(`(Unexpected) self.clients.matchAll(): ${error}`, error);
-    });
+    }));
 
   }, function (error) {
     console.log(`(Unexpected) self.clients.claim(): ${error}`, error);
-  });
+  }));
 
 }
 console.log('self.registration', self.registration);
@@ -106,10 +106,10 @@ self.clients.matchAll().then(function (clients) {
   console.log('(Expected) self.clients.matchAll():', clients.length, clients);
   // Note: This will return 0 clients if none are controlled so far.
   for (var i = 0; i < clients.length; i++) {
-    console.log('Client with url', clients[i].url);
-    console.log('Client with frameType', clients[i].frameType);
-    console.log('Client with id', clients[i].id);
-    console.log('Client with type', clients[i].type);
+    console.log('Client with url', clients[i].url,
+      'frameType', clients[i].frameType,
+      'id', clients[i].id,
+      'type', clients[i].type);
   }
 }, function (error) {
   console.log(`(Unexpected) self.clients.matchAll(): ${error}`, error);
@@ -123,18 +123,18 @@ console.log('self.clients.matchAll(options)');
 self.clients.matchAll(options).then(function (clients) {
   console.log('(Expected) self.clients.matchAll():', clients.length, clients);
   for (var i = 0; i < clients.length; i++) {
-    console.log('Client with url', clients[i].url);
-    console.log('Client with frameType', clients[i].frameType);
-    console.log('Client with id', clients[i].id);
-    console.log('Client with type', clients[i].type);
+    console.log('Client with url', clients[i].url,
+      'frameType', clients[i].frameType,
+      'id', clients[i].id,
+      'type', clients[i].type);
 
     console.log('self.clients.get()');
     self.clients.get(clients[i].id).then(function (client) {
       console.log('(Expected) self.clients.get():', client);
-      console.log('Client with url', client.url);
-      console.log('Client with frameType', client.frameType);
-      console.log('Client with id', client.id);
-      console.log('Client with type', client.type);
+      console.log('Client with url', client.url,
+        'frameType', client.frameType,
+        'id', client.id,
+        'type', client.type);
     }, function (error) {
       console.log(`(Unexpected) self.clients.get(): ${error}`, error);
     });

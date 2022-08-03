@@ -180,10 +180,21 @@ bool H5vccCrashLog::Ping(const std::string& name,
   return false;
 }
 
-std::string H5vccCrashLog::GetWatchdogViolations(bool current) {
+std::string H5vccCrashLog::GetWatchdogViolations() {
   watchdog::Watchdog* watchdog = watchdog::Watchdog::GetInstance();
-  if (watchdog) return watchdog->GetWatchdogViolations(current);
+  if (watchdog) return watchdog->GetWatchdogViolations();
   return "";
+}
+
+bool H5vccCrashLog::GetPersistentSettingWatchdogEnable() {
+  watchdog::Watchdog* watchdog = watchdog::Watchdog::GetInstance();
+  if (watchdog) return watchdog->GetPersistentSettingWatchdogEnable();
+  return true;
+}
+
+void H5vccCrashLog::SetPersistentSettingWatchdogEnable(bool enable_watchdog) {
+  watchdog::Watchdog* watchdog = watchdog::Watchdog::GetInstance();
+  if (watchdog) watchdog->SetPersistentSettingWatchdogEnable(enable_watchdog);
 }
 
 bool H5vccCrashLog::GetPersistentSettingWatchdogCrash() {
