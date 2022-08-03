@@ -94,9 +94,7 @@ static_library("starboard_platform_sources") {
   ]
 
   media_sources = [
-    "//starboard/shared/starboard/media/codec_util.cc",
     "//starboard/shared/starboard/media/media_can_play_mime_and_key_system.cc",
-    "//starboard/shared/starboard/media/media_util.cc",
     "//starboard/shared/starboard/media/mime_type.cc",
     "//starboard/shared/stub/media_set_audio_write_duration.cc",
 

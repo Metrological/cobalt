@@ -18,10 +18,10 @@
 #include "third_party/starboard/wpe/shared/media/gst_media_utils.h"
 #include "starboard/configuration_constants.h"
 
+using ::starboard::shared::starboard::media::MimeType;
+
 SB_EXPORT bool SbMediaIsAudioSupported(SbMediaAudioCodec audio_codec,
-#if SB_API_VERSION >= 12
-                                       const char* content_type,
-#endif  // SB_API_VERSION >= 12
+                                       const MimeType* mime_type,
                                        int64_t bitrate) {
   if (audio_codec == kSbMediaAudioCodecOpus) {
       return false;
