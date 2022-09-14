@@ -36,17 +36,10 @@ class UserAgentDataTest : public testing::TestWithJavaScript {
   UserAgentDataTest() {
     InitializeEmptyPlatformInfo();
 
-    web::testing::StubWebContext* stub_web_context =
-        new web::testing::StubWebContext();
-    stub_web_context->set_platform_info(platform_info_.get());
-    testing::StubWindow* stub_window = new testing::StubWindow(
-        DOMSettings::Options(), nullptr /* on_screen_keyboard_bridge */,
-        stub_web_context);
-    set_stub_window(stub_window);
+    stub_web_context()->set_platform_info(platform_info_.get());
 
     // Inject H5vcc interface to make it also accessible via Window
     h5vcc::H5vcc::Settings h5vcc_settings;
-    h5vcc_settings.media_module = NULL;
     h5vcc_settings.network_module = NULL;
 #if SB_IS(EVERGREEN)
     h5vcc_settings.updater_module = NULL;

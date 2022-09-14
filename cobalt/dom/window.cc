@@ -129,8 +129,12 @@ Window::Window(
     bool log_tts)
     // 'window' object EventTargets require special handling for onerror events,
     // see EventTarget constructor for more details.
-    : web::WindowOrWorkerGlobalScope(settings, dom_stat_tracker,
-                                     initial_application_state),
+    : web::WindowOrWorkerGlobalScope(
+          settings, dom_stat_tracker,
+          web::WindowOrWorkerGlobalScope::Options(
+              initial_application_state, post_sender, require_csp,
+              csp_enforcement_mode, csp_policy_changed_callback,
+              csp_insecure_allowed_token)),
       viewport_size_(view_size),
       is_resize_event_pending_(false),
       is_reporting_script_error_(false),
@@ -155,9 +159,7 @@ Window::Window(
               base::Bind(&Window::FireHashChangeEvent, base::Unretained(this)),
               performance_->timing()->GetNavigationStartClock(),
               navigation_callback, ParseUserAgentStyleSheet(css_parser),
-              view_size, cookie_jar, post_sender, require_csp,
-              csp_enforcement_mode, csp_policy_changed_callback,
-              csp_insecure_allowed_token, dom_max_element_depth)))),
+              view_size, cookie_jar, dom_max_element_depth)))),
       document_loader_(nullptr),
       history_(new History()),
       navigator_(new Navigator(environment_settings(), captions)),
@@ -172,7 +174,6 @@ Window::Window(
       ALLOW_THIS_IN_INITIALIZER_LIST(
           session_storage_(new Storage(this, Storage::kSessionStorage, NULL))),
       screen_(new Screen(view_size)),
-      preflight_cache_(new loader::CORSPreflightCache()),
       ran_animation_frame_callbacks_callback_(
           ran_animation_frame_callbacks_callback),
       window_close_callback_(window_close_callback),
@@ -503,35 +504,33 @@ bool Window::ReportScriptError(const script::ErrorReport& error_report) {
   // 7. Let event be a new trusted ErrorEvent object that does not bubble but is
   //    cancelable, and which has the event name error.
   // NOTE: Cobalt does not currently support trusted events.
-  web::ErrorEventInit error_event_init;
-  error_event_init.set_bubbles(false);
-  error_event_init.set_cancelable(true);
+  web::ErrorEventInit error;
+  error.set_bubbles(false);
+  error.set_cancelable(true);
 
   if (error_report.is_muted) {
     // 6. If script has muted errors, then set message to "Script error.", set
     //    location to the empty string, set line and col to 0, and set error
     //    object to null.
-    error_event_init.set_message("Script error.");
-    error_event_init.set_filename("");
-    error_event_init.set_lineno(0);
-    error_event_init.set_colno(0);
-    error_event_init.set_error(NULL);
+    error.set_message("Script error.");
+    error.set_filename("");
+    error.set_lineno(0);
+    error.set_colno(0);
+    error.set_error(NULL);
   } else {
     // 8. Initialize event's message attribute to message.
-    error_event_init.set_message(error_report.message);
+    error.set_message(error_report.message);
     // 9. Initialize event's filename attribute to location.
-    error_event_init.set_filename(error_report.filename);
+    error.set_filename(error_report.filename);
     // 10. Initialize event's lineno attribute to line.
-    error_event_init.set_lineno(error_report.line_number);
+    error.set_lineno(error_report.line_number);
     // 11. Initialize event's colno attribute to col.
-    error_event_init.set_colno(error_report.column_number);
+    error.set_colno(error_report.column_number);
     // 12. Initialize event's error attribute to error object.
-    error_event_init.set_error(error_report.error ? error_report.error.get()
-                                                  : NULL);
+    error.set_error(error_report.error ? error_report.error.get() : NULL);
   }
 
-  scoped_refptr<web::ErrorEvent> error_event(
-      new web::ErrorEvent(base::Tokens::error(), error_event_init));
+  scoped_refptr<web::ErrorEvent> error_event(new web::ErrorEvent(error));
 
   // 13. Dispatch event at target.
   DispatchEvent(error_event);

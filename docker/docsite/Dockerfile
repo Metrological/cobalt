@@ -12,14 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM ruby:2.7-buster
+ARG FROM_IMAGE
+FROM ${FROM_IMAGE:-cobalt-build-base}
 
 ARG USER
 ARG UID
 ARG GID
 
 RUN apt update -qqy \
-    && apt install -qqy --no-install-recommends bundler doxygen git nodejs python \
+    && apt install -qqy --no-install-recommends \
+        build-essential \
+        bundler \
+        doxygen \
+        git \
+        python-pygments \
+        ruby2.5-dev \
+        ruby-execjs \
     && apt-get clean autoclean \
     && apt-get autoremove -y --purge \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
@@ -35,6 +43,13 @@ RUN bundle install --gemfile=/app/Gemfile
 RUN addgroup --group --gid "${GID}" defaultgroup \
     && adduser --disabled-password --gecos '' --uid "${UID}" --gid "${GID}" defaultuser
 
+# The new user must be able to execute gn.
+RUN chmod a+x /usr/local/bin/gn
+
+# Create an out directory with a descriptive name for gn.
+RUN mkdir /project_out_dir \
+    && chown ${USER:-defaultuser}:defaultgroup /project_out_dir
+
 USER ${USER:-defaultuser}
 
-CMD /cobalt/third_party/repo-publishing-toolkit-local/preview-site.sh
+CMD /code/third_party/repo-publishing-toolkit-local/preview-site.sh run

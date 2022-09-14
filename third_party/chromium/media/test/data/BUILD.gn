@@ -1,4 +1,4 @@
-# Copyright 2021 The Cobalt Authors. All Rights Reserved.
+# Copyright 2022 The Cobalt Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,18 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-static_library("cobalt_test_webapi_extension") {
-  # List of all source files and header files needed to support the IDL
-  # definitions.
-  sources = [
-    "my_new_interface.cc",
-    "my_new_interface.h",
-    "webapi_extension.cc",
-  ]
-
-  deps = [
-    "//base",
-    "//cobalt/dom",
-    "//cobalt/script",
+# A target containing test data to be used by Cobalt. Other files can be added
+# as needed.
+copy("media_testdata") {
+  testonly = true
+  install_content = true
+  sources = [ "bear-320x240.webm" ]
+  subdir = "third_party/chromium/media/test/data"
+  outputs = [
+    "$sb_static_contents_output_data_dir/$subdir/{{source_target_relative}}",
   ]
 }

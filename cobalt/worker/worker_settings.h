@@ -33,9 +33,20 @@ class WorkerSettings : public web::EnvironmentSettings {
 
   web::MessagePort* message_port() const { return message_port_; }
 
+  // From: script::EnvironmentSettings
+  //
+  const GURL& base_url() const override;
+
+  // Return the origin of window's associated Document.
+  //   https://html.spec.whatwg.org/#set-up-a-window-environment-settings-object
+  void set_origin(const loader::Origin& origin) { origin_ = origin; }
+  loader::Origin GetOrigin() const override;
+
  private:
   // Outer message port.
   web::MessagePort* message_port_ = nullptr;
+
+  loader::Origin origin_;
 };
 
 }  // namespace worker

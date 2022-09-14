@@ -24,12 +24,17 @@
 #include "base/threading/thread.h"
 #include "cobalt/browser/user_agent_platform_info.h"
 #include "cobalt/script/environment_settings.h"
+#include "cobalt/script/v8c/conversion_helpers.h"
+#include "cobalt/script/v8c/v8c_exception_state.h"
+#include "cobalt/script/v8c/v8c_value_handle.h"
 #include "cobalt/web/error_event.h"
+#include "cobalt/web/error_event_init.h"
 #include "cobalt/web/message_port.h"
 #include "cobalt/worker/dedicated_worker_global_scope.h"
 #include "cobalt/worker/worker_global_scope.h"
 #include "cobalt/worker/worker_options.h"
 #include "cobalt/worker/worker_settings.h"
+#include "v8/include/v8.h"
 
 namespace cobalt {
 namespace worker {
@@ -72,7 +77,7 @@ void Worker::WillDestroyCurrentMessageLoop() {
 Worker::~Worker() { Abort(); }
 
 void Worker::Initialize(web::Context* context) {
-  // Algorithm for 'run a worker'
+  // Algorithm for 'run a worker':
   //   https://html.spec.whatwg.org/commit-snapshots/465a6b672c703054de278b0f8133eb3ad33d93f4/#run-a-worker
   // 7. Let realm execution context be the result of creating a new
   //    JavaScript realm given agent and the following customizations:
@@ -80,11 +85,19 @@ void Worker::Initialize(web::Context* context) {
   //    . For the global object, if is shared is true, create a new
   //      SharedWorkerGlobalScope object. Otherwise, create a new
   //      DedicatedWorkerGlobalScope object.
-  // TODO: Actual type here should depend on derived class (e.g. dedicated,
-  // shared, service)
-  web_context_->setup_environment_settings(
-      new WorkerSettings(options_.outside_port));
-  web_context_->environment_settings()->set_base_url(options_.url);
+  WorkerSettings* worker_settings = new WorkerSettings(options_.outside_port);
+  // From algorithm to set up a worker environment settings object
+  // Let inherited origin be outside settings's origin.
+  // The origin return a unique opaque origin if worker global scope's url's
+  // scheme is "data", and inherited origin otherwise.
+  //   https://html.spec.whatwg.org/commit-snapshots/465a6b672c703054de278b0f8133eb3ad33d93f4/#set-up-a-worker-environment-settings-object
+  worker_settings->set_origin(options_.outside_settings->GetOrigin());
+  web_context_->setup_environment_settings(worker_settings);
+  // From algorithm for to setup up a worker environment settings object:
+  //   https://html.spec.whatwg.org/commit-snapshots/465a6b672c703054de278b0f8133eb3ad33d93f4/#set-up-a-worker-environment-settings-object
+  // 5. Set settings object's creation URL to worker global scope's url.
+  web_context_->environment_settings()->set_creation_url(options_.url);
+  // Continue algorithm for 'run a worker'.
   // 8. Let worker global scope be the global object of realm execution
   //    context's Realm component.
   scoped_refptr<DedicatedWorkerGlobalScope> dedicated_worker_global_scope =
@@ -148,7 +161,7 @@ void Worker::Obtain() {
   //     1. Set request's reserved client to inside settings.
   //     2. Fetch request, and asynchronously wait to run the remaining steps as
   //        part of fetch's process response for the response response.
-  const GURL& url = web_context_->environment_settings()->base_url();
+  const GURL& url = web_context_->environment_settings()->creation_url();
   loader::Origin origin = loader::Origin(url.GetOrigin());
 
   // Todo: implement csp check (b/225037465)
@@ -167,7 +180,7 @@ void Worker::OnContentProduced(const loader::Origin& last_url_origin,
   DCHECK(content);
   // 14.3. "Set worker global scope's url to response's url."
   worker_global_scope_->set_url(
-      web_context_->environment_settings()->base_url());
+      web_context_->environment_settings()->creation_url());
   // 14.4 - 14.10 initialize worker global scope
   worker_global_scope_->Initialize();
   // 14.11. Asynchronously complete the perform the fetch steps with response.
@@ -246,10 +259,18 @@ void Worker::Execute(const std::string& content,
   std::string retval = web_context_->script_runner()->Execute(
       content, script_location, mute_errors, &succeeded);
   if (!succeeded) {
-    LOG(WARNING) << "Script execution failed : " << retval;
     options_.outside_settings->context()
-        ->GetWindowOrWorkerGlobalScope()
-        ->DispatchEvent(new web::Event(base::Tokens::error()));
+        ->message_loop()
+        ->task_runner()
+        ->PostTask(FROM_HERE,
+                   base::BindOnce(
+                       [](web::Context* context, const std::string& message) {
+                         web::ErrorEventInit error;
+                         error.set_message(message);
+                         context->GetWindowOrWorkerGlobalScope()->DispatchEvent(
+                             new web::ErrorEvent(error));
+                       },
+                       options_.outside_settings->context(), retval));
   }
 
   // 24. Enable outside port's port message queue.
@@ -311,23 +332,20 @@ void Worker::Terminate() {
   // TODO(b/226640425): Implement this when Message Ports can be entangled.
 }
 
-// void postMessage(any message, object transfer);
-// -> void PostMessage(const script::ValueHandleHolder& message,
-//                     script::Sequence<script::ValueHandle*> transfer) {}
-void Worker::PostMessage(const std::string& message) {
+void Worker::PostMessage(const script::ValueHandleHolder& message) {
   DCHECK(message_loop());
+  auto serialized_message = script::SerializeScriptValue(message);
   if (base::MessageLoop::current() != message_loop()) {
     // Block until the worker thread is ready to execute code to handle the
     // event.
     execution_ready_.Wait();
     message_loop()->task_runner()->PostTask(
-        FROM_HERE,
-        base::BindOnce(&Worker::PostMessage, base::Unretained(this), message));
-    return;
+        FROM_HERE, base::BindOnce(&web::MessagePort::PostMessageSerialized,
+                                  message_port()->AsWeakPtr(),
+                                  std::move(serialized_message)));
   } else {
     DCHECK(execution_ready_.IsSignaled());
-    DCHECK(message_port());
-    if (message_port()) message_port()->PostMessage(message);
+    message_port()->PostMessageSerialized(std::move(serialized_message));
   }
 }
 

@@ -15,6 +15,9 @@ can be found in the comments of the "Experimental Feature Defines" section of
 [configuration.h](configuration.h).
 
 ## Version 14
+### Require kSbSystemPathStorageDirectory on all platforms.
+Path to directory for permanent persistent storage.
+
 ### Add MP3, FLAC, and PCM values to SbMediaAudioCodec.
 This makes it possible to support these codecs in the future.
 
@@ -62,6 +65,15 @@ This constant defines maximum space in bytes the cache directory
 `kSbSystemPathCacheDirectory` can use. The default value is 24MiB. Platforms can
 set `kSbMaxSystemPathCacheDirectorySize` to a larger value in
 "starboard/<PLATFORM_PATH>/configuration_constants.cc".
+
+### Add nplb tests to enforce performance of SbMediaCanPlayMimeAndKeySystem().
+Add SbMediaCanPlayMimeAndKeySystem.ValidatePerformance to enforce the
+performance of SbMediaCanPlayMimeAndKeySystem(). On platforms that fail such
+tests, MimeSupportabilityCache and KeySystemSupportabilityCache can be enabled
+to improve the performance. The caches store the results of previous queries and
+reuse them for repeated queries. Note that if caches are enabled, the platform
+need to clear the caches if there's any codec or audio/video output capability
+change.
 
 ## Version 13
 ### Changed lifecycle events to add support for a concealed state.

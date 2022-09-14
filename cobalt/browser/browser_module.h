@@ -355,10 +355,6 @@ class BrowserModule {
   // Toggles the input fuzzer on/off.  Ignores the parameter.
   void OnFuzzerToggle(const std::string&);
 
-  // Use the config in the form of '<string name>=<int value>' to call
-  // MediaModule::SetConfiguration().
-  void OnSetMediaConfig(const std::string& config);
-
   // Sets the disabled media codecs in the debug console and in
   // the CanPlayTypeHandler instance.
   // Future requests to play videos with these codecs will report that these
@@ -472,6 +468,9 @@ class BrowserModule {
   // Function that creates the H5vcc object that will be injected into WebModule
   scoped_refptr<script::Wrappable> CreateH5vcc(
       script::EnvironmentSettings* settings);
+
+  // Validates the PersistentSettings for cache backend, if in use.
+  void ValidateCacheBackendSettings();
 
   // TODO:
   //     WeakPtr usage here can be avoided if BrowserModule has a thread to
@@ -611,10 +610,6 @@ class BrowserModule {
   // Command handler object for toggling the input fuzzer on/off.
   debug::console::ConsoleCommandManager::CommandHandler
       fuzzer_toggle_command_handler_;
-
-  // Command handler object for setting media module config.
-  debug::console::ConsoleCommandManager::CommandHandler
-      set_media_config_command_handler_;
 
   // Command handler object for screenshot command from the debug console.
   debug::console::ConsoleCommandManager::CommandHandler

@@ -44,9 +44,17 @@ class WindowOrWorkerGlobalScope;
 class Context {
  public:
   virtual ~Context() {}
+
+  class EnvironmentSettingsChangeObserver {
+   public:
+    virtual void OnEnvironmentSettingsChanged(bool context_valid) = 0;
+
+   protected:
+    virtual ~EnvironmentSettingsChangeObserver() = default;
+  };
+
   virtual base::MessageLoop* message_loop() const = 0;
   virtual void ShutDownJavaScriptEngine() = 0;
-  virtual void set_fetcher_factory(loader::FetcherFactory* factory) = 0;
   virtual loader::FetcherFactory* fetcher_factory() const = 0;
   virtual loader::ScriptLoaderFactory* script_loader_factory() const = 0;
   virtual script::JavaScriptEngine* javascript_engine() const = 0;
@@ -78,10 +86,15 @@ class Context {
 
   virtual WindowOrWorkerGlobalScope* GetWindowOrWorkerGlobalScope() = 0;
 
-  virtual UserAgentPlatformInfo* platform_info() const = 0;
+  virtual const UserAgentPlatformInfo* platform_info() const = 0;
 
   virtual std::string GetUserAgent() const = 0;
   virtual std::string GetPreferredLanguage() const = 0;
+
+  virtual void AddEnvironmentSettingsChangeObserver(
+      EnvironmentSettingsChangeObserver* observer) = 0;
+  virtual void RemoveEnvironmentSettingsChangeObserver(
+      EnvironmentSettingsChangeObserver* observer) = 0;
 
   // https://w3c.github.io/ServiceWorker/#dfn-control
   virtual bool is_controlled_by(worker::ServiceWorkerObject* worker) const = 0;
