@@ -334,7 +334,7 @@ void GStreamerAudioSink::AppSrcNeedData(GstAppSrc* src,
                                offset_in_frames * sink->GetBytesPerFrame();
           gst_buffer_fill(buffer, 0, beginning,
                           frames_to_write * sink->GetBytesPerFrame());
-          GST_DEBUG_OBJECT(sink->pipeline_, "Pushing %d frames (%d bytes)",
+          GST_DEBUG_OBJECT(sink->pipeline_, "Pushing %d frames (%ld bytes)",
                            frames_to_write,
                            frames_to_write * sink->GetBytesPerFrame());
           auto timestamp = gst_util_uint64_scale(
@@ -354,7 +354,7 @@ void GStreamerAudioSink::AppSrcNeedData(GstAppSrc* src,
 
           GST_DEBUG_OBJECT(sink->pipeline_,
                            "Update consumed by %d. Total %d"
-                           "(%d b)",
+                           "(%ld b)",
                            frames_to_write, sink->total_frames_,
                            sink->total_frames_ * sink->GetBytesPerFrame());
           sink->consume_frame_func_(frames_to_write,

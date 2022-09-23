@@ -100,7 +100,7 @@ std::unique_ptr<MemorySettingType> CreateMemorySetting(
       new MemorySettingType(setting_name));
   SetMemorySetting(command_line_setting, build_setting, autoset_value,
                    output.get());
-  return std::move(output);
+  return output;
 }
 
 std::unique_ptr<IntSetting> CreateSystemMemorySetting(
