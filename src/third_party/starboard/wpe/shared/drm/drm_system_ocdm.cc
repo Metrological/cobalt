@@ -648,9 +648,11 @@ bool DrmSystemOcdm::Decrypt(const std::string& id,
   else if(drm_info->encryption_scheme == kSbDrmEncryptionSchemeAesCbc) {
       encScheme = AesCbc_Cbcs;
   }
-  retVal = opencdm_gstreamer_session_decrypt_v2(session->OcdmSession(), buffer,
-                                           sub_sample, subsamples_count, encScheme, encPattern, iv,
-                                           key, 0) == ERROR_NONE;
+
+  retVal = opencdm_gstreamer_session_decrypt(session->OcdmSession(), buffer,
+                                           sub_sample, subsamples_count, iv,
+                                           key, false) == ERROR_NONE;
+
   #else
   retVal = opencdm_gstreamer_session_decrypt(session->OcdmSession(), buffer,
                                            sub_sample, subsamples_count, iv,
