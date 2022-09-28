@@ -16,7 +16,6 @@
     'has_ocdm': '<!(echo $COBALT_HAS_OCDM)',
     'has_provision': '<!(echo $COBALT_HAS_PROVISION)',
     'has_waylandsink': '<!(echo $COBALT_HAS_WAYLANDSINK)',
-    'cobalt_data_path': '<!(echo $COBALT_DATA_PATH)',
     'common_defines': [],
     'use_system_libjpeg': 1,
     'audio_sink_sources': [
@@ -469,6 +468,9 @@
         '<(DEPTH)/third_party/starboard/wpe/shared/get_home_directory.cc',
         '<(DEPTH)/third_party/starboard/wpe/shared/main_wpe.cc',
     ],
+    'variables': {
+      'cobalt_data_path': '<!(echo $COBALT_DATA_PATH)',
+    },
     'conditions': [
       ['cobalt_data_path!=""', {
         'common_defines': [
