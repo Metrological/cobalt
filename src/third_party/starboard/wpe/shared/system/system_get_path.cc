@@ -32,6 +32,12 @@
 namespace {
 const int kMaxPathSize = kSbFileMaxPath;
 
+#ifdef COBALT_DATA_PATH
+const char* DataPath = COBALT_DATA_PATH;
+#else
+const char* DataPath = "/usr/share/content/data";
+#endif
+
 // Gets the path to the cache directory, using the user's home directory.
 bool GetCacheDirectory(char* out_path, int path_size) {
   char home_path[kMaxPathSize + 1];
@@ -138,8 +144,7 @@ bool SbSystemGetPath(SbSystemPathId path_id, char* out_path, int path_size) {
 
   switch (path_id) {
     case kSbSystemPathContentDirectory:
-      if (starboard::strlcat(path,
-                         "/usr/share/content/data", kPathSize) >= kPathSize) {
+      if (starboard::strlcat(path, DataPath, kPathSize) >= kPathSize) {
         return false;
       }
       break;
