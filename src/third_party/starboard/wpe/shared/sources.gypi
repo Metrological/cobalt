@@ -468,7 +468,15 @@
         '<(DEPTH)/third_party/starboard/wpe/shared/get_home_directory.cc',
         '<(DEPTH)/third_party/starboard/wpe/shared/main_wpe.cc',
     ],
+    'variables': {
+      'cobalt_data_path': '<!(echo $COBALT_DATA_PATH)',
+    },
     'conditions': [
+      ['cobalt_data_path!=""', {
+        'common_defines': [
+          'COBALT_DATA_PATH=<(cobalt_data_path)',
+        ],
+      }],
       ['<(has_ocdm)==1', {
         'common_defines': [
           'HAS_OCDM',
