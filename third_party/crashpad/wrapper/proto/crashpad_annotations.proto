@@ -1,4 +1,4 @@
-// Copyright 2016 The Cobalt Authors. All Rights Reserved.
+// Copyright 2022 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,10 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-include ':app'
+syntax = "proto3";
 
-println "GRADLE VERSION: $gradle.gradleVersion"
+option optimize_for = LITE_RUNTIME;
 
-gradle.ext.rootBuildDir = hasProperty('cobaltGradleDir')
-    ? new File(cobaltGradleDir, 'build')
-    : new File(rootDir, "/../../../out/android_studio/gradle/build").canonicalFile
+package crashpad.wrapper;
+
+// Annotations that can be shared between Cobalt and Crashpad handler processes.
+// Next id: 5
+message CrashpadAnnotations {
+  // The product name.
+  string prod = 1;
+
+  // The product version.
+  string ver = 2;
+
+  // The User-Agent string that identifies brand, model, etc.
+  string user_agent_string = 3;
+
+  // Annotations with keys that are unknown at compile time.
+  map<string, string> runtime_annotations = 4;
+}
+

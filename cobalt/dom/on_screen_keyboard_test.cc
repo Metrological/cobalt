@@ -112,6 +112,10 @@ class OnScreenKeyboardMockBridge : public OnScreenKeyboardBridge {
 
   void SetKeepFocus(bool keep_focus) override { SetKeepFocusMock(keep_focus); }
 
+  void SetBackgroundColor(uint8 r, uint8 g, uint8 b) override {}
+
+  void SetLightTheme(bool light_theme) override {}
+
   MOCK_METHOD1(ShowMock, void(std::string));
   MOCK_METHOD0(HideMock, void());
   MOCK_METHOD0(BlurMock, void());
@@ -602,6 +606,50 @@ TEST_F(OnScreenKeyboardTest, KeepFocus) {
     window.onScreenKeyboard.keepFocus = true;
   )";
   EXPECT_TRUE(EvaluateScript(script, NULL));
+}
+
+TEST_F(OnScreenKeyboardTest, SetBackgroundColor) {
+  if (SkipLocale()) return;
+
+  std::string result;
+  EXPECT_TRUE(
+      EvaluateScript("window.onScreenKeyboard.backgroundColor;", &result));
+  EXPECT_EQ("null", result);
+
+  std::string color_str = "#0000FF";
+  EXPECT_TRUE(EvaluateScript("window.onScreenKeyboard.backgroundColor = '" +
+                                 color_str +
+                                 "';"
+                                 "window.onScreenKeyboard.backgroundColor",
+                             &result));
+
+  EXPECT_EQ(color_str, result);
+
+  color_str = "rgb(0, 0, 100)";
+  EXPECT_TRUE(EvaluateScript("window.onScreenKeyboard.backgroundColor = '" +
+                                 color_str +
+                                 "';"
+                                 "window.onScreenKeyboard.backgroundColor",
+                             &result));
+
+  EXPECT_EQ(color_str, result);
+}
+
+TEST_F(OnScreenKeyboardTest, SetLightTheme) {
+  if (SkipLocale()) return;
+
+  std::string result;
+  EXPECT_TRUE(EvaluateScript("window.onScreenKeyboard.lightTheme;", &result));
+  EXPECT_EQ("null", result);
+
+  std::string light_theme_str = "true";
+  EXPECT_TRUE(
+      EvaluateScript("window.onScreenKeyboard.lightTheme = " + light_theme_str +
+                         ";"
+                         "window.onScreenKeyboard.lightTheme",
+                     &result));
+
+  EXPECT_EQ(light_theme_str, result);
 }
 
 }  // namespace dom

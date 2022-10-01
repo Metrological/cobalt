@@ -96,5 +96,34 @@ void OnScreenKeyboardStarboardBridge::SetKeepFocus(bool keep_focus) {
   return SbWindowSetOnScreenKeyboardKeepFocus(sb_window_provider_.Run(),
                                               keep_focus);
 }
+
+void OnScreenKeyboardStarboardBridge::SetBackgroundColor(uint8 r, uint8 g,
+                                                         uint8 b) {
+  const CobaltExtensionOnScreenKeyboardApi* on_screen_keyboard_extension =
+      static_cast<const CobaltExtensionOnScreenKeyboardApi*>(
+          SbSystemGetExtension(kCobaltExtensionOnScreenKeyboardName));
+
+  if (on_screen_keyboard_extension &&
+      strcmp(on_screen_keyboard_extension->name,
+             kCobaltExtensionOnScreenKeyboardName) == 0 &&
+      on_screen_keyboard_extension->version >= 1) {
+    on_screen_keyboard_extension->SetBackgroundColor(sb_window_provider_.Run(),
+                                                     r, g, b);
+  }
+}
+
+void OnScreenKeyboardStarboardBridge::SetLightTheme(bool light_theme) {
+  const CobaltExtensionOnScreenKeyboardApi* on_screen_keyboard_extension =
+      static_cast<const CobaltExtensionOnScreenKeyboardApi*>(
+          SbSystemGetExtension(kCobaltExtensionOnScreenKeyboardName));
+
+  if (on_screen_keyboard_extension &&
+      strcmp(on_screen_keyboard_extension->name,
+             kCobaltExtensionOnScreenKeyboardName) == 0 &&
+      on_screen_keyboard_extension->version >= 1) {
+    on_screen_keyboard_extension->SetLightTheme(sb_window_provider_.Run(),
+                                                light_theme);
+  }
+}
 }  // namespace browser
 }  // namespace cobalt
