@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import("//third_party/starboard/wpe/rpi/toolchain/wpe_toolchain.gni")
+import("//third_party/starboard/wpe/arm/toolchain/wpe_toolchain.gni")
 template("install_target") {
   installable_target_name = invoker.installable_target_name
 
@@ -41,7 +41,7 @@ template("install_target") {
     deps = invoker.deps
     deps += [ ":$installable_target_name" ]
 
-    outputs = [ "$sb_install_output_dir/$install_subdir/$installable_target_name/$source_name" ]
+    outputs = [ "$sb_install_output_dir/$install_subdir/$source_name" ]
 
     args = [
       rebase_path(strip_executable, root_build_dir),

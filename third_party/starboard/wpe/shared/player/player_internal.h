@@ -27,7 +27,7 @@ struct SB_EXPORT Player {
   virtual void SetBounds(int zindex, int x, int y, int w, int h) = 0;
 
  protected:
-  bool PlatformNonFushingSetRate(_GstElement* pipeline, double rate);
+  bool PlatformNonFushingSetRate(_GstElement* pipeline, double rate) { return false; }
 };
 
 }  // namespace player

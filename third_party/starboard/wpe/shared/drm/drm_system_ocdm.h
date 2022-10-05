@@ -80,10 +80,7 @@ class DrmSystemOcdm : public SbDrmSystemPrivate {
   std::string SessionIdByKeyId(const uint8_t* key, uint8_t key_len);
   bool Decrypt(const std::string& id,
                _GstBuffer* buffer,
-               _GstBuffer* sub_sample,
-               uint32_t sub_sample_count,
-               _GstBuffer* iv,
-               _GstBuffer* key_id);
+               const SbDrmSampleInfo* drm_info);
   std::set<std::string> GetReadyKeys() const;
   KeysWithStatus GetSessionKeys(const std::string& session_id) const;
 

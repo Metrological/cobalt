@@ -12,11 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import("//starboard/build/config/base_configuration.gni")
+import("//build/toolchain/gcc_toolchain.gni")
+import("//third_party/starboard/wpe/arm/toolchain/wpe_toolchain.gni")
 
-sb_static_contents_output_data_dir = "$root_out_dir/content/data"
+gcc_toolchain("host") {
+  cc = "gcc"
+  extra_cflags = "-m32"
+  cxx = "g++"
+  extra_cxxflags = "-m32"
+  ld = cxx
+  extra_ldflags = "-m32"
+  ar = "ar"
 
-final_executable_type = "shared_library"
+  toolchain_args = {
+    is_clang = false
+    current_os = "linux"
+    current_cpu = "x86"
+  }
+}
 
-separate_install_targets_for_bundling = false
-install_target_path = "//third_party/starboard/wpe/shared/install_target.gni"
+gcc_toolchain("target") {
+  cc = gcc_toolchain_cc
+  cxx = gcc_toolchain_cxx
+  ld = cxx
+  ar = gcc_toolchain_ar
+
+  tail_lib_dependencies = "-l:libpthread.so.0"
+
+  toolchain_args = {
+    is_clang = false
+  }
+}

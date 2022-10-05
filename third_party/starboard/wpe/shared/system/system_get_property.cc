@@ -12,17 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <string>
-
-#include "starboard/common/log.h"
-#include "starboard/common/string.h"
-
-#ifdef HAS_PROVISION
-#include <provisionproxy/AccessProvision.h>
-#endif
-
-#include <cstring>
-#include <deviceinfo/deviceinfo.h>
+#include "system_get_property.h"
 
 namespace {
 
@@ -208,4 +198,8 @@ bool SbSystemGetProperty(SbSystemPropertyId property_id,
   }
 
   return false;
+}
+
+void DisposePropertyInfo() {
+    deviceinfo_dispose();
 }

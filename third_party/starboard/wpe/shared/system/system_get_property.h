@@ -12,11 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Implementation of SbMediaGetAudioOutputCount for a single audio output.
+#include <string>
 
-#include "starboard/media.h"
+#include "starboard/common/log.h"
+#include "starboard/common/string.h"
 
-int SbMediaGetAudioOutputCount() {
-  // HDMI:
-  return 1;
-}
+#ifdef HAS_PROVISION
+#include <provisionproxy/AccessProvision.h>
+#endif
+
+#include <cstring>
+#include <deviceinfo/deviceinfo.h>
+
+void DisposePropertyInfo();
+
