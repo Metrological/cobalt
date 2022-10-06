@@ -474,7 +474,7 @@
     'conditions': [
       ['cobalt_data_path!=""', {
         'common_defines': [
-          'COBALT_DATA_PATH=<(cobalt_data_path)',
+          'COBALT_DATA_PATH="<(cobalt_data_path)"',
         ],
       }],
       ['<(has_ocdm)==1', {
