@@ -45,7 +45,7 @@
       ['<(has_provision)==1', {
         'common_linker_flags': [
           '-Wl,--whole-archive',
-          '-lprovisionproxy',
+          '-lWPEFrameworkProvisionProxy',
           '-lprovision',
           '-Wl,--no-whole-archive',
         ],
