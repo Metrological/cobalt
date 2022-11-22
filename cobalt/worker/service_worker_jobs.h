@@ -48,6 +48,7 @@
 #include "cobalt/worker/service_worker_registration_object.h"
 #include "cobalt/worker/service_worker_update_via_cache.h"
 #include "cobalt/worker/worker_type.h"
+#include "starboard/atomic.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -83,11 +84,14 @@ class ServiceWorkerJobs {
     void Resolve(const bool result);
     void Resolve(const scoped_refptr<cobalt::script::Wrappable>& result);
     void Reject(script::SimpleExceptionType exception);
+    void Reject(web::DOMException::ExceptionCode code,
+                const std::string& message);
     void Reject(const scoped_refptr<script::ScriptException>& result);
 
-    script::PromiseState State();
+    bool is_pending() const { return is_pending_.load(); }
 
    private:
+    starboard::atomic_bool is_pending_{true};
     std::unique_ptr<script::ValuePromiseBool::Reference>
         promise_bool_reference_;
     std::unique_ptr<script::ValuePromiseWrappable::Reference>
@@ -204,7 +208,7 @@ class ServiceWorkerJobs {
       const base::WeakPtr<ServiceWorkerObject>& service_worker,
       std::unique_ptr<script::ValuePromiseVoid::Reference> promise_reference);
 
-  // Sub steps for WaitUntil.
+  // Sub steps for ExtendableEvent.WaitUntil().
   //   https://w3c.github.io/ServiceWorker/#dom-extendableevent-waituntil
   void WaitUntilSubSteps(ServiceWorkerRegistrationObject* registration);
 
@@ -239,6 +243,13 @@ class ServiceWorkerJobs {
       web::Context* client_context,
       ServiceWorkerObject* associated_service_worker,
       std::unique_ptr<script::ValuePromiseVoid::Reference> promise_reference);
+
+  // Parallel sub steps (6) for algorithm for ServiceWorker.postMessage():
+  //   https://w3c.github.io/ServiceWorker/#service-worker-postmessage-options
+  void ServiceWorkerPostMessageSubSteps(
+      ServiceWorkerObject* service_worker,
+      web::EnvironmentSettings* incumbent_settings,
+      std::unique_ptr<script::DataBuffer> serialize_result);
 
   // Registration of web contexts that may have service workers.
   void RegisterWebContext(web::Context* context);
@@ -344,6 +355,9 @@ class ServiceWorkerJobs {
   void UpdateOnContentProduced(scoped_refptr<UpdateJobState> state,
                                const loader::Origin& last_url_origin,
                                std::unique_ptr<std::string> content);
+  bool UpdateOnResponseStarted(
+      scoped_refptr<UpdateJobState> state, loader::Fetcher* fetcher,
+      const scoped_refptr<net::HttpResponseHeaders>& headers);
   void UpdateOnLoadingComplete(scoped_refptr<UpdateJobState> state,
                                const base::Optional<std::string>& error);
 
@@ -399,9 +413,6 @@ class ServiceWorkerJobs {
 
   // https://w3c.github.io/ServiceWorker/#update-state-algorithm
   void UpdateWorkerState(ServiceWorkerObject* worker, ServiceWorkerState state);
-
-  // https://w3c.github.io/ServiceWorker/#should-skip-event-algorithm
-  bool ShouldSkipEvent(base::Token event_name, ServiceWorkerObject* worker);
 
   // https://w3c.github.io/ServiceWorker/#on-client-unload-algorithm
   void HandleServiceWorkerClientUnload(web::EnvironmentSettings* client);

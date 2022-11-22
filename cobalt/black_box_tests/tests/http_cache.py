@@ -35,7 +35,7 @@ class DelayedHttpRequestHandler(MakeRequestHandlerClass(_SERVER_ROOT_PATH)):
     parsed_path = urlparse(self.path)
 
     if parsed_path.path.startswith('/testdata/http_cache_test_resources/'):
-      time.sleep(10)
+      time.sleep(3)
 
     return SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
 
@@ -43,7 +43,7 @@ class DelayedHttpRequestHandler(MakeRequestHandlerClass(_SERVER_ROOT_PATH)):
 class HttpCacheTest(black_box_tests.BlackBoxTestCase):
   """Load resources, then reload the page and verify."""
 
-  def test_simple(self):
+  def test_http_cache(self):
 
     with ThreadedWebServer(
         binding_address=self.GetBindingAddress(),

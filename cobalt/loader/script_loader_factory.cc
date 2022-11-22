@@ -15,6 +15,7 @@
 #include "cobalt/loader/script_loader_factory.h"
 
 #include <memory>
+#include <utility>
 
 #include "base/threading/platform_thread.h"
 #include "cobalt/loader/image/threaded_image_decoder_proxy.h"
@@ -47,19 +48,32 @@ std::unique_ptr<Loader> ScriptLoaderFactory::CreateScriptLoader(
     const csp::SecurityCallback& url_security_callback,
     const TextDecoder::TextAvailableCallback& script_available_callback,
     const Loader::OnCompleteFunction& load_complete_callback) {
+  return CreateScriptLoader(
+      url, origin, url_security_callback, script_available_callback,
+      TextDecoder::ResponseStartedCallback(), load_complete_callback);
+}
+
+std::unique_ptr<Loader> ScriptLoaderFactory::CreateScriptLoader(
+    const GURL& url, const Origin& origin,
+    const csp::SecurityCallback& url_security_callback,
+    const TextDecoder::TextAvailableCallback& script_available_callback,
+    const TextDecoder::ResponseStartedCallback& response_started_callback,
+    const Loader::OnCompleteFunction& load_complete_callback,
+    net::HttpRequestHeaders headers) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   Loader::FetcherCreator fetcher_creator =
       MakeFetcherCreator(url, url_security_callback, kNoCORSMode, origin,
-                         disk_cache::kUncompiledScript);
+                         disk_cache::kUncompiledScript, std::move(headers));
 
-  std::unique_ptr<Loader> loader(new Loader(
-      fetcher_creator,
-      base::Bind(&loader::TextDecoder::Create, script_available_callback),
-      load_complete_callback,
-      base::Bind(&ScriptLoaderFactory::OnLoaderDestroyed,
-                 base::Unretained(this)),
-      is_suspended_));
+  std::unique_ptr<Loader> loader(
+      new Loader(fetcher_creator,
+                 base::Bind(&TextDecoder::Create, script_available_callback,
+                            response_started_callback),
+                 load_complete_callback,
+                 base::Bind(&ScriptLoaderFactory::OnLoaderDestroyed,
+                            base::Unretained(this)),
+                 is_suspended_));
 
   OnLoaderCreated(loader.get());
   return loader;
@@ -68,12 +82,13 @@ std::unique_ptr<Loader> ScriptLoaderFactory::CreateScriptLoader(
 Loader::FetcherCreator ScriptLoaderFactory::MakeFetcherCreator(
     const GURL& url, const csp::SecurityCallback& url_security_callback,
     RequestMode request_mode, const Origin& origin,
-    disk_cache::ResourceType type) {
+    disk_cache::ResourceType type, net::HttpRequestHeaders headers) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   return base::Bind(&FetcherFactory::CreateSecureFetcher,
                     base::Unretained(fetcher_factory_), url,
-                    url_security_callback, request_mode, origin, type);
+                    url_security_callback, request_mode, origin, type,
+                    std::move(headers));
 }
 
 void ScriptLoaderFactory::OnLoaderCreated(Loader* loader) {
