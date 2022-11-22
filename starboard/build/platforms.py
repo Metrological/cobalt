@@ -41,7 +41,6 @@ PLATFORMS = {
     'evergreen-arm-hardfp': 'starboard/evergreen/arm/hardfp',
     'evergreen-arm-softfp': 'starboard/evergreen/arm/softfp',
     'evergreen-arm64': 'starboard/evergreen/arm64',
-    'wpe-arm': 'third_party/starboard/wpe/arm',
 }
 PLATFORMS.update(INTERNAL_PLATFORMS)
 
