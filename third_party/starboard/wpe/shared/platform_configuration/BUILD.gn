@@ -26,7 +26,7 @@ pkg_config("pkg_libs") {
     "WPEFrameworkDefinitions",
     "WPEFrameworkPlugins",
     "compositorclient",
-    "deviceinfo",
+    "WPEFrameworkDeviceInfo",
     "gstreamer-1.0",
     "gstreamer-app-1.0",
     "gstreamer-base-1.0",
@@ -60,7 +60,7 @@ config("platform_configuration") {
     ]
     ldflags += [
       "-Wl,--whole-archive",
-      "-lprovisionproxy",
+      "-lWPEFrameworkProvisionProxy",
       "-lprovision",
       "-Wl,--no-whole-archive",
     ]
