@@ -637,19 +637,22 @@ bool DrmSystemOcdm::Decrypt(const std::string& id,
   sub_sample = gst_buffer_new_wrapped(subsamples_raw, subsamples_raw_size);
   DCHECK(buffer && sub_sample && subsamples_count && iv && key);
   #if SB_API_VERSION >=12
-  EncryptionScheme encScheme;
-
-  EncryptionPattern encPattern;
-  encPattern.encrypted_blocks = drm_info->encryption_pattern.crypt_byte_block;
-  encPattern.clear_blocks = drm_info->encryption_pattern.skip_byte_block;
+  const gchar *encScheme;
   if (drm_info->encryption_scheme == kSbDrmEncryptionSchemeAesCtr) {
-     encScheme = AesCtr_Cenc;
+     encScheme = "cenc";
   }  
   else if(drm_info->encryption_scheme == kSbDrmEncryptionSchemeAesCbc) {
-      encScheme = AesCbc_Cbcs;
+      encScheme = "cbcs";
   }
-  retVal = opencdm_gstreamer_session_decrypt_v2(session->OcdmSession(), buffer,
-                                           sub_sample, subsamples_count, encScheme, encPattern, iv,
+
+  GstStructure *info = gst_structure_new("application/x-cenc",
+                       "cipher-mode", G_TYPE_STRING, encScheme,
+                       "crypt_byte_block", G_TYPE_UINT, drm_info->encryption_pattern.crypt_byte_block,
+                       "skip_byte_block", G_TYPE_UINT, drm_info->encryption_pattern.skip_byte_block, NULL);
+  gst_buffer_add_protection_meta(buffer, info);
+
+  retVal = opencdm_gstreamer_session_decrypt(session->OcdmSession(), buffer,
+                                           sub_sample, subsamples_count, iv,
                                            key, 0) == ERROR_NONE;
   #else
   retVal = opencdm_gstreamer_session_decrypt(session->OcdmSession(), buffer,
