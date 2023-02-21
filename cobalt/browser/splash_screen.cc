@@ -55,7 +55,7 @@ SplashScreen::SplashScreen(
     base::ApplicationState initial_application_state,
     const WebModule::OnRenderTreeProducedCallback&
         render_tree_produced_callback,
-    network::NetworkModule* network_module,
+    web::WebSettings* web_settings, network::NetworkModule* network_module,
     const cssom::ViewportSize& window_dimensions,
     render_tree::ResourceProvider* resource_provider, float layout_refresh_rate,
     const base::Optional<GURL>& fallback_splash_screen_url,
@@ -102,14 +102,15 @@ SplashScreen::SplashScreen(
   // Pass down this callback from Browser module to Web module eventually.
   web_module_options.maybe_freeze_callback = maybe_freeze_callback;
 
+  web_module_options.web_options.web_settings = web_settings;
   web_module_options.web_options.network_module = network_module;
   web_module_options.web_options.platform_info = platform_info;
 
   DCHECK(url_to_pass);
   web_module_.reset(new WebModule("SplashScreenWebModule"));
   web_module_->Run(*url_to_pass, initial_application_state,
-                   render_tree_produced_callback_, base::Bind(&OnError),
-                   on_window_close,
+                   nullptr /* scroll_engine */, render_tree_produced_callback_,
+                   base::Bind(&OnError), on_window_close,
                    base::Closure(),  // window_minimize_callback
                    NULL /* can_play_type_handler */, NULL /* media_module */,
                    window_dimensions, resource_provider, layout_refresh_rate,

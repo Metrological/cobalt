@@ -25,6 +25,7 @@
 #include "base/memory/ref_counted.h"
 #include "base/optional.h"
 #include "cobalt/math/size.h"
+#include "cobalt/media/base/sbplayer_interface.h"
 #include "cobalt/media/can_play_type_handler.h"
 #include "cobalt/media/decoder_buffer_allocator.h"
 #include "cobalt/media/player/web_media_player_delegate.h"
@@ -57,9 +58,15 @@ class MediaModule : public WebMediaPlayerFactory,
   MediaModule(system_window::SystemWindow* system_window,
               render_tree::ResourceProvider* resource_provider,
               const Options& options = Options())
-      : options_(options),
+      : sbplayer_interface_(new DefaultSbPlayerInterface),
+        options_(options),
         system_window_(system_window),
         resource_provider_(resource_provider) {}
+
+  // Returns true when the setting is set successfully or if the setting has
+  // already been set to the expected value.  Returns false when the setting is
+  // invalid or not set to the expected value.
+  bool SetConfiguration(const std::string& name, int32 value);
 
   const DecoderBufferAllocator* GetDecoderBufferAllocator() const {
     return &decoder_buffer_allocator_;
@@ -101,6 +108,7 @@ class MediaModule : public WebMediaPlayerFactory,
   // paused by us.
   typedef std::map<WebMediaPlayer*, bool> Players;
 
+  std::unique_ptr<SbPlayerInterface> sbplayer_interface_;
   const Options options_;
   system_window::SystemWindow* system_window_;
   cobalt::render_tree::ResourceProvider* resource_provider_;
@@ -112,6 +120,8 @@ class MediaModule : public WebMediaPlayerFactory,
 
   Players players_;
   bool suspended_ = false;
+
+  bool allow_batched_sample_write_ = false;
 
   DecoderBufferAllocator decoder_buffer_allocator_;
 };

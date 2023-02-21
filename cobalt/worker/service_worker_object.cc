@@ -46,9 +46,6 @@ ServiceWorkerObject::ServiceWorkerObject(const Options& options)
 
 ServiceWorkerObject::~ServiceWorkerObject() {
   TRACE_EVENT0("cobalt::worker", "ServiceWorkerObject::~ServiceWorkerObject()");
-  // Check that the object isn't destroyed without first calling Abort().
-  DCHECK(!web_agent_);
-  DCHECK(!web_context_);
   Abort();
 }
 
@@ -71,15 +68,19 @@ void ServiceWorkerObject::SetScriptResource(const GURL& url,
   // storing in the map.
   auto entry = script_resource_map_.find(url);
   if (entry != script_resource_map_.end()) {
-    if (entry->second.get() != resource) {
+    if (entry->second.content.get() != resource) {
       // The map has an entry, but it's different than the given one, make a
       // copy and replace.
-      entry->second.reset(new std::string(*resource));
+      entry->second.content.reset(new std::string(*resource));
     }
     return;
   }
 
-  script_resource_map_[url].reset(new std::string(*resource));
+  auto result = script_resource_map_.emplace(std::make_pair(
+      url,
+      ScriptResource(std::make_unique<std::string>(std::string(*resource)))));
+  // Assert that the insert was successful.
+  DCHECK(result.second);
 }
 
 bool ServiceWorkerObject::HasScriptResource() const {
@@ -87,14 +88,15 @@ bool ServiceWorkerObject::HasScriptResource() const {
          script_resource_map_.end() != script_resource_map_.find(script_url_);
 }
 
-std::string* ServiceWorkerObject::LookupScriptResource(const GURL& url) const {
+const ScriptResource* ServiceWorkerObject::LookupScriptResource(
+    const GURL& url) const {
   auto entry = script_resource_map_.find(url);
-  return entry != script_resource_map_.end() ? entry->second.get() : nullptr;
+  return entry != script_resource_map_.end() ? &entry->second : nullptr;
 }
 
 void ServiceWorkerObject::PurgeScriptResourceMap() {
   // Steps 13-15 of Algorithm for Install:
-  //   https://w3c.github.io/ServiceWorker/#installation-algorithm
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#installation-algorithm
   // 13. Let map be registration’s installing worker's script resource map.
   // 14. Let usedSet be registration’s installing worker's set of used scripts.
   // 15. For each url of map:
@@ -117,7 +119,6 @@ void ServiceWorkerObject::WillDestroyCurrentMessageLoop() {
 #if defined(ENABLE_DEBUGGER)
   debug_module_.reset();
 #endif  // ENABLE_DEBUGGER
-
   worker_global_scope_ = nullptr;
 }
 
@@ -134,7 +135,7 @@ void ServiceWorkerObject::ObtainWebAgentAndWaitUntilDone() {
 
 bool ServiceWorkerObject::ShouldSkipEvent(base::Token event_name) {
   // Algorithm for Should Skip Event:
-  //   https://w3c.github.io/ServiceWorker/#should-skip-event-algorithm
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#should-skip-event-algorithm
   // TODO(b/229622132): Implementing this algorithm will improve performance.
   NOTIMPLEMENTED();
   return false;
@@ -143,7 +144,7 @@ bool ServiceWorkerObject::ShouldSkipEvent(base::Token event_name) {
 void ServiceWorkerObject::Initialize(web::Context* context) {
   TRACE_EVENT0("cobalt::worker", "ServiceWorkerObject::Initialize()");
   // Algorithm for "Run Service Worker"
-  // https://w3c.github.io/ServiceWorker/#run-service-worker-algorithm
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#run-service-worker-algorithm
 
   // 8.1. Let realmExecutionContext be the result of creating a new JavaScript
   //      realm given agent and the following customizations:
@@ -211,7 +212,17 @@ void ServiceWorkerObject::Initialize(web::Context* context) {
   // 8.10. If the run CSP initialization for a global object algorithm returns
   //       "Blocked" when executed upon workerGlobalScope, set startFailed to
   //       true and abort these steps.
-  // TODO(b/225037465): Implement CSP check.
+  const ScriptResource* script_resource = LookupScriptResource(script_url_);
+  DCHECK(script_resource);
+  csp::ResponseHeaders csp_headers(script_resource->headers);
+  DCHECK(service_worker_global_scope);
+  DCHECK(service_worker_global_scope->csp_delegate());
+  if (!service_worker_global_scope->csp_delegate()->OnReceiveHeaders(
+          csp_headers)) {
+    // https://www.w3.org/TR/service-workers/#content-security-policy
+    DLOG(WARNING) << "Warning: No Content Security Header received for the "
+                     "service worker.";
+  }
   // 8.11. If serviceWorker is an active worker, and there are any tasks queued
   //       in serviceWorker’s containing service worker registration’s task
   //       queues, queue them to serviceWorker’s event loop’s task queues in the
@@ -224,11 +235,11 @@ void ServiceWorkerObject::Initialize(web::Context* context) {
 
   bool mute_errors = false;
   bool succeeded = false;
-  std::string* content = LookupScriptResource(script_url_);
-  DCHECK(content);
+  DCHECK(script_resource->content.get());
   base::SourceLocation script_location(script_url().spec(), 1, 1);
   std::string retval = web_context_->script_runner()->Execute(
-      *content, script_location, mute_errors, &succeeded);
+      *script_resource->content.get(), script_location, mute_errors,
+      &succeeded);
   // 8.13.2. If evaluationStatus.[[Value]] is empty, this means the script was
   //         not evaluated. Set startFailed to true and abort these steps.
   // We don't actually have access to an 'evaluationStatus' from ScriptRunner,

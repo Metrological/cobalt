@@ -27,6 +27,7 @@
 #include "base/message_loop/message_loop_current.h"
 #include "cobalt/web/agent.h"
 #include "cobalt/web/context.h"
+#include "cobalt/web/web_settings.h"
 #include "cobalt/worker/service_worker_state.h"
 #include "cobalt/worker/worker_global_scope.h"
 #include "starboard/atomic.h"
@@ -41,14 +42,14 @@ namespace worker {
 class ServiceWorkerRegistrationObject;
 
 // This class represents the 'service worker'.
-//   https://w3c.github.io/ServiceWorker/#dfn-service-worker
+//   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-service-worker
 // Not to be confused with the ServiceWorker JavaScript object,  this represents
 // the service worker in the browser, independent from the JavaScript realm.
 // The lifetime of a service worker is tied to the execution lifetime of events
 // and not references held by service worker clients to the ServiceWorker
 // object. A user agent may terminate service workers at any time it has no
 // event to handle, or detects abnormal operation.
-//   https://w3c.github.io/ServiceWorker/#service-worker-lifetime
+//   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#service-worker-lifetime
 class ServiceWorkerObject
     : public base::RefCountedThreadSafe<ServiceWorkerObject>,
       public base::SupportsWeakPtr<ServiceWorkerObject>,
@@ -57,11 +58,13 @@ class ServiceWorkerObject
   // Worker Options needed at thread run time.
   struct Options {
     Options(
-        const std::string& name, network::NetworkModule* network_module,
+        const std::string& name, web::WebSettings* web_settings,
+        network::NetworkModule* network_module,
         ServiceWorkerRegistrationObject* containing_service_worker_registration)
         : name(name),
           containing_service_worker_registration(
               containing_service_worker_registration) {
+      web_options.web_settings = web_settings;
       web_options.network_module = network_module;
     }
 
@@ -75,18 +78,18 @@ class ServiceWorkerObject
   ServiceWorkerObject(const ServiceWorkerObject&) = delete;
   ServiceWorkerObject& operator=(const ServiceWorkerObject&) = delete;
 
-  // https://w3c.github.io/ServiceWorker/#dfn-state
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-state
   void set_state(ServiceWorkerState state) { state_ = state; }
   ServiceWorkerState state() const { return state_; }
-  // https://w3c.github.io/ServiceWorker/#dfn-script-url
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-script-url
   void set_script_url(const GURL& script_url) { script_url_ = script_url; }
   const GURL& script_url() const { return script_url_; }
 
-  // https://w3c.github.io/ServiceWorker/#dfn-containing-service-worker-registration
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-containing-service-worker-registration
   ServiceWorkerRegistrationObject* containing_service_worker_registration() {
     return options_.containing_service_worker_registration;
   }
-  // https://w3c.github.io/ServiceWorker/#dfn-skip-waiting-flag
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-skip-waiting-flag
   void set_skip_waiting() { skip_waiting_ = true; }
   bool skip_waiting() const { return skip_waiting_; }
 
@@ -94,27 +97,28 @@ class ServiceWorkerObject
   void set_classic_scripts_imported() { classic_scripts_imported_ = true; }
   bool classic_scripts_imported() { return classic_scripts_imported_; }
 
-  // https://w3c.github.io/ServiceWorker/#dfn-set-of-used-scripts
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-set-of-used-scripts
   void AppendToSetOfUsedScripts(const GURL& url) {
     set_of_used_scripts_.insert(url);
   }
+  std::set<GURL> set_of_used_scripts() { return set_of_used_scripts_; }
 
-  // https://w3c.github.io/ServiceWorker/#dfn-script-resource-map
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-script-resource-map
   void set_script_resource_map(ScriptResourceMap&& resource_map) {
     script_resource_map_ = std::move(resource_map);
   }
   void SetScriptResource(const GURL& url, std::string* resource);
   bool HasScriptResource() const;
-  std::string* LookupScriptResource(const GURL& url) const;
+  const ScriptResource* LookupScriptResource(const GURL& url) const;
 
   // Steps 13-15 of Algorithm for Install.
-  //   https://w3c.github.io/ServiceWorker/#installation-algorithm
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#installation-algorithm
   void PurgeScriptResourceMap();
   const ScriptResourceMap& script_resource_map() {
     return script_resource_map_;
   }
 
-  // https://w3c.github.io/ServiceWorker/#service-worker-start-status
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#service-worker-start-status
   void set_start_status(std::string* start_status) {
     start_status_.reset(start_status);
   }
@@ -137,13 +141,15 @@ class ServiceWorkerObject
   void ObtainWebAgentAndWaitUntilDone();
 
   // Algorithm for Should Skip Event:
-  //   https://w3c.github.io/ServiceWorker/#should-skip-event-algorithm
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#should-skip-event-algorithm
   bool ShouldSkipEvent(base::Token event_name);
+
+  std::string options_name() { return options_.name; }
 
  private:
   // Called by ObtainWebAgentAndWaitUntilDone to perform initialization required
   // on the dedicated thread.
-  //   https://w3c.github.io/ServiceWorker/#run-service-worker-algorithm
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#run-service-worker-algorithm
   void Initialize(web::Context* context);
 
   // The message loop this object is running on.
@@ -163,25 +169,25 @@ class ServiceWorkerObject
 
   Options options_;
 
-  // https://w3c.github.io/ServiceWorker/#dfn-state
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-state
   ServiceWorkerState state_;
 
-  // https://w3c.github.io/ServiceWorker/#dfn-script-url
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-script-url
   GURL script_url_;
 
-  // https://w3c.github.io/ServiceWorker/#dfn-script-resource-map
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-script-resource-map
   ScriptResourceMap script_resource_map_;
 
-  // https://w3c.github.io/ServiceWorker/#dfn-set-of-used-scripts
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-set-of-used-scripts
   std::set<GURL> set_of_used_scripts_;
 
-  // https://w3c.github.io/ServiceWorker/#dfn-skip-waiting-flag
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-skip-waiting-flag
   bool skip_waiting_ = false;
 
-  // https://w3c.github.io/ServiceWorker/#dfn-classic-scripts-imported-flag
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-classic-scripts-imported-flag
   bool classic_scripts_imported_ = false;
 
-  // https://w3c.github.io/ServiceWorker/#service-worker-start-status
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#service-worker-start-status
   std::unique_ptr<std::string> start_status_;
 
   starboard::atomic_bool start_failed_;

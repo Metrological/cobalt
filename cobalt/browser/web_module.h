@@ -51,6 +51,7 @@
 #include "cobalt/render_tree/node.h"
 #include "cobalt/render_tree/resource_provider.h"
 #include "cobalt/ui_navigation/nav_item.h"
+#include "cobalt/ui_navigation/scroll_engine/scroll_engine.h"
 #include "cobalt/web/agent.h"
 #include "cobalt/web/blob.h"
 #include "cobalt/web/context.h"
@@ -264,6 +265,7 @@ class WebModule : public base::MessageLoop::DestructionObserver,
   ~WebModule();
   void Run(const GURL& initial_url,
            base::ApplicationState initial_application_state,
+           ui_navigation::scroll_engine::ScrollEngine* scroll_engine,
            const OnRenderTreeProducedCallback& render_tree_produced_callback,
            OnErrorCallback error_callback,
            const CloseCallback& window_close_callback,
@@ -351,7 +353,6 @@ class WebModule : public base::MessageLoop::DestructionObserver,
 
   void UpdateCamera3D(const scoped_refptr<input::Camera3D>& camera_3d);
   void SetMediaModule(media::MediaModule* media_module);
-  bool SetMediaSourceSetting(const std::string& name, int value);
   void SetImageCacheCapacity(int64_t bytes);
   void SetRemoteTypefaceCacheCapacity(int64_t bytes);
 
@@ -408,6 +409,7 @@ class WebModule : public base::MessageLoop::DestructionObserver,
   struct ConstructionData {
     ConstructionData(const GURL& initial_url,
                      base::ApplicationState initial_application_state,
+                     ui_navigation::scroll_engine::ScrollEngine* scroll_engine,
                      OnRenderTreeProducedCallback render_tree_produced_callback,
                      const OnErrorCallback& error_callback,
                      CloseCallback window_close_callback,
@@ -425,6 +427,7 @@ class WebModule : public base::MessageLoop::DestructionObserver,
                      const Options& options)
         : initial_url(initial_url),
           initial_application_state(initial_application_state),
+          scroll_engine(scroll_engine),
           render_tree_produced_callback(render_tree_produced_callback),
           error_callback(error_callback),
           window_close_callback(window_close_callback),
@@ -445,6 +448,7 @@ class WebModule : public base::MessageLoop::DestructionObserver,
 
     GURL initial_url;
     base::ApplicationState initial_application_state;
+    ui_navigation::scroll_engine::ScrollEngine* scroll_engine;
     OnRenderTreeProducedCallback render_tree_produced_callback;
     OnErrorCallback error_callback;
     CloseCallback window_close_callback;
@@ -474,9 +478,6 @@ class WebModule : public base::MessageLoop::DestructionObserver,
   void ClearAllIntervalsAndTimeouts();
 
   void GetIsReadyToFreeze(volatile bool* is_ready_to_freeze);
-
-  void SetMediaSourceSettingInternal(const std::string& name, int value,
-                                     bool* succeeded);
 
   // The message loop this object is running on.
   base::MessageLoop* message_loop() const {

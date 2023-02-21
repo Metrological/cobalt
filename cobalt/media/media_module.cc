@@ -183,6 +183,16 @@ class CanPlayTypeHandlerStarboard : public CanPlayTypeHandler {
 
 }  // namespace
 
+bool MediaModule::SetConfiguration(const std::string& name, int32 value) {
+  if (name == "EnableBatchedSampleWrite") {
+    allow_batched_sample_write_ = value;
+    LOG(INFO) << (allow_batched_sample_write_ ? "Enabling" : "Disabling")
+              << " batched sample write.";
+    return true;
+  }
+  return false;
+}
+
 std::unique_ptr<WebMediaPlayer> MediaModule::CreateWebMediaPlayer(
     WebMediaPlayerClient* client) {
   TRACK_MEMORY_SCOPE("Media");
@@ -192,10 +202,11 @@ std::unique_ptr<WebMediaPlayer> MediaModule::CreateWebMediaPlayer(
   }
 
   return std::unique_ptr<WebMediaPlayer>(new media::WebMediaPlayerImpl(
-      window,
+      sbplayer_interface_.get(), window,
       base::Bind(&MediaModule::GetSbDecodeTargetGraphicsContextProvider,
                  base::Unretained(this)),
-      client, this, options_.allow_resume_after_suspend, &media_log_));
+      client, this, options_.allow_resume_after_suspend,
+      allow_batched_sample_write_, &media_log_));
 }
 
 void MediaModule::Suspend() {

@@ -19,15 +19,18 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "base/memory/ref_counted.h"
 #include "base/synchronization/lock.h"
 #include "base/threading/thread_checker.h"
+#include "cobalt/network/network_module.h"
 #include "cobalt/script/exception_message.h"
 #include "cobalt/script/promise.h"
 #include "cobalt/script/script_value.h"
 #include "cobalt/script/script_value_factory.h"
 #include "cobalt/web/environment_settings.h"
+#include "cobalt/worker/service_worker_persistent_settings.h"
 #include "cobalt/worker/service_worker_registration_object.h"
 #include "cobalt/worker/service_worker_update_via_cache.h"
 #include "url/gurl.h"
@@ -38,31 +41,42 @@ namespace worker {
 class ServiceWorkerJobs;
 
 // Algorithms for the service worker scope to registration map.
-//   https://w3c.github.io/ServiceWorker/#dfn-scope-to-registration-map
+//   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-scope-to-registration-map
 class ServiceWorkerRegistrationMap {
  public:
-  using Key = std::pair<url::Origin, std::string>;
+  explicit ServiceWorkerRegistrationMap(
+      const ServiceWorkerPersistentSettings::Options& options);
 
-  // https://w3c.github.io/ServiceWorker/#get-registration-algorithm
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#get-registration-algorithm
   scoped_refptr<ServiceWorkerRegistrationObject> GetRegistration(
       const url::Origin& storage_key, const GURL& scope);
 
-  // https://w3c.github.io/ServiceWorker/#set-registration-algorithm
+  std::vector<scoped_refptr<ServiceWorkerRegistrationObject>> GetRegistrations(
+      const url::Origin& storage_key);
+
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#set-registration-algorithm
   scoped_refptr<ServiceWorkerRegistrationObject> SetRegistration(
       const url::Origin& storage_key, const GURL& scope,
       const ServiceWorkerUpdateViaCache& update_via_cache);
 
-  // https://w3c.github.io/ServiceWorker/#scope-match-algorithm
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#scope-match-algorithm
   scoped_refptr<ServiceWorkerRegistrationObject> MatchServiceWorkerRegistration(
       const url::Origin& storage_key, const GURL& client_url);
 
   void RemoveRegistration(const url::Origin& storage_key, const GURL& scope);
 
-  // https://w3c.github.io/ServiceWorker/#dfn-service-worker-registration-unregistered
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-service-worker-registration-unregistered
   bool IsUnregistered(ServiceWorkerRegistrationObject* registration);
 
-  // https://w3c.github.io/ServiceWorker/#on-user-agent-shutdown-algorithm
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#on-user-agent-shutdown-algorithm
   void HandleUserAgentShutdown(ServiceWorkerJobs* jobs);
+
+  void AbortAllActive();
+
+  // Called from the end of ServiceWorkerJobs Install, Activate, and Clear
+  // Registration since these are the cases in which a service worker
+  // registration's active_worker or waiting_worker are updated.
+  void PersistRegistration(const url::Origin& storage_key, const GURL& scope);
 
  private:
   // ThreadChecker for use by the methods operating on the registration map.
@@ -70,12 +84,15 @@ class ServiceWorkerRegistrationMap {
 
   // A registration map is an ordered map where the keys are (storage key,
   // serialized scope urls) and the values are service worker registrations.
-  //   https://w3c.github.io/ServiceWorker/#dfn-scope-to-registration-map
-  std::map<Key, scoped_refptr<ServiceWorkerRegistrationObject>>
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-scope-to-registration-map
+  std::map<RegistrationMapKey, scoped_refptr<ServiceWorkerRegistrationObject>>
       registration_map_;
 
   // This lock is to allow atomic operations on the registration map.
   base::Lock mutex_;
+
+  std::unique_ptr<ServiceWorkerPersistentSettings>
+      service_worker_persistent_settings_;
 };
 
 }  // namespace worker

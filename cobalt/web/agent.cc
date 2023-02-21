@@ -84,6 +84,7 @@ class Impl : public Context {
     return script_runner_.get();
   }
   Blob::Registry* blob_registry() const final { return blob_registry_.get(); }
+  web::WebSettings* web_settings() const final { return web_settings_; }
   network::NetworkModule* network_module() const final {
     DCHECK(fetcher_factory_);
     return fetcher_factory_->network_module();
@@ -110,14 +111,14 @@ class Impl : public Context {
   scoped_refptr<worker::ServiceWorkerRegistration>
   LookupServiceWorkerRegistration(
       worker::ServiceWorkerRegistrationObject* registration) final;
-  // https://w3c.github.io/ServiceWorker/#service-worker-registration-creation
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#service-worker-registration-creation
   scoped_refptr<worker::ServiceWorkerRegistration> GetServiceWorkerRegistration(
       worker::ServiceWorkerRegistrationObject* registration) final;
 
   void RemoveServiceWorker(worker::ServiceWorkerObject* worker) final;
   scoped_refptr<worker::ServiceWorker> LookupServiceWorker(
       worker::ServiceWorkerObject* worker) final;
-  // https://w3c.github.io/ServiceWorker/#get-the-service-worker-object
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#get-the-service-worker-object
   scoped_refptr<worker::ServiceWorker> GetServiceWorker(
       worker::ServiceWorkerObject* worker) final;
 
@@ -133,7 +134,7 @@ class Impl : public Context {
     return network_module()->preferred_language();
   }
 
-  // https://w3c.github.io/ServiceWorker/#dfn-control
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-control
   bool is_controlled_by(worker::ServiceWorkerObject* worker) const final {
     // When a service worker client has a non-null active service worker, it is
     // said to be controlled by that active service worker.
@@ -171,6 +172,9 @@ class Impl : public Context {
 
   // Name of the web instance.
   std::string name_;
+
+  web::WebSettings* const web_settings_;
+
   // FetcherFactory that is used to create a fetcher according to URL.
   std::unique_ptr<loader::FetcherFactory> fetcher_factory_;
 
@@ -199,13 +203,13 @@ class Impl : public Context {
   std::unique_ptr<EnvironmentSettings> environment_settings_;
 
   // The service worker registration object map.
-  //   https://w3c.github.io/ServiceWorker/#environment-settings-object-service-worker-registration-object-map
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#environment-settings-object-service-worker-registration-object-map
   std::map<worker::ServiceWorkerRegistrationObject*,
            scoped_refptr<worker::ServiceWorkerRegistration>>
       service_worker_registration_object_map_;
 
   // The service worker object map.
-  //   https://w3c.github.io/ServiceWorker/#environment-settings-object-service-worker-object-map
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#environment-settings-object-service-worker-object-map
   std::map<worker::ServiceWorkerObject*, scoped_refptr<worker::ServiceWorker>>
       service_worker_object_map_;
 
@@ -224,7 +228,7 @@ class Impl : public Context {
 };
 
 Impl::Impl(const std::string& name, const Agent::Options& options)
-    : name_(name) {
+    : name_(name), web_settings_(options.web_settings) {
   TRACE_EVENT0("cobalt::web", "Agent::Impl::Impl()");
   service_worker_jobs_ = options.service_worker_jobs;
   platform_info_ = options.platform_info;
@@ -287,7 +291,13 @@ void Impl::ShutDownJavaScriptEngine() {
   blob_registry_.reset();
   script_runner_.reset();
   execution_state_.reset();
-  global_environment_ = NULL;
+
+  // Ensure that global_environment_ is null before it's destroyed.
+  scoped_refptr<script::GlobalEnvironment> global_environment(
+      std::move(global_environment_));
+  DCHECK(!global_environment_);
+  global_environment = nullptr;
+
   javascript_engine_.reset();
   fetcher_factory_.reset();
   script_loader_factory_.reset();
@@ -337,7 +347,7 @@ scoped_refptr<worker::ServiceWorkerRegistration>
 Impl::GetServiceWorkerRegistration(
     worker::ServiceWorkerRegistrationObject* registration) {
   // Algorithm for 'get the service worker registration object':
-  //   https://w3c.github.io/ServiceWorker/#get-the-service-worker-registration-object
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#get-the-service-worker-registration-object
   scoped_refptr<worker::ServiceWorkerRegistration> worker_registration;
   if (!registration) {
     // Return undefined when registration is null.
@@ -404,7 +414,7 @@ void Impl::RemoveServiceWorker(worker::ServiceWorkerObject* worker) {
 scoped_refptr<worker::ServiceWorker> Impl::LookupServiceWorker(
     worker::ServiceWorkerObject* worker) {
   // Algorithm for 'get the service worker object':
-  //   https://w3c.github.io/ServiceWorker/#get-the-service-worker-object
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#get-the-service-worker-object
   scoped_refptr<worker::ServiceWorker> service_worker;
 
   if (!worker) {
@@ -424,7 +434,7 @@ scoped_refptr<worker::ServiceWorker> Impl::LookupServiceWorker(
 scoped_refptr<worker::ServiceWorker> Impl::GetServiceWorker(
     worker::ServiceWorkerObject* worker) {
   // Algorithm for 'get the service worker object':
-  //   https://w3c.github.io/ServiceWorker/#get-the-service-worker-object
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#get-the-service-worker-object
   scoped_refptr<worker::ServiceWorker> service_worker;
 
   if (!worker) {
@@ -453,7 +463,7 @@ scoped_refptr<worker::ServiceWorker> Impl::GetServiceWorker(
 
 WindowOrWorkerGlobalScope* Impl::GetWindowOrWorkerGlobalScope() {
   script::Wrappable* global_wrappable =
-      global_environment()->global_wrappable();
+      global_environment_ ? global_environment_->global_wrappable() : nullptr;
   if (!global_wrappable) {
     return nullptr;
   }

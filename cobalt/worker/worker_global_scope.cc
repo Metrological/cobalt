@@ -120,6 +120,8 @@ class ScriptLoader : public base::MessageLoop::DestructionObserver {
     // Todo: implement csp check (b/225037465)
     csp::SecurityCallback csp_callback = base::Bind(&PermitAnyURL);
 
+    bool skip_fetch_intercept =
+        context_->GetWindowOrWorkerGlobalScope()->IsServiceWorker();
     // If there is a request callback, call it to possibly retrieve previously
     // requested content.
     *loader = script_loader_factory_->CreateScriptLoader(
@@ -132,7 +134,8 @@ class ScriptLoader : public base::MessageLoop::DestructionObserver {
             },
             content),
         base::Bind(&ScriptLoader::LoadingCompleteCallback,
-                   base::Unretained(this), loader, error));
+                   base::Unretained(this), loader, error),
+        skip_fetch_intercept);
   }
 
   void LoadingCompleteCallback(std::unique_ptr<loader::Loader>* loader,
@@ -154,7 +157,7 @@ class ScriptLoader : public base::MessageLoop::DestructionObserver {
     }
   }
 
-  const std::unique_ptr<std::string>& GetContents(int index) {
+  std::unique_ptr<std::string>& GetContents(int index) {
     return contents_[index];
   }
 
@@ -233,11 +236,14 @@ bool WorkerGlobalScope::InitializePolicyContainerCallback(
   // Only NetFetchers are expected to call this, since only they have the
   // response headers.
   loader::NetFetcher* net_fetcher =
-      base::polymorphic_downcast<loader::NetFetcher*>(fetcher);
-  net::URLFetcher* url_fetcher = net_fetcher->url_fetcher();
-  LOG(INFO) << "Failure receiving Content Security Policy headers "
-               "for URL: "
-            << url_fetcher->GetURL() << ".";
+      fetcher ? base::polymorphic_downcast<loader::NetFetcher*>(fetcher)
+              : nullptr;
+  net::URLFetcher* url_fetcher =
+      net_fetcher ? net_fetcher->url_fetcher() : nullptr;
+  const GURL& url = url_fetcher ? url_fetcher->GetURL()
+                                : environment_settings()->creation_url();
+  LOG(INFO) << "Failure receiving Content Security Policy headers for URL: "
+            << url << ".";
   // Return true regardless of CSP headers being received to continue loading
   // the response.
   return true;
@@ -254,7 +260,7 @@ bool WorkerGlobalScope::LoadImportsAndReturnIfUpdated(
     ScriptResourceMap* new_resource_map) {
   bool has_updated_resources = false;
   // Steps from Algorithm for Update:
-  //   https://w3c.github.io/ServiceWorker/#update-algorithm
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#update-algorithm
   //   8.21.1. For each importUrl -> storedResponse of newestWorker’s script
   //           resource map:
   std::vector<GURL> request_urls;
@@ -280,6 +286,7 @@ bool WorkerGlobalScope::LoadImportsAndReturnIfUpdated(
   web::EnvironmentSettings* settings = environment_settings();
   const GURL& base_url = settings->base_url();
   loader::Origin origin = loader::Origin(base_url.GetOrigin());
+  // TODO(b/241801523): Apply CSP.
   ScriptLoader script_loader(settings->context());
   script_loader.Load(origin, request_urls);
 
@@ -287,11 +294,13 @@ bool WorkerGlobalScope::LoadImportsAndReturnIfUpdated(
     const auto& error = script_loader.GetError(index);
     if (error) continue;
     const GURL& url = request_urls[index];
-    const std::unique_ptr<std::string>& script =
-        script_loader.GetContents(index);
     //   8.21.1.5. Set updatedResourceMap[importRequest’s url] to
     //             fetchedResponse.
-    (*new_resource_map)[url].reset(new std::string(*script.get()));
+    // Note: The headers of imported scripts aren't used anywhere.
+    auto result = new_resource_map->insert(std::make_pair(
+        url, ScriptResource(std::move(script_loader.GetContents(index)))));
+    // Assert that the insert was successful.
+    DCHECK(result.second);
     //   8.21.1.6. Set fetchedResponse to fetchedResponse’s unsafe response.
     //   8.21.1.7. If fetchedResponse’s cache state is not
     //             "local", set registration’s last update check time to the
@@ -301,7 +310,8 @@ bool WorkerGlobalScope::LoadImportsAndReturnIfUpdated(
     //             storedResponse’s unsafe response's body, set
     //             hasUpdatedResources to true.
     DCHECK(previous_resource_map.find(url) != previous_resource_map.end());
-    if (*script != *(previous_resource_map.find(url)->second)) {
+    if (*result.first->second.content !=
+        *(previous_resource_map.find(url)->second.content)) {
       has_updated_resources = true;
     }
   }
@@ -368,6 +378,7 @@ void WorkerGlobalScope::ImportScriptsInternal(
   //      object, passing along any custom perform the fetch steps provided.
   //      If this succeeds, let script be the result. Otherwise, rethrow the
   //      exception.
+  // TODO(b/241801523): Apply CSP.
   ScriptLoader script_loader(settings->context());
   script_loader.Load(origin, request_urls);
 

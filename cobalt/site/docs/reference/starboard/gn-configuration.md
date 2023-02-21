@@ -13,8 +13,6 @@ title: "Starboard: configuration.gni Reference Guide"
 | **`default_renderer_options_dependency`**<br><br> Override this value to adjust the default rasterizer setting for your platform.<br><br>The default value is `"//cobalt/renderer:default_options"`. |
 | **`enable_account_manager`**<br><br> Set to true to enable H5vccAccountManager.<br><br>The default value is `false`. |
 | **`enable_in_app_dial`**<br><br> Enables or disables the DIAL server that runs inside Cobalt. Note: Only enable if there's no system-wide DIAL support.<br><br>The default value is `false`. |
-| **`enable_sso`**<br><br> Set to true to enable H5vccSSO (Single Sign On).<br><br>The default value is `false`. |
-| **`enable_xhr_header_filtering`**<br><br> Set to true to enable filtering of HTTP headers before sending.<br><br>The default value is `false`. |
 | **`executable_configs`**<br><br> Target-specific configurations for executable targets.<br><br>The default value is `[]`. |
 | **`final_executable_type`**<br><br> The target type for executable targets. Allows changing the target type on platforms where the native code may require an additional packaging step (ex. Android).<br><br>The default value is `"executable"`. |
 | **`gl_type`**<br><br> The source of EGL and GLES headers and libraries. Valid values (case and everything sensitive!):<ul><li><code>none</code> - No EGL + GLES implementation is available on this platform.<li><code>system_gles2</code> - Use the system implementation of EGL + GLES2. The headers and libraries must be on the system include and link paths.<li><code>glimp</code> - Cobalt's own EGL + GLES2 implementation. This requires a valid Glimp implementation for the platform.<li><code>angle</code> - A DirectX-to-OpenGL adaptation layer. This requires a valid ANGLE implementation for the platform.<br><br>The default value is `"system_gles2"`. |
@@ -31,6 +29,7 @@ title: "Starboard: configuration.gni Reference Guide"
 | **`sb_enable_lib`**<br><br> Enables embedding Cobalt as a shared library within another app. This requires a 'lib' starboard implementation for the corresponding platform.<br><br>The default value is `false`. |
 | **`sb_enable_opus_sse`**<br><br> Enables optimizations on SSE compatible platforms.<br><br>The default value is `true`. |
 | **`sb_evergreen_compatible_enable_lite`**<br><br> Whether to adopt Evergreen Lite on the Evergreen compatible platform.<br><br>The default value is `false`. |
+| **`sb_evergreen_compatible_package`**<br><br> Whether to generate the whole package containing both Loader app and Cobalt core on the Evergreen compatible platform.<br><br>The default value is `false`. |
 | **`sb_evergreen_compatible_use_libunwind`**<br><br> Whether to use the libunwind library on Evergreen compatible platform.<br><br>The default value is `false`. |
 | **`sb_filter_based_player`**<br><br> Used to indicate that the player is filter based.<br><br>The default value is `true`. |
 | **`sb_is_evergreen`**<br><br> Whether this is an Evergreen build.<br><br>The default value is `false`. |

@@ -21,8 +21,13 @@
 #include <unordered_map>
 #include <vector>
 
+#include "game-activity/GameActivity.h"
 #include "starboard/android/shared/input_events_generator.h"
+#ifdef STARBOARD_INPUT_EVENTS_FILTER
+#include "starboard/android/shared/internal/input_events_filter.h"
+#endif
 #include "starboard/android/shared/jni_env_ext.h"
+#include "starboard/atomic.h"
 #include "starboard/common/condition_variable.h"
 #include "starboard/common/mutex.h"
 #include "starboard/common/scoped_ptr.h"
@@ -47,7 +52,6 @@ class ApplicationAndroid
       kResume,
       kPause,
       kStop,
-      kInputQueueChanged,
       kNativeWindowCreated,
       kNativeWindowDestroyed,
       kWindowFocusGained,
@@ -80,6 +84,9 @@ class ApplicationAndroid
   void SendAndroidCommand(AndroidCommand::CommandType type) {
     SendAndroidCommand(type, NULL);
   }
+  bool SendAndroidMotionEvent(const GameActivityMotionEvent* event);
+  bool SendAndroidKeyEvent(const GameActivityKeyEvent* event);
+
   void SendKeyboardInject(SbKey key);
 
   void SbWindowShowOnScreenKeyboard(SbWindow window,
@@ -125,7 +132,6 @@ class ApplicationAndroid
  private:
   ALooper* looper_;
   ANativeWindow* native_window_;
-  AInputQueue* input_queue_;
 
   // Pipes attached to the looper.
   int android_command_readfd_;
@@ -134,9 +140,13 @@ class ApplicationAndroid
   int keyboard_inject_writefd_;
 
   // Synchronization for commands that change availability of Android resources
-  // such as the input_queue_ and/or native_window_.
+  // such as the input and/or native_window_.
   Mutex android_command_mutex_;
   ConditionVariable android_command_condition_;
+
+  // Track queued "stop" commands to avoid starting the app when Android has
+  // already requested it be stopped.
+  SbAtomic32 android_stop_count_ = 0;
 
   // The last Activity lifecycle state command received.
   AndroidCommand::CommandType activity_state_;
@@ -144,7 +154,14 @@ class ApplicationAndroid
   // The single open window, if any.
   SbWindow window_;
 
+  // |input_events_generator_| is accessed from multiple threads, so use a mutex
+  // to safely access it.
+  Mutex input_mutex_;
   scoped_ptr<InputEventsGenerator> input_events_generator_;
+
+#ifdef STARBOARD_INPUT_EVENTS_FILTER
+  internal::InputEventsFilter input_events_filter_;
+#endif
 
   bool last_is_accessibility_high_contrast_text_enabled_;
 
@@ -157,7 +174,6 @@ class ApplicationAndroid
 
   // Methods to process pipes attached to the Looper.
   void ProcessAndroidCommand();
-  void ProcessAndroidInput();
   void ProcessKeyboardInject();
 };
 

@@ -1121,7 +1121,7 @@ void HTMLElement::PurgeCachedBackgroundImagesOfNodeAndDescendants() {
 void HTMLElement::PurgeCachedBackgroundImages() {
   ClearActiveBackgroundImages();
   if (!cached_background_images_.empty()) {
-    cached_background_images_.clear();
+    ClearCachedBackgroundImages();
     computed_style_valid_ = false;
     descendant_computed_styles_valid_ = false;
   }
@@ -1472,6 +1472,21 @@ void HTMLElement::UpdateUiNavigationFocus() {
     }
     break;
   }
+}
+
+void HTMLElement::SetUiNavItemBounds() {
+  if (!ui_nav_item_->IsContainer()) {
+    return;
+  }
+  float scrollable_width = scroll_width() - client_width();
+  float scroll_top_lower_bound = 0.0f;
+  float scroll_left_lower_bound =
+      GetUsedDirState() == DirState::kDirRightToLeft ? -scrollable_width : 0.0f;
+  float scroll_top_upper_bound = scroll_height() - client_height();
+  float scroll_left_upper_bound =
+      GetUsedDirState() == DirState::kDirRightToLeft ? 0.0f : scrollable_width;
+  ui_nav_item_->SetBounds(scroll_top_lower_bound, scroll_left_lower_bound,
+                          scroll_top_upper_bound, scroll_left_upper_bound);
 }
 
 void HTMLElement::SetDir(const std::string& value) {
@@ -2262,6 +2277,29 @@ void HTMLElement::ClearActiveBackgroundImages() {
   active_background_images_.clear();
 }
 
+void HTMLElement::ClearCachedBackgroundImages() {
+  // |cached_background_images_.clear()| cannot be used as it may lead to crash
+  // due to GetLoadTimingInfoAndCreateResourceTiming() being called indirectly
+  // from CachedImage dtor, and GetLoadTimingInfoAndCreateResourceTiming() loops
+  // on the |cached_background_images_| being cleared.
+  //
+  // To move and clear() like below is more straight-forward but leads to more
+  // in flight image loading performance timings get lost.
+  //   auto images = std::move(cached_background_images_);
+  //   DCHECK(cached_background_images_.empty());
+  //   images.clear();
+  //
+  // So images are moved out and cleared one by one.
+  while (!cached_background_images_.empty()) {
+    auto image = std::move(cached_background_images_.back());
+    DCHECK(!cached_background_images_.back());
+    cached_background_images_.pop_back();
+    // TODO(b/265089478): This implementation will lose the performance timing
+    // of |image|, consider refining to record all performance timings.
+    image = nullptr;
+  }
+}
+
 void HTMLElement::UpdateCachedBackgroundImagesFromComputedStyle() {
   ClearActiveBackgroundImages();
 
@@ -2305,10 +2343,11 @@ void HTMLElement::UpdateCachedBackgroundImagesFromComputedStyle() {
               cached_image, loaded_callback, base::Closure()));
     }
 
+    ClearCachedBackgroundImages();
     cached_background_images_ = std::move(cached_images);
   } else {
     // Clear the previous cached background image if the display is "none".
-    cached_background_images_.clear();
+    ClearCachedBackgroundImages();
   }
 }
 

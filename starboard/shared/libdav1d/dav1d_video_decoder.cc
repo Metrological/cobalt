@@ -15,6 +15,7 @@
 #include "starboard/shared/libdav1d/dav1d_video_decoder.h"
 
 #include <string>
+#include <utility>
 
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
@@ -81,14 +82,14 @@ void VideoDecoder::Initialize(const DecoderStatusCB& decoder_status_cb,
   error_cb_ = error_cb;
 }
 
-void VideoDecoder::WriteInputBuffer(
-    const scoped_refptr<InputBuffer>& input_buffer) {
+void VideoDecoder::WriteInputBuffers(const InputBuffers& input_buffers) {
   SB_DCHECK(BelongsToCurrentThread());
-  SB_DCHECK(input_buffer);
+  SB_DCHECK(input_buffers.size() == 1);
+  SB_DCHECK(input_buffers[0]);
   SB_DCHECK(decoder_status_cb_);
 
   if (stream_ended_) {
-    ReportError("WriteInputBuffer() was called after WriteEndOfStream().");
+    ReportError("WriteInputBuffers() was called after WriteEndOfStream().");
     return;
   }
 
@@ -97,6 +98,7 @@ void VideoDecoder::WriteInputBuffer(
     SB_DCHECK(decoder_thread_);
   }
 
+  const auto& input_buffer = input_buffers[0];
   decoder_thread_->job_queue()->Schedule(
       std::bind(&VideoDecoder::DecodeOneBuffer, this, input_buffer));
 }
@@ -110,7 +112,7 @@ void VideoDecoder::WriteEndOfStream() {
   stream_ended_ = true;
 
   if (!decoder_thread_) {
-    // In case there is no WriteInputBuffer() call before WriteEndOfStream(),
+    // In case there is no WriteInputBuffers() call before WriteEndOfStream(),
     // don't create the decoder thread and send the EOS frame directly.
     decoder_status_cb_(kBufferFull, VideoFrame::CreateEOSFrame());
     return;
@@ -131,7 +133,6 @@ void VideoDecoder::Reset() {
     decoder_thread_.reset();
   }
 
-  error_occurred_ = false;
   stream_ended_ = false;
 
   CancelPendingJobs();
@@ -155,10 +156,13 @@ void VideoDecoder::UpdateDecodeTarget_Locked(
 }
 
 void VideoDecoder::ReportError(const std::string& error_message) {
-  SB_DCHECK(decoder_thread_->job_queue()->BelongsToCurrentThread());
+  SB_DCHECK(error_cb_);
 
-  error_occurred_ = true;
-  Schedule(std::bind(error_cb_, kSbPlayerErrorDecode, error_message));
+  if (!BelongsToCurrentThread()) {
+    Schedule(std::bind(error_cb_, kSbPlayerErrorDecode, error_message));
+    return;
+  }
+  error_cb_(kSbPlayerErrorDecode, error_message);
 }
 
 void VideoDecoder::InitializeCodec() {

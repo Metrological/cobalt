@@ -22,7 +22,11 @@
 #include "starboard/shared/ffmpeg/ffmpeg_video_decoder.h"
 #include "starboard/shared/libdav1d/dav1d_video_decoder.h"
 #include "starboard/shared/libde265/de265_video_decoder.h"
+#include "starboard/shared/libfdkaac/fdk_aac_audio_decoder.h"
+#include "starboard/shared/libfdkaac/libfdkaac_library_loader.h"
 #include "starboard/shared/libvpx/vpx_video_decoder.h"
+#include "starboard/shared/openh264/openh264_library_loader.h"
+#include "starboard/shared/openh264/openh264_video_decoder.h"
 #include "starboard/shared/opus/opus_audio_decoder.h"
 #include "starboard/shared/starboard/player/filter/adaptive_audio_decoder_internal.h"
 #include "starboard/shared/starboard/player/filter/audio_decoder_internal.h"
@@ -43,6 +47,8 @@ namespace filter {
 
 namespace {
 
+using ::starboard::shared::openh264::is_openh264_supported;
+
 class PlayerComponentsFactory : public PlayerComponents::Factory {
  public:
   bool CreateSubComponents(
@@ -61,6 +67,8 @@ class PlayerComponentsFactory : public PlayerComponents::Factory {
 
       typedef ::starboard::shared::ffmpeg::AudioDecoder FfmpegAudioDecoder;
       typedef ::starboard::shared::opus::OpusAudioDecoder OpusAudioDecoder;
+      typedef ::starboard::shared::libfdkaac::FdkAacAudioDecoder
+          FdkAacAudioDecoder;
 
       auto decoder_creator = [](const SbMediaAudioSampleInfo& audio_sample_info,
                                 SbDrmSystem drm_system) {
@@ -70,11 +78,18 @@ class PlayerComponentsFactory : public PlayerComponents::Factory {
           if (audio_decoder_impl->is_valid()) {
             return audio_decoder_impl.PassAs<AudioDecoder>();
           }
+        } else if (audio_sample_info.codec == kSbMediaAudioCodecAac &&
+                   audio_sample_info.number_of_channels <=
+                       FdkAacAudioDecoder::kMaxChannels &&
+                   libfdkaac::LibfdkaacHandle::GetHandle()->IsLoaded()) {
+          SB_LOG(INFO) << "Playing audio using FdkAacAudioDecoder.";
+          return scoped_ptr<AudioDecoder>(new FdkAacAudioDecoder());
         } else {
           scoped_ptr<FfmpegAudioDecoder> audio_decoder_impl(
               FfmpegAudioDecoder::Create(audio_sample_info.codec,
                                          audio_sample_info));
           if (audio_decoder_impl && audio_decoder_impl->is_valid()) {
+            SB_LOG(INFO) << "Playing audio using FfmpegAudioDecoder";
             return audio_decoder_impl.PassAs<AudioDecoder>();
           }
         }
@@ -92,6 +107,8 @@ class PlayerComponentsFactory : public PlayerComponents::Factory {
       typedef ::starboard::shared::de265::VideoDecoder H265VideoDecoderImpl;
       typedef ::starboard::shared::ffmpeg::VideoDecoder FfmpegVideoDecoderImpl;
       typedef ::starboard::shared::vpx::VideoDecoder VpxVideoDecoderImpl;
+      typedef ::starboard::shared::openh264::VideoDecoder
+          Openh264VideoDecoderImpl;
 
       const SbTime kVideoSinkRenderInterval = 10 * kSbTimeMillisecond;
 
@@ -118,6 +135,14 @@ class PlayerComponentsFactory : public PlayerComponents::Factory {
             creation_parameters.video_codec(),
             creation_parameters.output_mode(),
             creation_parameters.decode_target_graphics_context_provider()));
+      } else if ((creation_parameters.video_codec() ==
+                  kSbMediaVideoCodecH264) &&
+                 is_openh264_supported()) {
+        SB_LOG(INFO) << "Playing video using openh264::VideoDecoder.";
+        video_decoder->reset(new Openh264VideoDecoderImpl(
+            creation_parameters.video_codec(),
+            creation_parameters.output_mode(),
+            creation_parameters.decode_target_graphics_context_provider()));
       } else {
         scoped_ptr<FfmpegVideoDecoderImpl> ffmpeg_video_decoder(
             FfmpegVideoDecoderImpl::Create(
@@ -125,6 +150,7 @@ class PlayerComponentsFactory : public PlayerComponents::Factory {
                 creation_parameters.output_mode(),
                 creation_parameters.decode_target_graphics_context_provider()));
         if (ffmpeg_video_decoder && ffmpeg_video_decoder->is_valid()) {
+          SB_LOG(INFO) << "Playing video using ffmpeg::VideoDecoder.";
           video_decoder->reset(ffmpeg_video_decoder.release());
         } else {
           SB_LOG(ERROR) << "Failed to create video decoder for codec "

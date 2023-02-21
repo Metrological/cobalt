@@ -17,6 +17,8 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <utility>
+#include <vector>
 
 #include "starboard/common/condition_variable.h"
 #include "starboard/common/media.h"
@@ -136,8 +138,7 @@ class AudioDecoderTest
     can_accept_more_input_ = false;
 
     last_input_buffer_ = GetAudioInputBuffer(index);
-
-    audio_decoder_->Decode(last_input_buffer_, consumed_cb());
+    audio_decoder_->Decode({last_input_buffer_}, consumed_cb());
   }
 
   // This has to be called when OnOutput() is called.
@@ -306,8 +307,7 @@ class AudioDecoderTest
     if (iter != invalid_inputs_.end()) {
       std::vector<uint8_t> content(input_buffer->size(), iter->second);
       // Replace the content with invalid data.
-      input_buffer->SetDecryptedContent(content.data(),
-                                        static_cast<int>(content.size()));
+      input_buffer->SetDecryptedContent(std::move(content));
     }
     return input_buffer;
   }
