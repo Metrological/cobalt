@@ -18,6 +18,7 @@ declare_args() {
   has_ocdm = getenv("COBALT_HAS_OCDM")
   has_provision = getenv("COBALT_HAS_PROVISION")
   has_waylandsink = getenv("COBALT_HAS_WAYLANDSINK")
+  cobalt_data_path = getenv("COBALT_DATA_PATH")
 }
 
 pkg_config("pkg_libs") {
@@ -68,6 +69,11 @@ config("platform_configuration") {
   if (has_waylandsink == "1") {
     ldflags += [
       "-lgstwayland-1.0"
+    ]
+  }
+  if (cobalt_data_path != "") {
+    cflags += [
+      "-DCOBALT_DATA_PATH=\"${cobalt_data_path}\"",
     ]
   }
 }
