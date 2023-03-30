@@ -14,9 +14,10 @@
 
 import("//third_party/starboard/wpe/shared/platform_configuration/configuration.gni")
 
-arm_float_abi = "hard"
-sabi_path = "//starboard/sabi/arm/hardfp/sabi-v$sb_api_version.json"
+arm_version = 8
+sabi_path = "//starboard/sabi/arm64/sabi-v$sb_api_version.json"
 
+# these are common flags but i just copied them
 speed_config_path = "//third_party/starboard/wpe/shared/platform_configuration:speed"
 size_config_path = "//third_party/starboard/wpe/shared/platform_configuration:size"
 no_pedantic_warnings_config_path = "//third_party/starboard/wpe/shared/platform_configuration:no_pedantic_warnings"

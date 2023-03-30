@@ -17,17 +17,14 @@ config("platform_configuration") {
 
   if (current_toolchain == default_toolchain) {
     configs += [ "//third_party/starboard/wpe/shared/platform_configuration" ]
-    configs += [ "//third_party/starboard/wpe/shared/platform_configuration:compiler_flags" ]
+    configs += [ "//third_party/starboard/wpe/shared/platform_configuration:compiler_flags" ]    
     if (is_debug || is_devel) {
       configs += [ "//build/config/compiler:rtti" ]
     }
     cflags = [
-      "-march=armv7-a",
-      "-mfpu=neon-vfpv4",
-      "-mfloat-abi=hard",
-      "-mtune=cortex-a8",
-      # For some reason Thumb build is broken
-      "-marm",
+      "-march=armv8-a",
+      # char is unsigned by default for arm64.
+      "-fsigned-char",
     ]
   } else {
     cflags = [ "-O2" ]

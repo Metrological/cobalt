@@ -12,12 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import("//third_party/starboard/wpe/shared/platform_configuration/configuration.gni")
+import("//build/toolchain/gcc_toolchain.gni")
+import("//third_party/starboard/wpe/arm64/toolchain/wpe_toolchain.gni")
 
-arm_float_abi = "hard"
-sabi_path = "//starboard/sabi/arm/hardfp/sabi-v$sb_api_version.json"
+gcc_toolchain("host") {
+  cc = "gcc"
+  cxx = "g++"
+  ld = cxx
+  ar = "ar"
 
-speed_config_path = "//third_party/starboard/wpe/shared/platform_configuration:speed"
-size_config_path = "//third_party/starboard/wpe/shared/platform_configuration:size"
-no_pedantic_warnings_config_path = "//third_party/starboard/wpe/shared/platform_configuration:no_pedantic_warnings"
-pedantic_warnings_config_path = "//third_party/starboard/wpe/shared/platform_configuration:pedantic_warnings"
+  toolchain_args = {
+    is_clang = false
+    current_os = "linux"
+    current_cpu = "x64"
+  }
+}
+
+gcc_toolchain("target") {
+  cc = gcc_toolchain_cc
+  cxx = gcc_toolchain_cxx
+  ld = cxx
+  ar = gcc_toolchain_ar
+  nm = gcc_toolchain_nm
+
+  tail_lib_dependencies = "-l:libpthread.so.0"
+
+  toolchain_args = {
+    is_clang = false
+  }
+}
