@@ -43,6 +43,7 @@ PLATFORMS = {
     'evergreen-arm64': 'starboard/evergreen/arm64',
     'win-win32': 'starboard/win/win32',
     'wpe-arm': 'third_party/starboard/wpe/arm',
+    'wpe-arm64': 'third_party/starboard/wpe/arm64',
 }
 PLATFORMS.update(INTERNAL_PLATFORMS)
 

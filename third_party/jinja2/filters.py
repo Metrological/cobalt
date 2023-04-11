@@ -21,7 +21,7 @@ from jinja2.exceptions import FilterArgumentError
 from jinja2._compat import next, imap, string_types, text_type, iteritems
 
 
-_word_re = re.compile(r'\w+(?u)')
+_word_re = re.compile(r"\w+")
 
 
 def contextfilter(f):

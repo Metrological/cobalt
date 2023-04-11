@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import("//third_party/starboard/wpe/shared/platform_configuration/configuration.gni")
+wpe_toolchain_prefix = getenv("COBALT_TOOLCHAIN_PREFIX")
+assert(wpe_toolchain_prefix != "",
+       "wpe build requires the 'COBALT_TOOLCHAIN_PREFIX' environment variable to be set.")
 
-arm_float_abi = "hard"
-sabi_path = "//starboard/sabi/arm/hardfp/sabi-v$sb_api_version.json"
-
-speed_config_path = "//third_party/starboard/wpe/shared/platform_configuration:speed"
-size_config_path = "//third_party/starboard/wpe/shared/platform_configuration:size"
-no_pedantic_warnings_config_path = "//third_party/starboard/wpe/shared/platform_configuration:no_pedantic_warnings"
-pedantic_warnings_config_path = "//third_party/starboard/wpe/shared/platform_configuration:pedantic_warnings"
+gcc_toolchain_ar = "${wpe_toolchain_prefix}ar"
+gcc_toolchain_cc = "${wpe_toolchain_prefix}gcc"
+gcc_toolchain_cxx = "${wpe_toolchain_prefix}g++"
+gcc_toolchain_strip = "${wpe_toolchain_prefix}strip"
+gcc_toolchain_nm = "${wpe_toolchain_prefix}nm"

@@ -367,6 +367,7 @@ bool HasItemInList(const char* list, const char* flag) {
   return false;
 }
 
+#if SB_IS(32_BIT)
 // Construct hwcap bitmask by the feature flags in /proc/cpuinfo
 uint32_t ConstructHwcapFromCPUInfo(ProcCpuInfo* cpu_info,
                                    int16_t architecture_generation,
@@ -399,8 +400,7 @@ uint32_t ConstructHwcapFromCPUInfo(ProcCpuInfo* cpu_info,
     hwcap_value |= HasItemInList(flags_buffer, "neon") ? HWCAP_NEON : 0;
     hwcap_value |= HasItemInList(flags_buffer, "idiva") ? HWCAP_IDIVA : 0;
     hwcap_value |= HasItemInList(flags_buffer, "idivt") ? HWCAP_IDIVT : 0;
-    hwcap_value |=
-        HasItemInList(flags_buffer, "idiv") ? (HWCAP_IDIVA | HWCAP_IDIVT) : 0;
+    hwcap_value |= HasItemInList(flags_buffer, "idiv") ? (HWCAP_IDIVA | HWCAP_IDIVT) : 0;
     hwcap_value |= HasItemInList(flags_buffer, "iwmmxt") ? HWCAP_IWMMXT : 0;
   } else if (hwcap_type == AT_HWCAP2) {
     hwcap_value |= HasItemInList(flags_buffer, "aes") ? HWCAP2_AES : 0;
@@ -411,6 +411,7 @@ uint32_t ConstructHwcapFromCPUInfo(ProcCpuInfo* cpu_info,
   }
   return hwcap_value;
 }
+#endif
 
 bool SbCPUFeaturesGet_ARM(SbCPUFeatures* features) {
   memset(features, 0, sizeof(*features));
