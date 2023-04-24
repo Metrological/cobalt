@@ -20,6 +20,7 @@
 #include "starboard/event.h"
 #include "starboard/shared/starboard/audio_sink/audio_sink_internal.h"
 #include "starboard/string.h"
+#include "system/system_get_property.h"
 #include "third_party/starboard/wpe/shared/window/window_internal.h"
 #include "third_party/starboard/wpe/shared/events/system_events.h"
 
@@ -33,7 +34,9 @@ std::condition_variable Application::g_finished_init_;
 
 Application::Application() {}
 
-Application::~Application() {}
+Application::~Application() {
+    DisposePropertyInfo();
+}
 
 void Application::Initialize() {
   SbAudioSinkPrivate::Initialize();

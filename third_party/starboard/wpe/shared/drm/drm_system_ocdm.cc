@@ -1,6 +1,9 @@
 #if defined(HAS_OCDM)
 #include "third_party/starboard/wpe/shared/drm/drm_system_ocdm.h"
 
+#include <gst/base/gstbytewriter.h>
+#include <gst/gst.h>
+
 #include "base/logging.h"
 #include "starboard/common/mutex.h"
 #include "starboard/shared/starboard/thread_checker.h"
@@ -62,7 +65,7 @@ class Session {
       const SbDrmSessionClosedFunc session_closed_callback);
   ~Session();
   void Close();
-  void GenerateChallenge(const std::string& type,
+  SbDrmStatus GenerateChallenge(const std::string& type,
                          const void* initialization_data,
                          int initialization_data_size,
                          int ticket);
@@ -159,7 +162,7 @@ void Session::Close() {
   }
 }
 
-void Session::GenerateChallenge(const std::string& type,
+SbDrmStatus Session::GenerateChallenge(const std::string& type,
                                 const void* initialization_data,
                                 int initialization_data_size,
                                 int ticket) {
@@ -181,7 +184,7 @@ void Session::GenerateChallenge(const std::string& type,
                                      kSbDrmStatusUnknownError,
                                      kSbDrmSessionRequestTypeLicenseRequest,
                                      nullptr, nullptr, 0, nullptr, 0, nullptr);
-    return;
+    return kSbDrmStatusUnknownError;
   }
 
   session_.reset(session);
@@ -199,6 +202,9 @@ void Session::GenerateChallenge(const std::string& type,
   if (!challenge.empty()) {
     Session::ProcessChallenge(this, ticket, std::move(id), std::move(url),
                               std::move(challenge));
+    return kSbDrmStatusSuccess;
+  } else {
+    return kSbDrmStatusQuotaExceededError;
   }
 }
 
@@ -427,9 +433,18 @@ void DrmSystemOcdm::GenerateSessionUpdateRequest(
       new Session(this, ocdm_system_, context_,
                   session_update_request_callback_, session_updated_callback_,
                   key_statuses_changed_callback_, session_closed_callback_));
-  session->GenerateChallenge(type, initialization_data,
-                             initialization_data_size, ticket);
-  sessions_.push_back(std::move(session));
+  SbDrmStatus result = session->GenerateChallenge(type, initialization_data, initialization_data_size, ticket);
+  if (result == kSbDrmStatusSuccess) {
+    sessions_.push_back(std::move(session));
+  } else if (result == kSbDrmStatusQuotaExceededError) {
+    // Key rotation use-case: Max limit of 16 concurrent sessions is reached.
+    // Release previously created sessions and attempt again.
+    sessions_.erase(sessions_.begin(), std::prev(sessions_.end()));
+    SbDrmStatus result = session->GenerateChallenge(type, initialization_data, initialization_data_size, ticket);
+    if (result == kSbDrmStatusSuccess) {
+      sessions_.push_back(std::move(session));
+    }
+  }
 }
 
 void DrmSystemOcdm::UpdateSession(int ticket,
@@ -578,16 +593,78 @@ std::string DrmSystemOcdm::SessionIdByKeyId(const uint8_t* key,
 
 bool DrmSystemOcdm::Decrypt(const std::string& id,
                             _GstBuffer* buffer,
-                            _GstBuffer* sub_sample,
-                            uint32_t sub_sample_count,
-                            _GstBuffer* iv,
-                            _GstBuffer* key) {
+                            const SbDrmSampleInfo* drm_info) {
   session::Session* session = GetSessionById(id);
   DCHECK(session);
-  return opencdm_gstreamer_session_decrypt(session->OcdmSession(), buffer,
-                                           sub_sample, sub_sample_count, iv,
+  constexpr int kMaxIvSize = 16;
+  bool retVal = false;
+  _GstBuffer* sub_sample;
+  _GstBuffer* iv;
+  _GstBuffer* key;
+  int32_t subsamples_count = 0u;
+  key = gst_buffer_new_allocate(
+        nullptr, drm_info->identifier_size, nullptr);
+  gst_buffer_fill(key, 0, drm_info->identifier,
+                    drm_info->identifier_size);
+  size_t iv_size = drm_info->initialization_vector_size;
+  const int8_t kEmptyArray[kMaxIvSize / 2] = {0};
+  if (iv_size == kMaxIvSize &&
+        memcmp(drm_info->initialization_vector + kMaxIvSize / 2,
+               kEmptyArray, kMaxIvSize / 2) == 0)
+    iv_size /= 2;
+
+  iv = gst_buffer_new_allocate(nullptr, iv_size, nullptr);
+  gst_buffer_fill(iv, 0, drm_info->initialization_vector,
+                  iv_size);
+  subsamples_count = drm_info->subsample_count;
+  auto subsamples_raw_size =
+      subsamples_count * (sizeof(guint16) + sizeof(guint32));
+  guint8* subsamples_raw =
+      static_cast<guint8*>(g_malloc(subsamples_raw_size));
+  GstByteWriter writer;
+  gst_byte_writer_init_with_data(&writer, subsamples_raw, subsamples_raw_size,
+                                 FALSE);
+  for (int32_t i = 0; i < subsamples_count; ++i) {
+    if (!gst_byte_writer_put_uint16_be(
+            &writer,
+            drm_info->subsample_mapping[i].clear_byte_count))
+      GST_ERROR("Failed writing clear subsample info at %d", i);
+    if (!gst_byte_writer_put_uint32_be(&writer,
+                                           drm_info->subsample_mapping[i]
+                                           .encrypted_byte_count))
+      GST_ERROR("Failed writing encrypted subsample info at %d", i);
+  }
+  sub_sample = gst_buffer_new_wrapped(subsamples_raw, subsamples_raw_size);
+  DCHECK(buffer && sub_sample && subsamples_count && iv && key);
+  #if SB_API_VERSION >=12
+  const gchar *encScheme;
+  if (drm_info->encryption_scheme == kSbDrmEncryptionSchemeAesCtr) {
+     encScheme = "cenc";
+  }  
+  else if(drm_info->encryption_scheme == kSbDrmEncryptionSchemeAesCbc) {
+      encScheme = "cbcs";
+  }
+
+  GstStructure *info = gst_structure_new("application/x-cenc",
+                       "cipher-mode", G_TYPE_STRING, encScheme,
+                       "crypt_byte_block", G_TYPE_UINT, drm_info->encryption_pattern.crypt_byte_block,
+                       "skip_byte_block", G_TYPE_UINT, drm_info->encryption_pattern.skip_byte_block, NULL);
+  gst_buffer_add_protection_meta(buffer, info);
+
+  retVal = opencdm_gstreamer_session_decrypt(session->OcdmSession(), buffer,
+                                           sub_sample, subsamples_count, iv,
                                            key, 0) == ERROR_NONE;
+  #else
+  retVal = opencdm_gstreamer_session_decrypt(session->OcdmSession(), buffer,
+                                           sub_sample, subsamples_count, iv,
+                                           key, 0) == ERROR_NONE;
+  #endif
+  gst_buffer_unref(key);
+  gst_buffer_unref(iv);
+  gst_buffer_unref(sub_sample);
+  return retVal;
 }
+
 
 }  // namespace drm
 }  // namespace shared

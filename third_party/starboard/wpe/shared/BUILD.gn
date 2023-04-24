@@ -34,6 +34,7 @@ static_library("starboard_platform_sources") {
 
     "//third_party/starboard/wpe/shared/audio_sink/gstreamer_audio_sink_type.cc",
     "//third_party/starboard/wpe/shared/audio_sink/audio_sink_is_audio_sample_type_supported.cc",
+    "//third_party/starboard/wpe/shared/audio_sink/gstreamer_audio_sink_type_lifecycle.cc",
   ]
 
   directory_sources = [
@@ -94,9 +95,7 @@ static_library("starboard_platform_sources") {
   ]
 
   media_sources = [
-    "//starboard/shared/starboard/media/codec_util.cc",
     "//starboard/shared/starboard/media/media_can_play_mime_and_key_system.cc",
-    "//starboard/shared/starboard/media/media_util.cc",
     "//starboard/shared/starboard/media/mime_type.cc",
     "//starboard/shared/stub/media_set_audio_write_duration.cc",
 
@@ -118,6 +117,8 @@ static_library("starboard_platform_sources") {
     "//third_party/starboard/wpe/shared/media/media_is_supported.cc",
     "//third_party/starboard/wpe/shared/media/media_is_transfer_characteristics_supported.cc",
     "//third_party/starboard/wpe/shared/media/media_is_video_supported.cc",
+    "//third_party/starboard/wpe/shared/media/media_get_audio_configuration_5_1.cc",
+    "//third_party/starboard/wpe/shared/media/media_get_audio_output_count.cc",
 
     "//starboard/shared/stub/microphone_close.cc",
     "//starboard/shared/stub/microphone_create.cc",
@@ -307,7 +308,7 @@ static_library("starboard_platform_sources") {
 
     # GFX
     "//starboard/shared/egl/system_egl.cc",
-    # "//starboard/shared/gles/system_gles2.cc",
+    "//third_party/starboard/wpe/shared/system_gles2.cc",
 
     # OTHER
     "//third_party/starboard/wpe/shared/egl_workaround.cc",
@@ -453,6 +454,7 @@ static_library("starboard_platform_sources") {
     "//third_party/starboard/wpe/shared/cobalt_api_wpe.cc",
     "//third_party/starboard/wpe/shared/get_home_directory.cc",
     "//third_party/starboard/wpe/shared/main_wpe.cc",
+    "//third_party/starboard/wpe/shared/configuration_constants.cc",
   ]
   public_deps = [ 
     "//third_party/starboard/wpe/shared/platform_configuration:pkg_libs_grp"

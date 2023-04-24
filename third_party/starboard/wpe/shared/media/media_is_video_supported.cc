@@ -19,27 +19,21 @@
 #include "third_party/starboard/wpe/shared/media/gst_media_utils.h"
 #include "starboard/configuration_constants.h"
 
+using ::starboard::shared::starboard::media::MimeType;
+
 SB_EXPORT bool SbMediaIsVideoSupported(SbMediaVideoCodec video_codec,
-#if SB_API_VERSION >= 12
-                                       const char* content_type,
-#endif  // SB_API_VERSION >= 12
-#if SB_HAS(MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
+                                       const MimeType* mime_type,
                                        int /*profile*/,
                                        int /*level*/,
                                        int /*bit_depth*/,
                                        SbMediaPrimaryId /*primary_id*/,
                                        SbMediaTransferId /*transfer_id*/,
                                        SbMediaMatrixId /*matrix_id*/,
-#endif  // SB_HAS(MEDIA_IS_VIDEO_SUPPORTED_REFINEMENT)
                                        int frame_width,
                                        int frame_height,
                                        int64_t bitrate,
-                                       int fps
-#if SB_API_VERSION >= 10
-                                       ,
-                                       bool decode_to_texture_required
-#endif  // SB_API_VERSION >= 10
-) {
+                                       int fps,
+                                       bool decode_to_texture_required) {
   if (decode_to_texture_required) {
     LOG(WARNING) << "Decoding to texture required with " << frame_width << "x"
                  << frame_height;

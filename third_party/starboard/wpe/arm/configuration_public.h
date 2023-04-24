@@ -1,4 +1,4 @@
-// Copyright 2017 The Cobalt Authors. All Rights Reserved.
+// Copyright 2016 The Cobalt Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Implementation of SbMediaGetAudioOutputCount for a single audio output.
+#ifndef THIRD_PARTY_STARBOARD_WPE_ARM_CONFIGURATION_PUBLIC_H_
+#define THIRD_PARTY_STARBOARD_WPE_ARM_CONFIGURATION_PUBLIC_H_
 
-#include "starboard/media.h"
+#include "third_party/starboard/wpe/shared/configuration_public.h"
 
-int SbMediaGetAudioOutputCount() {
-  // HDMI:
-  return 1;
-}
+#endif  // THIRD_PARTY_STARBOARD_WPE_ARM_CONFIGURATION_PUBLIC_H_

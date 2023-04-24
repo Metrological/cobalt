@@ -12,30 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <glib.h>
-#include <gst/gst.h>
+#ifndef THIRD_PARTY_STARBOARD_WPE_ARM_ATOMIC_PUBLIC_H_
+#define THIRD_PARTY_STARBOARD_WPE_ARM_ATOMIC_PUBLIC_H_
 
-#include "starboard/thread.h"
-#include "third_party/starboard/wpe/shared/audio_sink/gstreamer_audio_sink_type.h"
+#include "third_party/starboard/wpe/shared/atomic_public.h"
 
-namespace third_party {
-namespace starboard {
-namespace wpe {
-namespace shared {
-namespace audio_sink {
-
-// static
-GStreamerAudioSinkType* GStreamerAudioSinkType::CreateInstance() {
-  return new GStreamerAudioSinkType();
-}
-
-// static
-void GStreamerAudioSinkType::DestroyInstance(GStreamerAudioSinkType* instance) {
-  delete instance;
-}
-
-}  // namespace audio_sink
-}  // namespace shared
-}  // namespace wpe
-}  // namespace starboard
-}  // namespace third_party
+#endif  // THIRD_PARTY_STARBOARD_WPE_ARM_ATOMIC_PUBLIC_H_

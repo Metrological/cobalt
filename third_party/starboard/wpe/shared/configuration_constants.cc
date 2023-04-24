@@ -16,7 +16,7 @@
 
 #include "starboard/configuration_constants.h"
 
-// Determines the threshhold of allocation size that should be done with mmap
+// Determines the threshold of allocation size that should be done with mmap
 // (if available), rather than allocated within the core heap.
 const size_t kSbDefaultMmapThreshold = 256 * 1024U;
 
@@ -54,9 +54,9 @@ const bool kSbHasAc3Audio = false;
 
 // Specifies whether this platform has webm/vp9 support.  This should be set to
 // non-zero on platforms with webm/vp9 support.
-const bool kSbHasMediaWebmVp9Support = true;
+const bool kSbHasMediaWebmVp9Support = false;
 
-// On the some platforms, real time thread scheduling seems to be
+// On some platforms, real time thread scheduling seems to be
 // broken in that higher priority threads do not always have priority over lower
 // priority threads.  It looks like the thread created last will always have the
 // highest priority.
@@ -84,20 +84,6 @@ const uint32_t kSbMediaMaxAudioBitrateInBitsPerSecond = 40 * 1024 * 1024;
 // video.
 const uint32_t kSbMediaMaxVideoBitrateInBitsPerSecond = 200 * 1024 * 1024;
 
-// Specify the number of video frames to be cached during playback.  A large
-// value leads to more stable fps but also causes the app to use more memory.
-const uint32_t kSbMediaMaximumVideoFrames = 12;
-
-// The encoded video frames are compressed in different ways, their decoding
-// time can vary a lot.  Occasionally a single frame can take longer time to
-// decode than the average time per frame.  The player has to cache some frames
-// to account for such inconsistency.  The number of frames being cached are
-// controlled by the following two macros.
-//
-// Specify the number of video frames to be cached before the playback starts.
-// Note that set this value too large may increase the playback start delay.
-const uint32_t kSbMediaMaximumVideoPrerollFrames = 4;
-
 // Specifies how video frame buffers must be aligned on this platform.
 const uint32_t kSbMediaVideoFrameAlignment = 256;
 
@@ -123,7 +109,7 @@ const uint32_t kSbNetworkReceiveBufferSize = 0;
 
 // Defines the maximum number of simultaneous threads for this platform. Some
 // platforms require sharing thread handles with other kinds of system handles,
-// like mutexes, so we want to keep this managable.
+// like mutexes, so we want to keep this manageable.
 const uint32_t kSbMaxThreads = 90;
 
 // The current platform's search path component separator character. When
@@ -143,3 +129,8 @@ const int kSbPreferredRgbaByteOrder = SB_PREFERRED_RGBA_BYTE_ORDER_RGBA;
 
 // The maximum number of users that can be signed in at the same time.
 const uint32_t kSbUserMaxSignedIn = 1;
+
+#if SB_API_VERSION >= 14
+// The maximum size the cache directory is allowed to use in bytes.
+const uint32_t kSbMaxSystemPathCacheDirectorySize = 24 << 20;  // 24MiB
+#endif

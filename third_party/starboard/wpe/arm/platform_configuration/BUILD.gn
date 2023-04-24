@@ -14,6 +14,7 @@
 
 declare_args() {
   wpe_staging_dir = getenv("COBALT_STAGING_DIR")
+  is_video_overlay = false
 }
 
 config("compiler_flags") {
@@ -30,6 +31,12 @@ config("compiler_flags") {
     "_GNU_SOURCE=1",
     "STARBOARD_IMPLEMENTATION"
   ]
+
+  if (is_video_overlay) {
+    defines += [
+      "SB_NEEDS_VIDEO_OVERLAY_SURFACE=1",
+    ]
+  }
 
   if (is_debug) {
     cflags += [ "-O0" ]
@@ -118,7 +125,7 @@ config("platform_configuration") {
 
   if (current_toolchain == default_toolchain) {
     configs += [ "//third_party/starboard/wpe/shared/platform_configuration" ]
-    configs += [ "//third_party/starboard/wpe/rpi/platform_configuration:compiler_flags" ]
+    configs += [ "//third_party/starboard/wpe/arm/platform_configuration:compiler_flags" ]
     if (is_debug || is_devel) {
       configs += [ "//build/config/compiler:rtti" ]
     }
