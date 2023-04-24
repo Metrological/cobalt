@@ -24,6 +24,7 @@
 #include "cobalt/browser/splash_screen_cache.h"
 #include "cobalt/dom/window.h"
 #include "cobalt/loader/cache_fetcher.h"
+#include "cobalt/web/user_agent_platform_info.h"
 
 namespace cobalt {
 namespace browser {
@@ -50,10 +51,11 @@ void OnError(const GURL& url, const std::string& error) { LOG(ERROR) << error; }
 }  // namespace
 
 SplashScreen::SplashScreen(
+    web::UserAgentPlatformInfo* platform_info,
     base::ApplicationState initial_application_state,
     const WebModule::OnRenderTreeProducedCallback&
         render_tree_produced_callback,
-    network::NetworkModule* network_module,
+    web::WebSettings* web_settings, network::NetworkModule* network_module,
     const cssom::ViewportSize& window_dimensions,
     render_tree::ResourceProvider* resource_provider, float layout_refresh_rate,
     const base::Optional<GURL>& fallback_splash_screen_url,
@@ -65,7 +67,7 @@ SplashScreen::SplashScreen(
       self_message_loop_(base::MessageLoop::current()),
       on_splash_screen_shutdown_complete_(on_splash_screen_shutdown_complete),
       shutdown_signaled_(false) {
-  WebModule::Options web_module_options("SplashScreenWebModule");
+  WebModule::Options web_module_options;
 
   // We want the splash screen to load and appear as quickly as possible, so
   // we set it and its image decoding thread to be high priority.
@@ -100,16 +102,19 @@ SplashScreen::SplashScreen(
   // Pass down this callback from Browser module to Web module eventually.
   web_module_options.maybe_freeze_callback = maybe_freeze_callback;
 
+  web_module_options.web_options.web_settings = web_settings;
   web_module_options.web_options.network_module = network_module;
+  web_module_options.web_options.platform_info = platform_info;
 
   DCHECK(url_to_pass);
-  web_module_.reset(new WebModule(
-      *url_to_pass, initial_application_state, render_tree_produced_callback_,
-      base::Bind(&OnError), on_window_close,
-      base::Closure(),  // window_minimize_callback
-      NULL /* can_play_type_handler */, NULL /* media_module */,
-      window_dimensions, resource_provider, layout_refresh_rate,
-      web_module_options));
+  web_module_.reset(new WebModule("SplashScreenWebModule"));
+  web_module_->Run(*url_to_pass, initial_application_state,
+                   nullptr /* scroll_engine */, render_tree_produced_callback_,
+                   base::Bind(&OnError), on_window_close,
+                   base::Closure(),  // window_minimize_callback
+                   NULL /* can_play_type_handler */, NULL /* media_module */,
+                   window_dimensions, resource_provider, layout_refresh_rate,
+                   web_module_options);
 }
 
 SplashScreen::~SplashScreen() {

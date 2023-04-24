@@ -17,6 +17,39 @@ import("//starboard/shared/starboard/media/media_tests.gni")
 import("//starboard/shared/starboard/player/buildfiles.gni")
 import("//starboard/shared/starboard/player/player_tests.gni")
 
+##########################################################
+# Configuration to extract GameActivity native files.
+##########################################################
+
+game_activity_aar_file = "//starboard/android/apk/app/src/main/java/dev/cobalt/libraries/game_activity/games-activity-1.2.2.aar"
+
+game_activity_source_files = [
+  "$target_gen_dir/game_activity/prefab/modules/game-activity/include/game-activity/GameActivity.cpp",
+  "$target_gen_dir/game_activity/prefab/modules/game-activity/include/game-activity/GameActivity.h",
+  "$target_gen_dir/game_activity/prefab/modules/game-activity/include/game-text-input/gamecommon.h",
+  "$target_gen_dir/game_activity/prefab/modules/game-activity/include/game-text-input/gametextinput.cpp",
+  "$target_gen_dir/game_activity/prefab/modules/game-activity/include/game-text-input/gametextinput.h",
+]
+
+game_activity_include_dirs =
+    [ "$target_gen_dir/game_activity/prefab/modules/game-activity/include" ]
+
+action("game_activity_sources") {
+  script = "//starboard/tools/unzip_file.py"
+  sources = [ game_activity_aar_file ]
+  outputs = game_activity_source_files
+  args = [
+    "--zip_file",
+    rebase_path(game_activity_aar_file, root_build_dir),
+    "--output_dir",
+    rebase_path(target_gen_dir, root_build_dir) + "/game_activity",
+  ]
+}
+
+##########################################################
+# Configuration for overall Android Starboard Platform.
+##########################################################
+
 static_library("starboard_platform") {
   sources = [
     "$target_gen_dir/ndk-sources/cpu-features.c",
@@ -291,6 +324,8 @@ static_library("starboard_platform") {
     "configuration.h",
     "configuration_constants.cc",
     "configuration_public.h",
+    "crash_handler.cc",
+    "crash_handler.h",
     "decode_target_create.cc",
     "decode_target_create.h",
     "decode_target_get_info.cc",
@@ -334,6 +369,8 @@ static_library("starboard_platform") {
     "log_is_tty.cc",
     "log_raw.cc",
     "main.cc",
+    "media_capabilities_cache.cc",
+    "media_capabilities_cache.h",
     "media_codec_bridge.cc",
     "media_codec_bridge.h",
     "media_common.h",
@@ -407,6 +444,7 @@ static_library("starboard_platform") {
     "window_update_on_screen_keyboard_suggestions.cc",
   ]
 
+  sources += game_activity_source_files
   sources += common_player_sources
 
   sources -= [
@@ -417,9 +455,12 @@ static_library("starboard_platform") {
     "//starboard/shared/starboard/player/player_set_playback_rate.cc",
   ]
 
+  include_dirs = game_activity_include_dirs
+
   configs += [ "//starboard/build/config:starboard_implementation" ]
 
   public_deps = [
+    ":game_activity_sources",
     ":ndk_sources",
     ":starboard_base_symbolize",
     "//starboard/common",
@@ -445,6 +486,18 @@ static_library("starboard_platform") {
       "media_is_supported.cc",
       "player_components_factory.cc",
     ]
+  }
+
+  if (sb_is_evergreen_compatible) {
+    public_deps += [ "//starboard/elf_loader:evergreen_config" ]
+
+    if (!sb_evergreen_compatible_enable_lite) {
+      public_deps += [ "//starboard/loader_app:pending_restart" ]
+    }
+  }
+
+  if (sb_evergreen_compatible_use_libunwind) {
+    deps += [ "//third_party/llvm-project/libunwind:unwind_starboard" ]
   }
 }
 

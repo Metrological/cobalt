@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "base/bind.h"
 #include "base/macros.h"
@@ -24,6 +25,7 @@
 #include "base/message_loop/message_loop_current.h"
 #include "base/synchronization/waitable_event.h"
 #include "base/threading/thread.h"
+#include "cobalt/base/source_location.h"
 #include "cobalt/csp/content_security_policy.h"
 #include "cobalt/loader/script_loader_factory.h"
 #include "cobalt/script/environment_settings.h"
@@ -36,8 +38,8 @@
 #include "cobalt/web/agent.h"
 #include "cobalt/web/context.h"
 #include "cobalt/web/environment_settings.h"
+#include "cobalt/web/message_port.h"
 #include "cobalt/worker/dedicated_worker_global_scope.h"
-#include "cobalt/worker/message_port.h"
 #include "cobalt/worker/worker_global_scope.h"
 #include "cobalt/worker/worker_options.h"
 #include "cobalt/worker/worker_settings.h"
@@ -54,9 +56,10 @@ class Worker : public base::MessageLoop::DestructionObserver {
  public:
   // Worker Options needed at thread run time.
   struct Options {
-    explicit Options(const std::string& name) : web_options(name) {}
-
     web::Agent::Options web_options;
+
+    // Holds the source location where the worker was constructed.
+    base::SourceLocation construction_location;
 
     // True if worker is a SharedWorker object, and false otherwise.
     bool is_shared;
@@ -64,31 +67,26 @@ class Worker : public base::MessageLoop::DestructionObserver {
     // Parameters from 'Run a worker' step 9.1 in the spec.
     //   https://html.spec.whatwg.org/commit-snapshots/465a6b672c703054de278b0f8133eb3ad33d93f4/#dom-worker
     GURL url;
-    web::EnvironmentSettings* outside_settings;
-    MessagePort* outside_port;
+    web::Context* outside_context = nullptr;
+    web::MessagePort* outside_port = nullptr;
     WorkerOptions options;
   };
 
-  Worker();
+  Worker(const char* name, const Options& options);
   ~Worker();
   Worker(const Worker&) = delete;
   Worker& operator=(const Worker&) = delete;
 
-  // Start the worker thread. Returns true if successful.
-  bool Run(const Options& options);
-
   void Terminate();
 
-  void ClearAllIntervalsAndTimeouts();
-
-  MessagePort* message_port() const { return message_port_.get(); }
+  web::MessagePort* message_port() const { return message_port_.get(); }
 
   // The message loop this object is running on.
   base::MessageLoop* message_loop() const {
     return web_agent_ ? web_agent_->message_loop() : nullptr;
   }
 
-  void PostMessage(const std::string& message);
+  void PostMessage(const script::ValueHandleHolder& message);
 
   // From base::MessageLoop::DestructionObserver.
   void WillDestroyCurrentMessageLoop() override;
@@ -96,7 +94,7 @@ class Worker : public base::MessageLoop::DestructionObserver {
  private:
   // Called by |Run| to perform initialization required on the dedicated
   // thread.
-  void Initialize(const Options& options, web::Context* context);
+  void Initialize(web::Context* context);
 
   void OnContentProduced(const loader::Origin& last_url_origin,
                          std::unique_ptr<std::string> content);
@@ -106,6 +104,8 @@ class Worker : public base::MessageLoop::DestructionObserver {
   void Obtain();
   void Execute(const std::string& content,
                const base::SourceLocation& script_location);
+
+  void Abort();
 
   web::Agent* web_agent() const { return web_agent_.get(); }
 
@@ -117,14 +117,16 @@ class Worker : public base::MessageLoop::DestructionObserver {
   // The Web Context includes the Script Agent and Realm.
   std::unique_ptr<web::Agent> web_agent_;
 
-  web::Context* web_context_;
+  web::Context* web_context_ = nullptr;
 
-  bool is_shared_;
+  Options options_;
+
+  bool is_shared_ = false;
 
   scoped_refptr<WorkerGlobalScope> worker_global_scope_;
 
   // Inner message port.
-  scoped_refptr<MessagePort> message_port_;
+  scoped_refptr<web::MessagePort> message_port_;
 
   // The loader that is used for asynchronous loads.
   std::unique_ptr<loader::Loader> loader_;

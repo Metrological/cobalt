@@ -4,6 +4,7 @@
 #include "cobalt/media/player/web_media_player_impl.h"
 
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <string>
@@ -21,7 +22,10 @@
 #include "cobalt/base/instance_counter.h"
 #include "cobalt/media/base/drm_system.h"
 #include "cobalt/media/player/web_media_player_proxy.h"
+#include "cobalt/media/progressive/data_source_reader.h"
+#include "cobalt/media/progressive/demuxer_extension_wrapper.h"
 #include "cobalt/media/progressive/progressive_demuxer.h"
+#include "starboard/system.h"
 #include "starboard/types.h"
 #include "third_party/chromium/media/base/bind_to_current_loop.h"
 #include "third_party/chromium/media/base/limits.h"
@@ -108,11 +112,12 @@ typedef base::Callback<void(const std::string&, const std::string&,
     OnNeedKeyCB;
 
 WebMediaPlayerImpl::WebMediaPlayerImpl(
-    PipelineWindow window,
+    SbPlayerInterface* interface, PipelineWindow window,
     const Pipeline::GetDecodeTargetGraphicsContextProviderFunc&
         get_decode_target_graphics_context_provider_func,
     WebMediaPlayerClient* client, WebMediaPlayerDelegate* delegate,
-    bool allow_resume_after_suspend, ::media::MediaLog* const media_log)
+    bool allow_resume_after_suspend, bool allow_batched_sample_write,
+    ::media::MediaLog* const media_log)
     : pipeline_thread_("media_pipeline"),
       network_state_(WebMediaPlayer::kNetworkStateEmpty),
       ready_state_(WebMediaPlayer::kReadyStateHaveNothing),
@@ -120,6 +125,7 @@ WebMediaPlayerImpl::WebMediaPlayerImpl(
       client_(client),
       delegate_(delegate),
       allow_resume_after_suspend_(allow_resume_after_suspend),
+      allow_batched_sample_write_(allow_batched_sample_write),
       proxy_(new WebMediaPlayerProxy(main_loop_->task_runner(), this)),
       media_log_(media_log),
       is_local_source_(false),
@@ -130,15 +136,16 @@ WebMediaPlayerImpl::WebMediaPlayerImpl(
 
   ON_INSTANCE_CREATED(WebMediaPlayerImpl);
 
-  video_frame_provider_ = new VideoFrameProvider();
+  decode_target_provider_ = new DecodeTargetProvider();
 
   media_log_->AddEvent<::media::MediaLogEvent::kWebMediaPlayerCreated>();
 
   pipeline_thread_.Start();
-  pipeline_ = Pipeline::Create(window, pipeline_thread_.task_runner(),
-                               get_decode_target_graphics_context_provider_func,
-                               allow_resume_after_suspend_, media_log_,
-                               video_frame_provider_.get());
+  pipeline_ =
+      Pipeline::Create(interface, window, pipeline_thread_.task_runner(),
+                       get_decode_target_graphics_context_provider_func,
+                       allow_resume_after_suspend_, allow_batched_sample_write_,
+                       media_log_, decode_target_provider_.get());
 
   // Also we want to be notified of |main_loop_| destruction.
   main_loop_->AddDestructionObserver(this);
@@ -255,7 +262,7 @@ void WebMediaPlayerImpl::LoadMediaSource() {
 }
 
 void WebMediaPlayerImpl::LoadProgressive(
-    const GURL& url, std::unique_ptr<BufferedDataSource> data_source) {
+    const GURL& url, std::unique_ptr<DataSource> data_source) {
   TRACE_EVENT0("cobalt::media", "WebMediaPlayerImpl::LoadProgressive");
   DCHECK_EQ(main_loop_, base::MessageLoop::current());
 
@@ -275,8 +282,19 @@ void WebMediaPlayerImpl::LoadProgressive(
 
   is_local_source_ = !url.SchemeIs("http") && !url.SchemeIs("https");
 
-  progressive_demuxer_.reset(new ProgressiveDemuxer(
-      pipeline_thread_.task_runner(), proxy_->data_source(), media_log_));
+  // Attempt to use the demuxer provided via Cobalt Extension, if available.
+  progressive_demuxer_ = DemuxerExtensionWrapper::Create(
+      proxy_->data_source(), pipeline_thread_.task_runner());
+
+  if (progressive_demuxer_) {
+    LOG(INFO) << "Using DemuxerExtensionWrapper.";
+  } else {
+    // Either the demuxer Cobalt extension was not provided, or it failed to
+    // create a demuxer; fall back to the ProgressiveDemuxer.
+    LOG(INFO) << "Using ProgressiveDemuxer.";
+    progressive_demuxer_.reset(new ProgressiveDemuxer(
+        pipeline_thread_.task_runner(), proxy_->data_source(), media_log_));
+  }
 
   state_.is_progressive = true;
   StartPipeline(progressive_demuxer_.get());
@@ -498,9 +516,6 @@ void WebMediaPlayerImpl::UpdateBufferedTimeRanges(
 float WebMediaPlayerImpl::GetMaxTimeSeekable() const {
   DCHECK_EQ(main_loop_, base::MessageLoop::current());
 
-  // We don't support seeking in streaming media.
-  if (proxy_ && proxy_->data_source() && proxy_->data_source()->IsStreaming())
-    return 0.0f;
   return static_cast<float>(pipeline_->GetMediaDuration().InSecondsF());
 }
 
@@ -519,15 +534,6 @@ bool WebMediaPlayerImpl::DidLoadingProgress() const {
   return pipeline_->DidLoadingProgress();
 }
 
-bool WebMediaPlayerImpl::HasSingleSecurityOrigin() const {
-  if (proxy_) return proxy_->HasSingleOrigin();
-  return true;
-}
-
-bool WebMediaPlayerImpl::DidPassCORSAccessCheck() const {
-  return proxy_ && proxy_->DidPassCORSAccessCheck();
-}
-
 float WebMediaPlayerImpl::MediaTimeForTimeValue(float timeValue) const {
   return ConvertSecondsToTimestamp(timeValue).InSecondsF();
 }
@@ -544,8 +550,9 @@ WebMediaPlayer::PlayerStatistics WebMediaPlayerImpl::GetStatistics() const {
   return statistics;
 }
 
-scoped_refptr<VideoFrameProvider> WebMediaPlayerImpl::GetVideoFrameProvider() {
-  return video_frame_provider_;
+scoped_refptr<DecodeTargetProvider>
+WebMediaPlayerImpl::GetDecodeTargetProvider() {
+  return decode_target_provider_;
 }
 
 WebMediaPlayerImpl::SetBoundsCB WebMediaPlayerImpl::GetSetBoundsCB() {
@@ -694,6 +701,10 @@ void WebMediaPlayerImpl::OnPipelineError(::media::PipelineStatus error,
       SetNetworkError(WebMediaPlayer::kNetworkStateFormatError,
                       message.empty() ? "Decoder not supported." : message);
       break;
+    case ::media::DEMUXER_ERROR_DETECTED_HLS:
+      SetNetworkError(WebMediaPlayer::kNetworkStateFormatError,
+                      message.empty() ? "Detected HLS format." : message);
+      break;
 
     case ::media::PIPELINE_ERROR_DECODE:
       SetNetworkError(WebMediaPlayer::kNetworkStateDecodeError,
@@ -721,12 +732,16 @@ void WebMediaPlayerImpl::OnPipelineError(::media::PipelineStatus error,
       SetNetworkError(WebMediaPlayer::kNetworkStateDecodeError,
                       message.empty() ? "Audio renderer error." : message);
       break;
+    case ::media::PIPELINE_ERROR_HARDWARE_CONTEXT_RESET:
+      SetNetworkError(WebMediaPlayer::kNetworkStateDecodeError,
+                      message.empty() ? "Hardware context reset." : message);
+      break;
+
     case ::media::PLAYBACK_CAPABILITY_CHANGED:
       SetNetworkError(WebMediaPlayer::kNetworkStateCapabilityChangedError,
                       message.empty() ? "Capability changed." : message);
       break;
     default:
-      // TODO(b/230881576): Handle any new enum values that not handled.
       NOTREACHED();
       break;
   }

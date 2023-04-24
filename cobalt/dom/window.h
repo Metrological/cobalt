@@ -33,7 +33,6 @@
 #include "cobalt/dom/animation_frame_request_callback_list.h"
 #include "cobalt/dom/application_lifecycle_state.h"
 #include "cobalt/dom/captions/system_caption_settings.h"
-#include "cobalt/dom/crypto.h"
 #include "cobalt/dom/dom_stat_tracker.h"
 #include "cobalt/dom/html_element_context.h"
 #include "cobalt/dom/location.h"
@@ -45,9 +44,7 @@
 #if defined(ENABLE_TEST_RUNNER)
 #include "cobalt/dom/test_runner.h"
 #endif  // ENABLE_TEST_RUNNER
-#include "cobalt/dom/window_timers.h"
 #include "cobalt/input/camera_3d.h"
-#include "cobalt/loader/cors_preflight_cache.h"
 #include "cobalt/loader/decoder.h"
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/loader/font/remote_typeface_cache.h"
@@ -62,13 +59,13 @@
 #include "cobalt/network_bridge/cookie_jar.h"
 #include "cobalt/network_bridge/net_poster.h"
 #include "cobalt/script/callback_function.h"
-#include "cobalt/script/environment_settings.h"
 #include "cobalt/script/error_report.h"
 #include "cobalt/script/execution_state.h"
 #include "cobalt/script/script_runner.h"
 #include "cobalt/script/script_value_factory.h"
 #include "cobalt/ui_navigation/nav_item.h"
 #include "cobalt/web/csp_delegate_type.h"
+#include "cobalt/web/environment_settings.h"
 #include "cobalt/web/event_target.h"
 #include "cobalt/web/url_registry.h"
 #include "cobalt/web/user_agent_platform_info.h"
@@ -86,6 +83,7 @@ class SpeechSynthesis;
 }  // namespace speech
 namespace web {
 class Event;
+class WindowTimers;
 }  // namespace web
 namespace dom {
 
@@ -101,7 +99,6 @@ class OnScreenKeyboard;
 class Performance;
 class Screen;
 class Storage;
-class WindowTimers;
 
 // The window object represents a window containing a DOM document.
 //   https://www.w3.org/TR/html50/browsers.html#the-window-object
@@ -112,7 +109,7 @@ class Window : public web::WindowOrWorkerGlobalScope,
  public:
   typedef AnimationFrameRequestCallbackList::FrameRequestCallback
       FrameRequestCallback;
-  typedef WindowTimers::TimerCallback TimerCallback;
+  typedef web::WindowTimers::TimerCallback TimerCallback;
   typedef base::Callback<void(const scoped_refptr<web::Event>& event)>
       OnStartDispatchEventCallback;
   typedef base::Callback<void(const scoped_refptr<web::Event>& event)>
@@ -134,8 +131,7 @@ class Window : public web::WindowOrWorkerGlobalScope,
   };
 
   Window(
-      script::EnvironmentSettings* settings,
-      const cssom::ViewportSize& view_size,
+      web::EnvironmentSettings* settings, const cssom::ViewportSize& view_size,
       base::ApplicationState initial_application_state,
       cssom::CSSParser* css_parser, Parser* dom_parser,
       loader::FetcherFactory* fetcher_factory,
@@ -154,9 +150,7 @@ class Window : public web::WindowOrWorkerGlobalScope,
       script::ScriptRunner* script_runner,
       script::ScriptValueFactory* script_value_factory,
       MediaSourceRegistry* media_source_registry,
-      DomStatTracker* dom_stat_tracker, const GURL& url,
-      const std::string& user_agent, web::UserAgentPlatformInfo* platform_info,
-      const std::string& language, const std::string& font_language_script,
+      DomStatTracker* dom_stat_tracker, const std::string& font_language_script,
       const base::Callback<void(const GURL&)> navigation_callback,
       const loader::Decoder::OnCompleteFunction& load_complete_callback,
       network_bridge::CookieJar* cookie_jar,
@@ -183,6 +177,10 @@ class Window : public web::WindowOrWorkerGlobalScope,
       const CacheCallback& splash_screen_cache_callback = CacheCallback(),
       const scoped_refptr<captions::SystemCaptionSettings>& captions = nullptr,
       bool log_tts = false);
+
+  // From web::WindowOrWorkerGlobalScope
+  //
+  Window* AsWindow() override { return this; }
 
   // Web API: Window
   //
@@ -272,37 +270,12 @@ class Window : public web::WindowOrWorkerGlobalScope,
     return viewport_size_.device_pixel_ratio();
   }
 
-  // Web API: GlobalCrypto (implements)
-  //   https://www.w3.org/TR/WebCryptoAPI/#crypto-interface
-  scoped_refptr<Crypto> crypto() const;
-
   // base64 encoding and decoding
   std::string Btoa(const std::string& string_to_encode,
                    script::ExceptionState* exception_state);
 
   std::vector<uint8_t> Atob(const std::string& encoded_string,
                             script::ExceptionState* exception_state);
-
-  // Web API: WindowTimers (implements)
-  //   https://www.w3.org/TR/html50/webappapis.html#timers
-  //
-  int SetTimeout(const WindowTimers::TimerCallbackArg& handler) {
-    return SetTimeout(handler, 0);
-  }
-
-  int SetTimeout(const WindowTimers::TimerCallbackArg& handler, int timeout);
-
-  void ClearTimeout(int handle);
-
-  int SetInterval(const WindowTimers::TimerCallbackArg& handler) {
-    return SetInterval(handler, 0);
-  }
-
-  int SetInterval(const WindowTimers::TimerCallbackArg& handler, int timeout);
-
-  void ClearInterval(int handle);
-
-  void DestroyTimers();
 
   // Web API: Storage (implements)
   scoped_refptr<Storage> local_storage() const;
@@ -386,10 +359,6 @@ class Window : public web::WindowOrWorkerGlobalScope,
   void CacheSplashScreen(const std::string& content,
                          const base::Optional<std::string>& topic);
 
-  const scoped_refptr<loader::CORSPreflightCache> get_preflight_cache() {
-    return preflight_cache_;
-  }
-
   // Custom on screen keyboard.
   const scoped_refptr<OnScreenKeyboard>& on_screen_keyboard() const;
   void ReleaseOnScreenKeyboard();
@@ -458,20 +427,15 @@ class Window : public web::WindowOrWorkerGlobalScope,
   scoped_refptr<Navigator> navigator_;
   std::unique_ptr<RelayLoadEvent> relay_on_load_event_;
   scoped_refptr<Camera3D> camera_3d_;
-  WindowTimers window_timers_;
   std::unique_ptr<AnimationFrameRequestCallbackList>
       animation_frame_request_callback_list_;
 
-  scoped_refptr<Crypto> crypto_;
   scoped_refptr<speech::SpeechSynthesis> speech_synthesis_;
 
   scoped_refptr<Storage> local_storage_;
   scoped_refptr<Storage> session_storage_;
 
   scoped_refptr<Screen> screen_;
-
-  // Global preflight cache.
-  scoped_refptr<loader::CORSPreflightCache> preflight_cache_;
 
   const base::Closure ran_animation_frame_callbacks_callback_;
   const CloseCallback window_close_callback_;

@@ -14,6 +14,12 @@
 
 import("//cobalt/build/contents_dir.gni")
 
+source_set("media_settings") {
+  has_pedantic_warnings = true
+  sources = [ "media_settings.h" ]
+  public_deps = [ "//cobalt/base" ]
+}
+
 static_library("dom") {
   has_pedantic_warnings = true
 
@@ -51,8 +57,6 @@ static_library("dom") {
     "character_data.h",
     "comment.cc",
     "comment.h",
-    "crypto.cc",
-    "crypto.h",
     "css_animations_adapter.cc",
     "css_animations_adapter.h",
     "css_transitions_adapter.cc",
@@ -187,12 +191,11 @@ static_library("dom") {
     "lottie_player.h",
     "media_query_list.cc",
     "media_query_list.h",
+    "media_settings.cc",
     "media_source.cc",
     "media_source.h",
     "memory_info.cc",
     "memory_info.h",
-    "message_event.cc",
-    "message_event.h",
     "mime_type_array.cc",
     "mime_type_array.h",
     "mouse_event.cc",
@@ -263,12 +266,17 @@ static_library("dom") {
     "screenshot.h",
     "screenshot_manager.cc",
     "screenshot_manager.h",
+    "serialized_algorithm_runner.h",
     "serializer.cc",
     "serializer.h",
     "source_buffer.cc",
     "source_buffer.h",
+    "source_buffer_algorithm.cc",
+    "source_buffer_algorithm.h",
     "source_buffer_list.cc",
     "source_buffer_list.h",
+    "source_buffer_metrics.cc",
+    "source_buffer_metrics.h",
     "storage.cc",
     "storage.h",
     "storage_area.cc",
@@ -307,9 +315,10 @@ static_library("dom") {
   }
 
   public_deps = [
-    ":window_timers",
+    ":media_settings",
     "//cobalt/browser:generated_types",
     "//cobalt/web",
+    "//cobalt/web:window_timers",
   ]
 
   deps = [
@@ -350,25 +359,6 @@ static_library("dom") {
   ]
 }
 
-static_library("window_timers") {
-  has_pedantic_warnings = true
-
-  sources = [
-    # TODO (b/219103808): Move window_timers to /cobalt/web.
-    "window_timers.cc",
-    "window_timers.h",
-  ]
-
-  public_deps = [ "//cobalt/web:stat_tracker" ]
-
-  deps = [
-    "//cobalt/base",
-    "//cobalt/script",
-    "//cobalt/web:web_events",
-    "//nb",
-  ]
-}
-
 copy("licenses") {
   install_content = true
   license_path =
@@ -385,7 +375,6 @@ target(gtest_target_type, "dom_test") {
   sources = [
     "application_lifecycle_state_test.cc",
     "comment_test.cc",
-    "crypto_test.cc",
     "document_test.cc",
     "document_type_test.cc",
     "dom_implementation_test.cc",
@@ -404,9 +393,11 @@ target(gtest_target_type, "dom_test") {
     "local_storage_database_test.cc",
     "location_test.cc",
     "media_query_list_test.cc",
+    "media_settings_test.cc",
     "mutation_observer_test.cc",
     "named_node_map_test.cc",
     "navigator_licenses_test.cc",
+    "navigator_test.cc",
     "node_dispatch_event_test.cc",
     "node_list_live_test.cc",
     "node_list_test.cc",
@@ -422,13 +413,11 @@ target(gtest_target_type, "dom_test") {
     "time_ranges_test.cc",
     "user_agent_data_test.cc",
     "window_test.cc",
-    "window_timers_test.cc",
     "xml_document_test.cc",
   ]
 
   deps = [
     ":dom",
-    ":window_timers",
     "//cobalt/base",
     "//cobalt/browser:browser",
     "//cobalt/browser:generated_bindings",
@@ -456,5 +445,5 @@ target(gtest_target_type, "dom_test") {
     "//url",
   ]
 
-  content_deps = [ ":licenses" ]
+  data_deps = [ ":licenses" ]
 }

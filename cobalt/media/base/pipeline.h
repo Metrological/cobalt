@@ -21,8 +21,9 @@
 #include "base/callback.h"
 #include "base/memory/ref_counted.h"
 #include "base/message_loop/message_loop.h"
+#include "cobalt/media/base/decode_target_provider.h"
 #include "cobalt/media/base/media_export.h"
-#include "cobalt/media/base/video_frame_provider.h"
+#include "cobalt/media/base/sbplayer_interface.h"
 #include "starboard/drm.h"
 #include "starboard/window.h"
 #include "third_party/chromium/media/base/demuxer.h"
@@ -57,6 +58,7 @@ class MEDIA_EXPORT Pipeline : public base::RefCountedThreadSafe<Pipeline> {
   typedef ::media::PipelineStatistics PipelineStatistics;
   typedef ::media::PipelineStatus PipelineStatus;
   typedef ::media::PipelineStatusCallback PipelineStatusCallback;
+  typedef ::media::PipelineStatusCB PipelineStatusCB;
 
   typedef base::Callback<void(PipelineStatus status, bool is_initial_preroll,
                               const std::string& error_message)>
@@ -91,12 +93,12 @@ class MEDIA_EXPORT Pipeline : public base::RefCountedThreadSafe<Pipeline> {
 #endif  // SB_HAS(PLAYER_WITH_URL)
 
   static scoped_refptr<Pipeline> Create(
-      PipelineWindow window,
+      SbPlayerInterface* interface, PipelineWindow window,
       const scoped_refptr<base::SingleThreadTaskRunner>& task_runner,
       const GetDecodeTargetGraphicsContextProviderFunc&
           get_decode_target_graphics_context_provider_func,
-      bool allow_resume_after_suspend, MediaLog* media_log,
-      VideoFrameProvider* video_frame_provider);
+      bool allow_resume_after_suspend, bool allow_batched_sample_write,
+      MediaLog* media_log, DecodeTargetProvider* decode_target_provider);
 
   virtual ~Pipeline() {}
 
@@ -126,7 +128,7 @@ class MEDIA_EXPORT Pipeline : public base::RefCountedThreadSafe<Pipeline> {
   // It is an error to call this method after the pipeline has already started.
   virtual void Start(Demuxer* demuxer,
                      const SetDrmSystemReadyCB& set_drm_system_ready_cb,
-                     PipelineStatusCallback ended_cb, const ErrorCB& error_cb,
+                     const PipelineStatusCB& ended_cb, const ErrorCB& error_cb,
                      const SeekCB& seek_cb,
                      const BufferingStateCB& buffering_state_cb,
                      const base::Closure& duration_change_cb,
@@ -140,7 +142,7 @@ class MEDIA_EXPORT Pipeline : public base::RefCountedThreadSafe<Pipeline> {
                      const OnEncryptedMediaInitDataEncounteredCB&
                          encrypted_media_init_data_encountered_cb,
                      const std::string& source_url,
-                     PipelineStatusCallback ended_cb, const ErrorCB& error_cb,
+                     const PipelineStatusCB& ended_cb, const ErrorCB& error_cb,
                      const SeekCB& seek_cb,
                      const BufferingStateCB& buffering_state_cb,
                      const base::Closure& duration_change_cb,

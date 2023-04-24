@@ -35,13 +35,17 @@ namespace h5vcc {
 // version to avoid being abused.
 class H5vccSettings : public script::Wrappable {
  public:
-  explicit H5vccSettings(media::MediaModule* media_module,
-                         cobalt::network::NetworkModule* network_module,
+  typedef base::Callback<bool(const std::string& name, int value)>
+      SetSettingFunc;
+
+  H5vccSettings(const SetSettingFunc& set_web_setting_func,
+                cobalt::media::MediaModule* media_module,
+                cobalt::network::NetworkModule* network_module,
 #if SB_IS(EVERGREEN)
-                         cobalt::updater::UpdaterModule* updater_module,
+                cobalt::updater::UpdaterModule* updater_module,
 #endif
-                         web::NavigatorUAData* user_agent_data,
-                         script::GlobalEnvironment* global_environment);
+                web::NavigatorUAData* user_agent_data,
+                script::GlobalEnvironment* global_environment);
 
   // Returns true when the setting is set successfully or if the setting has
   // already been set to the expected value.  Returns false when the setting is
@@ -51,7 +55,8 @@ class H5vccSettings : public script::Wrappable {
   DEFINE_WRAPPABLE_TYPE(H5vccSettings);
 
  private:
-  media::MediaModule* media_module_;
+  const SetSettingFunc set_web_setting_func_;
+  cobalt::media::MediaModule* media_module_ = nullptr;
   cobalt::network::NetworkModule* network_module_ = nullptr;
 #if SB_IS(EVERGREEN)
   cobalt::updater::UpdaterModule* updater_module_ = nullptr;

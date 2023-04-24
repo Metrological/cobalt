@@ -66,9 +66,10 @@ typedef enum SbSystemPathId {
   // Full path to the executable file.
   kSbSystemPathExecutableFile,
 
-  // Path to a directory for permanent file storage. Both read and write
-  // access is required. This is where an app may store its persistent settings.
-  // The location should be user agnostic if possible.
+  // Path to the directory dedicated for Evergreen Full permanent file storage.
+  // Both read and write access is required.
+  // The directory should be used only for storing the updates.
+  // See starboard/doc/evergreen/cobalt_evergreen_overview.md
   kSbSystemPathStorageDirectory,
 } SbSystemPathId;
 
@@ -125,6 +126,17 @@ typedef enum SbSystemPropertyId {
 
   // A field that, if available, is appended to the user agent
   kSbSystemPropertyUserAgentAuxField,
+
+#if SB_API_VERSION >= 14
+  // Advertising ID or IFA, typically a 128-bit UUID
+  // Please see https://iabtechlab.com/OTT-IFA for details.
+  // Corresponds to 'ifa' field. Note: `ifa_type` field is not provided.
+  kSbSystemPropertyAdvertisingId,
+
+  // Limit advertising tracking, treated as boolean. Set to nonzero to indicate
+  // a true value. Corresponds to 'lmt' field.
+  kSbSystemPropertyLimitAdTracking,
+#endif
 } SbSystemPropertyId;
 
 // Enumeration of device types.
@@ -162,6 +174,7 @@ typedef enum SbSystemDeviceType {
   kSbSystemDeviceTypeUnknown,
 } SbSystemDeviceType;
 
+#if SB_API_VERSION < 14
 // Enumeration of network connection types.
 typedef enum SbSystemConnectionType {
   // The system is on a wired connection.
@@ -173,6 +186,7 @@ typedef enum SbSystemConnectionType {
   // The system connection type is unknown.
   kSbSystemConnectionTypeUnknown,
 } SbSystemConnectionType;
+#endif  // SB_API_VERSION < 14
 
 // Runtime capabilities are boolean properties of a platform that can't be
 // determined at compile-time. They may vary from device to device, but they
@@ -303,8 +317,10 @@ SB_EXPORT int64_t SbSystemGetUsedGPUMemory();
 // Returns the type of the device.
 SB_EXPORT SbSystemDeviceType SbSystemGetDeviceType();
 
+#if SB_API_VERSION < 14
 // Returns the device's current network connection type.
 SB_EXPORT SbSystemConnectionType SbSystemGetConnectionType();
+#endif  // SB_API_VERSION < 14
 
 #if SB_API_VERSION >= 13
 // Returns if the device is disconnected from network. "Disconnected" is chosen

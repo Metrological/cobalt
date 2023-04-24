@@ -56,10 +56,10 @@ void VideoDecoder::Initialize(const DecoderStatusCB& decoder_status_cb,
   error_cb_ = error_cb;
 }
 
-void VideoDecoder::WriteInputBuffer(
-    const scoped_refptr<InputBuffer>& input_buffer) {
+void VideoDecoder::WriteInputBuffers(const InputBuffers& input_buffers) {
   SB_DCHECK(BelongsToCurrentThread());
-  SB_DCHECK(input_buffer);
+  SB_DCHECK(input_buffers.size() == 1);
+  SB_DCHECK(input_buffers[0]);
   SB_DCHECK(decoder_status_cb_);
 
   if (stream_ended_) {
@@ -72,6 +72,7 @@ void VideoDecoder::WriteInputBuffer(
     SB_DCHECK(decoder_thread_);
   }
 
+  const auto& input_buffer = input_buffers[0];
   decoder_thread_->job_queue()->Schedule(
       std::bind(&VideoDecoder::DecodeOneBuffer, this, input_buffer));
 }
@@ -85,7 +86,7 @@ void VideoDecoder::WriteEndOfStream() {
   stream_ended_ = true;
 
   if (!decoder_thread_) {
-    // In case there is no WriteInputBuffer() call before WriteEndOfStream(),
+    // In case there is no WriteInputBuffers() call before WriteEndOfStream(),
     // don't create the decoder thread and send the EOS frame directly.
     decoder_status_cb_(kBufferFull, VideoFrame::CreateEOSFrame());
     return;
@@ -237,14 +238,11 @@ void VideoDecoder::DecodeOneBuffer(
     return;
   }
 
-  SB_DCHECK(vpx_image->stride[VPX_PLANE_Y] ==
-            vpx_image->stride[VPX_PLANE_U] * 2);
   SB_DCHECK(vpx_image->stride[VPX_PLANE_U] == vpx_image->stride[VPX_PLANE_V]);
   SB_DCHECK(vpx_image->planes[VPX_PLANE_Y] < vpx_image->planes[VPX_PLANE_U]);
   SB_DCHECK(vpx_image->planes[VPX_PLANE_U] < vpx_image->planes[VPX_PLANE_V]);
 
-  if (vpx_image->stride[VPX_PLANE_Y] != vpx_image->stride[VPX_PLANE_U] * 2 ||
-      vpx_image->stride[VPX_PLANE_U] != vpx_image->stride[VPX_PLANE_V] ||
+  if (vpx_image->stride[VPX_PLANE_U] != vpx_image->stride[VPX_PLANE_V] ||
       vpx_image->planes[VPX_PLANE_Y] >= vpx_image->planes[VPX_PLANE_U] ||
       vpx_image->planes[VPX_PLANE_U] >= vpx_image->planes[VPX_PLANE_V]) {
     ReportError("Unsupported yuv plane format.");
@@ -256,8 +254,9 @@ void VideoDecoder::DecodeOneBuffer(
   // UV planes have half resolution both vertically and horizontally.
   scoped_refptr<CpuVideoFrame> frame = CpuVideoFrame::CreateYV12Frame(
       vpx_image->bit_depth, current_frame_width_, current_frame_height_,
-      vpx_image->stride[VPX_PLANE_Y], timestamp, vpx_image->planes[VPX_PLANE_Y],
-      vpx_image->planes[VPX_PLANE_U], vpx_image->planes[VPX_PLANE_V]);
+      vpx_image->stride[VPX_PLANE_Y], vpx_image->stride[VPX_PLANE_U], timestamp,
+      vpx_image->planes[VPX_PLANE_Y], vpx_image->planes[VPX_PLANE_U],
+      vpx_image->planes[VPX_PLANE_V]);
   if (output_mode_ == kSbPlayerOutputModeDecodeToTexture) {
     ScopedLock lock(decode_target_mutex_);
     frames_.push(frame);

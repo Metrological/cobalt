@@ -33,19 +33,21 @@ void SignalWaitableEvent(base::WaitableEvent* event) { event->Signal(); }
 }  // namespace
 
 void ServiceWorkerRegistry::WillDestroyCurrentMessageLoop() {
-  // Clear all member variables allocated form the thread.
+  // Clear all member variables allocated from the thread.
   service_worker_jobs_.reset();
 }
 
 ServiceWorkerRegistry::ServiceWorkerRegistry(
-    network::NetworkModule* network_module)
+    web::WebSettings* web_settings, network::NetworkModule* network_module,
+    web::UserAgentPlatformInfo* platform_info)
     : thread_("ServiceWorkerRegistry") {
   if (!thread_.Start()) return;
   DCHECK(message_loop());
 
   message_loop()->task_runner()->PostTask(
-      FROM_HERE, base::Bind(&ServiceWorkerRegistry::Initialize,
-                            base::Unretained(this), network_module));
+      FROM_HERE,
+      base::Bind(&ServiceWorkerRegistry::Initialize, base::Unretained(this),
+                 web_settings, network_module, platform_info));
 
   // Register as a destruction observer to shut down the Web Agent once all
   // pending tasks have been executed and the message loop is about to be
@@ -71,6 +73,7 @@ ServiceWorkerRegistry::~ServiceWorkerRegistry() {
   // Ensure that the destruction observer got added before stopping the thread.
   // Stop the thread. This will cause the destruction observer to be notified.
   destruction_observer_added_.Wait();
+  service_worker_jobs_->Stop();
   thread_.Stop();
 }
 
@@ -80,11 +83,13 @@ worker::ServiceWorkerJobs* ServiceWorkerRegistry::service_worker_jobs() {
   return service_worker_jobs_.get();
 }
 
-void ServiceWorkerRegistry::Initialize(network::NetworkModule* network_module) {
+void ServiceWorkerRegistry::Initialize(
+    web::WebSettings* web_settings, network::NetworkModule* network_module,
+    web::UserAgentPlatformInfo* platform_info) {
   TRACE_EVENT0("cobalt::browser", "ServiceWorkerRegistry::Initialize()");
   DCHECK_EQ(base::MessageLoop::current(), message_loop());
-  service_worker_jobs_.reset(
-      new worker::ServiceWorkerJobs(network_module, message_loop()));
+  service_worker_jobs_.reset(new worker::ServiceWorkerJobs(
+      web_settings, network_module, platform_info, message_loop()));
 }
 
 }  // namespace browser

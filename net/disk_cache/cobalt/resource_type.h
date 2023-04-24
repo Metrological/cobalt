@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RESOURCE_TYPE_H_
-#define RESOURCE_TYPE_H_
+#ifndef NET_DISK_CACHE_COBALT_RESOURCE_TYPE_H_
+#define NET_DISK_CACHE_COBALT_RESOURCE_TYPE_H_
+
+#include <string>
 
 namespace disk_cache {
 
@@ -27,20 +29,27 @@ enum ResourceType {
   kSplashScreen = 5,
   kUncompiledScript = 6,
   kCompiledScript = 7,
-  kTypeCount = 8
+  kCacheApi = 8,
+  kServiceWorkerScript = 9,
+  kTypeCount = 10,
 };
 
 struct ResourceTypeMetadata {
   std::string directory;
-  int64_t max_size_mb;
+  uint32_t max_size_bytes;
 };
 
-// TODO: Store sizes on disk.
+static uint32_t kInitialBytes = static_cast<uint32_t> (3 * 1024 * 1024);
+// These values are updated on start up in application.cc, using the
+// persisted values saved in settings.json.
 static ResourceTypeMetadata kTypeMetadata[] = {
-    {"other", 3}, {"html", 3},   {"css", 3},           {"image", 3},
-    {"font", 3},  {"splash", 3}, {"uncompiled_js", 3}, {"compiled_js", 3},
+    {"other", kInitialBytes},         {"html", 2 * 1024 * 1024},
+    {"css", 1 * 1024 * 1024},         {"image", 0},
+    {"font", kInitialBytes},          {"splash", 2 * 1024 * 1024},
+    {"uncompiled_js", kInitialBytes}, {"compiled_js", kInitialBytes},
+    {"cache_api", kInitialBytes},     {"service_worker_js", kInitialBytes},
 };
 
 }  // namespace disk_cache
 
-#endif  // RESOURCE_TYPE_H_
+#endif  // NET_DISK_CACHE_COBALT_RESOURCE_TYPE_H_

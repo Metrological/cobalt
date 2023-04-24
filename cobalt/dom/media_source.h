@@ -45,17 +45,21 @@
 #ifndef COBALT_DOM_MEDIA_SOURCE_H_
 #define COBALT_DOM_MEDIA_SOURCE_H_
 
+#include <memory>
 #include <string>
 
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
+#include "base/threading/thread.h"
 #include "cobalt/base/token.h"
 #include "cobalt/dom/audio_track.h"
 #include "cobalt/dom/event_queue.h"
 #include "cobalt/dom/html_media_element.h"
 #include "cobalt/dom/media_source_end_of_stream_error.h"
 #include "cobalt/dom/media_source_ready_state.h"
+#include "cobalt/dom/serialized_algorithm_runner.h"
 #include "cobalt/dom/source_buffer.h"
+#include "cobalt/dom/source_buffer_algorithm.h"
 #include "cobalt/dom/source_buffer_list.h"
 #include "cobalt/dom/time_ranges.h"
 #include "cobalt/dom/video_track.h"
@@ -122,6 +126,9 @@ class MediaSource : public web::EventTarget {
   bool IsOpen() const;
   void SetSourceBufferActive(SourceBuffer* source_buffer, bool is_active);
   HTMLMediaElement* GetMediaElement() const;
+  bool MediaElementHasMaxVideoCapabilities() const;
+  SerializedAlgorithmRunner<SourceBufferAlgorithm>* GetAlgorithmRunner(
+      int job_size);
 
   DEFINE_WRAPPABLE_TYPE(MediaSource);
   void TraceMembers(script::Tracer* tracer) override;
@@ -130,6 +137,29 @@ class MediaSource : public web::EventTarget {
   void SetReadyState(MediaSourceReadyState ready_state);
   bool IsUpdating() const;
   void ScheduleEvent(base::Token event_name);
+
+  // Set to true to offload SourceBuffer buffer append and removal algorithms to
+  // a non-web thread.
+  const bool algorithm_offload_enabled_;
+  // Set to true to reduce asynchronous behaviors.  For example, queued events
+  // will be dispatached immediately when possible.
+  const bool asynchronous_reduction_enabled_;
+  // Only used when |asynchronous_reduction_enabled_| is set to true, where any
+  // buffer append job smaller than its value will happen immediately instead of
+  // being scheduled asynchronously.
+  const int max_size_for_immediate_job_;
+
+  // The default algorithm runner runs all steps on the web thread.
+  DefaultAlgorithmRunner<SourceBufferAlgorithm> default_algorithm_runner_;
+  // The immediate job algorithm runner runs job immediately on the web thread,
+  // it has asynchronous reduction always enabled to run immediate jobs even
+  // when asynchronous reduction is disabled on the `default_algorithm_runner_`.
+  DefaultAlgorithmRunner<SourceBufferAlgorithm> immediate_job_algorithm_runner_{
+      true};
+  // The offload algorithm runner offloads some steps to a non-web thread.
+  std::unique_ptr<OffloadAlgorithmRunner<SourceBufferAlgorithm>>
+      offload_algorithm_runner_;
+  std::unique_ptr<base::Thread> algorithm_process_thread_;
 
   ChunkDemuxer* chunk_demuxer_;
   MediaSourceReadyState ready_state_;
@@ -140,6 +170,8 @@ class MediaSource : public web::EventTarget {
   scoped_refptr<SourceBufferList> active_source_buffers_;
 
   scoped_refptr<TimeRanges> live_seekable_range_;
+
+  bool has_max_video_capabilities_ = false;
 };
 
 }  // namespace dom

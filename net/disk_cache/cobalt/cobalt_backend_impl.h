@@ -23,6 +23,7 @@
 #include <utility>
 
 #include "base/callback_helpers.h"
+#include "cobalt/persistent_storage/persistent_settings.h"
 #include "net/base/completion_once_callback.h"
 #include "net/disk_cache/cobalt/resource_type.h"
 #include "net/disk_cache/disk_cache.h"
@@ -30,6 +31,8 @@
 #include "net/disk_cache/simple/simple_backend_impl.h"
 
 namespace disk_cache {
+
+const char kCacheEnabledPersistentSettingsKey[] = "cacheEnabled";
 
 // This class implements the Backend interface. An object of this class handles
 // the operations of the cache without writing to disk.
@@ -46,6 +49,9 @@ class NET_EXPORT_PRIVATE CobaltBackendImpl final : public Backend {
   ~CobaltBackendImpl() override;
 
   net::Error Init(CompletionOnceCallback completion_callback);
+  void UpdateSizes(ResourceType type, uint32_t bytes);
+  uint32_t GetQuota(ResourceType type);
+  void ValidatePersistentSettings();
 
   // Backend interface.
   net::CacheType GetCacheType() const override;
@@ -79,6 +85,8 @@ class NET_EXPORT_PRIVATE CobaltBackendImpl final : public Backend {
   size_t DumpMemoryStats(
       base::trace_event::ProcessMemoryDump* pmd,
       const std::string& parent_absolute_name) const override;
+  net::Error DoomAllEntriesOfType(disk_cache::ResourceType type,
+                          CompletionOnceCallback callback);
 
   // A refcounted class that runs a CompletionOnceCallback once it's destroyed.
   class RefCountedRunner : public base::RefCounted<RefCountedRunner> {
@@ -109,6 +117,10 @@ class NET_EXPORT_PRIVATE CobaltBackendImpl final : public Backend {
   base::WeakPtrFactory<CobaltBackendImpl> weak_factory_;
 
   std::map<ResourceType, SimpleBackendImpl*> simple_backend_map_;
+
+  // Json PrefStore used for persistent settings.
+  std::unique_ptr<cobalt::persistent_storage::PersistentSettings>
+      persistent_settings_;
 };
 
 }  // namespace disk_cache

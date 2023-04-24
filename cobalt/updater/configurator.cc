@@ -23,7 +23,6 @@
 #include "components/update_client/protocol_handler.h"
 #include "components/update_client/unzipper.h"
 #include "starboard/system.h"
-
 #include "url/gurl.h"
 
 namespace {
@@ -32,6 +31,8 @@ namespace {
 const int kDelayOneMinute = 60;
 const int kDelayOneHour = kDelayOneMinute * 60;
 const char kDefaultUpdaterChannel[] = "prod";
+const char kOmahaCobaltTrunkAppID[] = "{A9557415-DDCD-4948-8113-C643EFCF710C}";
+const char kOmahaCobaltAppID[] = "{6D4E53F3-CC64-4CB8-B6BD-AB0B8F300E1C}";
 
 std::string GetDeviceProperty(SbSystemPropertyId id) {
   const size_t kSystemPropertyMaxLength = 1024;
@@ -45,11 +46,6 @@ std::string GetDeviceProperty(SbSystemPropertyId id) {
   return prop;
 }
 
-bool CompressUpdate() {
-  return base::CommandLine::ForCurrentProcess()->HasSwitch(
-      cobalt::browser::switches::kCompressUpdate);
-}
-
 }  // namespace
 
 namespace cobalt {
@@ -60,7 +56,7 @@ Configurator::Configurator(network::NetworkModule* network_module)
       persisted_data_(std::make_unique<update_client::PersistedData>(
           pref_service_.get(), nullptr)),
       is_channel_changed_(0),
-      unzip_factory_(base::MakeRefCounted<UnzipperFactory>(CompressUpdate())),
+      unzip_factory_(base::MakeRefCounted<UnzipperFactory>()),
       network_fetcher_factory_(
           base::MakeRefCounted<NetworkFetcherFactoryCobalt>(network_module)),
       patch_factory_(base::MakeRefCounted<PatcherFactory>()) {
@@ -74,6 +70,12 @@ Configurator::Configurator(network::NetworkModule* network_module)
   }
   if (network_module != nullptr) {
     user_agent_string_ = network_module->GetUserAgent();
+  }
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          browser::switches::kUseCompressedUpdates)) {
+    use_compressed_updates_.store(true);
+  } else {
+    use_compressed_updates_.store(false);
   }
 }
 Configurator::~Configurator() { LOG(INFO) << "Configurator::~Configurator"; }
@@ -171,6 +173,14 @@ base::flat_map<std::string, std::string> Configurator::ExtraRequestParams()
   // User Agent String
   params.insert(std::make_pair("uastring", user_agent_string_));
 
+  // Certification scope
+  params.insert(std::make_pair(
+      "certscope", GetDeviceProperty(kSbSystemPropertyCertificationScope)));
+
+  // Compression status
+  params.insert(std::make_pair("usecompressedupdates",
+                               GetUseCompressedUpdates() ? "True" : "False"));
+
   return params;
 }
 
@@ -212,9 +222,17 @@ bool Configurator::IsPerUserInstall() const { return true; }
 
 std::vector<uint8_t> Configurator::GetRunActionKeyHash() const { return {}; }
 
+std::string Configurator::GetAppGuidHelper(const std::string& version) {
+  if (version.find(".lts.") != std::string::npos &&
+      version.find(".master.") == std::string::npos) {
+    return kOmahaCobaltAppID;
+  }
+  return kOmahaCobaltTrunkAppID;
+}
+
 std::string Configurator::GetAppGuid() const {
-  // Omaha console app id for trunk
-  return "{A9557415-DDCD-4948-8113-C643EFCF710C}";
+  const std::string version(COBALT_VERSION);
+  return GetAppGuidHelper(version);
 }
 
 std::unique_ptr<update_client::ProtocolHandlerFactory>
@@ -240,6 +258,7 @@ std::string Configurator::GetChannel() const {
 }
 
 void Configurator::SetChannel(const std::string& updater_channel) {
+  LOG(INFO) << "Configurator::SetChannel updater_channel=" << updater_channel;
   base::AutoLock auto_lock(updater_channel_lock_);
   updater_channel_ = updater_channel;
 }
@@ -275,6 +294,14 @@ std::string Configurator::GetPreviousUpdaterStatus() const {
 void Configurator::SetPreviousUpdaterStatus(const std::string& status) {
   base::AutoLock auto_lock(previous_updater_status_lock_);
   previous_updater_status_ = status;
+}
+
+bool Configurator::GetUseCompressedUpdates() const {
+  return use_compressed_updates_.load();
+}
+
+void Configurator::SetUseCompressedUpdates(bool use_compressed_updates) {
+  use_compressed_updates_.store(use_compressed_updates);
 }
 
 }  // namespace updater

@@ -17,12 +17,14 @@ static_library("dom_testing") {
   has_pedantic_warnings = true
 
   sources = [
+    "fake_document.h",
     "html_collection_testing.h",
     "mock_layout_boxes.h",
     "stub_css_parser.cc",
     "stub_css_parser.h",
     "stub_environment_settings.h",
     "stub_window.h",
+    "test_with_javascript.h",
   ]
 
   deps = [
@@ -36,6 +38,7 @@ static_library("dom_testing") {
     "//cobalt/dom",
     "//cobalt/dom_parser",
     "//cobalt/loader",
+    "//cobalt/network",
     "//cobalt/script",
     "//cobalt/web",
     "//cobalt/web:dom_exception",

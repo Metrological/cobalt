@@ -28,6 +28,8 @@
 #include "cobalt/script/wrappable.h"
 #include "cobalt/web/blob.h"
 #include "cobalt/web/environment_settings.h"
+#include "cobalt/web/user_agent_platform_info.h"
+#include "cobalt/web/web_settings.h"
 
 namespace cobalt {
 namespace worker {
@@ -43,9 +45,17 @@ class WindowOrWorkerGlobalScope;
 class Context {
  public:
   virtual ~Context() {}
+
+  class EnvironmentSettingsChangeObserver {
+   public:
+    virtual void OnEnvironmentSettingsChanged(bool context_valid) = 0;
+
+   protected:
+    virtual ~EnvironmentSettingsChangeObserver() = default;
+  };
+
   virtual base::MessageLoop* message_loop() const = 0;
   virtual void ShutDownJavaScriptEngine() = 0;
-  virtual void set_fetcher_factory(loader::FetcherFactory* factory) = 0;
   virtual loader::FetcherFactory* fetcher_factory() const = 0;
   virtual loader::ScriptLoaderFactory* script_loader_factory() const = 0;
   virtual script::JavaScriptEngine* javascript_engine() const = 0;
@@ -53,6 +63,7 @@ class Context {
   virtual script::ExecutionState* execution_state() const = 0;
   virtual script::ScriptRunner* script_runner() const = 0;
   virtual Blob::Registry* blob_registry() const = 0;
+  virtual web::WebSettings* web_settings() const = 0;
   virtual network::NetworkModule* network_module() const = 0;
   virtual worker::ServiceWorkerJobs* service_worker_jobs() const = 0;
 
@@ -63,18 +74,40 @@ class Context {
   virtual scoped_refptr<worker::ServiceWorkerRegistration>
   LookupServiceWorkerRegistration(
       worker::ServiceWorkerRegistrationObject* registration) = 0;
-  // https://w3c.github.io/ServiceWorker/#get-the-service-worker-registration-object
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#get-the-service-worker-registration-object
   virtual scoped_refptr<worker::ServiceWorkerRegistration>
   GetServiceWorkerRegistration(
       worker::ServiceWorkerRegistrationObject* registration) = 0;
 
+  virtual void RemoveServiceWorker(worker::ServiceWorkerObject* worker) = 0;
   virtual scoped_refptr<worker::ServiceWorker> LookupServiceWorker(
       worker::ServiceWorkerObject* worker) = 0;
-  // https://w3c.github.io/ServiceWorker/#get-the-service-worker-object
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#get-the-service-worker-object
   virtual scoped_refptr<worker::ServiceWorker> GetServiceWorker(
       worker::ServiceWorkerObject* worker) = 0;
 
   virtual WindowOrWorkerGlobalScope* GetWindowOrWorkerGlobalScope() = 0;
+
+  virtual const UserAgentPlatformInfo* platform_info() const = 0;
+
+  virtual std::string GetUserAgent() const = 0;
+  virtual std::string GetPreferredLanguage() const = 0;
+
+  virtual void AddEnvironmentSettingsChangeObserver(
+      EnvironmentSettingsChangeObserver* observer) = 0;
+  virtual void RemoveEnvironmentSettingsChangeObserver(
+      EnvironmentSettingsChangeObserver* observer) = 0;
+
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-control
+  virtual bool is_controlled_by(worker::ServiceWorkerObject* worker) const = 0;
+
+  // https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-active-service-worker
+  virtual void set_active_service_worker(
+      const scoped_refptr<worker::ServiceWorkerObject>& worker) = 0;
+  virtual scoped_refptr<worker::ServiceWorkerObject>&
+  active_service_worker() = 0;
+  virtual const scoped_refptr<worker::ServiceWorkerObject>&
+  active_service_worker() const = 0;
 };
 
 }  // namespace web

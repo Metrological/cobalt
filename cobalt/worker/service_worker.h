@@ -20,9 +20,11 @@
 #include <utility>
 
 #include "cobalt/script/environment_settings.h"
+#include "cobalt/script/value_handle.h"
 #include "cobalt/script/wrappable.h"
 #include "cobalt/web/event_target.h"
 #include "cobalt/web/event_target_listener_info.h"
+#include "cobalt/web/message_port.h"
 #include "cobalt/worker/abstract_worker.h"
 #include "cobalt/worker/service_worker_object.h"
 #include "cobalt/worker/service_worker_state.h"
@@ -32,21 +34,29 @@ namespace worker {
 
 // The ServiceWorker interface represents a service worker within a service
 // worker client realm.
-//   https://w3c.github.io/ServiceWorker/#serviceworker-interface
+//   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#serviceworker-interface
 class ServiceWorker : public AbstractWorker, public web::EventTarget {
  public:
   ServiceWorker(script::EnvironmentSettings* settings,
-                worker::ServiceWorkerObject* worker);
+                ServiceWorkerObject* worker);
   ServiceWorker(const ServiceWorker&) = delete;
   ServiceWorker& operator=(const ServiceWorker&) = delete;
+
+  // Web API: ServiceWorker
+  //
+  void PostMessage(const script::ValueHandleHolder& message);
 
   // The scriptURL getter steps are to return the
   // service worker's serialized script url.
   std::string script_url() const { return worker_->script_url().spec(); }
 
-  // https://w3c.github.io/ServiceWorker/#dom-serviceworker-state
-  void set_state(ServiceWorkerState state) { state_ = state; }
-  ServiceWorkerState state() const { return state_; }
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dom-serviceworker-state
+  void set_state(ServiceWorkerState state) {
+    if (worker_) worker_->set_state(state);
+  }
+  ServiceWorkerState state() const {
+    return worker_ ? worker_->state() : kServiceWorkerStateParsed;
+  }
 
   const EventListenerScriptValue* onstatechange() const {
     return GetAttributeEventListener(base::Tokens::statechange());
@@ -64,13 +74,16 @@ class ServiceWorker : public AbstractWorker, public web::EventTarget {
     SetAttributeEventListener(base::Tokens::error(), event_listener);
   }
 
+  const scoped_refptr<ServiceWorkerObject>& service_worker_object() {
+    return worker_;
+  }
+
   DEFINE_WRAPPABLE_TYPE(ServiceWorker);
 
  private:
-  ~ServiceWorker() override = default;
+  ~ServiceWorker() override { worker_ = nullptr; }
 
-  worker::ServiceWorkerObject* worker_;
-  ServiceWorkerState state_;
+  scoped_refptr<ServiceWorkerObject> worker_;
 };
 
 }  // namespace worker

@@ -49,8 +49,7 @@ class VideoDecoder : public starboard::player::filter::VideoDecoder,
   SbTime GetPrerollTimeout() const override { return kSbTimeMax; }
   size_t GetMaxNumberOfCachedFrames() const override { return 12; }
 
-  void WriteInputBuffer(
-      const scoped_refptr<InputBuffer>& input_buffer) override;
+  void WriteInputBuffers(const InputBuffers& input_buffers) override;
   void WriteEndOfStream() override;
   void Reset() override;
 
@@ -91,7 +90,6 @@ class VideoDecoder : public starboard::player::filter::VideoDecoder,
   Dav1dContext* dav1d_context_ = NULL;
 
   bool stream_ended_ = false;
-  bool error_occurred_ = false;
 
   // Working thread to avoid lengthy decoding work block the player thread.
   scoped_ptr<starboard::player::JobThread> decoder_thread_;

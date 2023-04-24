@@ -31,6 +31,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -41,8 +43,6 @@ public class MediaCodecUtil {
   // A high priority allow list of brands/model that should always attempt to
   // play vp9.
   private static final Map<String, Set<String>> vp9AllowList = new HashMap<>();
-  // An allow list of software codec names that can be used.
-  private static final Set<String> softwareCodecAllowList = new HashSet<>();
   // Whether we should report vp9 codecs as supported or not.  Will be set
   // based on whether vp9AllowList contains our brand/model.  If this is set
   // to true, then videoCodecDenyList will be ignored.
@@ -50,23 +50,6 @@ public class MediaCodecUtil {
   private static final String SECURE_DECODER_SUFFIX = ".secure";
   private static final String VP9_MIME_TYPE = "video/x-vnd.on2.vp9";
   private static final String AV1_MIME_TYPE = "video/av01";
-
-  /**
-   * A simple "struct" to bundle up the results from findVideoDecoder, as its clients may require
-   * the max supported width and height in addition to just the decoder name.
-   */
-  public static final class FindVideoDecoderResult {
-    public String name;
-    public VideoCapabilities videoCapabilities;
-    public CodecCapabilities codecCapabilities;
-
-    public FindVideoDecoderResult(
-        String name, VideoCapabilities videoCapabilities, CodecCapabilities codecCapabilities) {
-      this.name = name;
-      this.videoCapabilities = videoCapabilities;
-      this.codecCapabilities = codecCapabilities;
-    }
-  }
 
   static {
     if (Build.VERSION.SDK_INT >= 24 && Build.BRAND.equals("google")) {
@@ -377,61 +360,115 @@ public class MediaCodecUtil {
     isVp9AllowListed =
         vp9AllowList.containsKey(Build.BRAND)
             && vp9AllowList.get(Build.BRAND).contains(Build.MODEL);
-
-    softwareCodecAllowList.add("OMX.google.h264.decoder");
   }
 
   private MediaCodecUtil() {}
 
-  /**
-   * Returns whether a given combination of (frame width x frame height) frames at bitrate and fps
-   * has a decoder with mime type.
-   *
-   * <p>Setting any of the int parameters to 0 indicates that they shouldn't be considered.
-   */
-  @SuppressWarnings("unused")
+  /** A wrapper class of codec capability infos. */
   @UsedByNative
-  public static boolean hasVideoDecoderFor(
-      String mimeType,
-      boolean mustSupportSecure,
-      boolean mustSupportHdr,
-      boolean mustSupportTunnelMode,
-      boolean forceImprovedSupportCheck,
-      int decoderCacheTtlMs,
-      int frameWidth,
-      int frameHeight,
-      int bitrate,
-      int fps) {
-    FindVideoDecoderResult findVideoDecoderResult =
-        findVideoDecoder(
-            mimeType,
-            mustSupportSecure,
-            mustSupportHdr,
-            false /* mustSupportSoftwareCodec */,
-            mustSupportTunnelMode,
-            forceImprovedSupportCheck,
-            decoderCacheTtlMs,
-            frameWidth,
-            frameHeight,
-            bitrate,
-            fps);
-    return !findVideoDecoderResult.name.isEmpty();
+  public static class CodecCapabilityInfo {
+    CodecCapabilityInfo(MediaCodecInfo codecInfo, String mimeType) {
+      this.codecInfo = codecInfo;
+      this.mimeType = mimeType;
+      this.decoderName = codecInfo.getName();
+      this.codecCapabilities = codecInfo.getCapabilitiesForType(mimeType);
+      this.audioCapabilities = this.codecCapabilities.getAudioCapabilities();
+      this.videoCapabilities = this.codecCapabilities.getVideoCapabilities();
+    }
+
+    @UsedByNative public MediaCodecInfo codecInfo;
+    @UsedByNative public String mimeType;
+    @UsedByNative public String decoderName;
+    @UsedByNative public CodecCapabilities codecCapabilities;
+    @UsedByNative public AudioCapabilities audioCapabilities;
+    @UsedByNative public VideoCapabilities videoCapabilities;
+
+    @UsedByNative
+    public boolean isSecureRequired() {
+      // MediaCodecList is supposed to feed us names of decoders that do NOT end in ".secure".  We
+      // are then supposed to check if FEATURE_SecurePlayback is supported, and if it is and we
+      // want a secure codec, we append ".secure" ourselves, and then pass that to
+      // MediaCodec.createDecoderByName.  Some devices, do not follow this spec, and show us
+      // decoders that end in ".secure".  Empirically, FEATURE_SecurePlayback has still been
+      // correct when this happens.
+      if (this.decoderName.endsWith(SECURE_DECODER_SUFFIX)) {
+        // If a decoder name ends with ".secure", then we don't want to use it for clear content.
+        return true;
+      }
+      return this.codecCapabilities.isFeatureRequired(
+          MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback);
+    }
+
+    @UsedByNative
+    public boolean isSecureSupported() {
+      return this.codecCapabilities.isFeatureSupported(
+          MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback);
+    }
+
+    @UsedByNative
+    public boolean isTunnelModeRequired() {
+      return this.codecCapabilities.isFeatureRequired(
+          MediaCodecInfo.CodecCapabilities.FEATURE_TunneledPlayback);
+    }
+
+    @UsedByNative
+    public boolean isTunnelModeSupported() {
+      return this.codecCapabilities.isFeatureSupported(
+          MediaCodecInfo.CodecCapabilities.FEATURE_TunneledPlayback);
+    }
+
+    @UsedByNative
+    public boolean isSoftware() {
+      return isSoftwareDecoder(this.codecInfo);
+    }
+
+    @UsedByNative
+    public boolean isHdrCapable() {
+      return isHdrCapableVideoDecoder(this.mimeType, this.codecCapabilities);
+    }
   }
 
-  /**
-   * Returns whether an audio decoder that supports mimeType at bitrate. Setting bitrate to 0
-   * indicates that it should not be considered.
-   */
+  /** Returns an array of CodecCapabilityInfo for all available decoder. */
   @SuppressWarnings("unused")
   @UsedByNative
-  public static boolean hasAudioDecoderFor(
-      String mimeType, int bitrate, boolean mustSupportTunnelMode) {
-    return !findAudioDecoder(mimeType, bitrate, mustSupportTunnelMode).equals("");
+  public static CodecCapabilityInfo[] getAllCodecCapabilityInfos() {
+    List<CodecCapabilityInfo> codecCapabilityInfos = new ArrayList<>();
+
+    for (MediaCodecInfo codecInfo : new MediaCodecList(MediaCodecList.ALL_CODECS).getCodecInfos()) {
+      // We don't use encoder.
+      if (codecInfo.isEncoder()) {
+        continue;
+      }
+
+      // Filter blacklisted video decoders.
+      String name = codecInfo.getName();
+      if (!isVp9AllowListed && videoCodecDenyList.contains(name)) {
+        Log.v(TAG, "Rejecting %s, reason: codec is on deny list", name);
+        continue;
+      }
+      if (name.endsWith(SECURE_DECODER_SUFFIX)) {
+        // If we want a secure decoder, then make sure the version without ".secure" isn't
+        // denylisted.
+        String nameWithoutSecureSuffix =
+            name.substring(0, name.length() - SECURE_DECODER_SUFFIX.length());
+        if (!isVp9AllowListed && videoCodecDenyList.contains(nameWithoutSecureSuffix)) {
+          String format = "Rejecting %s, reason: offpsec denylisted secure decoder";
+          Log.v(TAG, format, name);
+          continue;
+        }
+      }
+
+      for (String mimeType : codecInfo.getSupportedTypes()) {
+        codecCapabilityInfos.add(new CodecCapabilityInfo(codecInfo, mimeType));
+      }
+    }
+    CodecCapabilityInfo[] array = new CodecCapabilityInfo[codecCapabilityInfos.size()];
+    return codecCapabilityInfos.toArray(array);
   }
 
-  /** Determine whether findVideoDecoderResult is capable of playing HDR. */
+  /** Determine whether codecCapabilities is capable of playing HDR. */
   public static boolean isHdrCapableVideoDecoder(
-      String mimeType, FindVideoDecoderResult findVideoDecoderResult) {
+      String mimeType, CodecCapabilities codecCapabilities) {
     // VP9Profile* values were not added until API level 24.  See
     // https://developer.android.com/reference/android/media/MediaCodecInfo.CodecProfileLevel.html.
     if (Build.VERSION.SDK_INT < 24) {
@@ -443,7 +480,6 @@ public class MediaCodecUtil {
       return false;
     }
 
-    CodecCapabilities codecCapabilities = findVideoDecoderResult.codecCapabilities;
     if (codecCapabilities == null) {
       return false;
     }
@@ -467,14 +503,35 @@ public class MediaCodecUtil {
     return false;
   }
 
+  /** Return true if and only if info belongs to a software decoder. */
+  public static boolean isSoftwareDecoder(MediaCodecInfo codecInfo) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      return !codecInfo.isHardwareAccelerated();
+    }
+    String name = codecInfo.getName().toLowerCase(Locale.ROOT);
+    // This is taken from libstagefright/OMXCodec.cpp for pre codec2.
+    if (name.startsWith("omx.google.")) {
+      return true;
+    }
+
+    // Codec2 names sw decoders this way.
+    // See hardware/google/av/codec2/vndk/C2Store.cpp.
+    if (name.startsWith("c2.google.") || name.startsWith("c2.android.")) {
+      return true;
+    }
+
+    return false;
+  }
+
   /**
-   * The same as hasVideoDecoderFor, returns a FindVideoDecoderResult constructed from the video
-   * decoder if it is found, or an empty instance otherwise.
+   * The same as hasVideoDecoderFor, returns the name of the video decoder if it is found, or ""
+   * otherwise.
    *
    * <p>NOTE: This code path is called repeatedly by the player to determine the decoding
    * capabilities of the device. To ensure speedy playback the code below should be kept performant.
    */
-  public static FindVideoDecoderResult findVideoDecoder(
+  @UsedByNative
+  public static String findVideoDecoder(
       String mimeType,
       boolean mustSupportSecure,
       boolean mustSupportHdr,
@@ -488,6 +545,7 @@ public class MediaCodecUtil {
       int fps) {
     String decoderInfo =
         String.format(
+            Locale.US,
             "Searching for video decoder with parameters mimeType: %s, secure: %b, frameWidth:"
                 + " %d, frameHeight: %d, bitrate: %d, fps: %d, mustSupportHdr: %b,"
                 + " mustSupportSoftwareCodec: %b, mustSupportTunnelMode: %b,"
@@ -505,6 +563,7 @@ public class MediaCodecUtil {
     Log.v(TAG, decoderInfo);
     String deviceInfo =
         String.format(
+            Locale.US,
             "brand: %s, model: %s, version: %s, API level: %d, isVp9AllowListed: %b",
             Build.BRAND,
             Build.MODEL,
@@ -516,12 +575,13 @@ public class MediaCodecUtil {
     for (VideoDecoderCache.CachedDecoder decoder :
         VideoDecoderCache.getCachedDecoders(mimeType, decoderCacheTtlMs)) {
       String name = decoder.info.getName();
-      if (mustSupportSoftwareCodec && !softwareCodecAllowList.contains(name)) {
-        Log.v(TAG, "Rejecting " + name + ", reason: require software codec");
-        continue;
-      }
       if (!isVp9AllowListed && videoCodecDenyList.contains(name)) {
         Log.v(TAG, "Rejecting " + name + ", reason: codec is on deny list");
+        continue;
+      }
+
+      if (mustSupportSoftwareCodec && !isSoftwareDecoder(decoder.info)) {
+        Log.v(TAG, "Rejecting " + name + ", reason: require software codec");
         continue;
       }
 
@@ -556,9 +616,13 @@ public class MediaCodecUtil {
           || !mustSupportSecure && requiresSecurePlayback) {
         String message =
             String.format(
+                Locale.US,
                 "Rejecting %s, reason: secure decoder requested: %b, "
                     + "codec FEATURE_SecurePlayback supported: %b, required: %b",
-                name, mustSupportSecure, supportsSecurePlayback, requiresSecurePlayback);
+                name,
+                mustSupportSecure,
+                supportsSecurePlayback,
+                requiresSecurePlayback);
         Log.v(TAG, message);
         continue;
       }
@@ -573,9 +637,13 @@ public class MediaCodecUtil {
           || !mustSupportTunnelMode && requiresTunneledPlayback) {
         String message =
             String.format(
+                Locale.US,
                 "Rejecting %s, reason: tunneled playback requested: %b, "
                     + "codec FEATURE_TunneledPlayback supported: %b, required: %b",
-                name, mustSupportTunnelMode, supportsTunneledPlayback, requiresTunneledPlayback);
+                name,
+                mustSupportTunnelMode,
+                supportsTunneledPlayback,
+                requiresTunneledPlayback);
         Log.v(TAG, message);
         continue;
       }
@@ -602,31 +670,31 @@ public class MediaCodecUtil {
         if (frameWidth != 0 && frameHeight != 0) {
           if (!videoCapabilities.isSizeSupported(frameWidth, frameHeight)) {
             String format = "Rejecting %s, reason: width %s is not compatible with height %d";
-            Log.v(TAG, String.format(format, name, frameWidth, frameHeight));
+            Log.v(TAG, format, name, frameWidth, frameHeight);
             continue;
           }
         } else if (frameWidth != 0) {
           if (!supportedWidths.contains(frameWidth)) {
             String format = "Rejecting %s, reason: supported widths %s does not contain %d";
-            Log.v(TAG, String.format(format, name, supportedWidths.toString(), frameWidth));
+            Log.v(TAG, format, name, supportedWidths.toString(), frameWidth);
             continue;
           }
         } else if (frameHeight != 0) {
           if (!supportedHeights.contains(frameHeight)) {
             String format = "Rejecting %s, reason: supported heights %s does not contain %d";
-            Log.v(TAG, String.format(format, name, supportedHeights.toString(), frameHeight));
+            Log.v(TAG, format, name, supportedHeights.toString(), frameHeight);
             continue;
           }
         }
       } else {
         if (frameWidth != 0 && !supportedWidths.contains(frameWidth)) {
           String format = "Rejecting %s, reason: supported widths %s does not contain %d";
-          Log.v(TAG, String.format(format, name, supportedWidths.toString(), frameWidth));
+          Log.v(TAG, format, name, supportedWidths.toString(), frameWidth);
           continue;
         }
         if (frameHeight != 0 && !supportedHeights.contains(frameHeight)) {
           String format = "Rejecting %s, reason: supported heights %s does not contain %d";
-          Log.v(TAG, String.format(format, name, supportedHeights.toString(), frameHeight));
+          Log.v(TAG, format, name, supportedHeights.toString(), frameHeight);
           continue;
         }
       }
@@ -634,7 +702,7 @@ public class MediaCodecUtil {
       Range<Integer> bitrates = videoCapabilities.getBitrateRange();
       if (bitrate != 0 && !bitrates.contains(bitrate)) {
         String format = "Rejecting %s, reason: bitrate range %s does not contain %d";
-        Log.v(TAG, String.format(format, name, bitrates.toString(), bitrate));
+        Log.v(TAG, format, name, bitrates.toString(), bitrate);
         continue;
       }
 
@@ -644,14 +712,14 @@ public class MediaCodecUtil {
           if (frameHeight != 0 && frameWidth != 0) {
             if (!videoCapabilities.areSizeAndRateSupported(frameWidth, frameHeight, fps)) {
               String format = "Rejecting %s, reason: supported frame rates %s does not contain %d";
-              Log.v(TAG, String.format(format, name, supportedFrameRates.toString(), fps));
+              Log.v(TAG, format, name, supportedFrameRates.toString(), fps);
               continue;
             }
           } else {
             // At least one of frameHeight or frameWidth is 0
             if (!supportedFrameRates.contains(fps)) {
               String format = "Rejecting %s, reason: supported frame rates %s does not contain %d";
-              Log.v(TAG, String.format(format, name, supportedFrameRates.toString(), fps));
+              Log.v(TAG, format, name, supportedFrameRates.toString(), fps);
               continue;
             }
           }
@@ -659,31 +727,31 @@ public class MediaCodecUtil {
       } else {
         if (fps != 0 && !supportedFrameRates.contains(fps)) {
           String format = "Rejecting %s, reason: supported frame rates %s does not contain %d";
-          Log.v(TAG, String.format(format, name, supportedFrameRates.toString(), fps));
+          Log.v(TAG, format, name, supportedFrameRates.toString(), fps);
           continue;
         }
+      }
+
+      if (mustSupportHdr && !isHdrCapableVideoDecoder(mimeType, decoder.codecCapabilities)) {
+        Log.v(TAG, "Rejecting " + name + ", reason: codec does not support HDR");
+        continue;
       }
 
       String resultName =
           (mustSupportSecure && !name.endsWith(SECURE_DECODER_SUFFIX))
               ? (name + SECURE_DECODER_SUFFIX)
               : name;
-      FindVideoDecoderResult findVideoDecoderResult =
-          new FindVideoDecoderResult(resultName, videoCapabilities, decoder.codecCapabilities);
-      if (mustSupportHdr && !isHdrCapableVideoDecoder(mimeType, findVideoDecoderResult)) {
-        Log.v(TAG, "Rejecting " + name + ", reason: codec does not support HDR");
-        continue;
-      }
       Log.v(TAG, "Found suitable decoder, " + name);
-      return findVideoDecoderResult;
+      return resultName;
     }
-    return new FindVideoDecoderResult("", null, null);
+    return "";
   }
 
   /**
    * The same as hasAudioDecoderFor, only return the name of the audio decoder if it is found, and
    * "" otherwise.
    */
+  @UsedByNative
   public static String findAudioDecoder(
       String mimeType, int bitrate, boolean mustSupportTunnelMode) {
     // Note: MediaCodecList is sorted by the framework such that the best decoders come first.
@@ -806,6 +874,7 @@ public class MediaCodecUtil {
     for (ResolutionAndFrameRate resolutionAndFrameRate : supported) {
       frameRateAndResolutionString +=
           String.format(
+              Locale.US,
               "[%d x %d, %.3f fps], ",
               resolutionAndFrameRate.width,
               resolutionAndFrameRate.height,
@@ -829,6 +898,7 @@ public class MediaCodecUtil {
         String name = info.getName();
         decoderDumpString +=
             String.format(
+                Locale.US,
                 "name: %s (%s, %s): ",
                 name,
                 supportedType,
@@ -841,15 +911,14 @@ public class MediaCodecUtil {
                     && !name.endsWith(SECURE_DECODER_SUFFIX))
                 ? (name + SECURE_DECODER_SUFFIX)
                 : name;
-        FindVideoDecoderResult findVideoDecoderResult =
-            new FindVideoDecoderResult(resultName, videoCapabilities, codecCapabilities);
         boolean isHdrCapable =
-            isHdrCapableVideoDecoder(codecCapabilities.getMimeType(), findVideoDecoderResult);
+            isHdrCapableVideoDecoder(codecCapabilities.getMimeType(), codecCapabilities);
         if (videoCapabilities != null) {
           String frameRateAndResolutionString =
               getSupportedResolutionsAndFrameRates(videoCapabilities, isHdrCapable);
           decoderDumpString +=
               String.format(
+                  Locale.US,
                   "\n\t\t"
                       + "widths: %s, "
                       + "heights: %s, "
@@ -876,6 +945,7 @@ public class MediaCodecUtil {
             || isTunneledPlaybackSupported) {
           decoderDumpString +=
               String.format(
+                  Locale.US,
                   "(%s%s%s",
                   isAdaptivePlaybackSupported ? "AdaptivePlayback, " : "",
                   isSecurePlaybackSupported ? "SecurePlayback, " : "",
@@ -891,13 +961,12 @@ public class MediaCodecUtil {
     }
     Log.v(
         TAG,
-        String.format(
-            " \n"
-                + "==================================================\n"
-                + "Full list of decoder features: [AdaptivePlayback, SecurePlayback,"
-                + " TunneledPlayback]\n"
-                + "Unsupported features for each codec are not listed\n"
-                + decoderDumpString
-                + "=================================================="));
+        " \n"
+            + "==================================================\n"
+            + "Full list of decoder features: [AdaptivePlayback, SecurePlayback,"
+            + " TunneledPlayback]\n"
+            + "Unsupported features for each codec are not listed\n"
+            + decoderDumpString
+            + "==================================================");
   }
 }

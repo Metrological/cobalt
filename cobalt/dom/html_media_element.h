@@ -149,6 +149,9 @@ class HTMLMediaElement : public HTMLElement,
   // Set max video capabilities.
   void SetMaxVideoCapabilities(const std::string& max_video_capabilities,
                                script::ExceptionState* exception_state);
+  bool HasMaxVideoCapabilities() const {
+    return !max_video_capabilities_.empty();
+  }
 
   DEFINE_WRAPPABLE_TYPE(HTMLMediaElement);
   void TraceMembers(script::Tracer* tracer) override;
@@ -158,9 +161,6 @@ class HTMLMediaElement : public HTMLElement,
   const WebMediaPlayer* player() const { return player_.get(); }
 
  private:
-  static const char kMediaSourceUrlProtocol[];
-  static const double kMaxTimeupdateEventFrequency;
-
   // Loading
   void CreateMediaPlayer();
   void ScheduleLoad();

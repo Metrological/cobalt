@@ -29,6 +29,7 @@
 #include "cobalt/browser/browser_module.h"
 #include "cobalt/browser/memory_tracker/tool.h"
 #include "cobalt/network/network_module.h"
+#include "cobalt/persistent_storage/persistent_settings.h"
 #include "cobalt/system_window/system_window.h"
 #include "starboard/time.h"
 #if SB_IS(EVERGREEN)
@@ -89,7 +90,7 @@ class Application {
 #endif
 
   // Called when a navigation occurs in the BrowserModule.
-  void WebModuleCreated(WebModule* web_module);
+  void MainWebModuleCreated(WebModule* web_module);
 
   void CollectUnloadEventTimingInfo(base::TimeTicks start_time,
                                     base::TimeTicks end_time);
@@ -189,6 +190,9 @@ class Application {
 
   base::Optional<SbTimeMonotonic> preload_timestamp_;
   base::Optional<SbTimeMonotonic> start_timestamp_;
+
+  // Json PrefStore used for persistent settings.
+  std::unique_ptr<persistent_storage::PersistentSettings> persistent_settings_;
 
   // These represent the 'document unload timing info' from the spec to be
   // passed to the next document.

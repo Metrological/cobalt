@@ -20,7 +20,9 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
+#include <libavutil/channel_layout.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/mathematics.h>
 #include <libavutil/opt.h>
 }  // extern "C"
 
@@ -28,6 +30,14 @@ extern "C" {
 
 #ifndef LIBAVUTIL_VERSION_52_8
 #define LIBAVUTIL_VERSION_52_8 AV_VERSION_INT(52, 8, 0)
+#endif
+
+#ifndef LIBAVCODEC_VERSION_57_100
+#define LIBAVCODEC_VERSION_57_100 AV_VERSION_INT(57, 100, 0)
+#endif
+
+#ifndef LIBAVFORMAT_VERSION_57_83
+#define LIBAVFORMAT_VERSION_57_83 AV_VERSION_INT(57, 83, 0)
 #endif
 
 #if !defined(LIBAVUTIL_VERSION_MAJOR)

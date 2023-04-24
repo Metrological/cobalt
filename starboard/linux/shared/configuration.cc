@@ -14,8 +14,8 @@
 
 #include "starboard/linux/shared/configuration.h"
 
-#include "cobalt/extension/configuration.h"
 #include "starboard/common/configuration_defaults.h"
+#include "starboard/extension/configuration.h"
 
 // Omit namespace linux due to symbol name conflict.
 namespace starboard {
@@ -32,7 +32,7 @@ int CobaltEglSwapInterval() {
 
 const CobaltExtensionConfigurationApi kConfigurationApi = {
     kCobaltExtensionConfigurationName,
-    2,
+    3,
     &common::CobaltUserOnExitStrategyDefault,
     &common::CobaltRenderDirtyRegionOnlyDefault,
     &CobaltEglSwapInterval,
@@ -56,6 +56,7 @@ const CobaltExtensionConfigurationApi kConfigurationApi = {
     &common::CobaltRasterizerTypeDefault,
     &common::CobaltEnableJitDefault,
     &common::CobaltFallbackSplashScreenTopicsDefault,
+    &common::CobaltCanStoreCompiledJavascriptDefault,
 };
 
 }  // namespace

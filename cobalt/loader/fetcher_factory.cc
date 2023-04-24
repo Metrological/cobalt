@@ -17,6 +17,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include "base/bind.h"
 #include "base/files/file_path.h"
@@ -64,20 +65,12 @@ std::string ClipUrl(const GURL& url, size_t length) {
 }  // namespace
 
 FetcherFactory::FetcherFactory(network::NetworkModule* network_module)
-    : file_thread_("File"),
-      network_module_(network_module),
-      read_cache_callback_() {
-  file_thread_.Start();
-}
+    : network_module_(network_module) {}
 
-FetcherFactory::FetcherFactory(network::NetworkModule* network_module,
-                               const base::FilePath& extra_search_dir)
-    : file_thread_("File"),
-      network_module_(network_module),
-      extra_search_dir_(extra_search_dir),
-      read_cache_callback_() {
-  file_thread_.Start();
-}
+FetcherFactory::FetcherFactory(
+    network::NetworkModule* network_module,
+    const BlobFetcher::ResolverCallback& blob_resolver)
+    : network_module_(network_module), blob_resolver_(blob_resolver) {}
 
 FetcherFactory::FetcherFactory(
     network::NetworkModule* network_module,
@@ -85,25 +78,24 @@ FetcherFactory::FetcherFactory(
     const BlobFetcher::ResolverCallback& blob_resolver,
     const base::Callback<int(const std::string&, std::unique_ptr<char[]>*)>&
         read_cache_callback)
-    : file_thread_("File"),
-      network_module_(network_module),
+    : network_module_(network_module),
       extra_search_dir_(extra_search_dir),
       blob_resolver_(blob_resolver),
-      read_cache_callback_(read_cache_callback) {
-  file_thread_.Start();
-}
+      read_cache_callback_(read_cache_callback) {}
 
 std::unique_ptr<Fetcher> FetcherFactory::CreateFetcher(
     const GURL& url, const disk_cache::ResourceType type,
     Fetcher::Handler* handler) {
   return CreateSecureFetcher(url, csp::SecurityCallback(), kNoCORSMode,
-                             Origin(), type, handler);
+                             Origin(), type, net::HttpRequestHeaders(),
+                             /*skip_fetch_intercept=*/false, handler);
 }
 
 std::unique_ptr<Fetcher> FetcherFactory::CreateSecureFetcher(
     const GURL& url, const csp::SecurityCallback& url_security_callback,
     RequestMode request_mode, const Origin& origin,
-    const disk_cache::ResourceType type, Fetcher::Handler* handler) {
+    const disk_cache::ResourceType type, net::HttpRequestHeaders headers,
+    bool skip_fetch_intercept, Fetcher::Handler* handler) {
   LOG(INFO) << "Fetching: " << ClipUrl(url, 200);
 
   if (!url.is_valid()) {
@@ -117,6 +109,8 @@ std::unique_ptr<Fetcher> FetcherFactory::CreateSecureFetcher(
       network_module_) {
     NetFetcher::Options options;
     options.resource_type = type;
+    options.headers = std::move(headers);
+    options.skip_fetch_intercept = skip_fetch_intercept;
     return std::unique_ptr<Fetcher>(
         new NetFetcher(url, url_security_callback, handler, network_module_,
                        options, request_mode, origin));
@@ -150,6 +144,9 @@ std::unique_ptr<Fetcher> FetcherFactory::CreateSecureFetcher(
     }
 
     FileFetcher::Options options;
+    if (!file_thread_.IsRunning()) {
+      file_thread_.Start();
+    }
     options.message_loop_proxy = file_thread_.task_runner();
     options.extra_search_dir = extra_search_dir_;
     return std::unique_ptr<Fetcher>(

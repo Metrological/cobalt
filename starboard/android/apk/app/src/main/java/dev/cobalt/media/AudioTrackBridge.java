@@ -27,6 +27,7 @@ import dev.cobalt.util.Log;
 import dev.cobalt.util.UsedByNative;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Locale;
 
 /**
  * A wrapper of the android AudioTrack class. Android AudioTrack would not start playing until the
@@ -96,9 +97,12 @@ public class AudioTrackBridge {
           audioTrack = null;
           String errorMessage =
               String.format(
+                  Locale.US,
                   "Enable tunnel mode when frame size is unaligned, "
                       + "sampleType: %d, channel: %d, sync header size: %d.",
-                  sampleType, channelCount, AV_SYNC_HEADER_V1_SIZE);
+                  sampleType,
+                  channelCount,
+                  AV_SYNC_HEADER_V1_SIZE);
           Log.e(TAG, errorMessage);
           throw new RuntimeException(errorMessage);
         }
@@ -110,6 +114,8 @@ public class AudioTrackBridge {
               .setUsage(AudioAttributes.USAGE_MEDIA)
               .build();
     } else {
+      final int usage =
+          isWebAudio ? AudioAttributes.USAGE_NOTIFICATION : AudioAttributes.USAGE_MEDIA;
       // TODO: Support ENCODING_E_AC3_JOC for api level 28 or later.
       final boolean isSurround =
           sampleType == AudioFormat.ENCODING_AC3 || sampleType == AudioFormat.ENCODING_E_AC3;
@@ -120,7 +126,7 @@ public class AudioTrackBridge {
                   useContentTypeMovie
                       ? AudioAttributes.CONTENT_TYPE_MOVIE
                       : AudioAttributes.CONTENT_TYPE_MUSIC)
-              .setUsage(AudioAttributes.USAGE_MEDIA)
+              .setUsage(usage)
               .build();
     }
     AudioFormat format =
@@ -151,19 +157,21 @@ public class AudioTrackBridge {
       }
       // AudioTrack ctor can fail in multiple, platform specific ways, so do a thorough check
       // before proceed.
-      if (audioTrack != null && audioTrack.getState() == AudioTrack.STATE_INITIALIZED) {
-        break;
+      if (audioTrack != null) {
+        if (audioTrack.getState() == AudioTrack.STATE_INITIALIZED) {
+          break;
+        }
+        audioTrack = null;
       }
       audioTrackBufferSize /= 2;
     }
     Log.i(
         TAG,
-        String.format(
-            "AudioTrack created with buffer size %d (preferred: %d).  The minimum buffer size is"
-                + " %d.",
-            audioTrackBufferSize,
-            preferredBufferSizeInBytes,
-            AudioTrack.getMinBufferSize(sampleRate, channelConfig, sampleType)));
+        "AudioTrack created with buffer size %d (preferred: %d).  The minimum buffer size is"
+            + " %d.",
+        audioTrackBufferSize,
+        preferredBufferSizeInBytes,
+        AudioTrack.getMinBufferSize(sampleRate, channelConfig, sampleType));
   }
 
   public Boolean isAudioTrackValid() {
@@ -189,6 +197,7 @@ public class AudioTrackBridge {
     return audioTrack.setVolume(gain);
   }
 
+  // TODO (b/262608024): Have this method return a boolean and return false on failure.
   @SuppressWarnings("unused")
   @UsedByNative
   private void play() {
@@ -196,9 +205,14 @@ public class AudioTrackBridge {
       Log.e(TAG, "Unable to play with NULL audio track.");
       return;
     }
-    audioTrack.play();
+    try {
+      audioTrack.play();
+    } catch (IllegalStateException e) {
+      Log.e(TAG, String.format("Unable to play audio track, error: %s", e.toString()));
+    }
   }
 
+  // TODO (b/262608024): Have this method return a boolean and return false on failure.
   @SuppressWarnings("unused")
   @UsedByNative
   private void pause() {
@@ -206,9 +220,14 @@ public class AudioTrackBridge {
       Log.e(TAG, "Unable to pause with NULL audio track.");
       return;
     }
-    audioTrack.pause();
+    try {
+      audioTrack.pause();
+    } catch (IllegalStateException e) {
+      Log.e(TAG, String.format("Unable to pause audio track, error: %s", e.toString()));
+    }
   }
 
+  // TODO (b/262608024): Have this method return a boolean and return false on failure.
   @SuppressWarnings("unused")
   @UsedByNative
   private void stop() {
@@ -216,7 +235,11 @@ public class AudioTrackBridge {
       Log.e(TAG, "Unable to stop with NULL audio track.");
       return;
     }
-    audioTrack.stop();
+    try {
+      audioTrack.stop();
+    } catch (IllegalStateException e) {
+      Log.e(TAG, String.format("Unable to stop audio track, error: %s", e.toString()));
+    }
   }
 
   @SuppressWarnings("unused")
@@ -383,5 +406,23 @@ public class AudioTrackBridge {
       return 0;
     }
     return audioTrack.getUnderrunCount();
+  }
+
+  @SuppressWarnings("unused")
+  @UsedByNative
+  private int getStartThresholdInFrames() {
+    if (Build.VERSION.SDK_INT >= 31) {
+      return getStartThresholdInFramesV31();
+    }
+    return 0;
+  }
+
+  @RequiresApi(31)
+  private int getStartThresholdInFramesV31() {
+    if (audioTrack == null) {
+      Log.e(TAG, "Unable to call getStartThresholdInFrames() with NULL audio track.");
+      return 0;
+    }
+    return audioTrack.getStartThresholdInFrames();
   }
 }

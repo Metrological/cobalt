@@ -19,10 +19,11 @@
 #include "base/logging.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
+#include "media/base/decoder_buffer.h"
+#include "media/base/decrypt_config.h"
 #include "starboard/common/media.h"
 #include "starboard/configuration.h"
 #include "starboard/memory.h"
-#include "media/base/decrypt_config.h"
 
 using base::Time;
 using base::TimeDelta;
@@ -40,13 +41,8 @@ int GetBitsPerPixel(const std::string& mime_type) {
   SbMediaTransferId transfer_id;
   SbMediaMatrixId matrix_id;
 
-  if (starboard::ParseVideoCodec(codecs.c_str(),
-                                 &codec,
-                                 &profile,
-                                 &level,
-                                 &bit_depth,
-                                 &primary_id,
-                                 &transfer_id,
+  if (starboard::ParseVideoCodec(codecs.c_str(), &codec, &profile, &level,
+                                 &bit_depth, &primary_id, &transfer_id,
                                  &matrix_id)) {
     return bit_depth;
   }
@@ -79,6 +75,14 @@ SbMediaAudioCodec MediaAudioCodecToSbMediaAudioCodec(AudioCodec codec) {
       return kSbMediaAudioCodecVorbis;
     case AudioCodec::kOpus:
       return kSbMediaAudioCodecOpus;
+#if SB_API_VERSION >= 14
+    case AudioCodec::kMP3:
+      return kSbMediaAudioCodecMp3;
+    case AudioCodec::kFLAC:
+      return kSbMediaAudioCodecFlac;
+    case AudioCodec::kPCM:
+      return kSbMediaAudioCodecPcm;
+#endif  // SB_API_VERSION >= 14
     default:
       // Cobalt only supports a subset of audio codecs defined by Chromium.
       DLOG(ERROR) << "Unsupported audio codec " << GetCodecName(codec);
@@ -208,9 +212,8 @@ void FillDrmSampleInfo(const scoped_refptr<DecoderBuffer>& buffer,
   drm_info->subsample_count = config->subsamples().size();
 
   if (drm_info->subsample_count > 0) {
-    COMPILE_ASSERT(
-        sizeof(SbDrmSubSampleMapping) == sizeof(SubsampleEntry),
-        SubSampleEntrySizesMatch);
+    COMPILE_ASSERT(sizeof(SbDrmSubSampleMapping) == sizeof(SubsampleEntry),
+                   SubSampleEntrySizesMatch);
     drm_info->subsample_mapping =
         reinterpret_cast<const SbDrmSubSampleMapping*>(
             &config->subsamples()[0]);
@@ -380,18 +383,19 @@ SbMediaColorMetadata MediaToSbMediaColorMetadata(
 
   return sb_media_color_metadata;
 }
-
 int GetSbMediaVideoBufferBudget(const VideoDecoderConfig* video_config,
                                 const std::string& mime_type) {
   if (!video_config) {
-    return SbMediaGetVideoBufferBudget(kSbMediaVideoCodecH264, 1920, 1080, 8);
+    return DecoderBuffer::Allocator::GetInstance()->GetVideoBufferBudget(
+        kSbMediaVideoCodecH264, 1920, 1080, 8);
   }
 
   auto width = video_config->visible_rect().size().width();
   auto height = video_config->visible_rect().size().height();
   auto bits_per_pixel = GetBitsPerPixel(mime_type);
   auto codec = MediaVideoCodecToSbMediaVideoCodec(video_config->codec());
-  return SbMediaGetVideoBufferBudget(codec, width, height, bits_per_pixel);
+  return DecoderBuffer::Allocator::GetInstance()->GetVideoBufferBudget(
+      codec, width, height, bits_per_pixel);
 }
 
 std::string ExtractCodecs(const std::string& mime_type) {

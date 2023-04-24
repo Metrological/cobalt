@@ -272,6 +272,11 @@ const Value::ListStorage& Value::GetList() const {
   return list_;
 }
 
+Value::ListStorage Value::TakeList() {
+  CHECK(is_list());
+  return std::exchange(list_, {});
+}
+
 Value* Value::FindKey(StringPiece key) {
   return const_cast<Value*>(static_cast<const Value*>(this)->FindKey(key));
 }
@@ -410,7 +415,6 @@ Value* Value::SetPath(span<const StringPiece> path, Value value) {
 }
 
 bool Value::RemovePath(std::initializer_list<StringPiece> path) {
-  DCHECK_GE(path.size(), 2u) << "Use RemoveKey() for a path of length 1.";
   return RemovePath(make_span(path.begin(), path.size()));
 }
 

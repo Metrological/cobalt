@@ -54,10 +54,10 @@ void VideoDecoder::Initialize(const DecoderStatusCB& decoder_status_cb,
   error_cb_ = error_cb;
 }
 
-void VideoDecoder::WriteInputBuffer(
-    const scoped_refptr<InputBuffer>& input_buffer) {
+void VideoDecoder::WriteInputBuffers(const InputBuffers& input_buffers) {
   SB_DCHECK(BelongsToCurrentThread());
-  SB_DCHECK(input_buffer);
+  SB_DCHECK(input_buffers.size() == 1);
+  SB_DCHECK(input_buffers[0]);
   SB_DCHECK(decoder_status_cb_);
 
   if (stream_ended_) {
@@ -70,6 +70,7 @@ void VideoDecoder::WriteInputBuffer(
     SB_DCHECK(decoder_thread_);
   }
 
+  const auto& input_buffer = input_buffers[0];
   decoder_thread_->job_queue()->Schedule(
       std::bind(&VideoDecoder::DecodeOneBuffer, this, input_buffer));
 }
@@ -83,7 +84,7 @@ void VideoDecoder::WriteEndOfStream() {
   stream_ended_ = true;
 
   if (!decoder_thread_) {
-    // In case there is no WriteInputBuffer() call before WriteEndOfStream(),
+    // In case there is no WriteInputBuffers() call before WriteEndOfStream(),
     // don't create the decoder thread and send the EOS frame directly.
     decoder_status_cb_(kBufferFull, VideoFrame::CreateEOSFrame());
     return;
@@ -260,7 +261,6 @@ void VideoDecoder::ProcessDecodedImage(bool flushing) {
 
   SB_DCHECK(widths[kYPlane] == widths[kUPlane] * 2);
   SB_DCHECK(widths[kUPlane] == widths[kVPlane]);
-  SB_DCHECK(strides[kYPlane] == strides[kUPlane] * 2);
   SB_DCHECK(strides[kUPlane] == strides[kVPlane]);
 
   // Create a VideoFrame from decoded frame data. The data is in YV12 format.
@@ -268,8 +268,8 @@ void VideoDecoder::ProcessDecodedImage(bool flushing) {
   // UV planes have half resolution both vertically and horizontally.
   scoped_refptr<CpuVideoFrame> frame = CpuVideoFrame::CreateYV12Frame(
       bit_depth, widths[kYPlane], heights[kYPlane], strides[kYPlane],
-      de265_get_image_PTS(image), planes[kYPlane], planes[kUPlane],
-      planes[kVPlane]);
+      strides[kUPlane], de265_get_image_PTS(image), planes[kYPlane],
+      planes[kUPlane], planes[kVPlane]);
   if (output_mode_ == kSbPlayerOutputModeDecodeToTexture) {
     ScopedLock lock(decode_target_mutex_);
     frames_.push(frame);

@@ -369,7 +369,8 @@ const MockTransaction kFastNoStoreGET_Transaction = {
     base::Time(),
     "",
     LOAD_VALIDATE_CACHE,
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test\n",
     "Cache-Control: max-age=10000\n",
     base::Time(),
     "<html><body>Google Blah Blah</body></html>",
@@ -437,6 +438,10 @@ bool RangeTransactionServer::bad_200_ = false;
 // AddHeadersFromString() (_not_ AddHeaderFromString()).
 #define EXTRA_HEADER EXTRA_HEADER_LINE "\r\n"
 
+// Adds the unit_test MIME type to the EXTRA_HEADER for compatibility
+// with http_cache_transaction that now will require a MIME type.
+#define MIME_TYPE_EXTRA_HEADER "Content-Type: example/unit_test\r\n" EXTRA_HEADER
+
 static const char kExtraHeaderKey[] = "Extra";
 
 // Static.
@@ -477,7 +482,10 @@ void RangeTransactionServer::RangeHandler(const HttpRequestInfo* request,
       ranges.size() != 1) {
     // This is not a byte range request. We return 200.
     response_status->assign("HTTP/1.1 200 OK");
-    response_headers->assign("Date: Wed, 28 Nov 2007 09:40:09 GMT");
+    // Adds the unit_test MIME type to the response_headers for compatibility
+    // with http_cache_transaction that now will require a MIME type.
+    response_headers->assign("Date: Wed, 28 Nov 2007 09:40:09 GMT\n"
+                             "Content-Type: example/unit_test");
     response_data->assign("Not a range");
     return;
   }
@@ -537,7 +545,8 @@ void RangeTransactionServer::RangeHandler(const HttpRequestInfo* request,
 const MockTransaction kRangeGET_TransactionOK = {
     "http://www.google.com/range", "GET", base::Time(),
     "Range: bytes = 40-49\r\n" EXTRA_HEADER, LOAD_NORMAL,
-    "HTTP/1.1 206 Partial Content",
+    "HTTP/1.1 206 Partial Content\n"
+    "Content-Type: example/unit_test",
     "Last-Modified: Sat, 18 Apr 2007 01:10:43 GMT\n"
     "ETag: \"foo\"\n"
     "Accept-Ranges: bytes\n"
@@ -3725,8 +3734,6 @@ TEST_F(HttpCacheTest, SimpleGET_RacingReaders) {
   EXPECT_EQ(1, cache.disk_cache()->create_count());
 }
 
-// TODO: Enable test when HTTP Caching is fully functional.
-#if !defined(STARBOARD)
 // Tests that we can doom an entry with pending transactions and delete one of
 // the pending transactions before the first one completes.
 // See http://code.google.com/p/chromium/issues/detail?id=25588
@@ -3777,7 +3784,6 @@ TEST_F(HttpCacheTest, SimpleGET_DoomWithPending) {
     ReadAndVerifyTransaction(c->trans.get(), kSimpleGET_Transaction);
   }
 }
-#endif
 
 TEST_F(HttpCacheTest, DoomDoesNotSetHints) {
   // Test that a doomed writer doesn't set in-memory index hints.
@@ -4762,7 +4768,8 @@ TEST_F(HttpCacheTest, ETagGET_Http10) {
   MockHttpCache cache;
 
   ScopedMockTransaction transaction(kETagGET_Transaction);
-  transaction.status = "HTTP/1.0 200 OK";
+  transaction.status = "HTTP/1.0 200 OK\n"
+                       "Content-Type: example/unit_test\n";
 
   // Write to the cache.
   RunTransactionTest(cache.http_cache(), transaction);
@@ -4785,7 +4792,8 @@ TEST_F(HttpCacheTest, ETagGET_Http10_Range) {
   MockHttpCache cache;
 
   ScopedMockTransaction transaction(kETagGET_Transaction);
-  transaction.status = "HTTP/1.0 200 OK";
+  transaction.status = "HTTP/1.0 200 OK\n"
+                       "Content-Type: example/unit_test\n";
 
   // Write to the cache.
   RunTransactionTest(cache.http_cache(), transaction);
@@ -4964,7 +4972,8 @@ static void ConditionalizedRequestUpdatesCacheHelper(
 TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache1) {
   // First network response for |kUrl|.
   static const Response kNetResponse1 = {
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test",
     "Date: Fri, 12 Jun 2009 21:46:42 GMT\n"
     "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n",
     "body1"
@@ -4972,7 +4981,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache1) {
 
   // Second network response for |kUrl|.
   static const Response kNetResponse2 = {
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test",
     "Date: Wed, 22 Jul 2009 03:15:26 GMT\n"
     "Last-Modified: Fri, 03 Jul 2009 02:14:27 GMT\n",
     "body2"
@@ -4990,7 +5000,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache1) {
 TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache2) {
   // First network response for |kUrl|.
   static const Response kNetResponse1 = {
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test",
     "Date: Fri, 12 Jun 2009 21:46:42 GMT\n"
     "Etag: \"ETAG1\"\n"
     "Expires: Wed, 7 Sep 2033 21:46:42 GMT\n",  // Should never expire.
@@ -4999,7 +5010,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache2) {
 
   // Second network response for |kUrl|.
   static const Response kNetResponse2 = {
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test",
     "Date: Wed, 22 Jul 2009 03:15:26 GMT\n"
     "Etag: \"ETAG2\"\n"
     "Expires: Wed, 7 Sep 2033 21:46:42 GMT\n",  // Should never expire.
@@ -5018,7 +5030,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache2) {
 TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache3) {
   // First network response for |kUrl|.
   static const Response kNetResponse1 = {
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test",
     "Date: Fri, 12 Jun 2009 21:46:42 GMT\n"
     "Server: server1\n"
     "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n",
@@ -5027,7 +5040,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache3) {
 
   // Second network response for |kUrl|.
   static const Response kNetResponse2 = {
-    "HTTP/1.1 304 Not Modified",
+    "HTTP/1.1 304 Not Modified\n"
+    "Content-Type: example/unit_test",
     "Date: Wed, 22 Jul 2009 03:15:26 GMT\n"
     "Server: server2\n"
     "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n",
@@ -5038,7 +5052,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache3) {
     "HTTP/1.1 200 OK",
     "Date: Wed, 22 Jul 2009 03:15:26 GMT\n"
     "Server: server2\n"
-    "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n",
+    "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n"
+    "Content-Type: example/unit_test\n",
     "body1"
   };
 
@@ -5058,7 +5073,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache4) {
   const char kUrl[] = "http://foobar.com/main.css";
 
   static const Response kNetResponse = {
-    "HTTP/1.1 304 Not Modified",
+    "HTTP/1.1 304 Not Modified\n"
+    "Content-Type: example/unit_test",
     "Date: Wed, 22 Jul 2009 03:15:26 GMT\n"
     "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n",
     ""
@@ -5102,7 +5118,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache5) {
   const char kUrl[] = "http://foobar.com/main.css";
 
   static const Response kNetResponse = {
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test",
     "Date: Wed, 22 Jul 2009 03:15:26 GMT\n"
     "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n",
     "foobar!!!"
@@ -5143,7 +5160,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache5) {
 // (the if-modified-since date is 2 days AFTER the cache's modification date).
 TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache6) {
   static const Response kNetResponse1 = {
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test",
     "Date: Fri, 12 Jun 2009 21:46:42 GMT\n"
     "Server: server1\n"
     "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n",
@@ -5152,7 +5170,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache6) {
 
   // Second network response for |kUrl|.
   static const Response kNetResponse2 = {
-    "HTTP/1.1 304 Not Modified",
+    "HTTP/1.1 304 Not Modified\n"
+    "Content-Type: example/unit_test",
     "Date: Wed, 22 Jul 2009 03:15:26 GMT\n"
     "Server: server2\n"
     "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n",
@@ -5173,7 +5192,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache6) {
 // response (304) to update the cache.
 TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache7) {
   static const Response kNetResponse1 = {
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test",
     "Date: Fri, 12 Jun 2009 21:46:42 GMT\n"
     "Etag: \"Foo1\"\n"
     "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n",
@@ -5182,7 +5202,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache7) {
 
   // Second network response for |kUrl|.
   static const Response kNetResponse2 = {
-    "HTTP/1.1 304 Not Modified",
+    "HTTP/1.1 304 Not Modified\n"
+    "Content-Type: example/unit_test",
     "Date: Wed, 22 Jul 2009 03:15:26 GMT\n"
     "Etag: \"Foo2\"\n"
     "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n",
@@ -5200,7 +5221,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache7) {
 // and if-modified-since updates the cache.
 TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache8) {
   static const Response kNetResponse1 = {
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test",
     "Date: Fri, 12 Jun 2009 21:46:42 GMT\n"
     "Etag: \"Foo1\"\n"
     "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n",
@@ -5209,7 +5231,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache8) {
 
   // Second network response for |kUrl|.
   static const Response kNetResponse2 = {
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test",
     "Date: Wed, 22 Jul 2009 03:15:26 GMT\n"
     "Etag: \"Foo2\"\n"
     "Last-Modified: Fri, 03 Jul 2009 02:14:27 GMT\n",
@@ -5228,7 +5251,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache8) {
 // and if-modified-since does not update the cache with only one match.
 TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache9) {
   static const Response kNetResponse1 = {
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test",
     "Date: Fri, 12 Jun 2009 21:46:42 GMT\n"
     "Etag: \"Foo1\"\n"
     "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n",
@@ -5237,7 +5261,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache9) {
 
   // Second network response for |kUrl|.
   static const Response kNetResponse2 = {
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test",
     "Date: Wed, 22 Jul 2009 03:15:26 GMT\n"
     "Etag: \"Foo2\"\n"
     "Last-Modified: Fri, 03 Jul 2009 02:14:27 GMT\n",
@@ -5257,7 +5282,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache9) {
 // and if-modified-since does not update the cache with only one match.
 TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache10) {
   static const Response kNetResponse1 = {
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test",
     "Date: Fri, 12 Jun 2009 21:46:42 GMT\n"
     "Etag: \"Foo1\"\n"
     "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n",
@@ -5266,7 +5292,8 @@ TEST_F(HttpCacheTest, ConditionalizedRequestUpdatesCache10) {
 
   // Second network response for |kUrl|.
   static const Response kNetResponse2 = {
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test",
     "Date: Wed, 22 Jul 2009 03:15:26 GMT\n"
     "Etag: \"Foo2\"\n"
     "Last-Modified: Fri, 03 Jul 2009 02:14:27 GMT\n",
@@ -5657,7 +5684,9 @@ TEST_F(HttpCacheTest, SimpleHEAD_ContentLengthOnHit_Read) {
 
   RunTransactionTestWithResponse(cache.http_cache(), transaction, &headers);
 
-  EXPECT_EQ("HTTP/1.1 200 OK\nContent-Length: 42\n", headers);
+  EXPECT_EQ("HTTP/1.1 200 OK\n"
+            "Content-Type: example/unit_test\n"
+            "Content-Length: 42\n", headers);
   RemoveMockTransaction(&transaction);
 }
 
@@ -7053,7 +7082,8 @@ TEST_F(HttpCacheTest, RangeGET_416_NoCachedContent) {
 TEST_F(HttpCacheTest, RangeGET_301) {
   MockHttpCache cache;
   ScopedMockTransaction transaction(kRangeGET_TransactionOK);
-  transaction.status = "HTTP/1.1 301 Moved Permanently";
+  transaction.status = "HTTP/1.1 301 Moved Permanently\n"
+                       "Content-Type: example/unit_test";
   transaction.response_headers = "Location: http://www.bar.com/\n";
   transaction.data = "";
   transaction.handler = NULL;
@@ -7859,8 +7889,6 @@ TEST_F(HttpCacheTest, RangeGET_InvalidResponse3) {
   RemoveMockTransaction(&kRangeGET_TransactionOK);
 }
 
-// TODO: Enable test when HTTP Caching is fully functional.
-#if !defined(HTTP_CACHE_TESTING_DISABLED) 
 // Tests that we handle large range values properly.
 TEST_F(HttpCacheTest, RangeGET_LargeValues) {
   // We need a real sparse cache for this test.
@@ -7892,7 +7920,6 @@ TEST_F(HttpCacheTest, RangeGET_LargeValues) {
 
   RemoveMockTransaction(&kRangeGET_TransactionOK);
 }
-#endif
 
 // Tests that we don't crash with a range request if the disk cache was not
 // initialized properly.
@@ -8400,6 +8427,7 @@ TEST_F(HttpCacheTest, GET_IncompleteResource) {
   ScopedMockTransaction transaction(kRangeGET_TransactionOK);
 
   std::string raw_headers("HTTP/1.1 200 OK\n"
+                          "Content-Type: example/unit_test\n"
                           "Last-Modified: Sat, 18 Apr 2007 01:10:43 GMT\n"
                           "ETag: \"foo\"\n"
                           "Accept-Ranges: bytes\n"
@@ -8417,6 +8445,7 @@ TEST_F(HttpCacheTest, GET_IncompleteResource) {
       "HTTP/1.1 200 OK\n"
       "Last-Modified: Sat, 18 Apr 2007 01:10:43 GMT\n"
       "Accept-Ranges: bytes\n"
+      "Content-Type: example/unit_test\n"
       "ETag: \"foo\"\n"
       "Content-Length: 80\n");
 
@@ -8558,7 +8587,8 @@ TEST_F(HttpCacheTest, GET_IncompleteResource2) {
   // The server will return 200 instead of a byte range.
   std::string expected_headers(
       "HTTP/1.1 200 OK\n"
-      "Date: Wed, 28 Nov 2007 09:40:09 GMT\n");
+      "Date: Wed, 28 Nov 2007 09:40:09 GMT\n"
+      "Content-Type: example/unit_test\n");
 
   EXPECT_EQ(expected_headers, headers);
   EXPECT_EQ(2, cache.network_layer()->transaction_count());
@@ -8613,6 +8643,7 @@ TEST_F(HttpCacheTest, GET_IncompleteResourceWithAuth) {
   AddMockTransaction(&kRangeGET_TransactionOK);
 
   std::string raw_headers("HTTP/1.1 200 OK\n"
+                          "Content-Type: example/unit_test\n"
                           "Last-Modified: Sat, 18 Apr 2007 01:10:43 GMT\n"
                           "ETag: \"foo\"\n"
                           "Accept-Ranges: bytes\n"
@@ -8705,7 +8736,7 @@ TEST_F(HttpCacheTest, GET_IncompleteResource4) {
 
   // Now make a regular request.
   std::string headers;
-  transaction.request_headers = EXTRA_HEADER;
+  transaction.request_headers = MIME_TYPE_EXTRA_HEADER;
   transaction.data = "Not a range";
   RangeTransactionServer handler;
   handler.set_bad_200(true);
@@ -8726,6 +8757,7 @@ TEST_F(HttpCacheTest, GET_CancelIncompleteResource) {
   ScopedMockTransaction transaction(kRangeGET_TransactionOK);
 
   std::string raw_headers("HTTP/1.1 200 OK\n"
+                          "Content-Type: example/unit_test\n"
                           "Last-Modified: Sat, 18 Apr 2009 01:10:43 GMT\n"
                           "ETag: \"foo\"\n"
                           "Accept-Ranges: bytes\n"
@@ -8848,7 +8880,8 @@ TEST_F(HttpCacheTest, CachedRedirect) {
   MockHttpCache cache;
 
   ScopedMockTransaction kTestTransaction(kSimpleGET_Transaction);
-  kTestTransaction.status = "HTTP/1.1 301 Moved Permanently";
+  kTestTransaction.status = "HTTP/1.1 301 Moved Permanently\n"
+                            "Content-Type: example/unit_test";
   kTestTransaction.response_headers = "Location: http://www.bar.com/\n";
 
   MockHttpRequest request(kTestTransaction);
@@ -9144,7 +9177,8 @@ TEST_F(HttpCacheTest, UpdatesRequestResponseTimeOn304) {
   request.data = kData;
 
   static const Response kNetResponse1 = {
-    "HTTP/1.1 200 OK",
+    "HTTP/1.1 200 OK\n"
+    "Content-Type: example/unit_test",
     "Date: Fri, 12 Jun 2009 21:46:42 GMT\n"
     "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n",
     kData
@@ -9160,7 +9194,8 @@ TEST_F(HttpCacheTest, UpdatesRequestResponseTimeOn304) {
   request.load_flags = LOAD_VALIDATE_CACHE;
 
   static const Response kNetResponse2 = {
-    "HTTP/1.1 304 Not Modified",
+    "HTTP/1.1 304 Not Modified\n"
+    "Content-Type: example/unit_test",
     "Date: Wed, 22 Jul 2009 03:15:26 GMT\n",
     ""
   };
@@ -9184,6 +9219,7 @@ TEST_F(HttpCacheTest, UpdatesRequestResponseTimeOn304) {
 
   EXPECT_EQ("HTTP/1.1 200 OK\n"
             "Date: Wed, 22 Jul 2009 03:15:26 GMT\n"
+            "Content-Type: example/unit_test\n"
             "Last-Modified: Wed, 06 Feb 2008 22:38:21 GMT\n",
             ToSimpleString(response.headers));
 
@@ -9679,6 +9715,7 @@ TEST_F(HttpCacheTest, StopCachingTruncatedEntry) {
   AddMockTransaction(&kRangeGET_TransactionOK);
 
   std::string raw_headers("HTTP/1.1 200 OK\n"
+                          "Content-Type: example/unit_test\n"
                           "Last-Modified: Sat, 18 Apr 2007 01:10:43 GMT\n"
                           "ETag: \"foo\"\n"
                           "Accept-Ranges: bytes\n"
@@ -10097,6 +10134,7 @@ TEST_F(HttpCacheTest, SetPriorityNewTransaction) {
   AddMockTransaction(&kRangeGET_TransactionOK);
 
   std::string raw_headers("HTTP/1.1 200 OK\n"
+                          "Content-Type: example/unit_test\n"
                           "Last-Modified: Sat, 18 Apr 2007 01:10:43 GMT\n"
                           "ETag: \"foo\"\n"
                           "Accept-Ranges: bytes\n"

@@ -46,6 +46,7 @@
 #include "cobalt/browser/suspend_fuzzer.h"
 #include "cobalt/browser/system_platform_error_handler.h"
 #include "cobalt/browser/url_handler.h"
+#include "cobalt/browser/user_agent_platform_info.h"
 #include "cobalt/browser/web_module.h"
 #include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/input_event_init.h"
@@ -59,6 +60,7 @@
 #include "cobalt/media/media_module.h"
 #include "cobalt/network/network_module.h"
 #include "cobalt/overlay_info/qr_code_overlay.h"
+#include "cobalt/persistent_storage/persistent_settings.h"
 #include "cobalt/render_tree/node.h"
 #include "cobalt/render_tree/resource_provider.h"
 #include "cobalt/render_tree/resource_provider_stub.h"
@@ -66,6 +68,8 @@
 #include "cobalt/script/array_buffer.h"
 #include "cobalt/storage/storage_manager.h"
 #include "cobalt/system_window/system_window.h"
+#include "cobalt/ui_navigation/scroll_engine/scroll_engine.h"
+#include "cobalt/web/web_settings.h"
 #include "cobalt/webdriver/session_driver.h"
 #include "starboard/configuration.h"
 #include "starboard/time.h"
@@ -97,15 +101,15 @@ class BrowserModule {
   // All browser subcomponent options should have default constructors that
   // setup reasonable default options.
   struct Options {
-    explicit Options(const WebModule::Options& web_options)
-        : web_module_options(web_options),
-          command_line_auto_mem_settings(
+    Options()
+        : command_line_auto_mem_settings(
               memory_settings::AutoMemSettings::kTypeCommandLine),
           build_auto_mem_settings(memory_settings::AutoMemSettings::kTypeBuild),
           enable_splash_screen_on_reloads(true) {}
     renderer::RendererModule::Options renderer_module_options;
     WebModule::Options web_module_options;
     media::MediaModule::Options media_module_options;
+    persistent_storage::PersistentSettings* persistent_settings;
     WebModuleCreatedCallback web_module_created_callback;
     memory_settings::AutoMemSettings command_line_auto_mem_settings;
     memory_settings::AutoMemSettings build_auto_mem_settings;
@@ -352,10 +356,6 @@ class BrowserModule {
   // Toggles the input fuzzer on/off.  Ignores the parameter.
   void OnFuzzerToggle(const std::string&);
 
-  // Use the config in the form of '<string name>=<int value>' to call
-  // MediaModule::SetConfiguration().
-  void OnSetMediaConfig(const std::string& config);
-
   // Sets the disabled media codecs in the debug console and in
   // the CanPlayTypeHandler instance.
   // Future requests to play videos with these codecs will report that these
@@ -382,6 +382,10 @@ class BrowserModule {
   // Called when a renderer submission has been rasterized. Used to hide the
   // system splash screen after the first render has completed.
   void OnRendererSubmissionRasterized();
+
+  // Called when a renderer submission of the (main) web module has been
+  // rasterized. This should also call OnRendererSubmissionRasterized().
+  void OnWebModuleRendererSubmissionRasterized();
 
   // Process all messages queued into the |render_tree_submission_queue_|.
   void ProcessRenderTreeSubmissionQueue();
@@ -466,9 +470,13 @@ class BrowserModule {
   // Returns the topic used, or an empty Optional if a topic isn't found.
   base::Optional<std::string> SetSplashScreenTopicFallback(const GURL& url);
 
-  // Function that creates the H5vcc object that will be injected into WebModule
-  scoped_refptr<script::Wrappable> CreateH5vcc(
-      script::EnvironmentSettings* settings);
+  // Callback function that creates the H5vcc object that will be injected into
+  // the MainWebModule.
+  scoped_refptr<script::Wrappable> CreateH5vccCallback(
+      WebModule* web_module, web::EnvironmentSettings* settings);
+
+  // Validates the PersistentSettings for cache backend, if in use.
+  void ValidateCacheBackendSettings();
 
   // TODO:
   //     WeakPtr usage here can be avoided if BrowserModule has a thread to
@@ -487,6 +495,11 @@ class BrowserModule {
   // thread according to weak_ptr.h (versus calling
   // |weak_ptr_factory_.GetWeakPtr() which is not).
   base::WeakPtr<BrowserModule> weak_this_;
+
+  // Holds browser wide web settings accessible from both the main web thread
+  // and all Workers.  It can only be set on the main web module via h5vcc but
+  // any setting changes affect all web modules.
+  web::WebSettingsImpl web_settings_;
 
   // Memory configuration tool.
   memory_settings::AutoMem auto_mem_;
@@ -511,6 +524,9 @@ class BrowserModule {
   // Whether the browser module has yet rendered anything. On the very first
   // render, we hide the system splash screen.
   bool is_rendered_;
+
+  // Whether the (main) web module has yet rendered anything.
+  bool is_web_module_rendered_;
 
   // The main system window for our application. This routes input event
   // callbacks, and provides a native window handle on desktop systems.
@@ -567,6 +583,9 @@ class BrowserModule {
   std::unique_ptr<dom::OnScreenKeyboardBridge> on_screen_keyboard_bridge_;
   bool on_screen_keyboard_show_called_ = false;
 
+  // Handles pointer events for scroll containers.
+  std::unique_ptr<ui_navigation::scroll_engine::ScrollEngine> scroll_engine_;
+
   // Sets up everything to do with web page management, from loading and
   // parsing the web page and all referenced files to laying it out.  The
   // web module will ultimately produce a render tree that can be passed
@@ -608,10 +627,6 @@ class BrowserModule {
   // Command handler object for toggling the input fuzzer on/off.
   debug::console::ConsoleCommandManager::CommandHandler
       fuzzer_toggle_command_handler_;
-
-  // Command handler object for setting media module config.
-  debug::console::ConsoleCommandManager::CommandHandler
-      set_media_config_command_handler_;
 
   // Command handler object for screenshot command from the debug console.
   debug::console::ConsoleCommandManager::CommandHandler
@@ -716,8 +731,10 @@ class BrowserModule {
   // and reuse this value to recreate the window.
   math::Size window_size_;
 
+  std::unique_ptr<browser::UserAgentPlatformInfo> platform_info_;
+
   // Manages the Service Workers.
-  ServiceWorkerRegistry service_worker_registry_;
+  std::unique_ptr<ServiceWorkerRegistry> service_worker_registry_;
 };
 
 }  // namespace browser

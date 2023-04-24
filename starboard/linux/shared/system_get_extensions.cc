@@ -14,15 +14,18 @@
 
 #include "starboard/system.h"
 
-#include "cobalt/extension/configuration.h"
-#include "cobalt/extension/crash_handler.h"
-#include "cobalt/extension/free_space.h"
-#include "cobalt/extension/memory_mapped_file.h"
-#include "cobalt/extension/platform_service.h"
 #include "starboard/common/string.h"
+#include "starboard/extension/configuration.h"
+#include "starboard/extension/crash_handler.h"
+#include "starboard/extension/demuxer.h"
+#include "starboard/extension/free_space.h"
+#include "starboard/extension/memory_mapped_file.h"
+#include "starboard/extension/platform_service.h"
 #include "starboard/linux/shared/soft_mic_platform_service.h"
+#include "starboard/shared/ffmpeg/ffmpeg_demuxer.h"
 #include "starboard/shared/posix/free_space.h"
 #include "starboard/shared/posix/memory_mapped_file.h"
+#include "starboard/shared/starboard/application.h"
 #include "starboard/shared/starboard/crash_handler.h"
 #if SB_IS(EVERGREEN_COMPATIBLE)
 #include "starboard/elf_loader/evergreen_config.h"
@@ -55,6 +58,14 @@ const void* SbSystemGetExtension(const char* name) {
   }
   if (strcmp(name, kCobaltExtensionFreeSpaceName) == 0) {
     return starboard::shared::posix::GetFreeSpaceApi();
+  }
+  if (strcmp(name, kCobaltExtensionDemuxerApi) == 0) {
+    auto command_line =
+        starboard::shared::starboard::Application::Get()->GetCommandLine();
+    const bool use_ffmpeg_demuxer =
+        command_line->HasSwitch("enable_demuxer_extension");
+    return use_ffmpeg_demuxer ? starboard::shared::ffmpeg::GetFFmpegDemuxerApi()
+                              : NULL;
   }
   return NULL;
 }

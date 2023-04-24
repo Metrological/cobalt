@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
-
 #include "cobalt/renderer/pipeline.h"
+
+#include <memory>
 
 #include "base/bind.h"
 #include "base/files/file_path.h"
@@ -24,13 +24,13 @@
 #include "cobalt/base/address_sanitizer.h"
 #include "cobalt/base/cobalt_paths.h"
 #include "cobalt/base/polymorphic_downcast.h"
-#include "cobalt/extension/graphics.h"
 #include "cobalt/math/rect_f.h"
 #include "cobalt/render_tree/clear_rect_node.h"
 #include "cobalt/render_tree/composition_node.h"
 #include "cobalt/render_tree/dump_render_tree_to_string.h"
 #include "cobalt/watchdog/watchdog.h"
 #include "nb/memory_scope.h"
+#include "starboard/extension/graphics.h"
 #include "starboard/system.h"
 
 namespace cobalt {
@@ -71,7 +71,7 @@ const size_t kRasterizeAnimationsTimerMaxEntries = 60;
 const char kWatchdogName[] = "renderer";
 // The watchdog time interval in microseconds allowed between pings before
 // triggering violations.
-const int64_t kWatchdogTimeInterval = 1000000;
+const int64_t kWatchdogTimeInterval = 2000000;
 // The watchdog time wait in microseconds to initially wait before triggering
 // violations.
 const int64_t kWatchdogTimeWait = 2000000;
@@ -337,9 +337,9 @@ void Pipeline::SetNewRenderTree(const Submission& render_tree_submission) {
   // Registers Pipeline as a watchdog client.
   watchdog::Watchdog* watchdog = watchdog::Watchdog::GetInstance();
   if (watchdog)
-    watchdog->Register(kWatchdogName, base::kApplicationStateStarted,
-                       kWatchdogTimeInterval, kWatchdogTimeWait,
-                       watchdog::PING);
+    watchdog->Register(kWatchdogName, kWatchdogName,
+                       base::kApplicationStateStarted, kWatchdogTimeInterval,
+                       kWatchdogTimeWait, watchdog::PING);
 
   // If a time fence is active, save the submission to be queued only after
   // we pass the time fence.  Overwrite any existing waiting submission in this
@@ -405,7 +405,7 @@ void Pipeline::RasterizeCurrentTree() {
   watchdog::Watchdog* watchdog = watchdog::Watchdog::GetInstance();
   if (watchdog) {
 #if defined(_DEBUG)
-    // Injects delay based off of environment variables for watchdog debugging.
+    // Injects delay for watchdog debugging.
     watchdog->MaybeInjectDebugDelay(kWatchdogName);
 #endif  // defined(_DEBUG)
     watchdog->Ping(kWatchdogName);

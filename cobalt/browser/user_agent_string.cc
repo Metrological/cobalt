@@ -46,6 +46,11 @@ std::string CreateUserAgentString(const UserAgentPlatformInfo& platform_info) {
   //   JavaScript Engine Name/Version
   //   Starboard/APIVersion,
   //   Device/FirmwareVersion (Brand, Model, ConnectionType)
+  //
+  // In the case of Evergreen, it contains three additional sections:
+  //   Evergreen/Version
+  //   Evergreen-Type
+  //   Evergreen-FileType
 
   //   Mozilla/5.0 (ChromiumStylePlatform)
   std::string user_agent = base::StringPrintf(
@@ -74,10 +79,17 @@ std::string CreateUserAgentString(const UserAgentPlatformInfo& platform_info) {
     base::StringAppendF(&user_agent, " Evergreen/%s",
                         platform_info.evergreen_version().c_str());
   }
+
   // Evergreen type
   if (!platform_info.evergreen_type().empty()) {
     base::StringAppendF(&user_agent, " Evergreen-%s",
                         platform_info.evergreen_type().c_str());
+  }
+
+  // Evergreen file type
+  if (!platform_info.evergreen_file_type().empty()) {
+    base::StringAppendF(&user_agent, " Evergreen-%s",
+                        platform_info.evergreen_file_type().c_str());
   }
 
   // Starboard/APIVersion,
@@ -86,9 +98,9 @@ std::string CreateUserAgentString(const UserAgentPlatformInfo& platform_info) {
                         platform_info.starboard_version().c_str());
   }
 
-  // Device/FirmwareVersion (Brand, Model, ConnectionType)
+  // Device/FirmwareVersion (Brand, Model)
   base::StringAppendF(
-      &user_agent, ", %s_%s_%s_%s/%s (%s, %s, %s)",
+      &user_agent, ", %s_%s_%s_%s/%s (%s, %s)",
       platform_info.original_design_manufacturer()
           .value_or(kUnknownFieldName)
           .c_str(),
@@ -97,8 +109,7 @@ std::string CreateUserAgentString(const UserAgentPlatformInfo& platform_info) {
       platform_info.model_year().value_or("0").c_str(),
       platform_info.firmware_version().value_or(kUnknownFieldName).c_str(),
       platform_info.brand().value_or(kUnknownFieldName).c_str(),
-      platform_info.model().value_or(kUnknownFieldName).c_str(),
-      platform_info.connection_type_string().c_str());
+      platform_info.model().value_or(kUnknownFieldName).c_str());
 
   if (!platform_info.aux_field().empty()) {
     base::StringAppendF(&user_agent, " %s", platform_info.aux_field().c_str());

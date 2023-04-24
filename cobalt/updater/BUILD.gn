@@ -49,7 +49,6 @@ static_library("updater") {
     "//starboard/common",
     "//starboard/loader_app:app_key_files",
     "//starboard/loader_app:drain_file",
-    "//third_party/lz4_lib:lz4",
     "//third_party/zlib:zip",
     "//url",
   ]
@@ -96,5 +95,24 @@ target(final_executable_type, "one_app_only_sandbox") {
     "//net",
     "//starboard",
     "//starboard/loader_app:app_key",
+  ]
+}
+
+target(gtest_target_type, "updater_test") {
+  testonly = true
+  has_pedantic_warnings = true
+
+  sources = [
+    "//starboard/common/test_main.cc",
+    "configurator_test.cc",
+    "utils_test.cc",
+  ]
+
+  deps = [
+    ":updater",
+    "//base",
+    "//components/update_client",
+    "//testing/gmock",
+    "//testing/gtest",
   ]
 }

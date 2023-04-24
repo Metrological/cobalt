@@ -34,6 +34,8 @@
 #include "cobalt/dom/pointer_event_init.h"
 #include "cobalt/dom/wheel_event_init.h"
 #include "cobalt/dom/window.h"
+#include "cobalt/web/user_agent_platform_info.h"
+#include "cobalt/web/web_settings.h"
 #include "url/gurl.h"
 
 namespace cobalt {
@@ -44,10 +46,11 @@ namespace browser {
 class DebugConsole : public LifecycleObserver {
  public:
   DebugConsole(
+      web::UserAgentPlatformInfo* platform_info,
       base::ApplicationState initial_application_state,
       const WebModule::OnRenderTreeProducedCallback&
           render_tree_produced_callback,
-      network::NetworkModule* network_module,
+      web::WebSettings* web_settings, network::NetworkModule* network_module,
       const cssom::ViewportSize& window_dimensions,
       render_tree::ResourceProvider* resource_provider,
       float layout_refresh_rate,

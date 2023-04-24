@@ -42,6 +42,13 @@ _generated_source_output_dir = "$_bindings_output_dir/source"
 # Directory containing generated IDL files.
 _generated_idls_output_dir = "$_bindings_output_dir/idl"
 
+# Array of all interfaces that need global constructors.
+_global_constructor_interfaces = [
+  "Window",
+  "DedicatedWorkerGlobalScope",
+  "ServiceWorkerGlobalScope",
+]
+
 target(final_executable_type, "cobalt") {
   sources = [ "main.cc" ]
   deps = [
@@ -50,35 +57,32 @@ target(final_executable_type, "cobalt") {
     "//cobalt/base",
     "//net",
   ]
-  content_deps = [
+  data_deps = [
     "//cobalt/dom:licenses",
     "//cobalt/network:copy_ssl_certificates",
-    "//cobalt/speech:speech_testdata",
-    "//cobalt/webdriver:copy_webdriver_data",
     "//third_party/icu:icudata",
   ]
   if (cobalt_font_package == "empty") {
-    content_deps += [ "//cobalt/content/fonts:copy_font_data" ]
+    data_deps += [ "//cobalt/content/fonts:copy_font_data" ]
   } else {
-    content_deps += [
+    data_deps += [
       "//cobalt/content/fonts:copy_fonts",
       "//cobalt/content/fonts:fonts_xml",
     ]
   }
   if (!is_gold) {
-    content_deps += [
+    data_deps += [
       "//cobalt/debug/backend/content:copy_backend_web_files",
       "//cobalt/debug/console/content:copy_console_web_files",
       "//cobalt/debug/remote/content:copy_remote_web_files",
+      "//cobalt/speech:speech_testdata",
+      "//cobalt/webdriver:copy_webdriver_data",
       "//third_party/devtools:build_release_devtools",
       "//third_party/devtools:copy_devtools_modules",
       "//third_party/devtools:copy_inspector_images",
       "//third_party/devtools:frontend_protocol_sources",
       "//third_party/devtools:supported_css_properties",
     ]
-  }
-  if (defined(platform_i18n_config_path)) {
-    content_deps += [ platform_i18n_config_path ]
   }
 }
 
@@ -151,6 +155,7 @@ static_library("browser") {
     "//cobalt/browser/memory_settings:browser_memory_settings",
     "//cobalt/browser/memory_tracker:memory_tracker_tool",
     "//cobalt/build:cobalt_build_id",
+    "//cobalt/cache",
     "//cobalt/configuration",
     "//cobalt/css_parser",
     "//cobalt/cssom",
@@ -167,18 +172,19 @@ static_library("browser") {
     "//cobalt/media_session",
     "//cobalt/network",
     "//cobalt/overlay_info",
+    "//cobalt/persistent_storage:persistent_settings",
     "//cobalt/render_tree",
     "//cobalt/renderer",
     "//cobalt/renderer/test/png_utils",
     "//cobalt/script",
     "//cobalt/script:engine",
     "//cobalt/speech",
-    "//cobalt/sso",
     "//cobalt/storage",
     "//cobalt/subtlecrypto",
     "//cobalt/system_window",
     "//cobalt/trace_event",
     "//cobalt/ui_navigation",
+    "//cobalt/ui_navigation/scroll_engine",
     "//cobalt/watchdog",
     "//cobalt/web",
     "//cobalt/webdriver",
@@ -343,10 +349,10 @@ generate_type_conversion("generated_type_conversion") {
     ":interfaces_info_overall",
   ]
 
-  # Generated IDL file that will define all the constructors that should be
-  # on the Window object.
-  global_names_idl_file =
-      "$_generated_idls_output_dir/dom/window_constructors.idl"
+  # Generated IDL files that define all the constructors that are on the global
+  # scope objects.
+  global_names_idl_path = _generated_idls_output_dir
+  interfaces = _global_constructor_interfaces
 
   inputs = [ _interfaces_info_combined_pickle ]
   inputs += source_idl_files
@@ -366,19 +372,12 @@ compute_global_objects("global_objects") {
 
 compute_global_constructors_idls("global_constructors_idls") {
   idl_files = source_idl_files
-
   global_objects_file = _global_objects_pickle
 
-  # Generated IDL file that will define all the constructors that should be
-  # on the Window object.
-  global_names_idl_file =
-      "$_generated_idls_output_dir/dom/window_constructors.idl"
-
-  # Dummy header file which is generated because the idl compiler assumes
-  # there is a header for each IDL.
-  global_constructors_generated_header_file =
-      "$_generated_idls_output_dir/dom/window_constructors.h"
-
+  # Generated IDL files that will define all the constructors that should be
+  # on the global scope objects.
+  global_names_idl_path = _generated_idls_output_dir
+  interfaces = _global_constructor_interfaces
   deps = [ ":global_objects" ]
 }
 
@@ -386,10 +385,10 @@ compute_interfaces_info_individual("interfaces_info_individual") {
   idl_files =
       source_idl_files + generated_header_idl_files + dependency_idl_files
 
-  # Generated IDL file that will define all the constructors that should be
-  # on the Window object.
-  generated_idl_files =
-      "$_generated_idls_output_dir/dom/window_constructors.idl"
+  # Generated IDL files that define all the constructors that are on the global
+  # scope objects.
+  global_names_idl_path = _generated_idls_output_dir
+  interfaces = _global_constructor_interfaces
   component_info_file = _component_info_pickle
   interfaces_info_file = _interfaces_info_individual_pickle
   cache_directory = _bindings_scripts_output_dir

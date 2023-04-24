@@ -37,7 +37,7 @@ namespace worker {
 
 // The ServiceWorkerRegistration interface represents a service worker
 // registration within a service worker client realm.
-//   https://w3c.github.io/ServiceWorker/#serviceworker-interface
+//   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#serviceworker-interface
 class ServiceWorkerRegistration : public web::EventTarget {
  public:
   ServiceWorkerRegistration(
@@ -63,8 +63,8 @@ class ServiceWorkerRegistration : public web::EventTarget {
   void EnableNavigationPreload(bool enable);
   void SetNavigationPreloadHeader();
 
-  script::Handle<script::Promise<void>> Update();
-  script::Handle<script::Promise<void>> Unregister();
+  script::HandlePromiseWrappable Update();
+  script::HandlePromiseBool Unregister();
 
   const EventListenerScriptValue* onupdatefound() const {
     return GetAttributeEventListener(base::Tokens::updatefound());
@@ -77,7 +77,10 @@ class ServiceWorkerRegistration : public web::EventTarget {
   DEFINE_WRAPPABLE_TYPE(ServiceWorkerRegistration);
 
  private:
-  worker::ServiceWorkerRegistrationObject* registration_;
+  void UpdateTask(std::unique_ptr<script::ValuePromiseWrappable::Reference>
+                      promise_reference);
+
+  scoped_refptr<worker::ServiceWorkerRegistrationObject> registration_;
   scoped_refptr<ServiceWorker> installing_;
   scoped_refptr<ServiceWorker> waiting_;
   scoped_refptr<ServiceWorker> active_;

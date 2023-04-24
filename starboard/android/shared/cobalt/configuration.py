@@ -60,14 +60,22 @@ class CobaltAndroidConfiguration(cobalt_configuration.CobaltConfiguration):
       'layout_tests': [
           # Android relies of system fonts and some older Android builds do not
           # have the update (Emoji 11.0) NotoColorEmoji.ttf installed.
-          'CSS3FontsLayoutTests/Layout.Test/color_emojis_should_render_properly'
+          ('CSS3FontsLayoutTests/Layout.Test/'
+            'color_emojis_should_render_properly'),
+
+          # Android 12 changed the look of emojis.
+          ('CSS3FontsLayoutTests/Layout.Test/'
+            '5_2_use_system_fallback_if_no_matching_family_is_found_emoji'),
       ],
       'crypto_unittests': ['P224.*'],
       'renderer_test': [
-          # TODO(b/215739322): Using the android fonts breaks these tests. They
-          # make use of fonts that are not bundled on Android.
+          # TODO(b/236034292): These tests load the wrong fonts sometimes.
           'PixelTest.SimpleTextInRed40PtChineseFont',
           'PixelTest.SimpleTextInRed40PtThaiFont',
+
+          # The Roboto variable font looks slightly different than the static
+          # font version. Android 12 and up use font variations for Roboto.
+          'PixelTest.ScalingUpAnOpacityFilterTextDoesNotPixellate',
 
           # Instead of returning an error when allocating too much texture
           # memory, Android instead just terminates the process.  Since this

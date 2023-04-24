@@ -20,6 +20,7 @@
 #include "base/atomicops.h"
 #include "base/memory/singleton.h"
 #include "base/synchronization/lock.h"
+#include "starboard/extension/crash_handler.h"
 
 #if SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
 #include STARBOARD_CORE_DUMP_HANDLER_INCLUDE
@@ -97,6 +98,15 @@ class CrashLogDictionary {
 
 bool H5vccCrashLog::SetString(const std::string& key,
                               const std::string& value) {
+  auto crash_handler_extension =
+      static_cast<const CobaltExtensionCrashHandlerApi*>(
+          SbSystemGetExtension(kCobaltExtensionCrashHandlerName));
+  if (crash_handler_extension && crash_handler_extension->version >= 2) {
+    return crash_handler_extension->SetString(key.c_str(), value.c_str());
+  }
+  // The platform has not implemented a version of the CrashHandler Cobalt
+  // Extension appropriate for this use case.
+
   // Forward the call to a global singleton so that we keep a consistent crash
   // log globally.
   CrashLogDictionary::GetInstance()->SetString(key, value);
@@ -126,7 +136,8 @@ void H5vccCrashLog::TriggerCrash(H5vccCrashType intent) {
 bool H5vccCrashLog::Register(const std::string& name,
                              const std::string& description,
                              WatchdogState watchdog_state,
-                             int64_t time_interval, int64_t time_wait,
+                             int64_t time_interval_milliseconds,
+                             int64_t time_wait_milliseconds,
                              WatchdogReplace watchdog_replace) {
   watchdog::Watchdog* watchdog = watchdog::Watchdog::GetInstance();
   if (watchdog) {
@@ -161,8 +172,9 @@ bool H5vccCrashLog::Register(const std::string& name,
       default:
         replace = watchdog::NONE;
     }
-    return watchdog->Register(name, description, monitor_state, time_interval,
-                              time_wait, replace);
+    return watchdog->Register(name, description, monitor_state,
+                              time_interval_milliseconds * 1000,
+                              time_wait_milliseconds * 1000, replace);
   }
   return false;
 }
@@ -180,21 +192,32 @@ bool H5vccCrashLog::Ping(const std::string& name,
   return false;
 }
 
-std::string H5vccCrashLog::GetWatchdogViolations(bool current) {
+std::string H5vccCrashLog::GetWatchdogViolations() {
   watchdog::Watchdog* watchdog = watchdog::Watchdog::GetInstance();
-  if (watchdog) return watchdog->GetWatchdogViolations(current);
+  if (watchdog) return watchdog->GetWatchdogViolations();
   return "";
 }
 
-bool H5vccCrashLog::GetCanTriggerCrash() {
+bool H5vccCrashLog::GetPersistentSettingWatchdogEnable() {
   watchdog::Watchdog* watchdog = watchdog::Watchdog::GetInstance();
-  if (watchdog) return watchdog->GetCanTriggerCrash();
+  if (watchdog) return watchdog->GetPersistentSettingWatchdogEnable();
+  return true;
+}
+
+void H5vccCrashLog::SetPersistentSettingWatchdogEnable(bool enable_watchdog) {
+  watchdog::Watchdog* watchdog = watchdog::Watchdog::GetInstance();
+  if (watchdog) watchdog->SetPersistentSettingWatchdogEnable(enable_watchdog);
+}
+
+bool H5vccCrashLog::GetPersistentSettingWatchdogCrash() {
+  watchdog::Watchdog* watchdog = watchdog::Watchdog::GetInstance();
+  if (watchdog) return watchdog->GetPersistentSettingWatchdogCrash();
   return false;
 }
 
-void H5vccCrashLog::SetCanTriggerCrash(bool can_trigger_crash) {
+void H5vccCrashLog::SetPersistentSettingWatchdogCrash(bool can_trigger_crash) {
   watchdog::Watchdog* watchdog = watchdog::Watchdog::GetInstance();
-  if (watchdog) watchdog->SetCanTriggerCrash(can_trigger_crash);
+  if (watchdog) watchdog->SetPersistentSettingWatchdogCrash(can_trigger_crash);
 }
 
 }  // namespace h5vcc

@@ -16,9 +16,11 @@
 #define COBALT_SCRIPT_ENVIRONMENT_SETTINGS_H_
 
 #include <memory>
+#include <string>
 
 #include "base/memory/ref_counted.h"
 #include "cobalt/base/debugger_hooks.h"
+#include "cobalt/loader/origin.h"
 #include "url/gurl.h"
 
 namespace cobalt {
@@ -29,21 +31,27 @@ namespace script {
 class EnvironmentSettings {
  public:
   explicit EnvironmentSettings(
-      const base::DebuggerHooks& debugger_hooks = null_debugger_hooks_)
-      : debugger_hooks_(debugger_hooks) {}
+      const base::DebuggerHooks& debugger_hooks = null_debugger_hooks_);
   virtual ~EnvironmentSettings() {}
+
+  // The API id.
+  //   https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-id
+  const std::string& id() const { return uuid_; }
 
   // The API base URL.
   //   https://html.spec.whatwg.org/commit-snapshots/465a6b672c703054de278b0f8133eb3ad33d93f4/#api-base-url
-  void set_base_url(const GURL& url) { base_url_ = url; }
-  const GURL& base_url() const { return base_url_; }
+  virtual const GURL& base_url() const { return creation_url(); }
 
   // The API creation URL
   //   https://html.spec.whatwg.org/commit-snapshots/465a6b672c703054de278b0f8133eb3ad33d93f4/#concept-environment-creation-url
-  const GURL& creation_url() const { return base_url(); }
+  void set_creation_url(const GURL& url) { creation_url_ = url; }
+  const GURL& creation_url() const { return creation_url_; }
 
   // https://html.spec.whatwg.org/multipage/webappapis.html#concept-settings-object-origin
-  const GURL GetOrigin() const { return creation_url().GetOrigin(); }
+  // TODO(b/244368134): Replace with url::Origin.
+  virtual loader::Origin GetOrigin() const {
+    return loader::Origin(base_url().GetOrigin());
+  }
 
   const base::DebuggerHooks& debugger_hooks() const { return debugger_hooks_; }
 
@@ -53,9 +61,10 @@ class EnvironmentSettings {
  private:
   DISALLOW_COPY_AND_ASSIGN(EnvironmentSettings);
 
+  std::string uuid_;
   static const base::NullDebuggerHooks null_debugger_hooks_;
   const base::DebuggerHooks& debugger_hooks_;
-  GURL base_url_;
+  GURL creation_url_;
 };
 
 }  // namespace script

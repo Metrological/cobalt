@@ -18,6 +18,8 @@
 #include <vector>
 
 #include "base/command_line.h"
+#include "base/json/json_reader.h"
+#include "base/json/json_writer.h"
 #include "cobalt/watchdog/watchdog.h"
 #include "starboard/common/file.h"
 #include "starboard/common/log.h"
@@ -32,22 +34,53 @@ namespace watchdog {
 
 namespace {
 
-// The Watchdog violations json file names.
-const char kWatchdogCurrentViolationsJson[] = "watchdog.json";
-const char kWatchdogPreviousViolationsJson[] = "watchdog_old.json";
-// The default number of microseconds between each monitor loop.
-const int64_t kWatchdogSmallestTimeInterval = 1000000;
-// The maximum number of repeated Watchdog violations. Prevents excessive
-// Watchdog violation updates.
-const int64_t kWatchdogMaxViolations = 100;
-// The maximum number of most recent ping infos to store.
-const int64_t kWatchdogMaxPingInfos = 100;
+// The Watchdog violations json filename.
+const char kWatchdogViolationsJson[] = "watchdog.json";
+// The frequency in microseconds of monitor loops.
+const int64_t kWatchdogMonitorFrequency = 500000;
+// The maximum number of Watchdog violations.
+const int kWatchdogMaxViolations = 200;
+// The minimum number of microseconds between writes.
+const int64_t kWatchdogWriteWaitTime = 300000000;
+// The maximum number of most recent ping infos.
+const int kWatchdogMaxPingInfos = 20;
+// The maximum length of each ping info.
+const int kWatchdogMaxPingInfoLength = 128;
+
+// Persistent setting name and default setting for the boolean that controls
+// whether or not Watchdog is enabled. When disabled, Watchdog behaves like a
+// stub except that persistent settings can still be get/set. Requires a
+// restart to take effect.
+const char kPersistentSettingWatchdogEnable[] =
+    "kPersistentSettingWatchdogEnable";
+const bool kDefaultSettingWatchdogEnable = true;
+// Persistent setting name and default setting for the boolean that controls
+// whether or not a Watchdog violation will trigger a crash.
+const char kPersistentSettingWatchdogCrash[] =
+    "kPersistentSettingWatchdogCrash";
+const bool kDefaultSettingWatchdogCrash = false;
 
 }  // namespace
 
-bool Watchdog::Initialize() {
-  SB_CHECK(SbMutexCreate(&mutex_));
-  smallest_time_interval_ = kWatchdogSmallestTimeInterval;
+bool Watchdog::Initialize(
+    persistent_storage::PersistentSettings* persistent_settings) {
+  return InitializeCustom(persistent_settings,
+                          std::string(kWatchdogViolationsJson),
+                          kWatchdogMonitorFrequency);
+}
+
+bool Watchdog::InitializeCustom(
+    persistent_storage::PersistentSettings* persistent_settings,
+    std::string watchdog_file_name, int64_t watchdog_monitor_frequency) {
+  persistent_settings_ = persistent_settings;
+  is_disabled_ = !GetPersistentSettingWatchdogEnable();
+
+  if (is_disabled_) return true;
+
+  watchdog_file_name_ = watchdog_file_name;
+  watchdog_monitor_frequency_ = watchdog_monitor_frequency;
+  pending_write_ = false;
+  write_wait_time_microseconds_ = kWatchdogWriteWaitTime;
 
 #if defined(_DEBUG)
   // Sets Watchdog delay settings from command line switch.
@@ -75,7 +108,7 @@ bool Watchdog::Initialize() {
 #endif  // defined(_DEBUG)
 
   // Starts monitor thread.
-  is_monitoring_ = true;
+  is_monitoring_.store(true);
   SB_DCHECK(!SbThreadIsValid(watchdog_thread_));
   watchdog_thread_ = SbThreadCreate(0, kSbThreadNoPriority, kSbThreadNoAffinity,
                                     true, "Watchdog", &Watchdog::Monitor, this);
@@ -84,241 +117,315 @@ bool Watchdog::Initialize() {
 }
 
 bool Watchdog::InitializeStub() {
-  is_stub_ = true;
+  is_disabled_ = true;
   return true;
 }
 
 void Watchdog::Uninitialize() {
-  SB_CHECK(SbMutexAcquire(&mutex_) == kSbMutexAcquired);
-  is_monitoring_ = false;
-  SB_CHECK(SbMutexRelease(&mutex_));
+  if (is_disabled_) return;
+
+  mutex_.Acquire();
+  if (pending_write_) WriteWatchdogViolations();
+  is_monitoring_.store(false);
+  monitor_wait_.Signal();
+  mutex_.Release();
   SbThreadJoin(watchdog_thread_, nullptr);
 }
 
-std::string Watchdog::GetWatchdogFilePaths(bool current) {
-  // Gets the current Watchdog violations file path or the previous Watchdog
-  // violations file path.
-  if (watchdog_file_ == "") {
-    // Sets Watchdog violations file paths.
+std::string Watchdog::GetWatchdogFilePath() {
+  // Gets the Watchdog violations file path with lazy initialization.
+  if (watchdog_file_path_ == "") {
+    // Sets Watchdog violations file path.
     std::vector<char> cache_dir(kSbFileMaxPath + 1, 0);
     SbSystemGetPath(kSbSystemPathCacheDirectory, cache_dir.data(),
                     kSbFileMaxPath);
-    watchdog_file_ = std::string(cache_dir.data()) + kSbFileSepString +
-                     std::string(kWatchdogCurrentViolationsJson);
-    SB_LOG(INFO) << "Current Watchdog violations file path: " << watchdog_file_;
-    watchdog_old_file_ = std::string(cache_dir.data()) + kSbFileSepString +
-                         std::string(kWatchdogPreviousViolationsJson);
-    SB_LOG(INFO) << "Previous Watchdog violations file path: "
-                 << watchdog_old_file_;
-    PreservePreviousWatchdogViolations();
+    watchdog_file_path_ =
+        std::string(cache_dir.data()) + kSbFileSepString + watchdog_file_name_;
+    SB_LOG(INFO) << "[Watchdog] Violations filepath: " << watchdog_file_path_;
   }
-  if (current) return watchdog_file_;
-  return watchdog_old_file_;
+  return watchdog_file_path_;
 }
 
-void Watchdog::PreservePreviousWatchdogViolations() {
-  // Copies the previous Watchdog violations file containing violations since
-  // last app start, if it exists, to preserve it.
-  starboard::ScopedFile read_file(watchdog_file_.c_str(),
-                                  kSbFileOpenOnly | kSbFileRead);
-  if (read_file.IsValid()) {
-    int64_t kFileSize = read_file.GetSize();
-    std::string watchdog_content(kFileSize, '\0');
-    read_file.ReadAll(&watchdog_content[0], kFileSize);
-    starboard::ScopedFile write_file(watchdog_old_file_.c_str(),
-                                     kSbFileCreateAlways | kSbFileWrite);
-    write_file.WriteAll(&watchdog_content[0], kFileSize);
-    starboard::SbFileDeleteRecursive(watchdog_file_.c_str(), true);
-  }
+void Watchdog::WriteWatchdogViolations() {
+  // Writes Watchdog violations to persistent storage as a json file.
+  std::string watchdog_json;
+  base::JSONWriter::Write(*violations_map_, &watchdog_json);
+  SB_LOG(INFO) << "[Watchdog] Writing violations to JSON:\n" << watchdog_json;
+  starboard::ScopedFile watchdog_file(GetWatchdogFilePath().c_str(),
+                                      kSbFileCreateAlways | kSbFileWrite);
+  watchdog_file.WriteAll(watchdog_json.c_str(),
+                         static_cast<int>(watchdog_json.size()));
+  pending_write_ = false;
+  time_last_written_microseconds_ = SbTimeGetMonotonicNow();
 }
 
 void Watchdog::UpdateState(base::ApplicationState state) {
-  SB_CHECK(SbMutexAcquire(&mutex_) == kSbMutexAcquired);
+  if (is_disabled_) return;
+
+  starboard::ScopedLock scoped_lock(mutex_);
   state_ = state;
-  SB_CHECK(SbMutexRelease(&mutex_));
 }
 
 void* Watchdog::Monitor(void* context) {
+  starboard::ScopedLock scoped_lock(static_cast<Watchdog*>(context)->mutex_);
   while (1) {
-    SB_CHECK(SbMutexAcquire(&(static_cast<Watchdog*>(context))->mutex_) ==
-             kSbMutexAcquired);
-
-    if (!((static_cast<Watchdog*>(context))->is_monitoring_)) {
-      SB_CHECK(SbMutexRelease(&(static_cast<Watchdog*>(context))->mutex_));
-      break;
-    }
-
-    int64_t current_time = SbTimeToPosix(SbTimeGetNow());
     SbTimeMonotonic current_monotonic_time = SbTimeGetMonotonicNow();
-    std::string serialized_watchdog_index = "";
 
-    // Iterates through Watchdog index to monitor all registered clients.
-    bool new_watchdog_violation = false;
-    for (auto& it : static_cast<Watchdog*>(context)->watchdog_index_) {
-      // Ignores and resets clients in idle states.
-      if (static_cast<Watchdog*>(context)->state_ > it.second->monitor_state) {
-        it.second->time_registered_monotonic_microseconds =
+    // Iterates through client map to monitor all registered clients.
+    bool watchdog_violation = false;
+    for (auto& it : static_cast<Watchdog*>(context)->client_map_) {
+      Client* client = it.second.get();
+      // Ignores and resets clients in idle states, clients whose monitor_state
+      // is below the current application state. Resets time_wait_microseconds
+      // and time_interval_microseconds start values.
+      if (static_cast<Watchdog*>(context)->state_ > client->monitor_state) {
+        client->time_registered_monotonic_microseconds = current_monotonic_time;
+        client->time_last_updated_monotonic_microseconds =
             current_monotonic_time;
-        it.second->time_last_pinged_microseconds = current_monotonic_time;
         continue;
       }
 
       SbTimeMonotonic time_delta =
-          current_monotonic_time - it.second->time_last_pinged_microseconds;
+          current_monotonic_time -
+          client->time_last_updated_monotonic_microseconds;
       SbTimeMonotonic time_wait =
           current_monotonic_time -
-          it.second->time_registered_monotonic_microseconds;
+          client->time_registered_monotonic_microseconds;
 
       // Watchdog violation
-      if (time_delta > it.second->time_interval_microseconds &&
-          time_wait > it.second->time_wait_microseconds) {
-        // Reset time last pinged.
-        it.second->time_last_pinged_microseconds = current_monotonic_time;
-        // Get serialized Watchdog index.
-        if (serialized_watchdog_index == "") {
-          serialized_watchdog_index =
-              static_cast<Watchdog*>(context)->GetSerializedWatchdogIndex();
-        }
+      if (time_delta > client->time_interval_microseconds &&
+          time_wait > client->time_wait_microseconds) {
+        watchdog_violation = true;
+        UpdateViolationsMap(context, client, time_delta);
 
-        // Updates Watchdog violations.
-        auto iter = (static_cast<Watchdog*>(context)->watchdog_violations_)
-                        .find(it.second->name);
-        bool already_violated =
-            iter !=
-            (static_cast<Watchdog*>(context)->watchdog_violations_).end();
-
-        if (already_violated) {
-          // Prevents excessive Watchdog violation updates.
-          if (iter->second->violation_count <= kWatchdogMaxViolations)
-            new_watchdog_violation = true;
-          iter->second->ping_infos = it.second->ping_infos;
-          iter->second->violation_time_microseconds = current_time;
-          iter->second->violation_delta_microseconds = time_delta;
-          iter->second->violation_count++;
-          iter->second->serialized_watchdog_index = serialized_watchdog_index;
-        } else {
-          new_watchdog_violation = true;
-          std::unique_ptr<Violation> violation(new Violation);
-          *violation = *(it.second);
-          violation->violation_time_microseconds = current_time;
-          violation->violation_delta_microseconds = time_delta;
-          violation->violation_count = 1;
-          violation->serialized_watchdog_index = serialized_watchdog_index;
-          (static_cast<Watchdog*>(context)->watchdog_violations_)
-              .emplace(violation->name, std::move(violation));
-        }
+        // Resets time last updated.
+        client->time_last_updated_monotonic_microseconds =
+            current_monotonic_time;
       }
     }
-    if (new_watchdog_violation) SerializeWatchdogViolations(context);
+    if (static_cast<Watchdog*>(context)->pending_write_)
+      MaybeWriteWatchdogViolations(context);
+    if (watchdog_violation) MaybeTriggerCrash(context);
 
-    SB_CHECK(SbMutexRelease(&(static_cast<Watchdog*>(context))->mutex_));
-    SbThreadSleep(static_cast<Watchdog*>(context)->smallest_time_interval_);
+    // Wait
+    static_cast<Watchdog*>(context)->monitor_wait_.WaitTimed(
+        static_cast<Watchdog*>(context)->watchdog_monitor_frequency_);
+
+    // Shutdown
+    if (!(static_cast<Watchdog*>(context)->is_monitoring_.load())) break;
   }
   return nullptr;
 }
 
-std::string Watchdog::GetSerializedWatchdogIndex() {
-  // Gets the current list of registered clients from the Watchdog index and
-  // returns it as a serialized json string.
+void Watchdog::UpdateViolationsMap(void* context, Client* client,
+                                   SbTimeMonotonic time_delta) {
+  // Gets violation dictionary with key client name from violations_map_.
+  if (static_cast<Watchdog*>(context)->violations_map_ == nullptr)
+    InitializeViolationsMap(context);
+  base::Value* violation_dict =
+      (static_cast<Watchdog*>(context)->violations_map_)->FindKey(client->name);
 
-  // Watchdog stub
-  if (is_stub_) return "";
-
-  std::string serialized_watchdog_index = "[";
-  std::string comma = "";
-  for (auto& it : watchdog_index_) {
-    serialized_watchdog_index += (comma + "\"" + it.first + "\"");
-    comma = ", ";
+  // Checks if new unique violation.
+  bool new_violation = false;
+  if (violation_dict == nullptr) {
+    new_violation = true;
+  } else {
+    // Compares against last_pinged_timestamp_microsecond of last violation.
+    base::Value* violations = violation_dict->FindKey("violations");
+    int last_index = violations->GetList().size() - 1;
+    std::string timestamp_last_pinged_milliseconds =
+        violations->GetList()[last_index]
+            .FindKey("timestampLastPingedMilliseconds")
+            ->GetString();
+    if (timestamp_last_pinged_milliseconds !=
+        std::to_string(client->time_last_pinged_microseconds / 1000))
+      new_violation = true;
   }
-  serialized_watchdog_index += "]";
-  return serialized_watchdog_index;
+
+  // New unique violation.
+  if (new_violation) {
+    // Creates new violation.
+    base::Value violation(base::Value::Type::DICTIONARY);
+    violation.SetKey("pingInfos", client->ping_infos.Clone());
+    violation.SetKey("monitorState",
+                     base::Value(std::string(
+                         GetApplicationStateString(client->monitor_state))));
+    violation.SetKey(
+        "timeIntervalMilliseconds",
+        base::Value(std::to_string(client->time_interval_microseconds / 1000)));
+    violation.SetKey(
+        "timeWaitMilliseconds",
+        base::Value(std::to_string(client->time_wait_microseconds / 1000)));
+    violation.SetKey("timestampRegisteredMilliseconds",
+                     base::Value(std::to_string(
+                         client->time_registered_microseconds / 1000)));
+    violation.SetKey("timestampLastPingedMilliseconds",
+                     base::Value(std::to_string(
+                         client->time_last_pinged_microseconds / 1000)));
+    violation.SetKey(
+        "timestampViolationMilliseconds",
+        base::Value(std::to_string(SbTimeToPosix(SbTimeGetNow()) / 1000)));
+    violation.SetKey(
+        "violationDurationMilliseconds",
+        base::Value(std::to_string(
+            (time_delta - client->time_interval_microseconds) / 1000)));
+    base::Value registered_clients(base::Value::Type::LIST);
+    for (auto& it : static_cast<Watchdog*>(context)->client_map_) {
+      registered_clients.GetList().emplace_back(base::Value(it.first));
+    }
+    violation.SetKey("registeredClients", registered_clients.Clone());
+
+    // Adds new violation to violations_map_.
+    if (violation_dict == nullptr) {
+      base::Value dict(base::Value::Type::DICTIONARY);
+      dict.SetKey("description", base::Value(client->description));
+      base::Value list(base::Value::Type::LIST);
+      list.GetList().emplace_back(violation.Clone());
+      dict.SetKey("violations", list.Clone());
+      (static_cast<Watchdog*>(context)->violations_map_)
+          ->SetKey(client->name, dict.Clone());
+    } else {
+      base::Value* violations = violation_dict->FindKey("violations");
+      violations->GetList().emplace_back(violation.Clone());
+    }
+    static_cast<Watchdog*>(context)->violations_count_++;
+    if (static_cast<Watchdog*>(context)->violations_count_ >
+        kWatchdogMaxViolations)
+      EvictWatchdogViolation(context);
+    // Consecutive non-unique violation.
+  } else {
+    // Updates consecutive violation in violations_map_.
+    base::Value* violations = violation_dict->FindKey("violations");
+    int last_index = violations->GetList().size() - 1;
+    int64_t violation_duration =
+        std::stoll(violations->GetList()[last_index]
+                       .FindKey("violationDurationMilliseconds")
+                       ->GetString());
+    violations->GetList()[last_index].SetKey(
+        "violationDurationMilliseconds",
+        base::Value(std::to_string(violation_duration + (time_delta / 1000))));
+  }
+
+  static_cast<Watchdog*>(context)->pending_write_ = true;
 }
 
-void Watchdog::SerializeWatchdogViolations(void* context) {
-  // Writes current Watchdog violations to persistent storage as a json file.
-  std::string watchdog_json = "{\n  \"watchdog_violations\": [\n";
-  std::string comma = "";
-  for (auto& it : static_cast<Watchdog*>(context)->watchdog_violations_) {
-    std::string ping_infos = "[";
-    std::string inner_comma = "";
-    while (it.second->ping_infos.size() > 0) {
-      ping_infos += (inner_comma + "\"" + it.second->ping_infos.front() + "\"");
-      it.second->ping_infos.pop();
-      inner_comma = ", ";
-    }
-    ping_infos += "]";
+void Watchdog::InitializeViolationsMap(void* context) {
+  // Loads the previous Watchdog violations file containing violations before
+  // app start, if it exists, to populate violations_map_.
+  static_cast<Watchdog*>(context)->violations_count_ = 0;
 
-    std::ostringstream ss;
-    ss << comma << "    {\n"
-       << "      \"name\": \"" << it.second->name << "\",\n"
-       << "      \"description\": \"" << it.second->description << "\",\n"
-       << "      \"ping_infos\": " << ping_infos << ",\n"
-       << "      \"monitor_state\": \""
-       << std::string(GetApplicationStateString(it.second->monitor_state))
-       << "\",\n"
-       << "      \"time_interval_microseconds\": "
-       << it.second->time_interval_microseconds << ",\n"
-       << "      \"time_wait_microseconds\": "
-       << it.second->time_wait_microseconds << ",\n"
-       << "      \"time_registered_microseconds\": "
-       << it.second->time_registered_microseconds << ",\n"
-       << "      \"violation_time_microseconds\": "
-       << it.second->violation_time_microseconds << ",\n"
-       << "      \"violation_delta_microseconds\": "
-       << it.second->violation_delta_microseconds << ",\n"
-       << "      \"violation_count\": " << it.second->violation_count << ",\n"
-       << "      \"watchdog_index\": " << it.second->serialized_watchdog_index
-       << "\n"
-       << "    }";
-    watchdog_json += ss.str();
-    comma = ",\n";
+  starboard::ScopedFile read_file(
+      (static_cast<Watchdog*>(context)->GetWatchdogFilePath()).c_str(),
+      kSbFileOpenOnly | kSbFileRead);
+  if (read_file.IsValid()) {
+    int64_t kFileSize = read_file.GetSize();
+    std::vector<char> buffer(kFileSize + 1, 0);
+    read_file.ReadAll(buffer.data(), kFileSize);
+    std::string watchdog_json = std::string(buffer.data());
+    static_cast<Watchdog*>(context)->violations_map_ =
+        base::JSONReader::Read(watchdog_json);
   }
-  watchdog_json += "\n  ]\n}";
 
-  SB_LOG(INFO) << "Writing Watchdog violations to: "
-               << static_cast<Watchdog*>(context)->GetWatchdogFilePaths(true);
-  SB_LOG(INFO) << watchdog_json;
+  if (static_cast<Watchdog*>(context)->violations_map_ == nullptr) {
+    SB_LOG(INFO) << "[Watchdog] No previous violations JSON.";
+    static_cast<Watchdog*>(context)->violations_map_ =
+        std::make_unique<base::Value>(base::Value::Type::DICTIONARY);
+  } else {
+    for (const auto& it :
+         (static_cast<Watchdog*>(context)->violations_map_)->DictItems()) {
+      base::Value& violation_dict = it.second;
+      base::Value* violations = violation_dict.FindKey("violations");
+      static_cast<Watchdog*>(context)->violations_count_ +=
+          violations->GetList().size();
+    }
+  }
+}
 
-  starboard::ScopedFile watchdog_file(
-      (static_cast<Watchdog*>(context)->GetWatchdogFilePaths(true)).c_str(),
-      kSbFileCreateAlways | kSbFileWrite);
-  watchdog_file.WriteAll(watchdog_json.c_str(),
-                         static_cast<int>(watchdog_json.size()));
+void Watchdog::EvictWatchdogViolation(void* context) {
+  // Evicts a violation in violations_map_ prioritizing first the most frequent
+  // violations (largest violations count by client name) and second the oldest
+  // violation.
+  std::string evicted_name = "";
+  int evicted_count = 0;
+  int64_t evicted_timestamp = 0;
 
-  MaybeTriggerCrash(context);
+  for (const auto& it :
+       (static_cast<Watchdog*>(context)->violations_map_)->DictItems()) {
+    std::string name = it.first;
+    base::Value& violation_dict = it.second;
+    base::Value* violations = violation_dict.FindKey("violations");
+    int count = violations->GetList().size();
+    int64_t timestamp =
+        std::stoll(violations->GetList()[0]
+                       .FindKey("timestampViolationMilliseconds")
+                       ->GetString());
+
+    if ((evicted_name == "") || (count > evicted_count) ||
+        ((count == evicted_count) && (timestamp < evicted_timestamp))) {
+      evicted_name = name;
+      evicted_count = count;
+      evicted_timestamp = timestamp;
+    }
+  }
+
+  base::Value* violation_dict =
+      (static_cast<Watchdog*>(context)->violations_map_)->FindKey(evicted_name);
+  base::Value* violations = violation_dict->FindKey("violations");
+  violations->GetList().erase(violations->GetList().begin());
+  static_cast<Watchdog*>(context)->violations_count_--;
+}
+
+void Watchdog::MaybeWriteWatchdogViolations(void* context) {
+  if (SbTimeGetMonotonicNow() >
+      static_cast<Watchdog*>(context)->time_last_written_microseconds_ +
+          static_cast<Watchdog*>(context)->write_wait_time_microseconds_) {
+    static_cast<Watchdog*>(context)->WriteWatchdogViolations();
+  }
 }
 
 void Watchdog::MaybeTriggerCrash(void* context) {
-  if (static_cast<Watchdog*>(context)->can_trigger_crash_) {
-    SB_LOG(ERROR) << "Triggering Watchdog Violation Crash!";
+  if (static_cast<Watchdog*>(context)->GetPersistentSettingWatchdogCrash()) {
+    if (static_cast<Watchdog*>(context)->pending_write_)
+      static_cast<Watchdog*>(context)->WriteWatchdogViolations();
+    SB_LOG(ERROR) << "[Watchdog] Triggering violation Crash!";
     CHECK(false);
   }
 }
 
-bool Watchdog::Register(std::string name, base::ApplicationState monitor_state,
-                        int64_t time_interval, int64_t time_wait,
-                        Replace replace) {
-  return Register(name, name, monitor_state, time_interval, time_wait, replace);
-}
-
 bool Watchdog::Register(std::string name, std::string description,
                         base::ApplicationState monitor_state,
-                        int64_t time_interval, int64_t time_wait,
-                        Replace replace) {
-  // Watchdog stub
-  if (is_stub_) return true;
+                        int64_t time_interval_microseconds,
+                        int64_t time_wait_microseconds, Replace replace) {
+  if (is_disabled_) return true;
 
-  SB_CHECK(SbMutexAcquire(&mutex_) == kSbMutexAcquired);
+  // Validates parameters.
+  if (time_interval_microseconds < watchdog_monitor_frequency_ ||
+      time_wait_microseconds < 0) {
+    SB_DLOG(ERROR) << "[Watchdog] Unable to Register: " << name;
+    if (time_interval_microseconds < watchdog_monitor_frequency_) {
+      SB_DLOG(ERROR) << "[Watchdog] Time interval less than min: "
+                     << watchdog_monitor_frequency_;
+    } else {
+      SB_DLOG(ERROR) << "[Watchdog] Time wait is negative.";
+    }
+    return false;
+  }
+
+  starboard::ScopedLock scoped_lock(mutex_);
+
+  int64_t current_time = SbTimeToPosix(SbTimeGetNow());
+  SbTimeMonotonic current_monotonic_time = SbTimeGetMonotonicNow();
 
   // If replace is PING or ALL, handles already registered cases.
   if (replace != NONE) {
-    auto it = watchdog_index_.find(name);
-    bool already_registered = it != watchdog_index_.end();
+    auto it = client_map_.find(name);
+    bool already_registered = it != client_map_.end();
 
     if (already_registered) {
       if (replace == PING) {
-        it->second->time_last_pinged_microseconds = SbTimeGetMonotonicNow();
-        SB_CHECK(SbMutexRelease(&mutex_));
+        it->second->time_last_pinged_microseconds = current_time;
+        it->second->time_last_updated_monotonic_microseconds =
+            current_monotonic_time;
         return true;
       }
       if (replace == ALL) Unregister(name, false);
@@ -329,49 +436,38 @@ bool Watchdog::Register(std::string name, std::string description,
   std::unique_ptr<Client> client(new Client);
   client->name = name;
   client->description = description;
-  client->ping_infos = std::queue<std::string>();
+  client->ping_infos = base::Value(base::Value::Type::LIST);
   client->monitor_state = monitor_state;
-  client->time_interval_microseconds = time_interval;
-  client->time_wait_microseconds = time_wait;
-  client->time_registered_microseconds = SbTimeToPosix(SbTimeGetNow());
-  client->time_registered_monotonic_microseconds = SbTimeGetMonotonicNow();
-  client->time_last_pinged_microseconds =
-      client->time_registered_monotonic_microseconds;
+  client->time_interval_microseconds = time_interval_microseconds;
+  client->time_wait_microseconds = time_wait_microseconds;
+  client->time_registered_microseconds = current_time;
+  client->time_registered_monotonic_microseconds = current_monotonic_time;
+  client->time_last_pinged_microseconds = current_time;
+  client->time_last_updated_monotonic_microseconds = current_monotonic_time;
 
   // Registers.
-  auto result = watchdog_index_.emplace(name, std::move(client));
-  // Checks for new smallest_time_interval_.
-  smallest_time_interval_ = std::min(smallest_time_interval_, time_interval);
-
-  SB_CHECK(SbMutexRelease(&mutex_));
+  auto result = client_map_.emplace(name, std::move(client));
 
   if (result.second) {
-    SB_DLOG(INFO) << "Watchdog Registered: " << name;
+    SB_DLOG(INFO) << "[Watchdog] Registered: " << name;
   } else {
-    SB_DLOG(ERROR) << "Watchdog Unable to Register: " << name;
+    SB_DLOG(ERROR) << "[Watchdog] Unable to Register: " << name;
   }
   return result.second;
 }
 
 bool Watchdog::Unregister(const std::string& name, bool lock) {
-  // Watchdog stub
-  if (is_stub_) return true;
+  if (is_disabled_) return true;
 
-  if (lock) SB_CHECK(SbMutexAcquire(&mutex_) == kSbMutexAcquired);
   // Unregisters.
-  auto result = watchdog_index_.erase(name);
-  // Sets new smallest_time_interval_.
-  smallest_time_interval_ = kWatchdogSmallestTimeInterval;
-  for (auto& it : watchdog_index_) {
-    smallest_time_interval_ = std::min(smallest_time_interval_,
-                                       it.second->time_interval_microseconds);
-  }
-  if (lock) SB_CHECK(SbMutexRelease(&mutex_));
+  if (lock) mutex_.Acquire();
+  auto result = client_map_.erase(name);
+  if (lock) mutex_.Release();
 
   if (result) {
-    SB_DLOG(INFO) << "Watchdog Unregistered: " << name;
+    SB_DLOG(INFO) << "[Watchdog] Unregistered: " << name;
   } else {
-    SB_DLOG(ERROR) << "Watchdog Unable to Unregister: " << name;
+    SB_DLOG(ERROR) << "[Watchdog] Unable to Unregister: " << name;
   }
   return result;
 }
@@ -379,78 +475,131 @@ bool Watchdog::Unregister(const std::string& name, bool lock) {
 bool Watchdog::Ping(const std::string& name) { return Ping(name, ""); }
 
 bool Watchdog::Ping(const std::string& name, const std::string& info) {
-  // Watchdog stub
-  if (is_stub_) return true;
+  if (is_disabled_) return true;
 
-  SB_CHECK(SbMutexAcquire(&mutex_) == kSbMutexAcquired);
-  auto it = watchdog_index_.find(name);
-  bool client_exists = it != watchdog_index_.end();
+  // Validates parameters.
+  if (info.length() > kWatchdogMaxPingInfoLength) {
+    SB_DLOG(ERROR) << "[Watchdog] Unable to Ping: " << name;
+    SB_DLOG(ERROR) << "[Watchdog] Ping info length exceeds max: "
+                   << kWatchdogMaxPingInfoLength;
+    return false;
+  }
+
+  starboard::ScopedLock scoped_lock(mutex_);
+
+  auto it = client_map_.find(name);
+  bool client_exists = it != client_map_.end();
 
   if (client_exists) {
+    int64_t current_time = SbTimeToPosix(SbTimeGetNow());
+    SbTimeMonotonic current_monotonic_time = SbTimeGetMonotonicNow();
+
+    Client* client = it->second.get();
     // Updates last ping.
-    it->second->time_last_pinged_microseconds = SbTimeGetMonotonicNow();
+    client->time_last_pinged_microseconds = current_time;
+    client->time_last_updated_monotonic_microseconds = current_monotonic_time;
+
     if (info != "") {
-      int64_t current_time = SbTimeToPosix(SbTimeGetNow());
-      it->second->ping_infos.push(std::to_string(current_time) + "\\n" + info +
-                                  "\\n");
-      if (it->second->ping_infos.size() > kWatchdogMaxPingInfos)
-        it->second->ping_infos.pop();
+      // Creates new ping_info.
+      base::Value ping_info(base::Value::Type::DICTIONARY);
+      ping_info.SetKey("timestampMilliseconds",
+                       base::Value(std::to_string(current_time / 1000)));
+      ping_info.SetKey("info", base::Value(info));
+
+      client->ping_infos.GetList().emplace_back(ping_info.Clone());
+      if (client->ping_infos.GetList().size() > kWatchdogMaxPingInfos)
+        client->ping_infos.GetList().erase(
+            client->ping_infos.GetList().begin());
     }
   } else {
-    SB_DLOG(ERROR) << "Watchdog Unable to Ping: " << name;
+    SB_DLOG(ERROR) << "[Watchdog] Unable to Ping: " << name;
   }
-  SB_CHECK(SbMutexRelease(&mutex_));
   return client_exists;
 }
 
-std::string Watchdog::GetWatchdogViolations(bool current) {
-  // Gets the current Watchdog violations file representing ongoing violations
-  // or gets the previous Watchdog violations file containing violations from
-  // previous app starts and since the last call (up to a limit).
+std::string Watchdog::GetWatchdogViolations(bool clear) {
+  // Gets a json string containing the Watchdog violations since the last
+  // call (up to the kWatchdogMaxViolations limit).
 
-  // Watchdog stub
-  if (is_stub_) return "";
+  if (is_disabled_) return "";
 
-  SB_CHECK(SbMutexAcquire(&mutex_) == kSbMutexAcquired);
-  starboard::ScopedFile read_file(GetWatchdogFilePaths(current).c_str(),
+  std::string watchdog_json = "";
+
+  starboard::ScopedLock scoped_lock(mutex_);
+
+  if (pending_write_) WriteWatchdogViolations();
+
+  starboard::ScopedFile read_file(GetWatchdogFilePath().c_str(),
                                   kSbFileOpenOnly | kSbFileRead);
   if (read_file.IsValid()) {
     int64_t kFileSize = read_file.GetSize();
-    std::string watchdog_content(kFileSize + 1, '\0');
-    read_file.ReadAll(&watchdog_content[0], kFileSize);
-    SB_CHECK(SbMutexRelease(&mutex_));
-    SB_LOG(INFO) << "Reading Watchdog violations:\n" << watchdog_content;
-    return watchdog_content;
+    std::vector<char> buffer(kFileSize + 1, 0);
+    read_file.ReadAll(buffer.data(), kFileSize);
+    watchdog_json = std::string(buffer.data());
+
+    // Removes all Watchdog violations.
+    if (clear) {
+      if (violations_map_) {
+        static_cast<base::DictionaryValue*>(violations_map_.get())->Clear();
+        violations_count_ = 0;
+      }
+      starboard::SbFileDeleteRecursive(GetWatchdogFilePath().c_str(), true);
+    }
+    SB_LOG(INFO) << "[Watchdog] Reading violations:\n" << watchdog_json;
   } else {
-    SB_CHECK(SbMutexRelease(&mutex_));
-    SB_LOG(INFO) << "No Watchdog Violations.";
-    return "";
+    SB_LOG(INFO) << "[Watchdog] No violations.";
   }
+  return watchdog_json;
 }
 
-bool Watchdog::GetCanTriggerCrash() { return can_trigger_crash_; }
+bool Watchdog::GetPersistentSettingWatchdogEnable() {
+  // Watchdog stub
+  if (!persistent_settings_) return kDefaultSettingWatchdogEnable;
 
-void Watchdog::SetCanTriggerCrash(bool can_trigger_crash) {
-  // Sets a persistent Watchdog setting that determines whether or not a
-  // Watchdog violation will trigger a crash. TODO
-  can_trigger_crash_ = can_trigger_crash;
+  // Gets the boolean that controls whether or not Watchdog is enabled.
+  return persistent_settings_->GetPersistentSettingAsBool(
+      kPersistentSettingWatchdogEnable, kDefaultSettingWatchdogEnable);
+}
+
+void Watchdog::SetPersistentSettingWatchdogEnable(bool enable_watchdog) {
+  // Watchdog stub
+  if (!persistent_settings_) return;
+
+  // Sets the boolean that controls whether or not Watchdog is enabled.
+  persistent_settings_->SetPersistentSetting(
+      kPersistentSettingWatchdogEnable,
+      std::make_unique<base::Value>(enable_watchdog));
+}
+
+bool Watchdog::GetPersistentSettingWatchdogCrash() {
+  // Watchdog stub
+  if (!persistent_settings_) return kDefaultSettingWatchdogCrash;
+
+  // Gets the boolean that controls whether or not crashes can be triggered.
+  return persistent_settings_->GetPersistentSettingAsBool(
+      kPersistentSettingWatchdogCrash, kDefaultSettingWatchdogCrash);
+}
+
+void Watchdog::SetPersistentSettingWatchdogCrash(bool can_trigger_crash) {
+  // Watchdog stub
+  if (!persistent_settings_) return;
+
+  // Sets the boolean that controls whether or not crashes can be triggered.
+  persistent_settings_->SetPersistentSetting(
+      kPersistentSettingWatchdogCrash,
+      std::make_unique<base::Value>(can_trigger_crash));
 }
 
 #if defined(_DEBUG)
-// Sleeps threads based off of environment variables for Watchdog debugging.
+// Sleeps threads for Watchdog debugging.
 void Watchdog::MaybeInjectDebugDelay(const std::string& name) {
-  // Watchdog stub
-  if (is_stub_) return;
+  if (is_disabled_) return;
 
-  starboard::ScopedLock scoped_lock(delay_lock_);
+  starboard::ScopedLock scoped_lock(delay_mutex_);
 
   if (name != delay_name_) return;
 
-  SbTimeMonotonic current_time = SbTimeGetMonotonicNow();
-  if (time_last_delayed_microseconds_ == 0)
-    time_last_delayed_microseconds_ = current_time;
-
-  if (current_time >
+  if (SbTimeGetMonotonicNow() >
       time_last_delayed_microseconds_ + delay_wait_time_microseconds_) {
     SbThreadSleep(delay_sleep_time_microseconds_);
     time_last_delayed_microseconds_ = SbTimeGetMonotonicNow();

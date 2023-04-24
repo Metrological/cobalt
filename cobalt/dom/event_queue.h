@@ -42,6 +42,7 @@ class EventQueue : public base::SupportsWeakPtr<EventQueue>,
   // The EventTarget is guaranteed to be valid during the life time and should
   // usually be the owner.
   explicit EventQueue(web::EventTarget* event_target);
+
   void Enqueue(const scoped_refptr<web::Event>& event);
   void CancelAllEvents();
 

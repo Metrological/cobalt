@@ -15,6 +15,7 @@
 #ifndef STARBOARD_ANDROID_SHARED_AUDIO_RENDERER_PASSTHROUGH_H_
 #define STARBOARD_ANDROID_SHARED_AUDIO_RENDERER_PASSTHROUGH_H_
 
+#include <atomic>
 #include <memory>
 #include <queue>
 
@@ -59,7 +60,7 @@ class AudioRendererPassthrough
   void Initialize(const ErrorCB& error_cb,
                   const PrerolledCB& prerolled_cb,
                   const EndedCB& ended_cb) override;
-  void WriteSample(const scoped_refptr<InputBuffer>& input_buffer) override;
+  void WriteSamples(const InputBuffers& input_buffers) override;
   void WriteEndOfStream() override;
 
   void SetVolume(double volume) override;
@@ -137,8 +138,13 @@ class AudioRendererPassthrough
   JobToken update_status_and_write_data_token_;
   int64_t total_frames_written_on_audio_track_thread_ = 0;
 
-  std::unique_ptr<JobThread> audio_track_thread_;
+  std::atomic_bool audio_track_paused_{true};
+
+  // |audio_track_thread_| must be declared after |audio_track_bridge_| to
+  // ensure the thread completes all tasks before |audio_track_bridge_| is
+  // invalidated.
   std::unique_ptr<AudioTrackBridge> audio_track_bridge_;
+  std::unique_ptr<JobThread> audio_track_thread_;
 };
 
 }  // namespace shared

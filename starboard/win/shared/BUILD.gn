@@ -312,7 +312,6 @@ static_library("starboard_platform") {
     "//starboard/shared/win32/string_format_wide.cc",
     "//starboard/shared/win32/system_break_into_debugger.cc",
     "//starboard/shared/win32/system_clear_last_error.cc",
-    "//starboard/shared/win32/system_get_connection_type.cc",
     "//starboard/shared/win32/system_get_error_string.cc",
     "//starboard/shared/win32/system_get_last_error.cc",
     "//starboard/shared/win32/system_get_locale_id.cc",
@@ -346,6 +345,7 @@ static_library("starboard_platform") {
     "//starboard/shared/win32/time_zone_get_name.cc",
     "//starboard/shared/win32/video_decoder.cc",
     "//starboard/shared/win32/video_decoder.h",
+    "//starboard/shared/win32/wasapi_include.h",
     "//starboard/shared/win32/wchar_utils.h",
     "//starboard/shared/win32/win32_audio_decoder.cc",
     "//starboard/shared/win32/win32_audio_decoder.h",
@@ -370,7 +370,6 @@ static_library("starboard_platform") {
     "//starboard/egl_and_gles",
     "//starboard/shared/starboard/media:media_util",
     "//starboard/shared/starboard/player/filter:filter_based_player_sources",
-    "//starboard/xb1/i18n",
     "//third_party/opus",
   ]
 

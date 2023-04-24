@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkFontMgr_cobalt.h"
+
 #include <memory>
 #include <utility>
-
-#include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkFontMgr_cobalt.h"
 
 #include "SkData.h"
 #include "SkGraphics.h"
@@ -28,10 +28,10 @@
 #include "base/trace_event/trace_event.h"
 #include "cobalt/base/language.h"
 #include "cobalt/configuration/configuration.h"
-#include "cobalt/extension/font.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkFontConfigParser_cobalt.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkFreeType_cobalt.h"
 #include "cobalt/renderer/rasterizer/skia/skia/src/ports/SkTypeface_cobalt.h"
+#include "starboard/extension/font.h"
 #include "third_party/icu/source/common/unicode/locid.h"
 
 const char* ROBOTO_SCRIPT = "latn";
@@ -282,7 +282,7 @@ sk_sp<SkTypeface> SkFontMgr_Cobalt::onMakeFromStreamIndex(
 
   // To pre-fetch glyphs for remote fonts, we could pass character_map here.
   if (!sk_freetype_cobalt::ScanFont(stream.get(), face_index, &name, &style,
-                                    &is_fixed_pitch, nullptr)) {
+                                    &is_fixed_pitch, nullptr, nullptr)) {
     return NULL;
   }
   scoped_refptr<font_character_map::CharacterMap> character_map =

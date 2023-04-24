@@ -78,6 +78,15 @@ HTMLScriptElement::HTMLScriptElement(Document* document)
   DCHECK(document->html_element_context()->script_runner());
 }
 
+std::string HTMLScriptElement::src() const {
+  std::string src = GetAttribute("src").value_or("");
+  if (src == "" || !node_document()) {
+    return src;
+  }
+  GURL url = node_document()->location()->url().Resolve(src);
+  return url.is_valid() ? url.spec() : src;
+}
+
 base::Optional<std::string> HTMLScriptElement::cross_origin() const {
   base::Optional<std::string> cross_origin_attribute =
       GetAttribute("crossOrigin");
@@ -217,7 +226,11 @@ void HTMLScriptElement::Prepare() {
   //   1. Let src be the value of the element's src attribute.
   //   2. If src is the empty string, queue a task to fire a simple event
   // named error at the element, and abort these steps.
-  if (HasAttribute("src") && src() == "") {
+  //
+  // Need to use the "src" attribute. The |src| property is fully resolved. See
+  // header file for details.
+  auto src = GetAttribute("src").value_or("");
+  if (HasAttribute("src") && src == "") {
     LOG(ERROR) << "src attribute of script element is empty.";
 
     PreventGarbageCollectionAndPostToDispatchEvent(
@@ -229,10 +242,10 @@ void HTMLScriptElement::Prepare() {
   //   3. Resolve src relative to the element.
   //   4. If the previous step failed, queue a task to fire a simple event named
   // error at the element, and abort these steps.
-  const GURL& base_url = document_->url_as_gurl();
-  url_ = base_url.Resolve(src());
+  const GURL& base_url = document_->location()->url();
+  url_ = base_url.Resolve(src);
   if (!url_.is_valid()) {
-    LOG(ERROR) << src() << " cannot be resolved based on " << base_url << ".";
+    LOG(ERROR) << src << " cannot be resolved based on " << base_url << ".";
 
     PreventGarbageCollectionAndPostToDispatchEvent(
         FROM_HERE, base::Tokens::error(),
@@ -267,7 +280,7 @@ void HTMLScriptElement::Prepare() {
              "bugs, it is recommended to use JavaScript to create a "
              "script element and load it async. The <script> reference "
              "appears at: \""
-          << inline_script_location_ << "\" and its src is \"" << src() << "\"";
+          << inline_script_location_ << "\" and its src is \"" << src << "\"";
     }
 
     load_option_ = 2;
@@ -288,7 +301,7 @@ void HTMLScriptElement::Prepare() {
 
   // https://www.w3.org/TR/CSP2/#directive-script-src
 
-  web::CspDelegate* csp_delegate = document_->csp_delegate();
+  web::CspDelegate* csp_delegate = document_->GetCSPDelegate();
   // If the script element has a valid nonce, we always permit it, regardless
   // of its URL or inline nature.
   const bool bypass_csp =
@@ -331,10 +344,12 @@ void HTMLScriptElement::Prepare() {
               csp_callback, request_mode_,
               document_->location() ? document_->location()->GetOriginAsObject()
                                     : loader::Origin(),
-              disk_cache::kUncompiledScript),
+              disk_cache::kUncompiledScript, net::HttpRequestHeaders(),
+              /*skip_fetch_intercept=*/false),
           base::Bind(&loader::TextDecoder::Create,
                      base::Bind(&HTMLScriptElement::OnSyncContentProduced,
                                 base::Unretained(this)),
+                     loader::TextDecoder::ResponseStartedCallback(),
                      loader::Decoder::OnCompleteFunction()),
           base::Bind(&HTMLScriptElement::OnSyncLoadingComplete,
                      base::Unretained(this)));

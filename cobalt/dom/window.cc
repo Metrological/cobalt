@@ -47,7 +47,6 @@
 #include "cobalt/dom/screenshot_manager.h"
 #include "cobalt/dom/storage.h"
 #include "cobalt/dom/wheel_event.h"
-#include "cobalt/dom/window_timers.h"
 #include "cobalt/media_session/media_session_client.h"
 #include "cobalt/script/environment_settings.h"
 #include "cobalt/script/javascript_engine.h"
@@ -85,7 +84,7 @@ class Window::RelayLoadEvent : public DocumentObserver {
 };
 
 Window::Window(
-    script::EnvironmentSettings* settings, const ViewportSize& view_size,
+    web::EnvironmentSettings* settings, const ViewportSize& view_size,
     base::ApplicationState initial_application_state,
     cssom::CSSParser* css_parser, Parser* dom_parser,
     loader::FetcherFactory* fetcher_factory,
@@ -104,9 +103,7 @@ Window::Window(
     script::ScriptRunner* script_runner,
     script::ScriptValueFactory* script_value_factory,
     MediaSource::Registry* media_source_registry,
-    DomStatTracker* dom_stat_tracker, const GURL& url,
-    const std::string& user_agent, web::UserAgentPlatformInfo* platform_info,
-    const std::string& language, const std::string& font_language_script,
+    DomStatTracker* dom_stat_tracker, const std::string& font_language_script,
     const base::Callback<void(const GURL&)> navigation_callback,
     const loader::Decoder::OnCompleteFunction& load_complete_callback,
     network_bridge::CookieJar* cookie_jar,
@@ -132,7 +129,12 @@ Window::Window(
     bool log_tts)
     // 'window' object EventTargets require special handling for onerror events,
     // see EventTarget constructor for more details.
-    : web::WindowOrWorkerGlobalScope(settings),
+    : web::WindowOrWorkerGlobalScope(
+          settings, dom_stat_tracker,
+          web::WindowOrWorkerGlobalScope::Options(
+              initial_application_state, post_sender, require_csp,
+              csp_enforcement_mode, csp_policy_changed_callback,
+              csp_insecure_allowed_token)),
       viewport_size_(view_size),
       is_resize_event_pending_(false),
       is_reporting_script_error_(false),
@@ -150,27 +152,13 @@ Window::Window(
           initial_application_state, synchronous_loader_interrupt,
           performance_.get(), enable_inline_script_warnings,
           video_playback_rate_multiplier)),
-      ALLOW_THIS_IN_INITIALIZER_LIST(document_(new Document(
-          html_element_context(),
-          Document::Options(
-              url, this,
-              base::Bind(&Window::FireHashChangeEvent, base::Unretained(this)),
-              performance_->timing()->GetNavigationStartClock(),
-              navigation_callback, ParseUserAgentStyleSheet(css_parser),
-              view_size, cookie_jar, post_sender, require_csp,
-              csp_enforcement_mode, csp_policy_changed_callback,
-              csp_insecure_allowed_token, dom_max_element_depth)))),
       document_loader_(nullptr),
       history_(new History()),
-      navigator_(new Navigator(settings, user_agent, platform_info, language,
-                               captions, script_value_factory)),
+      navigator_(new Navigator(environment_settings(), captions)),
       ALLOW_THIS_IN_INITIALIZER_LIST(
           relay_on_load_event_(new RelayLoadEvent(this))),
-      ALLOW_THIS_IN_INITIALIZER_LIST(window_timers_(
-          this, dom_stat_tracker, debugger_hooks(), initial_application_state)),
       ALLOW_THIS_IN_INITIALIZER_LIST(animation_frame_request_callback_list_(
           new AnimationFrameRequestCallbackList(this, debugger_hooks()))),
-      crypto_(new Crypto()),
       speech_synthesis_(
           new speech::SpeechSynthesis(settings, navigator_, log_tts)),
       ALLOW_THIS_IN_INITIALIZER_LIST(local_storage_(
@@ -178,7 +166,6 @@ Window::Window(
       ALLOW_THIS_IN_INITIALIZER_LIST(
           session_storage_(new Storage(this, Storage::kSessionStorage, NULL))),
       screen_(new Screen(view_size)),
-      preflight_cache_(new loader::CORSPreflightCache()),
       ran_animation_frame_callbacks_callback_(
           ran_animation_frame_callbacks_callback),
       window_close_callback_(window_close_callback),
@@ -196,8 +183,17 @@ Window::Window(
       screenshot_manager_(settings, screenshot_function_callback),
       ui_nav_root_(ui_nav_root),
       enable_map_to_mesh_(enable_map_to_mesh) {
-#if !defined(ENABLE_TEST_RUNNER)
-#endif
+  document_ = new Document(
+      html_element_context(),
+      Document::Options(
+          settings->creation_url(),
+          base::Bind(&Window::FireHashChangeEvent, base::Unretained(this)),
+          performance_->timing()->GetNavigationStartClock(),
+          navigation_callback, ParseUserAgentStyleSheet(css_parser), view_size,
+          cookie_jar, dom_max_element_depth),
+      csp_delegate());
+
+  set_navigator_base(navigator_);
   document_->AddObserver(relay_on_load_event_.get());
   html_element_context()->application_lifecycle_state()->AddObserver(this);
   UpdateCamera3D(camera_3d);
@@ -206,9 +202,9 @@ Window::Window(
   // guaranteed that this Window object is fully constructed before document
   // loading begins.
   base::MessageLoop::current()->task_runner()->PostTask(
-      FROM_HERE,
-      base::Bind(&Window::StartDocumentLoad, base::Unretained(this),
-                 fetcher_factory, url, dom_parser, load_complete_callback));
+      FROM_HERE, base::Bind(&Window::StartDocumentLoad, base::Unretained(this),
+                            fetcher_factory, settings->creation_url(),
+                            dom_parser, load_complete_callback));
 }
 
 void Window::StartDocumentLoad(
@@ -365,8 +361,6 @@ scoped_refptr<MediaQueryList> Window::MatchMedia(const std::string& query) {
 
 const scoped_refptr<Screen>& Window::screen() { return screen_; }
 
-scoped_refptr<Crypto> Window::crypto() const { return crypto_; }
-
 std::string Window::Btoa(const std::string& string_to_encode,
                          script::ExceptionState* exception_state) {
   TRACE_EVENT0("cobalt::dom", "Window::Btoa()");
@@ -394,22 +388,6 @@ std::vector<uint8_t> Window::Atob(const std::string& encoded_string,
   }
   return *output;
 }
-
-int Window::SetTimeout(const WindowTimers::TimerCallbackArg& handler,
-                       int timeout) {
-  return window_timers_.SetTimeout(handler, timeout);
-}
-
-void Window::ClearTimeout(int handle) { window_timers_.ClearTimeout(handle); }
-
-int Window::SetInterval(const WindowTimers::TimerCallbackArg& handler,
-                        int timeout) {
-  return window_timers_.SetInterval(handler, timeout);
-}
-
-void Window::ClearInterval(int handle) { window_timers_.ClearInterval(handle); }
-
-void Window::DestroyTimers() { window_timers_.DisableCallbacks(); }
 
 scoped_refptr<Storage> Window::local_storage() const { return local_storage_; }
 
@@ -528,35 +506,33 @@ bool Window::ReportScriptError(const script::ErrorReport& error_report) {
   // 7. Let event be a new trusted ErrorEvent object that does not bubble but is
   //    cancelable, and which has the event name error.
   // NOTE: Cobalt does not currently support trusted events.
-  web::ErrorEventInit error_event_init;
-  error_event_init.set_bubbles(false);
-  error_event_init.set_cancelable(true);
+  web::ErrorEventInit error;
+  error.set_bubbles(false);
+  error.set_cancelable(true);
 
   if (error_report.is_muted) {
     // 6. If script has muted errors, then set message to "Script error.", set
     //    location to the empty string, set line and col to 0, and set error
     //    object to null.
-    error_event_init.set_message("Script error.");
-    error_event_init.set_filename("");
-    error_event_init.set_lineno(0);
-    error_event_init.set_colno(0);
-    error_event_init.set_error(NULL);
+    error.set_message("Script error.");
+    error.set_filename("");
+    error.set_lineno(0);
+    error.set_colno(0);
+    error.set_error(NULL);
   } else {
     // 8. Initialize event's message attribute to message.
-    error_event_init.set_message(error_report.message);
+    error.set_message(error_report.message);
     // 9. Initialize event's filename attribute to location.
-    error_event_init.set_filename(error_report.filename);
+    error.set_filename(error_report.filename);
     // 10. Initialize event's lineno attribute to line.
-    error_event_init.set_lineno(error_report.line_number);
+    error.set_lineno(error_report.line_number);
     // 11. Initialize event's colno attribute to col.
-    error_event_init.set_colno(error_report.column_number);
+    error.set_colno(error_report.column_number);
     // 12. Initialize event's error attribute to error object.
-    error_event_init.set_error(error_report.error ? error_report.error.get()
-                                                  : NULL);
+    error.set_error(error_report.error ? error_report.error.get() : NULL);
   }
 
-  scoped_refptr<web::ErrorEvent> error_event(
-      new web::ErrorEvent(base::Tokens::error(), error_event_init));
+  scoped_refptr<web::ErrorEvent> error_event(new web::ErrorEvent(error));
 
   // 13. Dispatch event at target.
   DispatchEvent(error_event);

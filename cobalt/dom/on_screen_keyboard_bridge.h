@@ -17,6 +17,7 @@
 
 #include <string>
 
+#include "base/basictypes.h"
 #include "cobalt/dom/dom_rect.h"
 
 namespace cobalt {
@@ -39,6 +40,8 @@ class OnScreenKeyboardBridge {
   virtual scoped_refptr<DOMRect> BoundingRect() const = 0;
   virtual void SetKeepFocus(bool keep_focus) = 0;
   virtual bool IsValidTicket(int ticket) const = 0;
+  virtual void SetBackgroundColor(uint8 r, uint8 g, uint8 b) = 0;
+  virtual void SetLightTheme(bool light_theme) = 0;
 };
 
 }  // namespace dom

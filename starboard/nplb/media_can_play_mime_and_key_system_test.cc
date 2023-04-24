@@ -74,6 +74,48 @@ TEST(SbMediaCanPlayMimeAndKeySystem, SunnyDay) {
   result = SbMediaCanPlayMimeAndKeySystem(
       "audio/webm; codecs=\"opus\"; channels=2", "");
   ASSERT_EQ(result, kSbMediaSupportTypeProbably);
+  // Two codecs
+  result = SbMediaCanPlayMimeAndKeySystem(
+      "video/mp4; codecs=\"avc1.42001E, mp4a.40.2\"", "");
+  ASSERT_EQ(result, kSbMediaSupportTypeProbably);
+}
+
+TEST(SbMediaCanPlayMimeAndKeySystem, FloatFramerate) {
+  SbMediaSupportType int_framerate_result = SbMediaCanPlayMimeAndKeySystem(
+      "video/mp4; codecs=\"avc1.4d4015\"; width=640; "
+      "height=360; framerate=24;",
+      "");
+  SbMediaSupportType float_framerate_result = SbMediaCanPlayMimeAndKeySystem(
+      "video/mp4; codecs=\"avc1.4d4015\"; width=640; "
+      "height=360; framerate=23.976;",
+      "");
+  ASSERT_EQ(int_framerate_result, float_framerate_result);
+
+  int_framerate_result = SbMediaCanPlayMimeAndKeySystem(
+      "video/webm; codecs=\"vp9\"; width=1920; height=1080; framerate=60;", "");
+  float_framerate_result = SbMediaCanPlayMimeAndKeySystem(
+      "video/webm; codecs=\"vp9\"; width=1920; height=1080; framerate=59.976;",
+      "");
+  ASSERT_EQ(int_framerate_result, float_framerate_result);
+
+  int_framerate_result = SbMediaCanPlayMimeAndKeySystem(
+      "video/webm; codecs=\"vp9\"; width=1920; height=1080; framerate=9999;",
+      "");
+  float_framerate_result = SbMediaCanPlayMimeAndKeySystem(
+      "video/webm; codecs=\"vp9\"; width=1920; height=1080; "
+      "framerate=9998.976;",
+      "");
+  ASSERT_EQ(int_framerate_result, float_framerate_result);
+
+  int_framerate_result = SbMediaCanPlayMimeAndKeySystem(
+      "video/mp4; codecs=\"av01.0.09M.08\"; width=1920; height=1080; "
+      "framerate=60;",
+      "");
+  float_framerate_result = SbMediaCanPlayMimeAndKeySystem(
+      "video/mp4; codecs=\"av01.0.09M.08\"; width=1920; height=1080; "
+      "framerate=59.976;",
+      "");
+  ASSERT_EQ(int_framerate_result, float_framerate_result);
 }
 
 TEST(SbMediaCanPlayMimeAndKeySystem, Invalid) {
@@ -700,13 +742,30 @@ TEST(SbMediaCanPlayMimeAndKeySystem, ValidateQueriesUnderPeakCapability) {
   }
 }
 
-TEST(SbMediaCanPlayMimeAndKeySystem, ValidatePerformance) {
+// Note: If the platform failed on this test, please improve the performance of
+// SbMediaCanPlayMimeAndKeySystem(). A few ideas:
+//    1. Cache codec and drm capabilities. Please make sure a codec or drm
+//       capability query can be done quickly without too many calculations.
+//    2. Cache audio output and display configurations. On some platforms, it
+//       takes time to get the audio/video configurations. Caching these
+//       configurations can significantly reduce the latency on acquiring
+//       configurations. Unlike codec and drm capabilities, audio/video
+//       configurations may change during app runtime, the platform need to
+//       update the cache if there's any change.
+//    3. Enable MimeSupportabilityCache and KeySystemSupportabilityCache. These
+//       supportability caches will cache the results of previous queries, to
+//       boost the queries of repeated mime and key system. Note that if there's
+//       any capability change, the platform need to explicitly clear the
+//       caches, otherwise they may return outdated results.
+TEST(SbMediaCanPlayMimeAndKeySystem, FLAKY_ValidatePerformance) {
   auto test_sequential_function_calls =
-      [](const char** mime_params, int num_function_calls,
-         SbTimeMonotonic max_time_delta, const char* query_type) {
+      [](const SbMediaCanPlayMimeAndKeySystemParam* mime_params,
+         int num_function_calls, SbTimeMonotonic max_time_delta_per_call,
+         const char* query_type) {
         const SbTimeMonotonic time_start = SbTimeGetMonotonicNow();
         for (int i = 0; i < num_function_calls; ++i) {
-          SbMediaCanPlayMimeAndKeySystem(mime_params[i], "");
+          SbMediaCanPlayMimeAndKeySystem(mime_params[i].mime,
+                                         mime_params[i].key_system);
         }
         const SbTimeMonotonic time_last = SbTimeGetMonotonicNow();
         const SbTimeMonotonic time_delta = time_last - time_start;
@@ -718,18 +777,32 @@ TEST(SbMediaCanPlayMimeAndKeySystem, ValidatePerformance) {
                      << "us total across " << num_function_calls << " calls.";
         SB_LOG(INFO) << "  Measured duration " << time_per_call
                      << "us average per call.";
-        EXPECT_LE(time_delta, max_time_delta);
+        EXPECT_LE(time_delta, max_time_delta_per_call * num_function_calls);
       };
 
+  // Warmup the cache.
+  test_sequential_function_calls(kWarmupQueryParams,
+                                 SB_ARRAY_SIZE_INT(kWarmupQueryParams),
+                                 100 * kSbTimeMillisecond, "Warmup queries");
+
+  // First round of the queries.
+  test_sequential_function_calls(
+      kSdrQueryParams, SB_ARRAY_SIZE_INT(kSdrQueryParams), 500, "SDR queries");
+  test_sequential_function_calls(
+      kHdrQueryParams, SB_ARRAY_SIZE_INT(kHdrQueryParams), 500, "HDR queries");
+  test_sequential_function_calls(
+      kDrmQueryParams, SB_ARRAY_SIZE_INT(kDrmQueryParams), 500, "DRM queries");
+
+  // Second round of the queries.
   test_sequential_function_calls(kSdrQueryParams,
-                                 SB_ARRAY_SIZE_INT(kSdrQueryParams),
-                                 10 * kSbTimeMillisecond, "SDR queries");
+                                 SB_ARRAY_SIZE_INT(kSdrQueryParams), 100,
+                                 "Cached SDR queries");
   test_sequential_function_calls(kHdrQueryParams,
-                                 SB_ARRAY_SIZE_INT(kHdrQueryParams),
-                                 20 * kSbTimeMillisecond, "HDR queries");
+                                 SB_ARRAY_SIZE_INT(kHdrQueryParams), 100,
+                                 "Cached HDR queries");
   test_sequential_function_calls(kDrmQueryParams,
-                                 SB_ARRAY_SIZE_INT(kDrmQueryParams),
-                                 50 * kSbTimeMillisecond, "DRM queries");
+                                 SB_ARRAY_SIZE_INT(kDrmQueryParams), 100,
+                                 "Cached DRM queries");
 }
 
 }  // namespace

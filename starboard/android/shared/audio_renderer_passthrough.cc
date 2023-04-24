@@ -123,10 +123,9 @@ void AudioRendererPassthrough::Initialize(const ErrorCB& error_cb,
       std::bind(&AudioRendererPassthrough::OnDecoderOutput, this), error_cb);
 }
 
-void AudioRendererPassthrough::WriteSample(
-    const scoped_refptr<InputBuffer>& input_buffer) {
+void AudioRendererPassthrough::WriteSamples(const InputBuffers& input_buffers) {
   SB_DCHECK(BelongsToCurrentThread());
-  SB_DCHECK(input_buffer);
+  SB_DCHECK(!input_buffers.empty());
   SB_DCHECK(can_accept_more_data_.load());
 
   if (!audio_track_thread_) {
@@ -138,14 +137,14 @@ void AudioRendererPassthrough::WriteSample(
 
   if (frames_per_input_buffer_ == 0) {
     frames_per_input_buffer_ = ParseAc3SyncframeAudioSampleCount(
-        input_buffer->data(), input_buffer->size());
+        input_buffers.front()->data(), input_buffers.front()->size());
     SB_LOG(INFO) << "Got frames per input buffer " << frames_per_input_buffer_;
   }
 
   can_accept_more_data_.store(false);
 
   decoder_->Decode(
-      input_buffer,
+      input_buffers,
       std::bind(&AudioRendererPassthrough::OnDecoderConsumed, this));
 }
 
@@ -337,7 +336,7 @@ SbTime AudioRendererPassthrough::GetCurrentMediaTime(bool* is_playing,
 
   SbTime updated_at;
   auto playback_head_position =
-      audio_track_bridge_->GetPlaybackHeadPosition(&updated_at);
+      audio_track_bridge_->GetAudioTimestamp(&updated_at);
   if (playback_head_position <= 0) {
     // The playback is warming up, don't adjust the media time by the monotonic
     // system time.
@@ -349,7 +348,16 @@ SbTime AudioRendererPassthrough::GetCurrentMediaTime(bool* is_playing,
   SbTime playback_time =
       seek_to_time_ + playback_head_position * kSbTimeSecond /
                           audio_sample_info_.samples_per_second;
-  if (paused_ || playback_rate_ == 0.0) {
+
+  // When underlying AudioTrack is paused, we use returned playback time
+  // directly. Note that we should not use |paused_| or |playback_rate_| here.
+  // As we sync audio sink state on |audio_track_thread_|, when |paused_| is set
+  // to false, the underlying AudioTrack may still be paused. In that case, the
+  // returned playback time and last frame consumed time would be out of date.
+  // For example, when resume the playback, if we call GetAudioTimestamp()
+  // before calling AudioTrack.Play(), the returned playback time and last frame
+  // consumed time would be the same as at when we pause the video.
+  if (audio_track_paused_) {
     return playback_time;
   }
 
@@ -358,6 +366,10 @@ SbTime AudioRendererPassthrough::GetCurrentMediaTime(bool* is_playing,
   SB_LOG_IF(WARNING, now < updated_at)
       << "now (" << now << ") is not greater than updated_at (" << updated_at
       << ").";
+  SB_LOG_IF(WARNING, now - updated_at > kSbTimeSecond)
+      << "Elapsed time (" << now - updated_at
+      << ") is greater than 1s. (playback_time " << playback_time << ")";
+
   playback_time += std::max<SbTime>(now - updated_at, 0);
 
   return playback_time;
@@ -422,7 +434,9 @@ void AudioRendererPassthrough::FlushAudioTrackAndStopProcessing(
   // silence can be observed after seeking on some audio receivers.
   // TODO: Consider reusing audio sink for non-passthrough playbacks, to see if
   //       it reduces latency after seeking.
-  audio_track_bridge_->PauseAndFlush();
+  if (audio_track_bridge_ && audio_track_bridge_->is_valid()) {
+    audio_track_bridge_->PauseAndFlush();
+  }
   seek_to_time_ = seek_to_time;
   paused_ = true;
   if (update_status_and_write_data_token_.is_valid()) {
@@ -469,11 +483,13 @@ void AudioRendererPassthrough::UpdateStatusAndWriteData(
   if (previous_state.playing() != current_state.playing()) {
     if (current_state.playing()) {
       audio_track_bridge_->Play();
+      audio_track_paused_ = false;
       SB_LOG(INFO) << "Played on AudioTrack thread.";
       ScopedLock scoped_lock(mutex_);
       stop_called_ = false;
     } else {
       audio_track_bridge_->Pause();
+      audio_track_paused_ = true;
       SB_LOG(INFO) << "Paused on AudioTrack thread.";
     }
   }
@@ -491,7 +507,7 @@ void AudioRendererPassthrough::UpdateStatusAndWriteData(
         audio_track_bridge_->Stop();
         stop_called_ = true;
         playback_head_position_when_stopped_ =
-            audio_track_bridge_->GetPlaybackHeadPosition(&stopped_at_);
+            audio_track_bridge_->GetAudioTimestamp(&stopped_at_);
         total_frames_written_ = total_frames_written_on_audio_track_thread_;
         decoded_audio_writing_in_progress_ = nullptr;
         SB_LOG(INFO) << "Audio track stopped at " << stopped_at_
@@ -518,14 +534,18 @@ void AudioRendererPassthrough::UpdateStatusAndWriteData(
                  "has likely changed. Restarting playback.";
           error_cb_(kSbPlayerErrorCapabilityChanged,
                     "Audio device capability changed");
-          audio_track_bridge_->PauseAndFlush();
-          return;
+        } else {
+          // `kSbPlayerErrorDecode` is used for general SbPlayer error, there is
+          // no error code corresponding to audio sink.
+          error_cb_(
+              kSbPlayerErrorDecode,
+              FormatString("Error while writing frames: %d", samples_written));
+          SB_LOG(INFO) << "Encountered kSbPlayerErrorDecode while writing "
+                          "frames, error: "
+                       << samples_written;
         }
-        // `kSbPlayerErrorDecode` is used for general SbPlayer error, there is
-        // no error code corresponding to audio sink.
-        error_cb_(
-            kSbPlayerErrorDecode,
-            FormatString("Error while writing frames: %d", samples_written));
+        audio_track_bridge_->PauseAndFlush();
+        return;
       }
       decoded_audio_writing_offset_ += samples_written;
 

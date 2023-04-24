@@ -36,19 +36,23 @@ class DedicatedWorkerGlobalScope : public WorkerGlobalScope {
  public:
   explicit DedicatedWorkerGlobalScope(
       script::EnvironmentSettings* settings,
-      bool parent_cross_origin_isolated_capability);
+      bool parent_cross_origin_isolated_capability = false);
   DedicatedWorkerGlobalScope(const DedicatedWorkerGlobalScope&) = delete;
   DedicatedWorkerGlobalScope& operator=(const DedicatedWorkerGlobalScope&) =
       delete;
 
   void Initialize() override;
 
+  // From web::WindowOrWorkerGlobalScope
+  //
+  DedicatedWorkerGlobalScope* AsDedicatedWorker() override { return this; }
+
   // Web API: DedicatedWorkerGlobalScope
   //
   void set_name(const std::string& name) { name_ = name; }
   std::string name() { return name_; }
 
-  void PostMessage(const std::string& message);
+  void PostMessage(const script::ValueHandleHolder& message);
   void Close() {}
 
   const web::EventTargetListenerInfo::EventListenerScriptValue* onmessage() {
@@ -75,6 +79,8 @@ class DedicatedWorkerGlobalScope : public WorkerGlobalScope {
   ~DedicatedWorkerGlobalScope() override {}
 
  private:
+  void InitializePolicyContainer();
+
   bool cross_origin_isolated_capability_;
 
   std::string name_;

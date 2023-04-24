@@ -19,11 +19,9 @@
 #include <vector>
 
 #include "base/memory/ref_counted.h"
-#include "base/test/scoped_task_environment.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/dom/dom_settings.h"
 #include "cobalt/dom/testing/stub_environment_settings.h"
-#include "cobalt/dom/window.h"
 #include "cobalt/network/network_module.h"
 #include "cobalt/script/script_exception.h"
 #include "cobalt/script/testing/mock_exception_state.h"
@@ -34,12 +32,12 @@
 #include "cobalt/websocket/web_socket.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
+using cobalt::script::testing::MockExceptionState;
 using ::testing::_;
-using ::testing::SaveArg;
-using ::testing::StrictMock;
 using ::testing::DefaultValue;
 using ::testing::Return;
-using cobalt::script::testing::MockExceptionState;
+using ::testing::SaveArg;
+using ::testing::StrictMock;
 
 namespace cobalt {
 namespace websocket {
@@ -65,10 +63,9 @@ class WebSocketImplTest : public ::testing::Test {
 
  protected:
   WebSocketImplTest() : web_context_(new web::testing::StubWebContext()) {
-    web_context_->set_network_module(new network::NetworkModule());
     web_context_->setup_environment_settings(
         new dom::testing::StubEnvironmentSettings());
-    web_context_->environment_settings()->set_base_url(
+    web_context_->environment_settings()->set_creation_url(
         GURL("https://127.0.0.1:1234"));
     std::vector<std::string> sub_protocols;
     sub_protocols.push_back("chat");
@@ -107,8 +104,6 @@ class WebSocketImplTest : public ::testing::Test {
                    net::kWebSocketNormalClosure /*error_code*/,
                    "" /*close_reason*/));
   }
-
-  base::test::ScopedTaskEnvironment env_;
 
   std::unique_ptr<web::testing::StubWebContext> web_context_;
   scoped_refptr<base::SingleThreadTaskRunner> network_task_runner_;

@@ -77,6 +77,21 @@ class PointerState {
   // shutdown.
   void ClearForShutdown();
 
+  void SetClientCoordinates(int32_t pointer_id, math::Vector2dF position);
+  base::Optional<math::Vector2dF> GetClientCoordinates(int32_t pointer_id);
+  void ClearClientCoordinates(int32_t pointer_id);
+
+  void SetClientTimeStamp(int32_t pointer_id, uint64 time_stamp);
+  base::Optional<uint64> GetClientTimeStamp(int32_t pointer_id);
+  void ClearTimeStamp(int32_t pointer_id);
+
+  // Tracks whether a certain pointer was cancelled, i.e. if it panned the
+  // page viewport.
+  // https://www.w3.org/TR/pointerevents1/#the-pointercancel-event
+  void SetWasCancelled(int32_t pointer_id);
+  bool GetWasCancelled(int32_t pointer_id);
+  void ClearWasCancelled(int32_t pointer_id);
+
   static bool CanQueueEvent(const scoped_refptr<web::Event>& event);
 
  private:
@@ -95,6 +110,10 @@ class PointerState {
   // Store the set of pointers with active buttons.
   //   https://www.w3.org/TR/2015/REC-pointerevents-20150224/#dfn-active-buttons-state
   std::set<int32_t> pointers_with_active_buttons_;
+
+  std::map<int32_t, math::Vector2dF> client_coordinates_;
+  std::map<int32_t, uint64> client_time_stamps_;
+  std::set<int32_t> client_cancellations_;
 };
 
 }  // namespace dom

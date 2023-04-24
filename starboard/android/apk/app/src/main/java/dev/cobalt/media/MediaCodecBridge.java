@@ -24,6 +24,7 @@ import android.media.AudioFormat;
 import android.media.MediaCodec;
 import android.media.MediaCodec.CryptoInfo;
 import android.media.MediaCodec.CryptoInfo.Pattern;
+import android.media.MediaCodecInfo;
 import android.media.MediaCodecInfo.CodecCapabilities;
 import android.media.MediaCodecInfo.VideoCapabilities;
 import android.media.MediaCrypto;
@@ -36,6 +37,7 @@ import dev.cobalt.util.Log;
 import dev.cobalt.util.UsedByNative;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Locale;
 
 /** A wrapper of the MediaCodec class. */
 @SuppressWarnings("unused")
@@ -140,7 +142,7 @@ class MediaCodecBridge {
         return;
       }
       if (presentationTimeUs <= mLastFrameTimestampUs) {
-        Log.v(TAG, String.format("Invalid output presentation timestamp."));
+        Log.v(TAG, "Invalid output presentation timestamp.");
         return;
       }
 
@@ -525,22 +527,21 @@ class MediaCodecBridge {
   public static MediaCodecBridge createAudioMediaCodecBridge(
       long nativeMediaCodecBridge,
       String mime,
+      String decoderName,
       int sampleRate,
       int channelCount,
       MediaCrypto crypto,
       @Nullable byte[] configurationData) {
+    if (decoderName.equals("")) {
+      Log.e(TAG, "Invalid decoder name.");
+      return null;
+    }
     MediaCodec mediaCodec = null;
     try {
-      String decoderName =
-          MediaCodecUtil.findAudioDecoder(mime, 0, false /* mustSupportTunnelMode */);
-      if (decoderName.equals("")) {
-        Log.e(TAG, String.format("Failed to find decoder: %s", mime));
-        return null;
-      }
-      Log.i(TAG, String.format("Creating \"%s\" decoder.", decoderName));
+      Log.i(TAG, "Creating \"%s\" decoder.", decoderName);
       mediaCodec = MediaCodec.createByCodecName(decoderName);
     } catch (Exception e) {
-      Log.e(TAG, String.format("Failed to create MediaCodec: %s, ", mime), e);
+      Log.e(TAG, "Failed to create MediaCodec: %s, DecoderName: %s", mime, decoderName, e);
       return null;
     }
     if (mediaCodec == null) {
@@ -586,9 +587,7 @@ class MediaCodecBridge {
   public static void createVideoMediaCodecBridge(
       long nativeMediaCodecBridge,
       String mime,
-      boolean mustSupportSecure,
-      boolean mustSupportSoftwareCodec,
-      boolean forceImprovedSupportCheck,
+      String decoderName,
       int width,
       int height,
       int fps,
@@ -600,54 +599,24 @@ class MediaCodecBridge {
     MediaCodec mediaCodec = null;
     outCreateMediaCodecBridgeResult.mMediaCodecBridge = null;
 
-    boolean mustSupportHdr = android.os.Build.VERSION.SDK_INT >= 24 && colorInfo != null;
-    boolean mustSupportTunneled = tunnelModeAudioSessionId != -1;
-    // On first pass, try to find a decoder with HDR if the color info is non-null.
-    MediaCodecUtil.FindVideoDecoderResult findVideoDecoderResult =
-        MediaCodecUtil.findVideoDecoder(
-            mime,
-            mustSupportSecure,
-            mustSupportHdr,
-            mustSupportSoftwareCodec,
-            mustSupportTunneled,
-            forceImprovedSupportCheck,
-            -1 /* decoderCacheTtlMs */,
-            0 /* frameWidth */,
-            0 /* frameHeight */,
-            0 /* bitrate */,
-            0 /* fps */);
-    if (findVideoDecoderResult.name.equals("") && mustSupportHdr) {
-      // On second pass, forget HDR.
-      findVideoDecoderResult =
-          MediaCodecUtil.findVideoDecoder(
-              mime,
-              mustSupportSecure,
-              false /* mustSupportHdr */,
-              mustSupportSoftwareCodec,
-              mustSupportTunneled,
-              forceImprovedSupportCheck,
-              -1 /* decoderCacheTtlMs */,
-              0 /* frameWidth */,
-              0 /* frameHeight */,
-              0 /* bitrate */,
-              0 /* fps */);
+    if (decoderName.equals("")) {
+      String message = "Invalid decoder name.";
+      Log.e(TAG, message);
+      outCreateMediaCodecBridgeResult.mErrorMessage = message;
+      return;
     }
+
     try {
-      String decoderName = findVideoDecoderResult.name;
-      if (decoderName.equals("") || findVideoDecoderResult.videoCapabilities == null) {
-        String message =
-            String.format(
-                "Failed to find decoder: %s, mustSupportSecure: %s", mime, mustSupportSecure);
-        Log.e(TAG, message);
-        outCreateMediaCodecBridgeResult.mErrorMessage = message;
-        return;
-      }
-      Log.i(TAG, String.format("Creating \"%s\" decoder.", decoderName));
+      Log.i(TAG, "Creating \"%s\" decoder.", decoderName);
       mediaCodec = MediaCodec.createByCodecName(decoderName);
     } catch (Exception e) {
       String message =
           String.format(
-              "Failed to create MediaCodec: %s, mustSupportSecure: %s", mime, mustSupportSecure);
+              Locale.US,
+              "Failed to create MediaCodec: %s, mustSupportSecure: %s," + " DecoderName: %s",
+              mime,
+              crypto != null,
+              decoderName);
       Log.e(TAG, message, e);
       outCreateMediaCodecBridgeResult.mErrorMessage = message;
       return;
@@ -656,6 +625,23 @@ class MediaCodecBridge {
       outCreateMediaCodecBridgeResult.mErrorMessage = "mediaCodec is null";
       return;
     }
+
+    MediaCodecInfo codecInfo = mediaCodec.getCodecInfo();
+    if (codecInfo == null) {
+      outCreateMediaCodecBridgeResult.mErrorMessage = "codecInfo is null";
+      return;
+    }
+    CodecCapabilities codecCapabilities = codecInfo.getCapabilitiesForType(mime);
+    if (codecCapabilities == null) {
+      outCreateMediaCodecBridgeResult.mErrorMessage = "codecCapabilities is null";
+      return;
+    }
+    VideoCapabilities videoCapabilities = codecCapabilities.getVideoCapabilities();
+    if (videoCapabilities == null) {
+      outCreateMediaCodecBridgeResult.mErrorMessage = "videoCapabilities is null";
+      return;
+    }
+
     MediaCodecBridge bridge =
         new MediaCodecBridge(
             nativeMediaCodecBridge,
@@ -664,13 +650,10 @@ class MediaCodecBridge {
             true,
             BitrateAdjustmentTypes.NO_ADJUSTMENT,
             tunnelModeAudioSessionId);
-    MediaFormat mediaFormat =
-        createVideoDecoderFormat(mime, width, height, findVideoDecoderResult.videoCapabilities);
+    MediaFormat mediaFormat = createVideoDecoderFormat(mime, width, height, videoCapabilities);
 
     boolean shouldConfigureHdr =
-        android.os.Build.VERSION.SDK_INT >= 24
-            && colorInfo != null
-            && MediaCodecUtil.isHdrCapableVideoDecoder(mime, findVideoDecoderResult);
+        colorInfo != null && MediaCodecUtil.isHdrCapableVideoDecoder(mime, codecCapabilities);
     if (shouldConfigureHdr) {
       Log.d(TAG, "Setting HDR info.");
       mediaFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER, colorInfo.colorTransfer);
@@ -688,7 +671,6 @@ class MediaCodecBridge {
       Log.d(TAG, "Enabled tunnel mode playback on audio session " + tunnelModeAudioSessionId);
     }
 
-    VideoCapabilities videoCapabilities = findVideoDecoderResult.videoCapabilities;
     int maxWidth = videoCapabilities.getSupportedWidths().getUpper();
     int maxHeight = videoCapabilities.getSupportedHeights().getUpper();
     if (fps > 0) {
@@ -797,6 +779,10 @@ class MediaCodecBridge {
     }
     if (mFps <= 0) {
       Log.e(TAG, "Failed to set operating rate with invalid fps " + mFps);
+      return;
+    }
+    if (mMediaCodec == null) {
+      Log.e(TAG, "Failed to set operating rate when media codec is null.");
       return;
     }
     double operatingRate = mPlaybackRate * mFps;
@@ -1208,8 +1194,10 @@ class MediaCodecBridge {
               + (configurationData == null
                   ? "|configurationData| is null."
                   : String.format(
+                      Locale.US,
                       "Configuration data size (%d) is less than the required size (%d).",
-                      configurationData.length, MIN_OPUS_INITIALIZATION_DATA_BUFFER_SIZE)));
+                      configurationData.length,
+                      MIN_OPUS_INITIALIZATION_DATA_BUFFER_SIZE)));
       return false;
     }
     // Both the number of samples to skip from the beginning of the stream and the amount of time

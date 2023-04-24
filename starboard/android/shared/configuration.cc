@@ -14,8 +14,8 @@
 
 #include "starboard/android/shared/configuration.h"
 
-#include "cobalt/extension/configuration.h"
 #include "starboard/common/configuration_defaults.h"
+#include "starboard/extension/configuration.h"
 
 namespace starboard {
 namespace android {
@@ -43,7 +43,7 @@ bool CobaltEnableQuic() {
 
 const CobaltExtensionConfigurationApi kConfigurationApi = {
     kCobaltExtensionConfigurationName,
-    2,
+    3,
     &CobaltUserOnExitStrategy,
     &common::CobaltRenderDirtyRegionOnlyDefault,
     &CobaltEglSwapInterval,
@@ -67,6 +67,7 @@ const CobaltExtensionConfigurationApi kConfigurationApi = {
     &common::CobaltRasterizerTypeDefault,
     &common::CobaltEnableJitDefault,
     &common::CobaltFallbackSplashScreenTopicsDefault,
+    &common::CobaltCanStoreCompiledJavascriptDefault,
 };
 
 }  // namespace

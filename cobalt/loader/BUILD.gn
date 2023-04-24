@@ -29,6 +29,8 @@ static_library("loader") {
     "embedded_fetcher.h",
     "error_fetcher.cc",
     "error_fetcher.h",
+    "fetch_interceptor_coordinator.cc",
+    "fetch_interceptor_coordinator.h",
     "fetcher.cc",
     "fetcher.h",
     "fetcher_cache.cc",
@@ -203,8 +205,6 @@ target(gtest_target_type, "loader_test") {
   ]
 
   data_deps = [ ":copy_loader_test_data" ]
-
-  content_deps = [ ":copy_loader_test_data" ]
 }
 
 copy("copy_loader_test_data") {

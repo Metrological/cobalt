@@ -22,7 +22,7 @@ Required libraries can differ depending on your Linux distribution and version.
         pkgconf ninja-build bison yasm binutils clang libgles2-mesa-dev \
         mesa-common-dev libpulse-dev libavresample-dev libasound2-dev \
         libxrender-dev libxcomposite-dev libxml2-dev curl git \
-        python3.8-venv python2
+        python3.8-venv
     ```
 
 1.  Install Node.js via `nvm`:
@@ -31,7 +31,7 @@ Required libraries can differ depending on your Linux distribution and version.
     $ export NVM_DIR=~/.nvm
     $ export NODE_VERSION=12.17.0
 
-    $ curl --silent -o- https://raw.githubusercontent.com/creationix/nvm/v0.35.3/install.sh | bash
+    $ curl --silent -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.3/install.sh | bash
 
     $ . $NVM_DIR/nvm.sh \
         && nvm install --lts \
@@ -52,13 +52,9 @@ Required libraries can differ depending on your Linux distribution and version.
     $ ccache --max-size=20G
     ```
 
-1.  Install necessary python2 packages for GYP. Until Cobalt 23, when we have
-    migrated our build system to GN, we still require some python2 packages:
-
-    ```
-    $ curl https://bootstrap.pypa.io/pip/2.7/get-pip.py | python2
-    $ python2 -m pip install --user requests selenium six
-    ```
+1.  Install GN, which we use for our build system code. There are a few ways to
+    get the binary, follow the instructions for whichever way you prefer
+    [here](https://cobalt.googlesource.com/third_party/gn/+/refs/heads/main/#getting-a-binary).
 
 1.  Clone the Cobalt code repository. The following `git` command creates a
     `cobalt` directory that contains the repository:
@@ -190,6 +186,14 @@ Required libraries can differ depending on your Linux distribution and version.
       </tr>
     </table>
 
+## Debugging Cobalt
+
+`debug`, `devel`, and `qa` configs of Cobalt expose a feature enabling
+developers to trace Cobalt's callstacks per-thread. This is not only a great way
+to debug application performance, but also a great way to debug issues and
+better understand Cobalt's execution flow in general.
+
+Simply build and run one of these configs and observe the terminal output.
 <!--
 <aside class="note">
 <b>Note:</b> If you plan to upload reviews to the Cobalt repository, you

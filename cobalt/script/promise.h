@@ -15,10 +15,14 @@
 #ifndef COBALT_SCRIPT_PROMISE_H_
 #define COBALT_SCRIPT_PROMISE_H_
 
+#include <memory>
+
+#include "base/callback.h"
 #include "base/memory/ref_counted.h"
 #include "cobalt/script/exception_message.h"
 #include "cobalt/script/script_exception.h"
 #include "cobalt/script/script_value.h"
+#include "v8/include/v8.h"
 
 namespace cobalt {
 namespace script {
@@ -52,6 +56,12 @@ class Promise {
 
   // Returns the value of the [[PromiseState]] field.
   virtual PromiseState State() const = 0;
+
+  virtual void AddStateChangeCallback(
+      std::unique_ptr<base::OnceCallback<void()>> callback) = 0;
+
+  virtual v8::Local<v8::Promise> promise() const = 0;
+  virtual v8::Local<v8::Promise::Resolver> resolver() const = 0;
 
   virtual ~Promise() {}
 };

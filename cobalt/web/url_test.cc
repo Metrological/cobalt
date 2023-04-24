@@ -18,13 +18,8 @@
 #include <string>
 
 #include "base/logging.h"
-#include "cobalt/dom/testing/stub_window.h"
-#include "cobalt/script/exception_message.h"
-#include "cobalt/script/exception_state.h"
-#include "cobalt/script/global_environment.h"
-#include "cobalt/script/source_code.h"
-#include "cobalt/script/testing/mock_exception_state.h"
 #include "cobalt/web/testing/gtest_workarounds.h"
+#include "cobalt/web/testing/test_with_javascript.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -35,7 +30,6 @@ using ::testing::StrictMock;
 
 namespace cobalt {
 namespace web {
-
 namespace {
 class URLTest : public ::testing::Test {
  public:
@@ -49,32 +43,7 @@ class URLTest : public ::testing::Test {
   StrictMock<MockExceptionState> exception_state_;
 };
 
-class URLTestWithJavaScript : public ::testing::Test {
- public:
-  URLTestWithJavaScript() {}
-
-  bool EvaluateScript(const std::string& js_code, std::string* result) {
-    DCHECK(stub_window_.global_environment());
-    DCHECK(result);
-    scoped_refptr<script::SourceCode> source_code =
-        script::SourceCode::CreateSourceCode(
-            js_code, base::SourceLocation(__FILE__, __LINE__, 1));
-
-    stub_window_.global_environment()->EnableEval();
-    stub_window_.global_environment()->SetReportEvalCallback(base::Closure());
-    bool succeeded =
-        stub_window_.global_environment()->EvaluateScript(source_code, result);
-    return succeeded;
-  }
-
-  StrictMock<MockExceptionState>* exception_state() {
-    return &exception_state_;
-  }
-
- private:
-  cobalt::dom::testing::StubWindow stub_window_;
-  StrictMock<MockExceptionState> exception_state_;
-};
+class URLTestWithJavaScript : public testing::TestWebWithJavaScript {};
 }  // namespace
 
 TEST_F(URLTest, ConstructorWithValidURL) {
@@ -129,7 +98,7 @@ TEST_F(URLTest, ConstructorWithValidURLAndBase) {
   EXPECT_EQ("", url->search());
 }
 
-TEST_F(URLTestWithJavaScript, ConstructorWithValidURL) {
+TEST_P(URLTestWithJavaScript, ConstructorWithValidURL) {
   std::string result;
   bool success = EvaluateScript(
       "var url = new "
@@ -149,16 +118,13 @@ TEST_F(URLTestWithJavaScript, ConstructorWithValidURL) {
   EXPECT_EQ("https://user:password@www.example.com:1234/foo/bar?baz#qux",
             result);
 
-  if (success) {
-    LOG(INFO) << "Test result : "
-              << "\"" << result << "\"";
-  } else {
+  if (!success) {
     DLOG(ERROR) << "Failed to evaluate test: "
                 << "\"" << result << "\"";
   }
 }
 
-TEST_F(URLTestWithJavaScript, ConstructorWithInvalidBase) {
+TEST_P(URLTestWithJavaScript, ConstructorWithInvalidBase) {
   std::string result;
   bool success = EvaluateScript(
       "let result = 'unknown';"
@@ -172,16 +138,13 @@ TEST_F(URLTestWithJavaScript, ConstructorWithInvalidBase) {
   EXPECT_TRUE(success);
   EXPECT_EQ("TypeError", result);
 
-  if (success) {
-    LOG(INFO) << "Test result : "
-              << "\"" << result << "\"";
-  } else {
+  if (!success) {
     DLOG(ERROR) << "Failed to evaluate test: "
                 << "\"" << result << "\"";
   }
 }
 
-TEST_F(URLTestWithJavaScript, ConstructorWithInvalidURL) {
+TEST_P(URLTestWithJavaScript, ConstructorWithInvalidURL) {
   std::string result;
   bool success = EvaluateScript(
       "let result = 'unknown';"
@@ -195,14 +158,46 @@ TEST_F(URLTestWithJavaScript, ConstructorWithInvalidURL) {
   EXPECT_TRUE(success);
   EXPECT_EQ("TypeError", result);
 
-  if (success) {
-    LOG(INFO) << "Test result : "
-              << "\"" << result << "\"";
-  } else {
+  if (!success) {
     DLOG(ERROR) << "Failed to evaluate test: "
                 << "\"" << result << "\"";
   }
 }
+
+TEST_P(URLTestWithJavaScript, CreateObjectURL) {
+  std::string result;
+  bool success = EvaluateScript(
+      "let result = 'unknown';"
+      "function assert(condition, message) {"
+      "  if (!condition) {"
+      "    throw new Error(message || \"Assertion failed\");"
+      "  }"
+      "}"
+      "try {"
+      "  var blob = new Blob([\" TEST \"]);"
+      "  assert(blob.size == 6, \'Blob has wrong size\');"
+      "  var url = URL.createObjectURL(blob);"
+      "  result = url;"
+      "} catch (e) {"
+      "  result = e;"
+      "}"
+      "result;",
+      &result);
+  EXPECT_TRUE(success);
+  EXPECT_GT(result.length(), 5U);
+  EXPECT_TRUE(Value(result, ::testing::StartsWith("blob:")));
+
+  if (!success) {
+    DLOG(ERROR) << "Failed to evaluate test: "
+                << "\"" << result << "\"";
+  }
+}
+
+INSTANTIATE_TEST_CASE_P(
+    URLTestsWithJavaScript, URLTestWithJavaScript,
+    ::testing::ValuesIn(testing::TestWebWithJavaScript::GetWebTypes()),
+    testing::TestWebWithJavaScript::GetTypeName);
+
 
 }  // namespace web
 }  // namespace cobalt

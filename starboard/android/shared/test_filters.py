@@ -16,8 +16,13 @@
 from starboard.tools.testing import test_filter
 
 # A map of failing or crashing tests per target.
+# pylint: disable=line-too-long
 _FILTERED_TESTS = {
     'player_filter_tests': [
+        # Invalid input may lead to unexpected behaviors.
+        'AudioDecoderTests/AudioDecoderTest.MultipleInvalidInput/*',
+        'AudioDecoderTests/AudioDecoderTest.MultipleValidInputsAfterInvalidInput*',
+
         # GetMaxNumberOfCachedFrames() on Android is device dependent,
         # and Android doesn't provide an API to get it. So, this function
         # doesn't make sense on Android. But HoldFramesUntilFull tests depend
@@ -38,17 +43,13 @@ _FILTERED_TESTS = {
         'PlayerComponentsTests/PlayerComponentsTest.EOSWithoutInput/*',
 
         # The e/eac3 audio time reporting during pause will be revisitied.
-        'PlayerComponentsTests/PlayerComponentsTest.Pause/15',
+        'PlayerComponentsTests/PlayerComponentsTest.Pause/*ac3*',
+        'PlayerComponentsTests/PlayerComponentsTest.Pause/*ec3*',
     ],
     'nplb': [
         # This test is failing because localhost is not defined for IPv6 in
         # /etc/hosts.
-        'SbSocketAddressTypes/SbSocketResolveTest.Localhost/1',
-
-        # These tests are taking longer due to interop on android. Work is
-        # underway to investigate whether this is acceptable.
-        'SbMediaCanPlayMimeAndKeySystem.ValidatePerformance',
-        'SbMediaConfigurationTest.ValidatePerformance',
+        'SbSocketAddressTypes/SbSocketResolveTest.Localhost/filter_ipv6_type_ipv6',
 
         # SbDirectory has problems with empty Asset dirs.
         'SbDirectoryCanOpenTest.SunnyDayStaticContent',
@@ -72,6 +73,7 @@ _FILTERED_TESTS = {
         'SbDrmSessionTest.InvalidSessionUpdateRequestParams',
     ],
 }
+# pylint: enable=line-too-long
 
 
 class TestFilters(object):

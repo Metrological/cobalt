@@ -17,7 +17,6 @@
 """Cross-platform unit test runner."""
 
 import argparse
-import json
 import logging
 import os
 import re
@@ -28,13 +27,17 @@ import threading
 import traceback
 
 from six.moves import cStringIO as StringIO
+from starboard.build import clang
 from starboard.tools import abstract_launcher
 from starboard.tools import build
 from starboard.tools import command_line
 from starboard.tools import paths
 from starboard.tools.testing import build_tests
 from starboard.tools.testing import test_filter
+from starboard.tools.testing.test_sharding import ShardingTestConfig
 from starboard.tools.util import SetupDefaultLoggingConfig
+
+# pylint: disable=consider-using-f-string
 
 _FLAKY_RETRY_LIMIT = 4
 _TOTAL_TESTS_REGEX = re.compile(r"^\[==========\] (.*) tests? from .*"
@@ -281,14 +284,11 @@ class TestRunner(object):
 
     # Read the sharding configuration from deployed sharding configuration json.
     # Create subset of test targets, and launch params per target.
-    self.shard_config = None
-    if self.shard_index is not None:
-      with open(
-          os.path.join(self.out_directory, "sharding_configuration.json"),
-          "r") as f:
-        shard_json = json.loads(f.read())
-      full_config = shard_json[self.platform]
-      self.shard_config = full_config[self.shard_index]
+    try:
+      self.sharding_test_config = ShardingTestConfig(self.platform,
+                                                     self.test_targets)
+    except RuntimeError:
+      self.sharding_test_config = None
 
   def _Exec(self, cmd_list, output_file=None):
     """Execute a command in a subprocess."""
@@ -432,11 +432,16 @@ class TestRunner(object):
     if gtest_filter_value:
       test_params.append("--gtest_filter=" + gtest_filter_value)
 
-    if shard_index and shard_count:
+    if shard_count is not None:
       test_params.append("--gtest_total_shards={}".format(shard_count))
       test_params.append("--gtest_shard_index={}".format(shard_index))
 
+    # Path to where the test results XML will be created (if applicable).
+    # For on-device testing, this is w.r.t on device storage.
+    test_result_xml_path = None
+
     def MakeLauncher():
+      logging.info("MakeLauncher(): %s", test_result_xml_path)
       return abstract_launcher.LauncherFactory(
           self.platform,
           target_name,
@@ -447,21 +452,26 @@ class TestRunner(object):
           out_directory=self.out_directory,
           coverage_directory=self.coverage_directory,
           env_variables=env,
+          test_result_xml_path=test_result_xml_path,
           loader_platform=self.loader_platform,
           loader_config=self.loader_config,
           loader_out_directory=self.loader_out_directory,
           launcher_args=self.launcher_args)
 
+    logging.info(
+        "XML test result logging: %s",
+        ("enabled" if
+         (self.log_xml_results or self.xml_output_dir) else "disabled"))
     if self.log_xml_results:
       out_path = MakeLauncher().GetDeviceOutputPath()
       xml_filename = "{}_testoutput.xml".format(target_name)
       if out_path:
-        xml_path = os.path.join(out_path, xml_filename)
+        test_result_xml_path = os.path.join(out_path, xml_filename)
       else:
-        xml_path = xml_filename
-      test_params.append("--gtest_output=xml:{}".format(xml_path))
+        test_result_xml_path = xml_filename
+      test_params.append("--gtest_output=xml:{}".format(test_result_xml_path))
       logging.info(("Xml results for this test will "
-                    "be logged to '%s'."), xml_path)
+                    "be logged to '%s'."), test_result_xml_path)
     elif self.xml_output_dir:
       # Have gtest create and save a test result xml
       xml_output_subdir = os.path.join(self.xml_output_dir, target_name)
@@ -469,10 +479,11 @@ class TestRunner(object):
         os.makedirs(xml_output_subdir)
       except OSError:
         pass
-      xml_output_path = os.path.join(xml_output_subdir, "sponge_log.xml")
+      test_result_xml_path = os.path.join(xml_output_subdir, "sponge_log.xml")
       logging.info("Xml output for this test will be saved to: %s",
-                   xml_output_path)
-      test_params.append("--gtest_output=xml:%s" % (xml_output_path))
+                   test_result_xml_path)
+      test_params.append("--gtest_output=xml:%s" % (test_result_xml_path))
+    logging.info("XML test result path: %s", test_result_xml_path)
 
     # Turn off color codes from output to make it easy to parse
     test_params.append("--gtest_color=no")
@@ -632,6 +643,7 @@ class TestRunner(object):
 
       actual_failed_count = len(actual_failed_tests)
       flaky_failed_count = len(flaky_failed_tests)
+      initial_flaky_failed_count = flaky_failed_count
       filtered_count = len(filtered_tests)
 
       # If our math does not agree with gtest...
@@ -641,9 +653,9 @@ class TestRunner(object):
 
       # Retry the flaky test cases that failed, and mark them as passed if they
       # succeed within the retry limit.
+      flaky_passed_tests = []
       if flaky_failed_count > 0:
         logging.info("RE-RUNNING FLAKY TESTS.\n")
-        flaky_passed_tests = []
         for test_case in flaky_failed_tests:
           for retry in range(_FLAKY_RETRY_LIMIT):
             # Sometimes the returned test "name" includes information about the
@@ -666,9 +678,13 @@ class TestRunner(object):
 
       test_status = "SUCCEEDED"
 
+      all_flaky_tests_succeeded = initial_flaky_failed_count == len(
+          flaky_passed_tests)
+
       # Always mark as FAILED if we have a non-zero return code, or failing
       # test.
-      if return_code != 0 or actual_failed_count > 0 or flaky_failed_count > 0:
+      if ((return_code != 0 and not all_flaky_tests_succeeded) or
+          actual_failed_count > 0 or flaky_failed_count > 0):
         error = True
         test_status = "FAILED"
         failed_test_groups.append(target_name)
@@ -785,24 +801,24 @@ class TestRunner(object):
     results = []
     # Sort the targets so they are run in alphabetical order
     for test_target in sorted(self.test_targets.keys()):
-      if self.shard_config:
-        if test_target in self.shard_config.keys():
-          test_shard_config = self.shard_config[test_target]
-          if test_shard_config == "*":
-            logging.info("SHARD %d RUNS TEST %s (full)", self.shard_index,
-                         test_target)
-            results.append(self._RunTest(test_target))
-          else:
-            sub_shard_index = test_shard_config[0] - 1
-            sub_shard_count = test_shard_config[1]
-            logging.info("SHARD %d RUNS TEST %s (%d of %d)", self.shard_index,
-                         test_target, sub_shard_index + 1, sub_shard_count)
-            results.append(
-                self._RunTest(
-                    test_target,
-                    shard_index=sub_shard_index,
-                    shard_count=sub_shard_count))
+      if (self.shard_index is not None) and self.sharding_test_config:
+        (run_action, sub_shard_index,
+         sub_shard_count) = self.sharding_test_config.get_test_run_config(
+             test_target, self.shard_index)
+        if run_action == ShardingTestConfig.RUN_FULL_TEST:
+          logging.info("SHARD %d RUNS TEST %s (full)", self.shard_index,
+                       test_target)
+          results.append(self._RunTest(test_target))
+        elif run_action == ShardingTestConfig.RUN_PARTIAL_TEST:
+          logging.info("SHARD %d RUNS TEST %s (%d of %d)", self.shard_index,
+                       test_target, sub_shard_index + 1, sub_shard_count)
+          results.append(
+              self._RunTest(
+                  test_target,
+                  shard_index=sub_shard_index,
+                  shard_count=sub_shard_count))
         else:
+          assert run_action == ShardingTestConfig.SKIP_TEST
           logging.info("SHARD %d SKIP TEST %s", self.shard_index, test_target)
       else:
         # Run all tests and cases serially. No sharding enabled.
@@ -823,17 +839,21 @@ class TestRunner(object):
     if not available_profraw_files:
       return
 
+    toolchain_dir = build.GetClangBinPath(clang.GetClangSpecification())
+
     report_name = "report"
     profdata_name = os.path.join(self.coverage_directory,
                                  report_name + ".profdata")
     merge_cmd_list = [
-        "llvm-profdata", "merge", "-sparse=true", "-o", profdata_name
+        os.path.join(toolchain_dir, "llvm-profdata"), "merge", "-sparse=true",
+        "-o", profdata_name
     ]
     merge_cmd_list += available_profraw_files
 
     self._Exec(merge_cmd_list)
     show_cmd_list = [
-        "llvm-cov", "show", "-instr-profile=" + profdata_name, "-format=html",
+        os.path.join(toolchain_dir, "llvm-cov"), "show",
+        "-instr-profile=" + profdata_name, "-format=html",
         "-output-dir=" + os.path.join(self.coverage_directory, "html"),
         available_targets[0]
     ]
@@ -841,8 +861,8 @@ class TestRunner(object):
     self._Exec(show_cmd_list)
 
     report_cmd_list = [
-        "llvm-cov", "report", "-instr-profile=" + profdata_name,
-        available_targets[0]
+        os.path.join(toolchain_dir, "llvm-cov"), "report",
+        "-instr-profile=" + profdata_name, available_targets[0]
     ]
     report_cmd_list += ["-object=" + target for target in available_targets[1:]]
     self._Exec(

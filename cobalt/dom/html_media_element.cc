@@ -31,29 +31,28 @@
 #include "cobalt/base/tokens.h"
 #include "cobalt/cssom/map_to_mesh_function.h"
 #include "cobalt/dom/document.h"
+#include "cobalt/dom/eme/media_encrypted_event.h"
+#include "cobalt/dom/eme/media_encrypted_event_init.h"
 #include "cobalt/dom/html_element_context.h"
 #include "cobalt/dom/html_video_element.h"
+#include "cobalt/dom/media_settings.h"
 #include "cobalt/dom/media_source.h"
 #include "cobalt/dom/media_source_ready_state.h"
 #include "cobalt/loader/fetcher_factory.h"
-#include "cobalt/media/fetcher_buffered_data_source.h"
+#include "cobalt/media/url_fetcher_data_source.h"
 #include "cobalt/media/web_media_player_factory.h"
 #include "cobalt/script/script_value_factory.h"
+#include "cobalt/web/context.h"
 #include "cobalt/web/csp_delegate.h"
 #include "cobalt/web/dom_exception.h"
 #include "cobalt/web/event.h"
-
-#include "cobalt/dom/eme/media_encrypted_event.h"
-#include "cobalt/dom/eme/media_encrypted_event_init.h"
+#include "cobalt/web/web_settings.h"
 
 namespace cobalt {
 namespace dom {
 
-using media::BufferedDataSource;
+using media::DataSource;
 using media::WebMediaPlayer;
-
-const char HTMLMediaElement::kMediaSourceUrlProtocol[] = "blob";
-const double HTMLMediaElement::kMaxTimeupdateEventFrequency = 0.25;
 
 namespace {
 
@@ -68,6 +67,9 @@ namespace {
 #define MLOG() EAT_STREAM_PARAMETERS
 
 #endif  // LOG_MEDIA_ELEMENT_ACTIVITIES
+
+constexpr char kMediaSourceUrlProtocol[] = "blob";
+constexpr int kTimeupdateEventIntervalInMilliseconds = 200;
 
 DECLARE_INSTANCE_COUNTER(HTMLMediaElement);
 
@@ -632,7 +634,8 @@ void HTMLMediaElement::DurationChanged(double duration, bool request_seek) {
 }
 
 void HTMLMediaElement::ScheduleEvent(const scoped_refptr<web::Event>& event) {
-  TRACE_EVENT0("cobalt::dom", "HTMLMediaElement::ScheduleEvent()");
+  TRACE_EVENT1("cobalt::dom", "HTMLMediaElement::ScheduleEvent()", "event",
+               TRACE_STR_COPY(event->type().c_str()));
   MLOG() << "Schedule event " << event->type() << ".";
   event_queue_.Enqueue(event);
 }
@@ -794,7 +797,7 @@ void HTMLMediaElement::LoadInternal() {
     GURL media_url(src);
     if (media_url.is_empty()) {
       // Try to resolve it as a relative url.
-      media_url = node_document()->url_as_gurl().Resolve(src);
+      media_url = node_document()->location()->url().Resolve(src);
     }
     if (media_url.is_empty()) {
       MediaLoadingFailed(WebMediaPlayer::kNetworkStateFormatError,
@@ -817,8 +820,8 @@ void HTMLMediaElement::LoadResource(const GURL& initial_url,
                                     const std::string& key_system) {
   DLOG(INFO) << "HTMLMediaElement::LoadResource(" << initial_url << ", "
              << content_type << ", " << key_system;
-  DCHECK(player_);
   if (!player_) {
+    LOG(WARNING) << "LoadResource() without player.";
     return;
   }
 
@@ -834,8 +837,8 @@ void HTMLMediaElement::LoadResource(const GURL& initial_url,
   DCHECK(!media_source_);
   if (url.SchemeIs(kMediaSourceUrlProtocol)) {
     // Check whether url is allowed by security policy.
-    if (!node_document()->csp_delegate()->CanLoad(web::CspDelegate::kMedia, url,
-                                                  false)) {
+    if (!node_document()->GetCSPDelegate()->CanLoad(web::CspDelegate::kMedia,
+                                                    url, false)) {
       DLOG(INFO) << "URL " << url << " is rejected by security policy.";
       NoneSupported("URL is rejected by security policy.");
       return;
@@ -882,15 +885,14 @@ void HTMLMediaElement::LoadResource(const GURL& initial_url,
   } else {
     csp::SecurityCallback csp_callback =
         base::Bind(&web::CspDelegate::CanLoad,
-                   base::Unretained(node_document()->csp_delegate()),
+                   base::Unretained(node_document()->GetCSPDelegate()),
                    web::CspDelegate::kMedia);
     request_mode_ = GetRequestMode(GetAttribute("crossOrigin"));
     DCHECK(node_document()->location());
-    std::unique_ptr<BufferedDataSource> data_source(
-        new media::FetcherBufferedDataSource(
-            base::MessageLoop::current()->task_runner(), url, csp_callback,
-            html_element_context()->fetcher_factory()->network_module(),
-            request_mode_, node_document()->location()->GetOriginAsObject()));
+    std::unique_ptr<DataSource> data_source(new media::URLFetcherDataSource(
+        base::MessageLoop::current()->task_runner(), url, csp_callback,
+        html_element_context()->fetcher_factory()->network_module(),
+        request_mode_, node_document()->location()->GetOriginAsObject()));
     player_->LoadProgressive(url, std::move(data_source));
   }
 }
@@ -1024,10 +1026,19 @@ void HTMLMediaElement::StartPlaybackProgressTimer() {
   }
 
   previous_progress_time_ = base::Time::Now().ToDoubleT();
+
+  DCHECK(environment_settings());
+  DCHECK(environment_settings()->context());
+  DCHECK(environment_settings()->context()->web_settings());
+
+  const auto& media_settings =
+      environment_settings()->context()->web_settings()->media_settings();
+  const int interval_in_milliseconds =
+      media_settings.GetMediaElementTimeupdateEventIntervalInMilliseconds()
+          .value_or(kTimeupdateEventIntervalInMilliseconds);
+
   playback_progress_timer_.Start(
-      FROM_HERE,
-      base::TimeDelta::FromMilliseconds(
-          static_cast<int64>(kMaxTimeupdateEventFrequency * 1000)),
+      FROM_HERE, base::TimeDelta::FromMilliseconds(interval_in_milliseconds),
       this, &HTMLMediaElement::OnPlaybackProgressTimer);
 }
 
@@ -1689,7 +1700,7 @@ void HTMLMediaElement::EncryptedMediaInitDataEncountered(
   std::string src = this->src();
   GURL current_url = GURL(src);
   if (current_url.is_empty()) {
-    current_url = node_document()->url_as_gurl().Resolve(src);
+    current_url = node_document()->location()->url().Resolve(src);
   }
   if (!current_url.SchemeIs("http") &&
       OriginIsSafe(request_mode_, current_url,

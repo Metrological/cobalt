@@ -25,6 +25,7 @@
 #include "cobalt/loader/blob_fetcher.h"
 #include "cobalt/loader/fetcher.h"
 #include "net/disk_cache/cobalt/resource_type.h"
+#include "net/http/http_request_headers.h"
 #include "url/gurl.h"
 
 namespace cobalt {
@@ -36,9 +37,10 @@ namespace loader {
 
 class FetcherFactory {
  public:
+  FetcherFactory() {}
   explicit FetcherFactory(network::NetworkModule* network_module);
   FetcherFactory(network::NetworkModule* network_module,
-                 const base::FilePath& extra_search_dir);
+                 const BlobFetcher::ResolverCallback& blob_resolver);
   FetcherFactory(
       network::NetworkModule* network_module,
       const base::FilePath& extra_search_dir,
@@ -55,13 +57,14 @@ class FetcherFactory {
   std::unique_ptr<Fetcher> CreateSecureFetcher(
       const GURL& url, const csp::SecurityCallback& url_security_callback,
       RequestMode request_mode, const Origin& origin,
-      const disk_cache::ResourceType type, Fetcher::Handler* handler);
+      const disk_cache::ResourceType type, net::HttpRequestHeaders headers,
+      bool skip_fetch_intercept, Fetcher::Handler* handler);
 
   network::NetworkModule* network_module() const { return network_module_; }
 
  private:
-  base::Thread file_thread_;
-  network::NetworkModule* network_module_;
+  base::Thread file_thread_{"File"};
+  network::NetworkModule* network_module_ = nullptr;
   base::FilePath extra_search_dir_;
   BlobFetcher::ResolverCallback blob_resolver_;
   base::Callback<int(const std::string&, std::unique_ptr<char[]>*)>

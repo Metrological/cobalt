@@ -14,7 +14,22 @@ A description of all changes currently in the experimental Starboard version
 can be found in the comments of the "Experimental Feature Defines" section of
 [configuration.h](configuration.h).
 
+### Cobalt extensions are now Starboard extensions
+Previously named Cobalt extensions are now found under `starboard/extensions`.
+The mechanism extends platform-specific functionality of Starboard via runtime
+resolution, and hence more properly belongs in Starboard codebase.
+This also helps break the dependency cycle between Starboard and Cobalt for
+cleaner component layering.
+For existing uses in Starboard ports, fallback forwarding headers are provided
+in the previous location of the code in `cobalt/extensions`.
+
 ## Version 14
+### Add MP3, FLAC, and PCM values to SbMediaAudioCodec.
+This makes it possible to support these codecs in the future.
+
+### Add kSbSystemPropertyAdvertisingId and kSbSystemPropertyLimitAdTracking
+Adds properties for retrieving IFA identifier and related ad tracking limiting.
+
 ### Add kSbSystemDeviceTypeVideoProjector type to Starboard devices.
 This adds a video projector type to Starboard devices.
 
@@ -50,6 +65,21 @@ the queue or `QueueApplication::InjectAndProcess` if the event needs to be
 handled before returning. `QueueApplication::DispatchAndDelete` jumps the event
 queue and could lead to bugs due to the event (especially lifecycle events)
 being handled out of order.
+
+### Add kSbMaxSystemPathCacheDirectorySize configuration constant.
+This constant defines maximum space in bytes the cache directory
+`kSbSystemPathCacheDirectory` can use. The default value is 24MiB. Platforms can
+set `kSbMaxSystemPathCacheDirectorySize` to a larger value in
+"starboard/<PLATFORM_PATH>/configuration_constants.cc".
+
+### Add nplb tests to enforce performance of SbMediaCanPlayMimeAndKeySystem().
+Add SbMediaCanPlayMimeAndKeySystem.ValidatePerformance to enforce the
+performance of SbMediaCanPlayMimeAndKeySystem(). On platforms that fail such
+tests, MimeSupportabilityCache and KeySystemSupportabilityCache can be enabled
+to improve the performance. The caches store the results of previous queries and
+reuse them for repeated queries. Note that if caches are enabled, the platform
+need to clear the caches if there's any codec or audio/video output capability
+change.
 
 ## Version 13
 ### Changed lifecycle events to add support for a concealed state.

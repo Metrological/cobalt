@@ -22,8 +22,8 @@
 #include "cobalt/web/environment_settings.h"
 #include "cobalt/web/event_target.h"
 #include "cobalt/web/event_target_listener_info.h"
+#include "cobalt/web/message_port.h"
 #include "cobalt/worker/abstract_worker.h"
-#include "cobalt/worker/message_port.h"
 #include "cobalt/worker/worker.h"
 #include "cobalt/worker/worker_options.h"
 
@@ -35,9 +35,11 @@ namespace worker {
 class DedicatedWorker : public AbstractWorker, public web::EventTarget {
  public:
   DedicatedWorker(script::EnvironmentSettings* settings,
-                  const std::string& scriptURL);
+                  const std::string& scriptURL,
+                  script::ExceptionState* exception_state);
   DedicatedWorker(script::EnvironmentSettings* settings,
-                  const std::string& scriptURL, const WorkerOptions& options);
+                  const std::string& scriptURL, const WorkerOptions& options,
+                  script::ExceptionState* exception_state);
   DedicatedWorker(const DedicatedWorker&) = delete;
   DedicatedWorker& operator=(const DedicatedWorker&) = delete;
 
@@ -47,7 +49,7 @@ class DedicatedWorker : public AbstractWorker, public web::EventTarget {
   // void postMessage(any message, object transfer);
   // -> void PostMessage(const script::ValueHandleHolder& message,
   //                     script::Sequence<script::ValueHandle*> transfer) {}
-  void PostMessage(const std::string& message);
+  void PostMessage(const script::ValueHandleHolder& message);
 
   const EventListenerScriptValue* onmessage() const {
     return GetAttributeEventListener(base::Tokens::message());
@@ -78,12 +80,11 @@ class DedicatedWorker : public AbstractWorker, public web::EventTarget {
 
  private:
   ~DedicatedWorker() override;
-  void Initialize();
+  void Initialize(script::ExceptionState* exception_state);
 
-  script::EnvironmentSettings* settings_;
   const std::string script_url_;
   const WorkerOptions worker_options_;
-  scoped_refptr<MessagePort> outside_port_;
+  scoped_refptr<web::MessagePort> outside_port_;
   std::unique_ptr<Worker> worker_;
 };
 

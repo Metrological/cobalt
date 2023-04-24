@@ -15,6 +15,7 @@
 #ifndef COBALT_DOM_DOM_SETTINGS_H_
 #define COBALT_DOM_DOM_SETTINGS_H_
 
+#include "base/logging.h"
 #include "base/memory/ref_counted.h"
 #include "cobalt/base/debugger_hooks.h"
 #include "cobalt/dom/mutation_observer_task_manager.h"
@@ -66,8 +67,7 @@ class DOMSettings : public web::EnvironmentSettings {
     return microphone_options_;
   }
 
-  void set_window(const scoped_refptr<Window>& window);
-  scoped_refptr<Window> window() const;
+  Window* window() const;
 
   MediaSourceRegistry* media_source_registry() const {
     return media_source_registry_;
@@ -86,13 +86,17 @@ class DOMSettings : public web::EnvironmentSettings {
     return mutation_observer_task_manager_;
   }
 
-  // Return's document's origin.
-  loader::Origin document_origin() const;
+  // From: script::EnvironmentSettings
+  //
+  const GURL& base_url() const override;
+
+  // Return the origin of window's associated Document.
+  //   https://html.spec.whatwg.org/#set-up-a-window-environment-settings-object
+  loader::Origin GetOrigin() const override;
 
  private:
   const int max_dom_element_depth_;
   const speech::Microphone::Options microphone_options_;
-  scoped_refptr<Window> window_;
   MediaSourceRegistry* media_source_registry_;
   media::CanPlayTypeHandler* can_play_type_handler_;
   const media::DecoderBufferMemoryInfo* decoder_buffer_memory_info_;

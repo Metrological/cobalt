@@ -32,16 +32,19 @@ interface H5vccCrashLog {
   // Returns true if Watchdog client was registered.
   //   name, Watchdog client to register.
   //   description, information on the Watchdog client.
-  //   monitor_state, application state up to which the client is monitored.
-  //   time_interval, maximum number of microseconds allowed between pings
-  //     before triggering a Watchdog violation.
-  //   time_wait, number of microseconds to initially wait before Watchdog
-  //     violations can be triggered.
-  //   replace, behavior with previously registered Watchdog clients of the
-  //     same name.
+  //   watchdog_state, application state to continue monitoring client up to.
+  //     Inclusive.
+  //   time_interval_milliseconds, maximum number of milliseconds allowed
+  //     between pings before triggering a Watchdog violation. Min value of
+  //     1000.
+  //   time_wait_milliseconds, number of milliseconds to initially wait before
+  //     Watchdog violations can be triggered. Reapplies after client resumes
+  //     from idle state due to application state changes.
+  //   watchdog_replace, behavior with previously registered Watchdog clients
+  //     of the same name.
   boolean register(DOMString name, DOMString description,
-                   WatchdogState watchdog_state, long long time_interval,
-                   long long time_wait, WatchdogReplace watchdog_replace);
+                   WatchdogState watchdog_state, long long time_interval_milliseconds,
+                   long long time_wait_milliseconds, WatchdogReplace watchdog_replace);
 
   // Returns true if Watchdog client was unregistered. Name determines the
   // Watchdog client to unregister.
@@ -49,20 +52,57 @@ interface H5vccCrashLog {
 
   // Returns true if Watchdog client was pinged. Name determines the Watchdog
   // client to ping with ping_info which can either be empty or contain relevant
-  // metadata.
+  // metadata. ping_info has a max length of 128.
   boolean ping(DOMString name, DOMString ping_info);
 
-  // Returns a json string containing the Watchdog violations. Current boolean
-  // determines whether the current file representing ongoing violations or the
-  // previous file containing violations from previous app starts and since the
-  // last call (up to a limit) is returned.
-  DOMString getWatchdogViolations(boolean current);
+  // Returns a json string containing the Watchdog violations since the last
+  // call, up to 200. Clears internal cache of Watchdog violations to prevent
+  // duplicates. Timestamps are stored as strings due to int size constraints.
+  // Example json:
+  // {
+  //   "test-name":{
+  //     "description":"test-desc",
+  //     "violations":[
+  //       {
+  //         "monitorState":"kApplicationStateStarted",
+  //         "pingInfos":[
+  //           {
+  //             "info":"test-ping",
+  //             "timestampMilliseconds":"1658972623547"
+  //           }
+  //         ],
+  //         "registeredClients":[
+  //           "test-name"
+  //         ],
+  //         "timeIntervalMilliseconds":"5000",
+  //         "timeWaitMilliseconds":"0",
+  //         "timestampLastPingedMilliseconds":"1658972623547",
+  //         "timestampRegisteredMilliseconds":"1658972621890",
+  //         "timestampViolationMilliseconds":"1658972629489",
+  //         "violationDurationMilliseconds":"942"
+  //       }
+  //     ]
+  //   }
+  // }
+  DOMString getWatchdogViolations();
+
+  // Gets a persistent Watchdog setting that determines whether or not Watchdog
+  // is enabled. When disabled, Watchdog behaves like a stub except that
+  // persistent settings can still be get/set. Requires a restart to take
+  // effect.
+  boolean getPersistentSettingWatchdogEnable();
+
+  // Sets a persistent Watchdog setting that determines whether or not Watchdog
+  // is enabled. When disabled, Watchdog behaves like a stub except that
+  // persistent settings can still be get/set. Requires a restart to take
+  // effect.
+  void setPersistentSettingWatchdogEnable(boolean enable_watchdog);
 
   // Gets a persistent Watchdog setting that determines whether or not a
   // Watchdog violation will trigger a crash.
-  boolean getCanTriggerCrash();
+  boolean getPersistentSettingWatchdogCrash();
 
   // Sets a persistent Watchdog setting that determines whether or not a
   // Watchdog violation will trigger a crash.
-  void setCanTriggerCrash(boolean can_trigger_crash);
+  void setPersistentSettingWatchdogCrash(boolean can_trigger_crash);
 };

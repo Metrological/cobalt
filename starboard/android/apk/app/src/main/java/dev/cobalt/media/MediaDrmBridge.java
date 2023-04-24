@@ -170,30 +170,20 @@ public class MediaDrmBridge {
    * @return true if the container and the crypto scheme is supported, or false otherwise.
    */
   @UsedByNative
-  static boolean isWidevineCryptoSchemeSupported(boolean usesCbcs) {
-    if (Build.VERSION.SDK_INT < 24 && usesCbcs) {
-      Log.e(TAG, "Encryption scheme 'cbcs' is not supported on this platform.");
-      return false;
-    }
+  static boolean isWidevineCryptoSchemeSupported() {
     return MediaDrm.isCryptoSchemeSupported(WIDEVINE_UUID);
   }
 
   /**
-   * Check whether the Widevine crypto scheme is supported for the given container. If
-   * |containerMimeType| is an empty string, we just return whether the crypto scheme is supported.
+   * Check whether `cbcs` scheme is supported.
    *
-   * @return true if the container and the crypto scheme is supported, or false otherwise.
+   * @return true if the `cbcs` encryption is supported, or false otherwise.
    */
   @UsedByNative
-  static boolean isWidevineCryptoSchemeSupported(String containerMimeType, boolean usesCbcs) {
-    if (containerMimeType.isEmpty()) {
-      return isWidevineCryptoSchemeSupported(usesCbcs);
-    }
-    if (Build.VERSION.SDK_INT < 24 && usesCbcs) {
-      Log.e(TAG, "Encryption scheme 'cbcs' is not supported on this platform.");
-      return false;
-    }
-    return MediaDrm.isCryptoSchemeSupported(WIDEVINE_UUID, containerMimeType);
+  static boolean isCbcsSchemeSupported() {
+    // While 'cbcs' scheme was originally implemented in N, there was a bug (in the
+    // DRM code) which means that it didn't really work properly until N-MR1).
+    return Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1;
   }
 
   /** Destroy the MediaDrmBridge object. */

@@ -19,10 +19,10 @@ group("gn_all") {
     "//cobalt/bindings/testing:bindings_test",
     "//cobalt/browser:browser_test",
     "//cobalt/cssom:cssom_test",
+    "//cobalt/demos/simple_sandbox",
     "//cobalt/dom:dom_test",
     "//cobalt/dom_parser:dom_parser_test",
     "//cobalt/encoding:text_encoding_test",
-    "//cobalt/extension:extension_test",
     "//cobalt/layout:layout_test",
     "//cobalt/layout_tests",
     "//cobalt/layout_tests:web_platform_tests",
@@ -47,6 +47,7 @@ group("gn_all") {
 
   if (sb_is_evergreen) {
     deps += [
+      "//cobalt/updater:updater_test",
       "//components/update_client:cobalt_slot_management_test",
       "//components/update_client:update_client_test",
     ]

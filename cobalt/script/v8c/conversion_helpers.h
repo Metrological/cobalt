@@ -16,7 +16,6 @@
 #define COBALT_SCRIPT_V8C_CONVERSION_HELPERS_H_
 
 #include <cmath>
-
 #include <limits>
 #include <string>
 #include <utility>
@@ -29,6 +28,7 @@
 #include "cobalt/base/compiler.h"
 #include "cobalt/base/enable_if.h"
 #include "cobalt/base/token.h"
+#include "cobalt/script/promise.h"
 #include "cobalt/script/sequence.h"
 #include "cobalt/script/v8c/algorithm_helpers.h"
 #include "cobalt/script/v8c/helpers.h"
@@ -85,7 +85,8 @@ enum ConversionFlags {
 inline void ToJSValue(v8::Isolate* isolate, const std::string& in_string,
                       v8::Local<v8::Value>* out_value) {
   v8::MaybeLocal<v8::String> maybe_string = v8::String::NewFromUtf8(
-      isolate, in_string.data(), v8::NewStringType::kNormal, in_string.size());
+      isolate, in_string.data(), v8::NewStringType::kNormal,
+      static_cast<int>(in_string.size()));
   v8::Local<v8::Value> string;
   if (!maybe_string.ToLocal(&string)) {
     *out_value = v8::Null(isolate);
@@ -107,7 +108,8 @@ void FromJSValue(v8::Isolate* isolate, v8::Local<v8::Value> value,
 inline void ToJSValue(v8::Isolate* isolate, const std::vector<uint8_t>& in_data,
                       v8::Local<v8::Value>* out_value) {
   v8::MaybeLocal<v8::String> maybe_string = v8::String::NewFromOneByte(
-      isolate, in_data.data(), v8::NewStringType::kNormal, in_data.size());
+      isolate, in_data.data(), v8::NewStringType::kNormal,
+      static_cast<int>(in_data.size()));
   v8::Local<v8::Value> string;
   if (!maybe_string.ToLocal(&string)) {
     *out_value = v8::Null(isolate);
@@ -165,12 +167,12 @@ inline void ToJSValue(
 }
 
 template <typename T>
-inline const double UpperBound() {
+inline double UpperBound() {
   return std::numeric_limits<T>::max();
 }
 
 template <typename T>
-inline const double LowerBound() {
+inline double LowerBound() {
   return std::numeric_limits<T>::min();
 }
 
@@ -179,19 +181,19 @@ inline const double LowerBound() {
 // step 1 of ConvertToInt, see:
 // https://heycam.github.io/webidl/#abstract-opdef-converttoint
 template <>
-inline const double UpperBound<int64_t>() {
+inline double UpperBound<int64_t>() {
   const double kInt64UpperBound = static_cast<double>((1ll << 53) - 1);
   return kInt64UpperBound;
 }
 
 template <>
-inline const double LowerBound<int64_t>() {
+inline double LowerBound<int64_t>() {
   const double kInt64LowerBound = static_cast<double>(-(1ll << 53) + 1);
   return kInt64LowerBound;
 }
 
 template <>
-inline const double UpperBound<uint64_t>() {
+inline double UpperBound<uint64_t>() {
   const double kUInt64UpperBound = static_cast<double>((1ll << 53) - 1);
   return kUInt64UpperBound;
 }
@@ -584,6 +586,7 @@ inline void FromJSValue(v8::Isolate* isolate, v8::Local<v8::Value> value,
 template <typename T>
 void ToJSValue(v8::Isolate* isolate, const script::Sequence<T>& sequence,
                v8::Local<v8::Value>* out_value) {
+  // https://webidl.spec.whatwg.org/#es-sequence
   // 1. Let n be the length of S.
   using size_type = typename script::Sequence<T>::size_type;
   size_type count = sequence.size();
@@ -601,8 +604,7 @@ void ToJSValue(v8::Isolate* isolate, const script::Sequence<T>& sequence,
 
     // 4.3. Let P be the result of calling ToString(i).
     // 4.4. Call CreateDataProperty(A, P, E).
-    v8::Maybe<bool> set_result =
-        array->Set(isolate->GetCurrentContext(), index, element);
+    array->Set(isolate->GetCurrentContext(), index, element).Check();
 
     // 4.5. Set i to i + 1.
   }
@@ -697,14 +699,22 @@ void FromJSValue(v8::Isolate* isolate, v8::Local<v8::Value> value,
   }
 }
 
+// Promise -> JSValue
 template <typename T>
 void ToJSValue(v8::Isolate* isolate,
                const ScriptValue<Promise<T>>* promise_holder,
                v8::Local<v8::Value>* out_value);
 
+// Promise -> JSValue
 template <typename T>
 void ToJSValue(v8::Isolate* isolate, ScriptValue<Promise<T>>* promise_holder,
                v8::Local<v8::Value>* out_value);
+
+// JSValue -> Promise
+template <typename T>
+void FromJSValue(v8::Isolate* isolate, v8::Local<v8::Value> value,
+                 int conversion_flags, ExceptionState* exception_state,
+                 script::Promise<T>* out_promise);
 
 // script::Handle<T> -> JSValue
 template <typename T>

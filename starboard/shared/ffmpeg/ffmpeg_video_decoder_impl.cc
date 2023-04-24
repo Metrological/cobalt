@@ -74,6 +74,22 @@ void ReleaseBuffer(AVCodecContext*, AVFrame* frame) {
 }
 #endif  // LIBAVUTIL_VERSION_INT >= LIBAVUTIL_VERSION_52_8
 
+AVCodecID GetFfmpegCodecIdByMediaCodec(SbMediaVideoCodec video_codec) {
+  // Note: although SbMediaVideoCodec values exist for them, MPEG2VIDEO, THEORA,
+  // and VC1 are not included here since we do not officially support them.
+  // Also, note that VP9 and HEVC use different decoders (not FFmpeg).
+  switch (video_codec) {
+    case kSbMediaVideoCodecH264:
+      return AV_CODEC_ID_H264;
+    case kSbMediaVideoCodecVp8:
+      return AV_CODEC_ID_VP8;
+    default:
+      SB_DLOG(WARNING) << "FFmpeg decoder does not support SbMediaVideoCodec "
+                       << video_codec;
+  }
+  return AV_CODEC_ID_NONE;
+}
+
 const bool g_registered =
     FFMPEGDispatch::RegisterSpecialization(FFMPEG,
                                            LIBAVCODEC_VERSION_MAJOR,
@@ -132,11 +148,14 @@ void VideoDecoderImpl<FFMPEG>::Initialize(
   error_cb_ = error_cb;
 }
 
-void VideoDecoderImpl<FFMPEG>::WriteInputBuffer(
-    const scoped_refptr<InputBuffer>& input_buffer) {
-  SB_DCHECK(input_buffer);
+void VideoDecoderImpl<FFMPEG>::WriteInputBuffers(
+    const InputBuffers& input_buffers) {
+  SB_DCHECK(input_buffers.size() == 1);
+  SB_DCHECK(input_buffers[0]);
   SB_DCHECK(queue_.Poll().type == kInvalid);
   SB_DCHECK(decoder_status_cb_);
+
+  const auto& input_buffer = input_buffers[0];
 
   if (stream_ended_) {
     SB_LOG(ERROR) << "WriteInputFrame() was called after WriteEndOfStream().";
@@ -149,7 +168,6 @@ void VideoDecoderImpl<FFMPEG>::WriteInputBuffer(
         &VideoDecoderImpl<FFMPEG>::ThreadEntryPoint, this);
     SB_DCHECK(SbThreadIsValid(decoder_thread_));
   }
-
   queue_.Put(Event(input_buffer));
 }
 
@@ -161,7 +179,7 @@ void VideoDecoderImpl<FFMPEG>::WriteEndOfStream() {
   stream_ended_ = true;
 
   if (!SbThreadIsValid(decoder_thread_)) {
-    // In case there is no WriteInputBuffer() call before WriteEndOfStream(),
+    // In case there is no WriteInputBuffers() call before WriteEndOfStream(),
     // don't create the decoder thread and send the EOS frame directly.
     decoder_status_cb_(kBufferFull, VideoFrame::CreateEOSFrame());
     return;
@@ -279,11 +297,12 @@ bool VideoDecoderImpl<FFMPEG>::DecodePacket(AVPacket* packet) {
                                      &codec_aligned_height,
                                      codec_linesize_align);
 
-  int pitch = AlignUp(av_frame_->width, codec_linesize_align[0] * 2);
+  int y_pitch = AlignUp(av_frame_->width, codec_linesize_align[0] * 2);
+  int uv_pitch = av_frame_->linesize[1];
 
   const int kBitDepth = 8;
   scoped_refptr<CpuVideoFrame> frame = CpuVideoFrame::CreateYV12Frame(
-      kBitDepth, av_frame_->width, av_frame_->height, pitch,
+      kBitDepth, av_frame_->width, av_frame_->height, y_pitch, uv_pitch,
       av_frame_->reordered_opaque, av_frame_->data[0], av_frame_->data[1],
       av_frame_->data[2]);
 
@@ -319,7 +338,7 @@ void VideoDecoderImpl<FFMPEG>::InitializeCodec() {
   }
 
   codec_context_->codec_type = AVMEDIA_TYPE_VIDEO;
-  codec_context_->codec_id = AV_CODEC_ID_H264;
+  codec_context_->codec_id = GetFfmpegCodecIdByMediaCodec(video_codec_);
   codec_context_->profile = FF_PROFILE_UNKNOWN;
   codec_context_->coded_width = 0;
   codec_context_->coded_height = 0;

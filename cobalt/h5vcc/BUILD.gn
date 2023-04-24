@@ -22,9 +22,6 @@ config("h5vcc_external_config") {
   if (enable_account_manager) {
     defines += [ "COBALT_ENABLE_ACCOUNT_MANAGER" ]
   }
-  if (enable_sso) {
-    defines += [ "COBALT_ENABLE_SSO" ]
-  }
 }
 
 static_library("h5vcc") {
@@ -76,13 +73,14 @@ static_library("h5vcc") {
     "//cobalt/base",
     "//cobalt/browser:browser_switches",
     "//cobalt/build:cobalt_build_id",
+    "//cobalt/cache",
     "//cobalt/configuration",
     "//cobalt/dom",
     "//cobalt/media",
     "//cobalt/network",
+    "//cobalt/persistent_storage:persistent_settings",
     "//cobalt/script",
     "//cobalt/speech",
-    "//cobalt/sso",
     "//cobalt/storage",
     "//cobalt/trace_event",
     "//cobalt/watchdog",
@@ -95,15 +93,8 @@ static_library("h5vcc") {
 
   if (enable_account_manager) {
     sources += [
-      "h5vcc_account_manager.cc",
-      "h5vcc_account_manager.h",
-    ]
-  }
-
-  if (enable_sso) {
-    sources += [
-      "h5vcc_sso.cc",
-      "h5vcc_sso.h",
+      "h5vcc_account_manager_internal.cc",
+      "h5vcc_account_manager_internal.h",
     ]
   }
 

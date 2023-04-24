@@ -30,6 +30,7 @@ component("media") {
     "base/audio_bus.h",
     "base/data_source.cc",
     "base/data_source.h",
+    "base/decode_target_provider.h",
     "base/decoder_buffer_cache.cc",
     "base/decoder_buffer_cache.h",
     "base/drm_system.cc",
@@ -40,20 +41,20 @@ component("media") {
     "base/interleaved_sinc_resampler.h",
     "base/playback_statistics.cc",
     "base/playback_statistics.h",
+    "base/sbplayer_bridge.cc",
+    "base/sbplayer_bridge.h",
+    "base/sbplayer_interface.cc",
+    "base/sbplayer_interface.h",
     "base/sbplayer_pipeline.cc",
     "base/sbplayer_set_bounds_helper.cc",
     "base/sbplayer_set_bounds_helper.h",
-    "base/starboard_player.cc",
-    "base/starboard_player.h",
-    "base/video_frame_provider.h",
     "decoder_buffer_allocator.cc",
     "decoder_buffer_allocator.h",
     "decoder_buffer_memory_info.h",
-    "fetcher_buffered_data_source.cc",
-    "fetcher_buffered_data_source.h",
+    "file_data_source.cc",
+    "file_data_source.h",
     "media_module.cc",
     "media_module.h",
-    "player/buffered_data_source.h",
     "player/web_media_player_impl.cc",
     "player/web_media_player_impl.h",
     "player/web_media_player_proxy.cc",
@@ -64,6 +65,8 @@ component("media") {
     "progressive/avc_parser.h",
     "progressive/data_source_reader.cc",
     "progressive/data_source_reader.h",
+    "progressive/demuxer_extension_wrapper.cc",
+    "progressive/demuxer_extension_wrapper.h",
     "progressive/mp4_map.cc",
     "progressive/mp4_map.h",
     "progressive/mp4_parser.cc",
@@ -74,6 +77,8 @@ component("media") {
     "progressive/progressive_parser.h",
     "progressive/rbsp_stream.cc",
     "progressive/rbsp_stream.h",
+    "url_fetcher_data_source.cc",
+    "url_fetcher_data_source.h",
   ]
 
   configs -= [ "//starboard/build/config:size" ]
@@ -106,6 +111,8 @@ target(gtest_target_type, "media_test") {
   testonly = true
 
   sources = [
+    "file_data_source_test.cc",
+    "progressive/demuxer_extension_wrapper_test.cc",
     "progressive/mock_data_source_reader.h",
     "progressive/mp4_map_unittest.cc",
     "progressive/rbsp_stream_unittest.cc",
@@ -116,9 +123,13 @@ target(gtest_target_type, "media_test") {
 
   deps = [
     ":media",
+    "//base/test:test_support",
     "//cobalt/base",
     "//cobalt/test:run_all_unittests",
     "//testing/gmock",
     "//testing/gtest",
+    "//third_party/chromium/media:media",
   ]
+
+  data_deps = [ "//cobalt/media/testing:cobalt_media_download_test_data" ]
 }

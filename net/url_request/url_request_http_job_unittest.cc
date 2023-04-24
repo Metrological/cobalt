@@ -489,12 +489,12 @@ TEST_F(URLRequestHttpJobWithMockSocketsTest, TestSuccessfulHeadWithContent) {
             network_delegate_.total_network_bytes_received());
 }
 
-#if !defined(HTTP_CACHE_TESTING_DISABLED)
 TEST_F(URLRequestHttpJobWithMockSocketsTest, TestSuccessfulCachedHeadRequest) {
   // Cache the response.
   {
     MockWrite writes[] = {MockWrite(kSimpleGetMockWrite)};
     MockRead reads[] = {MockRead("HTTP/1.1 200 OK\r\n"
+                                 "Content-Type: example/unit_test\r\n"
                                  "Content-Length: 12\r\n\r\n"),
                         MockRead("Test Content")};
 
@@ -548,7 +548,6 @@ TEST_F(URLRequestHttpJobWithMockSocketsTest, TestSuccessfulCachedHeadRequest) {
     EXPECT_EQ(0, request->GetTotalReceivedBytes());
   }
 }
-#endif
 
 TEST_F(URLRequestHttpJobWithMockSocketsTest,
        TestContentLengthSuccessfulHttp09Request) {

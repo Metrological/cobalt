@@ -17,6 +17,7 @@
 
 #include <string>
 
+#include "base/callback.h"
 #include "cobalt/base/event_dispatcher.h"
 #include "cobalt/dom/c_val_view.h"
 #include "cobalt/dom/mutation_observer_task_manager.h"
@@ -26,10 +27,10 @@
 #include "cobalt/h5vcc/h5vcc_crash_log.h"
 #include "cobalt/h5vcc/h5vcc_runtime.h"
 #include "cobalt/h5vcc/h5vcc_settings.h"
-#include "cobalt/h5vcc/h5vcc_sso.h"
 #include "cobalt/h5vcc/h5vcc_storage.h"
 #include "cobalt/h5vcc/h5vcc_system.h"
 #include "cobalt/h5vcc/h5vcc_trace_event.h"
+#include "cobalt/persistent_storage/persistent_settings.h"
 #include "cobalt/script/wrappable.h"
 
 #if SB_IS(EVERGREEN)
@@ -54,6 +55,7 @@ class H5vcc : public script::Wrappable {
           user_agent_data(NULL),
           global_environment(NULL) {
     }
+    H5vccSettings::SetSettingFunc set_web_setting_func;
     media::MediaModule* media_module;
     network::NetworkModule* network_module;
 #if SB_IS(EVERGREEN)
@@ -63,6 +65,7 @@ class H5vcc : public script::Wrappable {
     base::EventDispatcher* event_dispatcher;
     web::NavigatorUAData* user_agent_data;
     script::GlobalEnvironment* global_environment;
+    persistent_storage::PersistentSettings* persistent_settings;
   };
 
   explicit H5vcc(const Settings& config);
@@ -79,9 +82,6 @@ class H5vcc : public script::Wrappable {
   const scoped_refptr<H5vccCrashLog>& crash_log() const { return crash_log_; }
   const scoped_refptr<H5vccRuntime>& runtime() const { return runtime_; }
   const scoped_refptr<H5vccSettings>& settings() const { return settings_; }
-#if defined(COBALT_ENABLE_SSO)
-  const scoped_refptr<H5vccSso>& sso() const { return sso_; }
-#endif
   const scoped_refptr<H5vccStorage>& storage() const { return storage_; }
   const scoped_refptr<H5vccSystem>& system() const { return system_; }
   const scoped_refptr<H5vccTraceEvent>& trace_event() const {
@@ -102,7 +102,6 @@ class H5vcc : public script::Wrappable {
   scoped_refptr<H5vccCrashLog> crash_log_;
   scoped_refptr<H5vccRuntime> runtime_;
   scoped_refptr<H5vccSettings> settings_;
-  scoped_refptr<H5vccSso> sso_;
   scoped_refptr<H5vccStorage> storage_;
   scoped_refptr<H5vccSystem> system_;
   scoped_refptr<H5vccTraceEvent> trace_event_;

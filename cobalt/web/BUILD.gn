@@ -60,16 +60,31 @@ static_library("web") {
     "blob.h",
     "buffer_source.cc",
     "buffer_source.h",
+    "cache.cc",
+    "cache.h",
+    "cache_request.h",
+    "cache_storage.cc",
+    "cache_storage.h",
+    "cache_utils.cc",
+    "cache_utils.h",
     "cobalt_ua_data_values_interface.cc",
     "cobalt_ua_data_values_interface.h",
     "context.h",
+    "crypto.cc",
+    "crypto.h",
     "csp_delegate.cc",
     "csp_delegate.h",
     "csp_delegate_factory.cc",
     "csp_delegate_factory.h",
     "csp_violation_reporter.cc",
     "csp_violation_reporter.h",
+    "environment_settings_helper.cc",
+    "environment_settings_helper.h",
     "location_base.h",
+    "message_event.cc",
+    "message_event.h",
+    "message_port.cc",
+    "message_port.h",
     "navigator_base.cc",
     "navigator_base.h",
     "navigator_ua_data.cc",
@@ -82,6 +97,7 @@ static_library("web") {
     "url_utils.cc",
     "url_utils.h",
     "user_agent_platform_info.h",
+    "web_settings.h",
     "window_or_worker_global_scope.cc",
     "window_or_worker_global_scope.h",
   ]
@@ -90,12 +106,16 @@ static_library("web") {
     ":web_events",
     "//cobalt/base",
     "//cobalt/browser:generated_bindings",
+    "//cobalt/cache",
     "//cobalt/csp",
+    "//cobalt/dom:media_settings",
     "//cobalt/network",
     "//cobalt/network_bridge",
     "//cobalt/script",
     "//cobalt/script:engine",
     "//cobalt/script/v8c:engine",
+    "//cobalt/xhr:xhr_settings",
+    "//net",
     "//url",
   ]
 
@@ -105,6 +125,23 @@ static_library("web") {
     # on this one.
     ":web_events",
     "//cobalt/browser:generated_types",
+  ]
+}
+
+static_library("window_timers") {
+  has_pedantic_warnings = true
+
+  sources = [
+    "window_timers.cc",
+    "window_timers.h",
+  ]
+
+  deps = [
+    ":stat_tracker",
+    ":web_events",
+    "//cobalt/base",
+    "//cobalt/script",
+    "//nb",
   ]
 }
 
@@ -136,17 +173,24 @@ target(gtest_target_type, "web_test") {
 
   sources = [
     "blob_test.cc",
+    "cache_storage_test.cc",
+    "cache_utils_test.cc",
+    "crypto_test.cc",
     "csp_delegate_test.cc",
     "custom_event_test.cc",
     "error_event_test.cc",
     "event_target_test.cc",
     "event_test.cc",
+    "message_event_test.cc",
     "url_test.cc",
     "url_utils_test.cc",
+    "window_timers_test.cc",
   ]
 
   deps = [
+    ":stat_tracker",
     ":web",
+    ":window_timers",
     "//cobalt/base",
     "//cobalt/browser:browser",
     "//cobalt/browser:generated_bindings",

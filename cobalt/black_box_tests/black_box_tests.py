@@ -62,16 +62,27 @@ _TESTS_NEEDING_SYSTEM_SIGNAL = [
 _TESTS_NO_SIGNAL = [
     'allow_eval',
     'compression_test',
+    'default_site_can_load',
     'disable_eval_with_csp',
-    # http_cache is disabled due to flakiness. Planned update to make use of
-    # transferSize rather than load timings to make it more consistent.
-    # 'http_cache',
+    'h5vcc_storage_write_verify_test',
+    'http_cache',
     'persistent_cookie',
+    'service_worker_cache_keys_test',
+    'service_worker_controller_activation_test',
+    'service_worker_get_registrations_test',
+    'service_worker_fetch_test',
+    'service_worker_message_test',
+    'service_worker_test',
+    # TODO(b/259731731) disable for now until persisted registrations
+    # activate correctly.
+    'service_worker_persist_test',
     'soft_mic_platform_service_test',
+    'text_encoding_test',
     'web_debugger',
     'web_platform_tests',
     'web_worker_test',
-    'service_worker_test',
+    'worker_csp_test',
+    'worker_load_test',
 ]
 # These tests can only be run on platforms whose app launcher can send deep
 # links.
@@ -92,7 +103,7 @@ class BlackBoxTestCase(unittest.TestCase):
   """Base class for Cobalt black box test cases."""
 
   def __init__(self, *args, **kwargs):
-    super(BlackBoxTestCase, self).__init__(*args, **kwargs)
+    super().__init__(*args, **kwargs)
     self.launcher_params = _launcher_params
     self.platform_config = build.GetPlatformConfig(_launcher_params.platform)
     self.cobalt_config = self.platform_config.GetApplicationConfiguration(
@@ -108,7 +119,7 @@ class BlackBoxTestCase(unittest.TestCase):
     super(BlackBoxTestCase, cls).tearDownClass()
     logging.info('Done %s', cls.__name__)
 
-  def CreateCobaltRunner(self, url, target_params=None):
+  def CreateCobaltRunner(self, url=None, target_params=None):
     all_target_params = list(target_params) if target_params else []
     if _launcher_params.target_params is not None:
       all_target_params += _launcher_params.target_params
@@ -181,13 +192,12 @@ class BlackBoxTests(object):
     # be able to bind correctly with incomplete support of IPv6
     if device_id and IsValidIpAddress(device_id):
       _launcher_params.target_params.append(
-          '--dev_servers_listen_ip={}'.format(device_id))
+          f'--dev_servers_listen_ip={device_id}')
     elif IsValidIpAddress(server_binding_address):
       _launcher_params.target_params.append(
-          '--dev_servers_listen_ip={}'.format(server_binding_address))
+          f'--dev_servers_listen_ip={server_binding_address}')
     _launcher_params.target_params.append(
-        '--web-platform-test-server=http://web-platform.test:{}'.format(
-            wpt_http_port))
+        f'--web-platform-test-server=http://web-platform.test:{wpt_http_port}')
 
     # Port used to create the proxy server. If not specified, a random free
     # port is used.
@@ -195,8 +205,8 @@ class BlackBoxTests(object):
       proxy_port = str(self.GetUnusedPort([server_binding_address]))
     if proxy_address is None:
       proxy_address = server_binding_address
-    _launcher_params.target_params.append('--proxy=%s:%s' %
-                                          (proxy_address, proxy_port))
+    _launcher_params.target_params.append(
+        f'--proxy={proxy_address}:{proxy_port}')
 
     self.proxy_port = proxy_port
     self.test_name = test_name
@@ -220,10 +230,10 @@ class BlackBoxTests(object):
     out_dir = _launcher_params.out_directory
     is_ci = out_dir and 'mh_lab' in out_dir  # pylint: disable=unsupported-membership-test
 
-    target = (_launcher_params.platform, _launcher_params.config)
-    if is_ci and '{}/{}'.format(*target) in _DISABLED_BLACKBOXTEST_CONFIGS:
+    if is_ci and (f'{_launcher_params.platform}/{_launcher_params.config}'
+                  in _DISABLED_BLACKBOXTEST_CONFIGS):
       logging.warning('Blackbox tests disabled for platform:%s config:%s',
-                      *target)
+                      _launcher_params.platform, _launcher_params.config)
       return 0
 
     logging.info('Using proxy port: %s', self.proxy_port)
@@ -233,12 +243,13 @@ class BlackBoxTests(object):
         host_resolve_map=self.host_resolve_map,
         client_ips=self.device_ips):
       if self.test_name:
-        suite = unittest.TestLoader().loadTestsFromModule(
-            importlib.import_module(_TEST_DIR_PATH + self.test_name))
+        suite = unittest.TestLoader().loadTestsFromName(_TEST_DIR_PATH +
+                                                        self.test_name)
       else:
         suite = LoadTests(_launcher_params)
+      # Using verbosity=2 to log individual test function names and results.
       return_code = not unittest.TextTestRunner(
-          verbosity=0, stream=sys.stdout).run(suite).wasSuccessful()
+          verbosity=2, stream=sys.stdout).run(suite).wasSuccessful()
       return return_code
 
   def GetUnusedPort(self, addresses):

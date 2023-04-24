@@ -21,8 +21,9 @@
 DIR="$(dirname "${0}")"
 
 AUTH_METHOD="public-key"
-TEST_TYPE="functional"
-while getopts "d:a:t:" o; do
+USE_COMPRESSED_SYSTEM_IMAGE="false"
+SYSTEM_IMAGE_EXTENSION=".so"
+while getopts "d:a:c" o; do
     case "${o}" in
         d)
             DEVICE_ID=${OPTARG}
@@ -30,8 +31,9 @@ while getopts "d:a:t:" o; do
         a)
             AUTH_METHOD=${OPTARG}
             ;;
-        t)
-            TEST_TYPE=${OPTARG}
+        c)
+            USE_COMPRESSED_SYSTEM_IMAGE="true"
+            SYSTEM_IMAGE_EXTENSION=".lz4"
             ;;
     esac
 done
@@ -44,16 +46,18 @@ fi
 
 source $DIR/setup.sh
 
-# Find all of the test files within the 'test' subdirectory.
-if [[ "${TEST_TYPE}" == "functional" ]]; then
-  TESTS=($(eval "find ${DIR}/tests -maxdepth 1 -name '*_test.sh'"))
-elif [[ "${TEST_TYPE}" == "performance" ]]; then
-  TESTS=($(eval "find ${DIR}/performance_tests -maxdepth 1 -name '*_test.sh'"))
+if [[ "${USE_COMPRESSED_SYSTEM_IMAGE}" == "true" ]]; then
+  # It would be valid to run all test cases using a compressed system image but
+  # is probably excessive. Instead, just two cases are run: one to test that a
+  # compressed system image can be loaded and one to test that a compressed
+  # update can be upgraded to.
+  TESTS=($(eval "find ${DIR}/tests -maxdepth 1 \( -name 'evergreen_lite_test.sh' -o -name 'verify_qa_channel_compressed_update_test.sh' \)"))
 else
-  echo "Only functional and performance tests are supported"
-  exit 1
+  TESTS=($(eval "find ${DIR}/tests -maxdepth 1 -name '*_test.sh'"))
 fi
+
 COUNT=0
+RETRIED=()
 FAILED=()
 PASSED=()
 SKIPPED=()
@@ -65,60 +69,87 @@ deploy_cobalt "${DIR}/${1}"
 log "info" " [==========] Running ${#TESTS[@]} tests."
 
 # Loop over all of the tests found in the current directory and run them.
-for test in "${TESTS[@]}"; do
+for test in "${TESTS[@]}"
+do
   source $test "${DIR}/${1}"
 
-  log "info" " [ RUN      ] ${TEST_NAME}"
-
-  run_test
-
-  RESULT=$?
-
-  if [[ "${RESULT}" -eq 0 ]]; then
-    log "info"  " [   PASSED ] ${TEST_NAME}"
-    PASSED+=("${TEST_NAME}")
-  elif [[ "${RESULT}" -eq 1 ]]; then
-    log "error" " [   FAILED ] ${TEST_NAME}"
-    FAILED+=("$TEST_NAME")
-  elif [[ "${RESULT}" -eq 2 ]]; then
-    log "warning" " [  SKIPPED ] ${TEST_NAME}"
-    SKIPPED+=("$TEST_NAME")
+  # Enable the tests to withstand some flakiness by allowing a small number
+  # (i.e., 3) of test cases to be retried twice.
+  if [[ ${#RETRIED[@]} -lt 3 ]]; then
+    attempts_allowed=3
+  else
+    attempts_allowed=1
   fi
 
-  stop_cobalt &> /dev/null
+  for ((attempt=0; attempt<attempts_allowed; attempt++))
+  do
+    if [[ $attempt -gt 0 ]]; then
+      RETRIED+=("$TEST_NAME")
+    fi
+
+    log "info" " [ RUN      ] ${TEST_NAME} attempt ${attempt}"
+
+    run_test
+
+    RESULT=$?
+
+    stop_cobalt &> /dev/null
+
+    if [[ "${RESULT}" -eq 0 ]]; then
+      log "info"  " [   PASSED ] ${TEST_NAME} attempt ${attempt}"
+      PASSED+=("${TEST_NAME}")
+      break
+    elif [[ "${RESULT}" -eq 1 ]]; then
+      log "error" " [   FAILED ] ${TEST_NAME} attempt ${attempt}"
+      if [[ $attempt -eq $(($attempts_allowed - 1)) ]]; then
+        # No retry is available so consider the test case failed.
+        FAILED+=("$TEST_NAME")
+        break
+      fi
+    elif [[ "${RESULT}" -eq 2 ]]; then
+      log "warning" " [  SKIPPED ] ${TEST_NAME} attempt ${attempt}"
+      SKIPPED+=("$TEST_NAME")
+      break
+    fi
+  done
 
   COUNT=$((COUNT + 1))
 done
 
 log "info" " [==========] ${COUNT} tests ran."
 
-# Output the number of passed tests.
+if [[ "${#RETRIED[@]}" -eq 1 ]]; then
+  log "warning" " [  RETRIED ] 1 test, listed below:"
+elif [[ "${#RETRIED[@]}" -gt 1 ]]; then
+  log "warning" " [  RETRIED ] ${#RETRIED[@]} tests, listed below:"
+fi
+
+for test in "${RETRIED[@]}"; do
+  log "warning" " [  RETRIED ] ${test}"
+done
+
 if [[ "${#PASSED[@]}" -eq 1 ]]; then
   log "info" " [  PASSED  ] 1 test."
 elif [[ "${#PASSED[@]}" -gt 1 ]]; then
   log "info" " [  PASSED  ] ${#PASSED[@]} tests."
 fi
 
-# Output the number of skipped tests.
 if [[ "${#SKIPPED[@]}" -eq 1 ]]; then
   log "warning" " [  SKIPPED ] 1 test, listed below:"
 elif [[ "${#SKIPPED[@]}" -gt 1 ]]; then
   log "warning" " [  SKIPPED ] ${#SKIPPED[@]} tests, listed below:"
 fi
 
-# Output each of the skipped tests.
 for test in "${SKIPPED[@]}"; do
   log "warning" " [  SKIPPED ] ${test}"
 done
 
-# Output the number of failed tests.
 if [[ "${#FAILED[@]}" -eq 1 ]]; then
   log "error" " [  FAILED  ] 1 test, listed below:"
 elif [[ "${#FAILED[@]}" -gt 1 ]]; then
   log "error" " [  FAILED  ] ${#FAILED[@]} tests, listed below:"
 fi
 
-# Output each of the failed tests.
 for test in "${FAILED[@]}"; do
   log "error" " [  FAILED  ] ${test}"
 done
@@ -127,7 +158,7 @@ log "info" " [==========] Cleaning up."
 
 clean_up
 
-log "info" " [==========] Finished."
+log "info" " [==========] Finished testing with USE_COMPRESSED_SYSTEM_IMAGE=${USE_COMPRESSED_SYSTEM_IMAGE}."
 
 if [[ "${#FAILED[@]}" -eq 0 ]]; then
   exit 0

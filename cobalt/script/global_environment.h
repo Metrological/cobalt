@@ -27,6 +27,7 @@
 #include "cobalt/script/stack_frame.h"
 #include "cobalt/script/value_handle.h"
 #include "cobalt/script/wrappable.h"
+#include "v8/include/v8.h"
 
 namespace cobalt {
 namespace script {
@@ -58,6 +59,10 @@ class GlobalEnvironment : public base::RefCounted<GlobalEnvironment>,
 
   // Returns the global object if it is a wrappable.
   virtual Wrappable* global_wrappable() const = 0;
+
+  // Compiles the code but does not execute.
+  virtual v8::MaybeLocal<v8::Script> Compile(
+      const scoped_refptr<SourceCode>& source_code) = 0;
 
   // Evaluate the JavaScript source code. Returns true on success,
   // false if there is an exception.
@@ -99,6 +104,8 @@ class GlobalEnvironment : public base::RefCounted<GlobalEnvironment>,
   // Allow eval().
   virtual void EnableEval() = 0;
 
+  virtual bool IsEvalEnabled() = 0;
+
   // Disable just-in-time compilation of JavaScript source code to native
   // code.  Calling this is a no-op if JIT was not enabled in the first place,
   // or if the engine does not support disabling JIT.
@@ -138,25 +145,28 @@ class GlobalEnvironment : public base::RefCounted<GlobalEnvironment>,
   // should live longer than any ScriptValueFactory pointer.
   virtual ScriptValueFactory* script_value_factory() = 0;
 
+  virtual v8::Isolate* isolate() const = 0;
+  virtual v8::Local<v8::Context> context() const = 0;
+
   class ScopedPreventGarbageCollection {
    public:
     ScopedPreventGarbageCollection(GlobalEnvironment* global_environment,
                                    Wrappable* wrappable)
-        : global_environment(global_environment->AsWeakPtr()),
-          wrappable(wrappable) {
+        : global_environment_(global_environment->AsWeakPtr()),
+          wrappable_(wrappable) {
       global_environment->PreventGarbageCollection(
-          base::WrapRefCounted(wrappable));
+          base::WrapRefCounted(wrappable_));
     }
 
     ~ScopedPreventGarbageCollection() {
-      if (global_environment) {
-        global_environment->AllowGarbageCollection(wrappable);
+      if (global_environment_) {
+        global_environment_->AllowGarbageCollection(wrappable_);
       }
     }
 
    private:
-    base::WeakPtr<GlobalEnvironment> global_environment;
-    Wrappable* wrappable;
+    base::WeakPtr<GlobalEnvironment> global_environment_;
+    Wrappable* wrappable_;
   };
 
  protected:

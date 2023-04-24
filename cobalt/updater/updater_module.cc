@@ -32,7 +32,6 @@
 #include "base/threading/thread_task_runner_handle.h"
 #include "base/version.h"
 #include "cobalt/browser/switches.h"
-#include "cobalt/extension/installation_manager.h"
 #include "cobalt/updater/crash_client.h"
 #include "cobalt/updater/crash_reporter.h"
 #include "cobalt/updater/utils.h"
@@ -41,11 +40,12 @@
 #include "components/update_client/utils.h"
 #include "starboard/common/file.h"
 #include "starboard/configuration_constants.h"
+#include "starboard/extension/installation_manager.h"
 
 namespace {
 
-using update_client::ComponentState;
 using update_client::CobaltSlotManagement;
+using update_client::ComponentState;
 
 // The SHA256 hash of the "cobalt_evergreen_public" key.
 constexpr uint8_t kCobaltPublicKeyHash[] = {
@@ -95,7 +95,7 @@ namespace cobalt {
 namespace updater {
 
 // The delay in seconds before the first update check.
-const uint64_t kDefaultUpdateCheckDelaySeconds = 15;
+const uint64_t kDefaultUpdateCheckDelaySeconds = 30;
 
 void Observer::OnEvent(Events event, const std::string& id) {
   LOG(INFO) << "Observer::OnEvent id=" << id;
@@ -327,7 +327,7 @@ std::string UpdaterModule::GetUpdaterChannel() const {
   LOG(INFO) << "UpdaterModule::GetUpdaterChannel";
   auto config = updater_configurator_;
   if (!config) {
-    LOG(ERROR) << "UpdaterModule::GetUpdaterChannel: missing config";
+    LOG(ERROR) << "UpdaterModule::GetUpdaterChannel: missing configurator";
     return "";
   }
 
@@ -347,7 +347,7 @@ std::string UpdaterModule::GetUpdaterStatus() const {
   LOG(INFO) << "UpdaterModule::GetUpdaterStatus";
   auto config = updater_configurator_;
   if (!config) {
-    LOG(ERROR) << "UpdaterModule::GetUpdaterStatus: missing configuration";
+    LOG(ERROR) << "UpdaterModule::GetUpdaterStatus: missing configurator";
     return "";
   }
 
@@ -408,6 +408,37 @@ void UpdaterModule::SetMinFreeSpaceBytes(uint64_t bytes) {
     updater_configurator_->SetMinFreeSpaceBytes(bytes);
   }
 }
+
+// TODO(b/244367569): refactor similar getter and setter methods in this class
+// to share common code.
+bool UpdaterModule::GetUseCompressedUpdates() const {
+  LOG(INFO) << "UpdaterModule::GetUseCompressedUpdates";
+  auto config = updater_configurator_;
+  if (!config) {
+    LOG(ERROR) << "UpdaterModule::GetUseCompressedUpdates: missing "
+               << "configurator";
+    return false;
+  }
+
+  bool use_compressed_updates = config->GetUseCompressedUpdates();
+  LOG(INFO) << "UpdaterModule::GetUseCompressedUpdates use_compressed_updates="
+            << use_compressed_updates;
+  return use_compressed_updates;
+}
+
+void UpdaterModule::SetUseCompressedUpdates(bool use_compressed_updates) {
+  auto config = updater_configurator_;
+  if (!config) {
+    LOG(ERROR) << "UpdaterModule::SetUseCompressedUpdates: missing "
+               << "configurator";
+    return;
+  }
+
+  LOG(INFO) << "UpdaterModule::SetUseCompressedUpdates use_compressed_updates="
+            << use_compressed_updates;
+  config->SetUseCompressedUpdates(use_compressed_updates);
+}
+
 
 }  // namespace updater
 }  // namespace cobalt

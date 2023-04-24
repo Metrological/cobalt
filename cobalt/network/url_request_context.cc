@@ -26,12 +26,14 @@
 #include "cobalt/network/persistent_cookie_store.h"
 #include "cobalt/network/proxy_config_service.h"
 #include "cobalt/network/switches.h"
+#include "cobalt/persistent_storage/persistent_settings.h"
 #include "net/cert/cert_net_fetcher.h"
 #include "net/cert/cert_verifier.h"
 #include "net/cert/cert_verify_proc.h"
 #include "net/cert/ct_policy_enforcer.h"
 #include "net/cert/do_nothing_ct_verifier.h"
 #include "net/cert_net/cert_net_fetcher_impl.h"
+#include "net/disk_cache/cobalt/cobalt_backend_impl.h"
 #include "net/dns/host_cache.h"
 #include "net/http/http_auth_handler_factory.h"
 #include "net/http/http_cache.h"
@@ -68,7 +70,8 @@ const char kQUICToggleCommandLongHelp[] =
 URLRequestContext::URLRequestContext(
     storage::StorageManager* storage_manager, const std::string& custom_proxy,
     net::NetLog* net_log, bool ignore_certificate_errors,
-    scoped_refptr<base::SingleThreadTaskRunner> network_task_runner)
+    scoped_refptr<base::SingleThreadTaskRunner> network_task_runner,
+    persistent_storage::PersistentSettings* persistent_settings)
     : ALLOW_THIS_IN_INITIALIZER_LIST(storage_(this))
 #if defined(ENABLE_DEBUGGER)
       ,
@@ -176,15 +179,32 @@ URLRequestContext::URLRequestContext(
         std::unique_ptr<net::HttpNetworkLayer>(
             new net::HttpNetworkLayer(storage_.http_network_session())));
   } else {
-    // TODO: Set max size of cache in Starboard.
-    const int cache_size_mb = 24;
+    using_http_cache_ = true;
+
+    int max_cache_bytes = 24 * 1024 * 1024;
+#if SB_API_VERSION >= 14
+    max_cache_bytes = kSbMaxSystemPathCacheDirectorySize;
+#endif
+    // Assume the non-http-cache memory in kSbSystemPathCacheDirectory
+    // is less than 1 mb and subtract this from the max_cache_bytes.
+    max_cache_bytes -= (1 << 20);
+
     auto http_cache = std::make_unique<net::HttpCache>(
         storage_.http_network_session(),
         std::make_unique<net::HttpCache::DefaultBackend>(
             net::DISK_CACHE, net::CACHE_BACKEND_COBALT,
             base::FilePath(std::string(path.data())),
-            /* max_bytes */ 1024 * 1024 * cache_size_mb),
+            /* max_bytes */ max_cache_bytes),
         true);
+    if (persistent_settings != nullptr) {
+      auto cache_enabled = persistent_settings->GetPersistentSettingAsBool(
+          disk_cache::kCacheEnabledPersistentSettingsKey, true);
+
+      if (!cache_enabled) {
+        http_cache->set_mode(net::HttpCache::Mode::DISABLE);
+      }
+    }
+
     storage_.set_http_transaction_factory(std::move(http_cache));
   }
 
@@ -213,6 +233,8 @@ void URLRequestContext::SetEnableQuic(bool enable_quic) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   storage_.http_network_session()->SetEnableQuic(enable_quic);
 }
+
+bool URLRequestContext::using_http_cache() { return using_http_cache_; }
 
 #if defined(ENABLE_DEBUGGER)
 void URLRequestContext::OnQuicToggle(const std::string& message) {

@@ -35,10 +35,11 @@ UserAgentPlatformInfo CreateEmptyPlatformInfo() {
   platform_info.set_brand("");
   platform_info.set_model("");
   platform_info.set_aux_field("");
-  platform_info.set_connection_type(base::nullopt);
   platform_info.set_javascript_engine_version("");
   platform_info.set_rasterizer_type("");
   platform_info.set_evergreen_version("");
+  platform_info.set_evergreen_type("");
+  platform_info.set_evergreen_file_type("");
   platform_info.set_cobalt_version("");
   platform_info.set_cobalt_build_version_number("");
   platform_info.set_build_configuration("");
@@ -243,13 +244,33 @@ TEST(UserAgentStringFactoryTest, SanitizedRasterizerType) {
             user_agent_string.find("FooBar" TCHARORSLASH "BazQux"));
 }
 
-TEST(UserAgentStringFactoryTest, SanitizedEvergreenType) {
+TEST(UserAgentStringFactoryTest, SanitizedEvergreenVersion) {
   UserAgentPlatformInfo platform_info =
       CreateOnlyOSNameAndVersionPlatformInfo();
   platform_info.set_evergreen_version("Foo" NOT_TCHAR "Bar" TCHAR
                                       "Baz" NOT_TCHAR "Qux");
   std::string user_agent_string = CreateUserAgentString(platform_info);
   EXPECT_NE(std::string::npos, user_agent_string.find("FooBar" TCHAR "BazQux"));
+}
+
+TEST(UserAgentStringFactoryTest, SanitizedEvergreenType) {
+  UserAgentPlatformInfo platform_info =
+      CreateOnlyOSNameAndVersionPlatformInfo();
+  platform_info.set_evergreen_type("Foo" NOT_TCHARORSLASH "Bar" TCHARORSLASH
+                                   "Baz" NOT_TCHARORSLASH "Qux");
+  std::string user_agent_string = CreateUserAgentString(platform_info);
+  EXPECT_NE(std::string::npos,
+            user_agent_string.find("FooBar" TCHARORSLASH "BazQux"));
+}
+
+TEST(UserAgentStringFactoryTest, SanitizedEvergreenFileType) {
+  UserAgentPlatformInfo platform_info =
+      CreateOnlyOSNameAndVersionPlatformInfo();
+  platform_info.set_evergreen_file_type(
+      "Foo" NOT_TCHARORSLASH "Bar" TCHARORSLASH "Baz" NOT_TCHARORSLASH "Qux");
+  std::string user_agent_string = CreateUserAgentString(platform_info);
+  EXPECT_NE(std::string::npos,
+            user_agent_string.find("FooBar" TCHARORSLASH "BazQux"));
 }
 
 TEST(UserAgentStringFactoryTest, SanitizedCobaltVersion) {
@@ -295,28 +316,8 @@ TEST(UserAgentStringFactoryTest, WithPlatformInfo) {
 
   const char* tv_info_str =
       "ApertureScienceInnovators_OTT_PbodyOrangeAtlasBlue_2013/001 "
-      "(Aperture Science Labs, GLaDOS, )";
+      "(Aperture Science Labs, GLaDOS)";
   EXPECT_NE(std::string::npos, user_agent_string.find(tv_info_str));
-}
-
-TEST(UserAgentStringFactoryTest, WithWiredConnection) {
-  UserAgentPlatformInfo platform_info =
-      CreateOnlyOSNameAndVersionPlatformInfo();
-  platform_info.set_connection_type(kSbSystemConnectionTypeWired);
-  platform_info.set_device_type(kSbSystemDeviceTypeOverTheTopBox);
-  std::string user_agent_string = CreateUserAgentString(platform_info);
-
-  EXPECT_NE(std::string::npos, user_agent_string.find(", Wired)"));
-}
-
-TEST(UserAgentStringFactoryTest, WithWirelessConnection) {
-  UserAgentPlatformInfo platform_info =
-      CreateOnlyOSNameAndVersionPlatformInfo();
-  platform_info.set_connection_type(kSbSystemConnectionTypeWireless);
-  platform_info.set_device_type(kSbSystemDeviceTypeOverTheTopBox);
-  std::string user_agent_string = CreateUserAgentString(platform_info);
-
-  EXPECT_NE(std::string::npos, user_agent_string.find(", Wireless)"));
 }
 
 TEST(UserAgentStringFactoryTest, WithOnlyBrandModelAndDeviceType) {
@@ -328,7 +329,7 @@ TEST(UserAgentStringFactoryTest, WithOnlyBrandModelAndDeviceType) {
   std::string user_agent_string = CreateUserAgentString(platform_info);
 
   const char* tv_info_str =
-      ", Unknown_OTT_Unknown_0/Unknown (Aperture Science, GLaDOS, )";
+      ", Unknown_OTT_Unknown_0/Unknown (Aperture Science, GLaDOS)";
   EXPECT_NE(std::string::npos, user_agent_string.find(tv_info_str));
 }
 
@@ -339,7 +340,7 @@ TEST(UserAgentStringFactoryTest, WithStarboardVersion) {
   std::string user_agent_string = CreateUserAgentString(platform_info);
 
   const char* tv_info_str =
-      "Starboard/6, Unknown_OTT_Unknown_0/Unknown (Unknown, Unknown, )";
+      "Starboard/6, Unknown_OTT_Unknown_0/Unknown (Unknown, Unknown)";
   EXPECT_NE(std::string::npos, user_agent_string.find(tv_info_str));
 }
 

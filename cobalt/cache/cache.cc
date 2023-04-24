@@ -14,57 +14,62 @@
 
 #include "cobalt/cache/cache.h"
 
-#include <algorithm>
 #include <string>
+#include <utility>
 
+#include "base/bind.h"
+#include "base/callback_helpers.h"
 #include "base/files/file_util.h"
 #include "base/memory/singleton.h"
-#include "base/strings/string_number_conversions.h"
-#include "cobalt/extension/javascript_cache.h"
+#include "base/optional.h"
+#include "base/values.h"
+#include "cobalt/configuration/configuration.h"
+#include "cobalt/persistent_storage/persistent_settings.h"
+#include "net/disk_cache/cobalt/cobalt_backend_impl.h"
 #include "starboard/configuration_constants.h"
-#include "starboard/directory.h"
+#include "starboard/extension/javascript_cache.h"
 #include "starboard/system.h"
 
 namespace {
 
-base::Optional<base::FilePath> CacheDirectory(
+base::Optional<uint32_t> GetMinSizeToCacheInBytes(
     disk_cache::ResourceType resource_type) {
+  switch (resource_type) {
+    case disk_cache::ResourceType::kCompiledScript:
+      return 4096u;
+    case disk_cache::ResourceType::kServiceWorkerScript:
+      return 1u;
+    default:
+      return base::nullopt;
+  }
+}
+
+base::Optional<std::string> GetSubdirectory(
+    disk_cache::ResourceType resource_type) {
+  switch (resource_type) {
+    case disk_cache::ResourceType::kCacheApi:
+      return "cache_api";
+    case disk_cache::ResourceType::kCompiledScript:
+      return "compiled_js";
+    case disk_cache::ResourceType::kServiceWorkerScript:
+      return "service_worker_js";
+    default:
+      return base::nullopt;
+  }
+}
+
+base::Optional<base::FilePath> GetCacheDirectory(
+    disk_cache::ResourceType resource_type) {
+  auto subdirectory = GetSubdirectory(resource_type);
+  if (!subdirectory) {
+    return base::nullopt;
+  }
   std::vector<char> path(kSbFileMaxPath, 0);
   if (!SbSystemGetPath(kSbSystemPathCacheDirectory, path.data(),
                        kSbFileMaxPath)) {
     return base::nullopt;
   }
-  // TODO: make subdirectory determined by type of cache data.
-  std::string cache_subdirectory;
-  switch (resource_type) {
-    case disk_cache::ResourceType::kCompiledScript:
-      cache_subdirectory = "compiled_js";
-      break;
-    default:
-      return base::nullopt;
-  }
-  auto cache_directory = base::FilePath(path.data()).Append(cache_subdirectory);
-  SbDirectoryCreate(cache_directory.value().c_str());
-  return cache_directory;
-}
-
-base::Optional<base::FilePath> FilePathFromKey(
-    uint32_t key, disk_cache::ResourceType resource_type) {
-  auto cache_directory = CacheDirectory(resource_type);
-  if (!cache_directory) {
-    return base::nullopt;
-  }
-  return cache_directory->Append(base::UintToString(key));
-}
-
-base::Optional<uint32_t> GetMaxStorageInBytes(
-    disk_cache::ResourceType resource_type) {
-  switch (resource_type) {
-    case disk_cache::ResourceType::kCompiledScript:
-      return 5 << 20;  // 5MiB
-    default:
-      return base::nullopt;
-  }
+  return base::FilePath(path.data()).Append(subdirectory.value());
 }
 
 const CobaltExtensionJavaScriptCacheApi* GetJavaScriptCacheExtension() {
@@ -85,136 +90,244 @@ const CobaltExtensionJavaScriptCacheApi* GetJavaScriptCacheExtension() {
 namespace cobalt {
 namespace cache {
 
-namespace {
-
-struct FileInfoComparer {
-  bool operator()(const Cache::FileInfo& left, const Cache::FileInfo& right) {
-    return left.GetLastModifiedTime() > right.GetLastModifiedTime();
-  }
-};
-
-}  // namespace
-
-Cache::FileInfo::FileInfo(base::FilePath root_path,
-                          base::FileEnumerator::FileInfo file_info)
-    : file_path_(root_path.Append(file_info.GetName())),
-      last_modified_time_(file_info.GetLastModifiedTime()),
-      size_(static_cast<uint32_t>(file_info.GetSize())) {}
-
-Cache::FileInfo::FileInfo(base::FilePath file_path,
-                          base::Time last_modified_time, uint32_t size)
-    : file_path_(file_path),
-      last_modified_time_(last_modified_time),
-      size_(size) {}
-
-base::Time Cache::FileInfo::GetLastModifiedTime() const {
-  return last_modified_time_;
-}
-
+// static
 Cache* Cache::GetInstance() {
   return base::Singleton<Cache, base::LeakySingletonTraits<Cache>>::get();
 }
 
-base::Optional<std::vector<uint8_t>> Cache::Retrieve(
-    uint32_t key, disk_cache::ResourceType resource_type) {
-  const CobaltExtensionJavaScriptCacheApi* javascript_cache_extension =
-      GetJavaScriptCacheExtension();
-  if (javascript_cache_extension) {
-    const uint8_t* cache_data_buf = nullptr;
-    int cache_data_size = -1;
-    if (javascript_cache_extension->GetCachedScript(key, 0, &cache_data_buf,
-                                                    &cache_data_size)) {
-      auto data = std::vector<uint8_t>(cache_data_buf,
-                                       cache_data_buf + cache_data_size);
-      javascript_cache_extension->ReleaseCachedScriptData(cache_data_buf);
+bool Cache::Delete(disk_cache::ResourceType resource_type, uint32_t key) {
+  auto* memory_capped_directory = GetMemoryCappedDirectory(resource_type);
+  if (memory_capped_directory) {
+    return memory_capped_directory->Delete(key);
+  }
+  return false;
+}
+
+void Cache::Delete(disk_cache::ResourceType resource_type) {
+  auto* memory_capped_directory = GetMemoryCappedDirectory(resource_type);
+  if (memory_capped_directory) {
+    memory_capped_directory->DeleteAll();
+  }
+}
+
+void Cache::DeleteAll() {
+  Delete(disk_cache::ResourceType::kServiceWorkerScript);
+  Delete(disk_cache::ResourceType::kCompiledScript);
+  Delete(disk_cache::ResourceType::kCacheApi);
+}
+
+std::vector<uint32_t> Cache::KeysWithMetadata(
+    disk_cache::ResourceType resource_type) {
+  auto* memory_capped_directory = GetMemoryCappedDirectory(resource_type);
+  if (memory_capped_directory) {
+    return memory_capped_directory->KeysWithMetadata();
+  }
+  return std::vector<uint32_t>();
+}
+
+base::Optional<base::Value> Cache::Metadata(
+    disk_cache::ResourceType resource_type, uint32_t key) {
+  auto* memory_capped_directory = GetMemoryCappedDirectory(resource_type);
+  if (memory_capped_directory) {
+    return memory_capped_directory->Metadata(key);
+  }
+  return base::nullopt;
+}
+
+std::unique_ptr<std::vector<uint8_t>> Cache::Retrieve(
+    disk_cache::ResourceType resource_type, uint32_t key,
+    std::function<std::pair<std::unique_ptr<std::vector<uint8_t>>,
+                            base::Optional<base::Value>>()>
+        generate) {
+  base::ScopedClosureRunner notifier(base::BindOnce(
+      &Cache::Notify, base::Unretained(this), resource_type, key));
+  auto* e = GetWaitableEvent(resource_type, key);
+  if (e) {
+    e->Wait();
+    delete e;
+  }
+
+  if (resource_type == disk_cache::ResourceType::kCompiledScript) {
+    const CobaltExtensionJavaScriptCacheApi* javascript_cache_extension =
+        GetJavaScriptCacheExtension();
+    if (javascript_cache_extension) {
+      const uint8_t* cache_data_buf = nullptr;
+      int cache_data_size = -1;
+      if (javascript_cache_extension->GetCachedScript(key, 0, &cache_data_buf,
+                                                      &cache_data_size)) {
+        auto data = std::make_unique<std::vector<uint8_t>>(
+            cache_data_buf, cache_data_buf + cache_data_size);
+        javascript_cache_extension->ReleaseCachedScriptData(cache_data_buf);
+        return data;
+      }
+      auto data = generate().first;
+      if (data) {
+        javascript_cache_extension->StoreCachedScript(
+            key, data->size(), data->data(), data->size());
+      }
+      return std::move(data);
+    }
+  }
+
+  auto* memory_capped_directory = GetMemoryCappedDirectory(resource_type);
+  if (memory_capped_directory) {
+    auto data = memory_capped_directory->Retrieve(key);
+    if (data) {
       return data;
     }
   }
-  // TODO: check if caching should be disabled.
-  auto file_path = FilePathFromKey(key, resource_type);
-  if (!file_path || !base::PathExists(file_path.value())) {
-    return base::nullopt;
+  auto data = generate();
+  if (data.first) {
+    Store(resource_type, key, /*data=*/*(data.first), /*metadata=*/data.second);
   }
-  int64 size;
-  base::GetFileSize(file_path.value(), &size);
-  std::vector<uint8_t> data(static_cast<size_t>(size));
-  int bytes_read =
-      base::ReadFile(file_path.value(), reinterpret_cast<char*>(data.data()),
-                     static_cast<int>(size));
-  if (bytes_read != size) {
-    return base::nullopt;
-  }
-  return data;
+  return std::move(data.first);
 }
 
-bool Cache::Store(uint32_t key, disk_cache::ResourceType resource_type,
-                  const std::vector<uint8_t>& data) {
-  const CobaltExtensionJavaScriptCacheApi* javascript_cache_extension =
-      GetJavaScriptCacheExtension();
-  if (javascript_cache_extension &&
-      javascript_cache_extension->StoreCachedScript(key, 0, data.data(),
-                                                    data.size())) {
-    return true;
+std::unique_ptr<std::vector<uint8_t>> Cache::Retrieve(
+    disk_cache::ResourceType resource_type, uint32_t key) {
+  base::ScopedClosureRunner notifier(base::BindOnce(
+      &Cache::Notify, base::Unretained(this), resource_type, key));
+  auto* e = GetWaitableEvent(resource_type, key);
+  if (e) {
+    e->Wait();
+    delete e;
   }
-  // TODO: check if caching should be disabled.
-  base::AutoLock auto_lock(lock_);
-  auto stored = GetStored(resource_type);
-  if (!stored) {
-    return false;
+
+  auto* memory_capped_directory = GetMemoryCappedDirectory(resource_type);
+  if (memory_capped_directory) {
+    return memory_capped_directory->Retrieve(key);
   }
-  auto file_path = FilePathFromKey(key, resource_type);
-  if (!file_path) {
-    return false;
-  }
-  auto max_storage_in_bytes = GetMaxStorageInBytes(resource_type);
-  if (!max_storage_in_bytes) {
-    return false;
-  }
-  uint32_t new_entry_size = static_cast<uint32_t>(data.size());
-  while (stored_size_by_resource_type_[resource_type] + new_entry_size >
-         max_storage_in_bytes.value()) {
-    std::pop_heap(stored->begin(), stored->end(), FileInfoComparer());
-    auto removed = stored->back();
-    stored_size_by_resource_type_[resource_type] -= removed.size_;
-    base::DeleteFile(removed.file_path_, false);
-    stored->pop_back();
-  }
-  int bytes_written =
-      base::WriteFile(file_path.value(),
-                      reinterpret_cast<const char*>(data.data()), data.size());
-  if (bytes_written != data.size()) {
-    base::DeleteFile(file_path.value(), false);
-    return false;
-  }
-  stored_size_by_resource_type_[resource_type] += new_entry_size;
-  stored->push_back(
-      FileInfo(file_path.value(), base::Time::Now(), new_entry_size));
-  stored_by_resource_type_[resource_type] = stored.value();
-  return true;
+  return nullptr;
 }
 
-base::Optional<std::vector<Cache::FileInfo>> Cache::GetStored(
+void Cache::set_enabled(bool enabled) { enabled_ = enabled; }
+
+void Cache::set_persistent_settings(
+    persistent_storage::PersistentSettings* persistent_settings) {
+  persistent_settings_ = persistent_settings;
+
+  // Guaranteed to be called before any calls to Retrieve()
+  // since set_persistent_settings() is called from the Application()
+  // constructor before the NetworkModule is initialized.
+  set_enabled(persistent_settings_->GetPersistentSettingAsBool(
+      disk_cache::kCacheEnabledPersistentSettingsKey, true));
+}
+
+MemoryCappedDirectory* Cache::GetMemoryCappedDirectory(
     disk_cache::ResourceType resource_type) {
-  auto it = stored_by_resource_type_.find(resource_type);
-  if (it != stored_by_resource_type_.end()) {
-    return it->second;
+  base::AutoLock auto_lock(lock_);
+  auto it = memory_capped_directories_.find(resource_type);
+  if (it != memory_capped_directories_.end()) {
+    return it->second.get();
   }
-  auto cache_directory = CacheDirectory(resource_type);
-  if (!cache_directory) {
-    return base::nullopt;
+
+  // Read in size from persistent storage.
+  auto metadata = disk_cache::kTypeMetadata[resource_type];
+  if (persistent_settings_) {
+    uint32_t bucket_size = static_cast<uint32_t>(
+        persistent_settings_->GetPersistentSettingAsDouble(
+            metadata.directory, metadata.max_size_bytes));
+    disk_cache::kTypeMetadata[resource_type] = {metadata.directory,
+                                                bucket_size};
   }
-  base::FileEnumerator file_enumerator(cache_directory.value(), false,
-                                       base::FileEnumerator::FILES);
-  std::vector<FileInfo> stored;
-  while (!file_enumerator.Next().empty()) {
-    auto file_info =
-        Cache::FileInfo(cache_directory.value(), file_enumerator.GetInfo());
-    stored.push_back(file_info);
-    stored_size_by_resource_type_[resource_type] += file_info.size_;
+
+  auto cache_directory = GetCacheDirectory(resource_type);
+  auto max_size = GetMaxCacheStorageInBytes(resource_type);
+  if (!cache_directory || !max_size) {
+    return nullptr;
   }
-  std::make_heap(stored.begin(), stored.end(), FileInfoComparer());
-  stored_by_resource_type_[resource_type] = stored;
-  return stored;
+
+  auto memory_capped_directory =
+      MemoryCappedDirectory::Create(cache_directory.value(), max_size.value());
+  memory_capped_directories_[resource_type] =
+      std::move(memory_capped_directory);
+  return memory_capped_directories_[resource_type].get();
+}
+
+void Cache::Resize(disk_cache::ResourceType resource_type, uint32_t bytes) {
+  if (resource_type != disk_cache::ResourceType::kCacheApi &&
+      resource_type != disk_cache::ResourceType::kCompiledScript)
+    return;
+  if (bytes == disk_cache::kTypeMetadata[resource_type].max_size_bytes) return;
+
+  if (persistent_settings_) {
+    persistent_settings_->SetPersistentSetting(
+        disk_cache::kTypeMetadata[resource_type].directory,
+        std::make_unique<base::Value>(static_cast<double>(bytes)));
+  }
+  disk_cache::kTypeMetadata[resource_type].max_size_bytes = bytes;
+  auto* memory_capped_directory = GetMemoryCappedDirectory(resource_type);
+  if (memory_capped_directory) {
+    memory_capped_directory->Resize(bytes);
+  }
+  if (bytes == 0) {
+    Delete(resource_type);
+  }
+}
+
+base::Optional<uint32_t> Cache::GetMaxCacheStorageInBytes(
+    disk_cache::ResourceType resource_type) {
+  switch (resource_type) {
+    case disk_cache::ResourceType::kCacheApi:
+    case disk_cache::ResourceType::kCompiledScript:
+    case disk_cache::ResourceType::kServiceWorkerScript:
+      return disk_cache::kTypeMetadata[resource_type].max_size_bytes;
+    default:
+      return base::nullopt;
+  }
+}
+
+base::WaitableEvent* Cache::GetWaitableEvent(
+    disk_cache::ResourceType resource_type, uint32_t key) {
+  base::AutoLock auto_lock(lock_);
+  if (pending_.find(resource_type) == pending_.end()) {
+    pending_[resource_type] =
+        std::map<uint32_t, std::vector<base::WaitableEvent*>>();
+  }
+  if (pending_[resource_type].find(key) == pending_[resource_type].end()) {
+    pending_[resource_type][key] = std::vector<base::WaitableEvent*>();
+    return nullptr;
+  }
+  auto* e = new base::WaitableEvent;
+  pending_[resource_type][key].push_back(e);
+  return e;
+}
+
+void Cache::Notify(disk_cache::ResourceType resource_type, uint32_t key) {
+  base::AutoLock auto_lock(lock_);
+  if (pending_.find(resource_type) == pending_.end()) {
+    return;
+  }
+  if (pending_[resource_type].find(key) == pending_[resource_type].end()) {
+    return;
+  }
+  for (auto* waitable_event : pending_[resource_type][key]) {
+    waitable_event->Signal();
+  }
+  pending_[resource_type][key].clear();
+  pending_[resource_type].erase(key);
+}
+
+void Cache::Store(disk_cache::ResourceType resource_type, uint32_t key,
+                  const std::vector<uint8_t>& data,
+                  const base::Optional<base::Value>& metadata) {
+  if (!CanCache(resource_type, data.size())) {
+    return;
+  }
+  auto* memory_capped_directory = GetMemoryCappedDirectory(resource_type);
+  if (memory_capped_directory) {
+    memory_capped_directory->Store(key, data, metadata);
+  }
+}
+
+bool Cache::CanCache(disk_cache::ResourceType resource_type,
+                     uint32_t data_size) {
+  return enabled_ &&
+         cobalt::configuration::Configuration::GetInstance()
+             ->CobaltCanStoreCompiledJavascript() &&
+         data_size > 0u &&
+         data_size >= GetMinSizeToCacheInBytes(resource_type) &&
+         data_size <= GetMaxCacheStorageInBytes(resource_type);
 }
 
 }  // namespace cache

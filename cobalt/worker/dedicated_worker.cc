@@ -20,7 +20,7 @@
 #include "cobalt/browser/stack_size_constants.h"
 #include "cobalt/script/environment_settings.h"
 #include "cobalt/web/event_target.h"
-#include "cobalt/worker/message_port.h"
+#include "cobalt/web/message_port.h"
 #include "cobalt/worker/worker.h"
 #include "cobalt/worker/worker_options.h"
 #include "url/gurl.h"
@@ -33,71 +33,90 @@ const char kDedicatedWorkerName[] = "DedicatedWorker";
 }  // namespace
 
 DedicatedWorker::DedicatedWorker(script::EnvironmentSettings* settings,
-                                 const std::string& scriptURL)
-    : web::EventTarget(settings), settings_(settings), script_url_(scriptURL) {
-  Initialize();
+                                 const std::string& scriptURL,
+                                 script::ExceptionState* exception_state)
+    : web::EventTarget(settings), script_url_(scriptURL) {
+  Initialize(exception_state);
 }
 
 DedicatedWorker::DedicatedWorker(script::EnvironmentSettings* settings,
                                  const std::string& scriptURL,
-                                 const WorkerOptions& worker_options)
+                                 const WorkerOptions& worker_options,
+                                 script::ExceptionState* exception_state)
     : web::EventTarget(settings),
-      settings_(settings),
       script_url_(scriptURL),
       worker_options_(worker_options) {
-  Initialize();
+  Initialize(exception_state);
 }
 
-void DedicatedWorker::Initialize() {
+void DedicatedWorker::Initialize(script::ExceptionState* exception_state) {
   // Algorithm for the Worker constructor.
   //   https://html.spec.whatwg.org/commit-snapshots/465a6b672c703054de278b0f8133eb3ad33d93f4/#dom-worker
 
   // 1. The user agent may throw a "SecurityError" web::DOMException if the
-  // request
-  //    violates a policy decision (e.g. if the user agent is configured to
-  //    not
-  //    allow the page to start dedicated workers).
+  //    request violates a policy decision (e.g. if the user agent is configured
+  //    to not allow the page to start dedicated workers).
   // 2. Let outside settings be the current settings object.
   // 3. Parse the scriptURL argument relative to outside settings.
-  Worker::Options options(kDedicatedWorkerName);
+  Worker::Options options;
   const GURL& base_url = environment_settings()->base_url();
   options.url = base_url.Resolve(script_url_);
 
-  LOG_IF(WARNING, !options.url.is_valid())
-      << script_url_ << " cannot be resolved based on " << base_url << ".";
-
   // 4. If this fails, throw a "SyntaxError" web::DOMException.
+  if (!options.url.is_valid()) {
+    web::DOMException::Raise(
+        web::DOMException::kSyntaxErr,
+        script_url_ + " cannot be resolved based on " + base_url.spec() + ".",
+        exception_state);
+    return;
+  }
+
   // 5. Let worker URL be the resulting URL record.
   options.web_options.stack_size = cobalt::browser::kWorkerStackSize;
+  options.web_options.web_settings =
+      environment_settings()->context()->web_settings();
   options.web_options.network_module =
-      base::polymorphic_downcast<web::EnvironmentSettings*>(settings_)
-          ->context()
-          ->network_module();
+      environment_settings()->context()->network_module();
   // 6. Let worker be a new Worker object.
-  worker_.reset(new Worker());
   // 7. Let outside port be a new MessagePort in outside settings's Realm.
   // 8. Associate the outside port with worker.
-  outside_port_ = new MessagePort(this, settings_);
+  outside_port_ = new web::MessagePort(this);
   // 9. Run this step in parallel:
   //    1. Run a worker given worker, worker URL, outside settings, outside
   //    port, and options.
-  options.outside_settings =
-      base::polymorphic_downcast<web::EnvironmentSettings*>(settings_);
+  options.outside_context = environment_settings()->context();
   options.outside_port = outside_port_.get();
   options.options = worker_options_;
-
-  worker_->Run(options);
+  options.web_options.service_worker_jobs =
+      options.outside_context->service_worker_jobs();
+  // Store the current source location as the construction location, to be used
+  // in the error event if worker loading of initialization fails.
+  auto stack_trace =
+      options.outside_context->global_environment()->GetStackTrace(0);
+  if (stack_trace.size() > 0) {
+    options.construction_location = base::SourceLocation(
+        stack_trace[0].source_url, stack_trace[0].line_number,
+        stack_trace[0].column_number);
+  } else {
+    options.construction_location.file_path =
+        environment_settings()->creation_url().spec();
+  }
+  worker_.reset(new Worker(kDedicatedWorkerName, options));
   // 10. Return worker.
 }
 
 DedicatedWorker::~DedicatedWorker() { Terminate(); }
 
-void DedicatedWorker::Terminate() {}
+void DedicatedWorker::Terminate() {
+  if (worker_) {
+    worker_->Terminate();
+  }
+}
 
 // void postMessage(any message, object transfer);
 // -> void PostMessage(const script::ValueHandleHolder& message,
 //                     script::Sequence<script::ValueHandle*> transfer) {}
-void DedicatedWorker::PostMessage(const std::string& message) {
+void DedicatedWorker::PostMessage(const script::ValueHandleHolder& message) {
   DCHECK(worker_);
   worker_->PostMessage(message);
 }

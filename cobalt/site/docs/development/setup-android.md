@@ -9,36 +9,23 @@ device. The package being built here is referred to as CoAT (Cobalt on Android T
 ## Preliminary Setup
 
 <aside class="note">
-<b>Note:</b> Before proceeding further, refer to the documentation for <a href="setup-linux.html">"Set up your environment - Linux"</a>. Complete the section <b>Set up your workstation</b>, then return and complete the following steps.
+<b>Note:</b> Before proceeding further, refer to the documentation for
+<a href="setup-linux.html">"Set up your environment - Linux"</a>. Complete the
+sections <b>Set up your workstation</b> and <b>Set up developer tools</b>, then
+return and complete the following steps.
 </aside>
 
-1.  Additional build dependencies may need to be installed:
-    ```
-    sudo apt-get install python python-pip
-    ```
-
-    If `python-pip` is not available via your package manager, you can install `pip` following [recommended instructions](https://pip.pypa.io/en/stable/installing/) from the official Python guide.
-
-    There are also some Python module requirements:
-
-    ```
-    python -m pip install requests
-    ```
-
-1.  Install ccache to support build acceleration. ccache is automatically used
-    when available, otherwise defaults to unaccelerated building:
-
-    ```
-    $ sudo apt-get install ccache
-    ```
-
-    We recommend adjusting the cache size as needed to increase cache hits:
-
-    ```
-    $ ccache --max-size=20G
-    ```
-
 1.  Download and install [Android Studio](https://developer.android.com/studio/).
+
+1.  To enable parallel gradle builds, add the following to your `~/.bashrc`:
+
+    ```
+    export COBALT_GRADLE_BUILD_COUNT=4
+    ```
+
+    Where 4 is the number of parallel threads. You can adjust the number of
+    parallel threads according to how your workstation performs.
+
 1.  Run `cobalt/build/gn.py -p android-x86` to configure the Cobalt build,
     which also installs the SDK and NDK. (This step will have to be repeated
     with 'android-arm' or 'android-arm64' to target those architectures.) The
@@ -128,10 +115,10 @@ Go ahead and click 'yes' to open the SDK manager to install the following:
 ## Basic Build, Install, and Run (command-line based)
 
 1.  Complete the Preliminary Setup above
-1.  Generate the cobalt.apk by building the "cobalt_deploy" target
+1.  Generate the cobalt.apk by building the "cobalt_install" target
 
     ```
-    ninja -C out/android-x86_gold cobalt_deploy
+    ninja -C out/android-x86_gold cobalt_install
     ```
 
     Output can be found in the corresponding `out/android-x86_gold` directory.
@@ -222,7 +209,7 @@ Go ahead and click 'yes' to open the SDK manager to install the following:
 
 The test target itself (e.g. nplb) just builds an .so file (e.g. libnplb.so). To
 run that on a device, it needs to be packaged into an APK, which is done by the
-associated "deploy" target (e.g. nplb_deploy). The Starboard test runner does
+associated "install" target (e.g. nplb_install). The Starboard test runner does
 all this for you, so just use that to build and run tests. For example, to
 build and run "devel" NPLB on an ARM64 device, from the top-level directory:
 
@@ -235,6 +222,15 @@ If you want to debug a test, you can run it from Android Studio. Edit
 change `DEFAULT_COBALT_TARGET` to be the name of the test you want to debug
 instead of 'cobalt'. Then you can set breakpoints, etc. in the test the same as
 when debugging Cobalt.
+
+## Debugging (Terminal)
+
+Use `adb logcat` while Cobalt is running, or use `adb bugreport` shortly after
+exiting to view Android logs. You will need to filter or search for
+Cobalt-related output.
+
+As with the Linux build, use the `debug`, `devel`, or `qa` configs to trace
+Cobalt's callstacks.
 
 ## Removing the Cobalt Android Environment
 

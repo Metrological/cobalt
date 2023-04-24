@@ -62,6 +62,9 @@ class V8cGlobalEnvironment : public GlobalEnvironment,
       const scoped_refptr<GlobalInterface>& global_interface,
       EnvironmentSettings* environment_settings);
 
+  v8::MaybeLocal<v8::Script> Compile(
+      const scoped_refptr<SourceCode>& source_code) override;
+
   bool EvaluateScript(const scoped_refptr<SourceCode>& script,
                       std::string* out_result_utf8) override;
 
@@ -86,6 +89,8 @@ class V8cGlobalEnvironment : public GlobalEnvironment,
 
   void EnableEval() override;
 
+  bool IsEvalEnabled() override;
+
   void DisableJit() override;
 
   void SetReportEvalCallback(const base::Closure& report_eval) override;
@@ -102,8 +107,8 @@ class V8cGlobalEnvironment : public GlobalEnvironment,
 
   ScriptValueFactory* script_value_factory() override;
 
-  v8::Isolate* isolate() const { return isolate_; }
-  v8::Local<v8::Context> context() const {
+  v8::Isolate* isolate() const override { return isolate_; }
+  v8::Local<v8::Context> context() const override {
     return v8::Local<v8::Context>::New(isolate_, context_);
   }
 
@@ -150,9 +155,6 @@ class V8cGlobalEnvironment : public GlobalEnvironment,
                              v8::Local<v8::Value> data);
 
   v8::MaybeLocal<v8::Value> EvaluateScriptInternal(
-      const scoped_refptr<SourceCode>& source_code);
-
-  v8::MaybeLocal<v8::Script> CompileWithCaching(
       const scoped_refptr<SourceCode>& source_code);
 
   void EvaluateEmbeddedScript(const unsigned char* data, size_t size,

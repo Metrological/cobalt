@@ -21,7 +21,6 @@
 #if SB_IS(EVERGREEN)
 #include "cobalt/h5vcc/h5vcc_updater.h"
 #endif
-#include "cobalt/media/media_module.h"
 #include "cobalt/script/wrappable.h"
 
 namespace cobalt {
@@ -40,6 +39,8 @@ class H5vccSystem : public script::Wrappable {
   std::string platform() const;
   std::string region() const;
   std::string version() const;
+  std::string advertising_id() const;
+  bool limit_ad_tracking() const;
 
   bool TriggerHelp() const;
 

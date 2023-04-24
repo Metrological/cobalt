@@ -14,9 +14,13 @@
 
 #include "starboard/shared/starboard/player/filter/audio_decoder_internal.h"
 
+#include <algorithm>
 #include <deque>
 #include <functional>
 #include <map>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "starboard/common/condition_variable.h"
 #include "starboard/common/media.h"
@@ -51,7 +55,7 @@ using video_dmp::VideoDmpReader;
 const SbTimeMonotonic kWaitForNextEventTimeOut = 5 * kSbTimeSecond;
 
 class AudioDecoderTest
-    : public ::testing::TestWithParam<std::tuple<const char*, bool> > {
+    : public ::testing::TestWithParam<std::tuple<const char*, bool>> {
  public:
   AudioDecoderTest()
       : test_filename_(std::get<0>(GetParam())),
@@ -136,8 +140,7 @@ class AudioDecoderTest
     can_accept_more_input_ = false;
 
     last_input_buffer_ = GetAudioInputBuffer(index);
-
-    audio_decoder_->Decode(last_input_buffer_, consumed_cb());
+    audio_decoder_->Decode({last_input_buffer_}, consumed_cb());
   }
 
   // This has to be called when OnOutput() is called.
@@ -306,8 +309,7 @@ class AudioDecoderTest
     if (iter != invalid_inputs_.end()) {
       std::vector<uint8_t> content(input_buffer->size(), iter->second);
       // Replace the content with invalid data.
-      input_buffer->SetDecryptedContent(content.data(),
-                                        static_cast<int>(content.size()));
+      input_buffer->SetDecryptedContent(std::move(content));
     }
     return input_buffer;
   }
@@ -378,6 +380,16 @@ class AudioDecoderTest
 
   bool first_output_received_ = false;
 };
+
+std::string GetAudioDecoderTestConfigName(
+    ::testing::TestParamInfo<std::tuple<const char*, bool>> info) {
+  std::string filename(std::get<0>(info.param));
+  bool using_stub_decoder = std::get<1>(info.param);
+
+  std::replace(filename.begin(), filename.end(), '.', '_');
+
+  return filename + (using_stub_decoder ? "__stub" : "");
+}
 
 TEST_P(AudioDecoderTest, MultiDecoders) {
   const int kDecodersToCreate = 100;
@@ -638,7 +650,8 @@ INSTANTIATE_TEST_CASE_P(
     Combine(ValuesIn(GetSupportedAudioTestFiles(kIncludeHeaac,
                                                 6,
                                                 "audiopassthrough=false")),
-            Bool()));
+            Bool()),
+    GetAudioDecoderTestConfigName);
 
 }  // namespace
 }  // namespace testing

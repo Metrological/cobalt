@@ -43,15 +43,21 @@ class DecoderBufferAllocator : public ::media::DecoderBuffer::Allocator,
   void* Allocate(size_t size, size_t alignment) override;
   void Free(void* p, size_t size) override;
 
+  int GetAudioBufferBudget() const override;
+  int GetBufferAlignment() const override;
+  int GetBufferPadding() const override;
+  SbTime GetBufferGarbageCollectionDurationThreshold() const override;
+  int GetProgressiveBufferBudget(SbMediaVideoCodec codec, int resolution_width,
+                                 int resolution_height,
+                                 int bits_per_pixel) const override;
+  int GetVideoBufferBudget(SbMediaVideoCodec codec, int resolution_width,
+                           int resolution_height,
+                           int bits_per_pixel) const override;
+
   // DecoderBufferMemoryInfo methods.
   size_t GetAllocatedMemory() const override;
   size_t GetCurrentMemoryCapacity() const override;
   size_t GetMaximumMemoryCapacity() const override;
-  size_t GetSourceBufferEvictExtraInBytes() const override;
-
-  void SetSourceBufferEvictExtraInBytes(size_t evict_extra_in_bytes) {
-    source_buffer_evict_extra_in_bytes_ = evict_extra_in_bytes;
-  }
 
  private:
   void EnsureReuseAllocatorIsCreated();
@@ -66,7 +72,6 @@ class DecoderBufferAllocator : public ::media::DecoderBuffer::Allocator,
   std::unique_ptr<nb::BidirectionalFitReuseAllocator> reuse_allocator_;
 
   int max_buffer_capacity_ = 0;
-  size_t source_buffer_evict_extra_in_bytes_ = 0;
 
   // Monitor memory allocation and use when |using_memory_pool_| is false
   starboard::atomic_int32_t sbmemory_bytes_used_;

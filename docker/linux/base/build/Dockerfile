@@ -15,8 +15,6 @@
 ARG FROM_IMAGE
 FROM ${FROM_IMAGE:-cobalt-base}
 
-ARG gn_hash=vC0rxqiqGTD3ls9KJHrgJoWP2OBiPk_QEO_xbDItKYoC
-
 ARG HOME=/root
 
 # === Install common build tools, required by all platforms
@@ -41,17 +39,24 @@ RUN curl --silent -o- ${NVM_URL} \
    && echo ${NVM_SHA256SUM} | sha256sum --check \
    && . /tmp/install.sh
 
+# === Pinned Node version to v16, as this is latest one that will work on
+# legacy Debian systems
+ARG LTS_VERSION=v16
 RUN . $NVM_DIR/nvm.sh \
-   && nvm install --lts \
-   && nvm alias default lts/* \
+   && nvm install --lts ${LTS_VERSION} \
+   && nvm alias default ${LTS_VERSION}/* \
    && nvm use default
 
 ENV NODE_PATH $NVM_DIR/v$NODE_VERSION/lib/node_modules
 ENV PATH $NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH
 
 # === Get GN via CIPD
+ARG GN_SHA256SUM="af7b2dcb3905bca56655e12131b365f1cba8e159db80d2022330c4f522fab2ef  /tmp/gn.zip"
+ARG GN_HASH=r3styzkFvKVmVeEhMbNl8cuo4VnbgNICIzDE9SL6su8C
+
 RUN curl --location --silent --output /tmp/gn.zip \
-    "https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/${gn_hash}" \
+    "https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/${GN_HASH}" \
+    && echo ${GN_SHA256SUM} | sha256sum --check \
     && unzip /tmp/gn.zip -d /usr/local/bin \
     && rm /tmp/gn.zip
 
@@ -63,12 +68,19 @@ ENV OUTDIR=out \
     CCACHE_DIR=${HOME}/ccache \
     CCACHE_MAXSIZE=30G
 
-# == Set up  ccache
+# === Set up ccache
 RUN cd /tmp && mkdir ${HOME}/ccache
 
-# == Install and set up statically linked sccache.
-ADD https://storage.googleapis.com/cobalt-docker-resources/linux/sccache /usr/local/bin/sccache
-RUN chmod +x /usr/local/bin/sccache && cd /tmp && mkdir ${HOME}/sccache
+# === Install portable sccache binary
+ARG SCCACHE=sccache-v0.3.0-x86_64-unknown-linux-musl.tar.gz
+ARG SCCACHE_SHA256=e6cd8485f93d683a49c83796b9986f090901765aa4feb40d191b03ea770311d8
+RUN cd /tmp \
+    && curl -L -O https://github.com/mozilla/sccache/releases/download/v0.3.0/${SCCACHE} \
+    && echo "${SCCACHE_SHA256} *${SCCACHE}" | sha256sum -c - \
+    && tar xvzf ${SCCACHE} -C /usr/local/bin --strip-components=1 \
+    && chmod +x /usr/local/bin/sccache \
+    && rm -rf ${SCCACHE} \
+    && sccache --version
 
 # === Install pinned host Clang toolchain for all Linux-hosted builds
 ARG CLANG_VER

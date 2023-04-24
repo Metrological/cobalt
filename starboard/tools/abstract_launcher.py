@@ -52,6 +52,7 @@ def LauncherFactory(platform_name,
                     output_file=None,
                     out_directory=None,
                     env_variables=None,
+                    test_result_xml_path=None,
                     **kwargs):
   """Creates the proper launcher based upon command line args.
 
@@ -90,6 +91,7 @@ def LauncherFactory(platform_name,
       output_file=output_file,
       out_directory=out_directory,
       env_variables=env_variables,
+      test_result_xml_path=test_result_xml_path,
       **kwargs)
 
 
@@ -136,6 +138,8 @@ class AbstractLauncher(object):
     # Launchers that need different startup timeout times should reassign
     # this variable during initialization.
     self.startup_timeout_seconds = 2 * 60
+
+    self.test_result_xml_path = kwargs.get("test_result_xml_path", None)
 
   @abc.abstractmethod
   def Run(self):
@@ -291,3 +295,16 @@ class AbstractLauncher(object):
       The path to an executable target.
     """
     return os.path.abspath(os.path.join(self.out_directory, self.target_name))
+
+  def GetInstallTargetPath(self):
+    """Constructs the path to an executable target in install dir.
+
+    The default path returned by this method takes the form of:
+
+      "/path/to/out/<platform>_<config>/install/target_name"
+
+    Returns:
+      The path to an executable target.
+    """
+    return os.path.abspath(
+        os.path.join(self.out_directory, "install", self.target_name))

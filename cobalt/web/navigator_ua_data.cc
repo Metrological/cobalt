@@ -20,7 +20,7 @@ namespace cobalt {
 namespace web {
 
 NavigatorUAData::NavigatorUAData(
-    UserAgentPlatformInfo* platform_info,
+    const UserAgentPlatformInfo* platform_info,
     script::ScriptValueFactory* script_value_factory)
     : script_value_factory_(script_value_factory) {
   if (platform_info == nullptr) {
@@ -56,6 +56,8 @@ NavigatorUAData::NavigatorUAData(
       platform_info->javascript_engine_version());
   all_high_entropy_values_.set_rasterizer(platform_info->rasterizer_type());
   all_high_entropy_values_.set_evergreen_type(platform_info->evergreen_type());
+  all_high_entropy_values_.set_evergreen_file_type(
+      platform_info->evergreen_file_type());
   all_high_entropy_values_.set_evergreen_version(
       platform_info->evergreen_version());
   all_high_entropy_values_.set_starboard_version(
@@ -69,8 +71,6 @@ NavigatorUAData::NavigatorUAData(
       platform_info->model_year().value_or(""));
   all_high_entropy_values_.set_device_brand(
       platform_info->brand().value_or(""));
-  all_high_entropy_values_.set_connection_type(
-      platform_info->connection_type_string());
   all_high_entropy_values_.set_aux(platform_info->aux_field());
 
   low_entropy_json_.set_brands(brands_);
@@ -141,9 +141,6 @@ NavigatorUAData::GetHighEntropyValues(script::Sequence<std::string> hints) {
     } else if ((*it).compare("deviceBrand") == 0) {
       select_high_entropy_values_.set_device_brand(
           all_high_entropy_values_.device_brand());
-    } else if ((*it).compare("connectionType") == 0) {
-      select_high_entropy_values_.set_connection_type(
-          all_high_entropy_values_.connection_type());
     } else if ((*it).compare("aux") == 0) {
       select_high_entropy_values_.set_aux(all_high_entropy_values_.aux());
     }

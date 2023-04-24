@@ -42,7 +42,6 @@ import android.view.accessibility.CaptioningManager;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import dev.cobalt.account.UserAuthorizer;
-import dev.cobalt.libraries.services.clientloginfo.ClientLogInfo;
 import dev.cobalt.media.AudioOutputManager;
 import dev.cobalt.media.CaptionSettings;
 import dev.cobalt.media.CobaltMediaSession;
@@ -58,9 +57,7 @@ import java.net.SocketException;
 import java.util.Calendar;
 import java.util.Enumeration;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Locale;
-import java.util.Set;
 import java.util.TimeZone;
 
 /** Implementation of the required JNI methods called by the Starboard C++ code. */
@@ -82,6 +79,7 @@ public class StarboardBridge {
   private KeyboardEditor keyboardEditor;
   private NetworkStatus networkStatus;
   private ResourceOverlay resourceOverlay;
+  private AdvertisingId advertisingId;
 
   static {
     // Even though NativeActivity already loads our library from C++,
@@ -106,13 +104,10 @@ public class StarboardBridge {
 
   private final HashMap<String, CobaltService.Factory> cobaltServiceFactories = new HashMap<>();
   private final HashMap<String, CobaltService> cobaltServices = new HashMap<>();
+  private final HashMap<String, String> crashContext = new HashMap<>();
 
   private static final TimeZone DEFAULT_TIME_ZONE = TimeZone.getTimeZone("America/Los_Angeles");
   private final long timeNanosecondsPerMicrosecond = 1000;
-
-  private Set<Integer> supportedHdrTypesSet = new HashSet<Integer>();
-  private long supportedHdrTypesSetUpdatedAt = 0;
-  private final long supportedHdrTypesCacheTtlMs = 1000;
 
   public StarboardBridge(
       Context appContext,
@@ -140,6 +135,7 @@ public class StarboardBridge {
     this.audioPermissionRequester = new AudioPermissionRequester(appContext, activityHolder);
     this.networkStatus = new NetworkStatus(appContext);
     this.resourceOverlay = new ResourceOverlay(appContext);
+    this.advertisingId = new AdvertisingId(appContext);
   }
 
   private native boolean nativeInitialize();
@@ -150,12 +146,6 @@ public class StarboardBridge {
     activityHolder.set(activity);
     this.keyboardEditor = keyboardEditor;
     sysConfigChangeReceiver.setForeground(true);
-
-    // TODO: v0_1231sd2 is the default value used for testing,
-    // delete it once we verify it can be queried in QOE system.
-    if (!isReleaseBuild()) {
-      ClientLogInfo.setClientInfo("v0_1231sd2");
-    }
   }
 
   protected void onActivityStop(Activity activity) {
@@ -238,6 +228,7 @@ public class StarboardBridge {
     for (CobaltService service : cobaltServices.values()) {
       service.beforeStartOrResume();
     }
+    advertisingId.refresh();
   }
 
   @SuppressWarnings("unused")
@@ -684,6 +675,20 @@ public class StarboardBridge {
     return sb.toString();
   }
 
+  /** Returns string for kSbSystemPropertyAdvertisingId */
+  @SuppressWarnings("unused")
+  @UsedByNative
+  protected String getAdvertisingId() {
+    return this.advertisingId.getId();
+  }
+
+  /** Returns boolean for kSbSystemPropertyLimitAdTracking */
+  @SuppressWarnings("unused")
+  @UsedByNative
+  protected boolean getLimitAdTracking() {
+    return this.advertisingId.isLimitAdTrackingEnabled();
+  }
+
   @SuppressWarnings("unused")
   @UsedByNative
   AudioOutputManager getAudioOutputManager() {
@@ -731,53 +736,22 @@ public class StarboardBridge {
     }
   }
 
-  long supportedHdrTypesSetUpdatedAtNs;
-
-  private void refreshHdrTypesCacheIfNecessary() {
-    if (System.currentTimeMillis() - supportedHdrTypesSetUpdatedAt < supportedHdrTypesCacheTtlMs) {
-      // Cache is up to date.
-      return;
-    }
-    supportedHdrTypesSet.clear();
-    supportedHdrTypesSetUpdatedAt = System.currentTimeMillis();
-
+  /** Return supported hdr types. */
+  @RequiresApi(24)
+  @SuppressWarnings("unused")
+  @UsedByNative
+  public int[] getSupportedHdrTypes() {
     Display defaultDisplay = DisplayUtil.getDefaultDisplay();
     if (defaultDisplay == null) {
-      return;
+      return null;
     }
 
     Display.HdrCapabilities hdrCapabilities = defaultDisplay.getHdrCapabilities();
     if (hdrCapabilities == null) {
-      return;
+      return null;
     }
 
-    int[] supportedHdrTypes = hdrCapabilities.getSupportedHdrTypes();
-    if (supportedHdrTypes == null) {
-      return;
-    }
-
-    for (int supportedType : supportedHdrTypes) {
-      supportedHdrTypesSet.add(supportedType);
-    }
-  }
-
-  /**
-   * Check if hdrType is supported by the current default display. See
-   * https://developer.android.com/reference/android/view/Display.HdrCapabilities.html for valid
-   * values.
-   */
-  @RequiresApi(24)
-  @SuppressWarnings("unused")
-  @UsedByNative
-  public boolean isHdrTypeSupported(int hdrType) {
-    if (android.os.Build.VERSION.SDK_INT < 24) {
-      return false;
-    }
-
-    synchronized (this) {
-      refreshHdrTypesCacheIfNecessary();
-      return supportedHdrTypesSet.contains(hdrType);
-    }
+    return hdrCapabilities.getSupportedHdrTypes();
   }
 
   /** Return the CobaltMediaSession. */
@@ -835,5 +809,25 @@ public class StarboardBridge {
           - (javaStartTimestamp - javaStopTimestamp) / timeNanosecondsPerMicrosecond;
     }
     return 0;
+  }
+
+  @SuppressWarnings("unused")
+  @UsedByNative
+  void reportFullyDrawn() {
+    Activity activity = activityHolder.get();
+    if (activity != null) {
+      activity.reportFullyDrawn();
+    }
+  }
+
+  @SuppressWarnings("unused")
+  @UsedByNative
+  public void setCrashContext(String key, String value) {
+    Log.i(TAG, "setCrashContext Called: " + key + ", " + value);
+    crashContext.put(key, value);
+  }
+
+  public HashMap<String, String> getCrashContext() {
+    return this.crashContext;
   }
 }

@@ -30,7 +30,6 @@
 #include "cobalt/browser/lifecycle_observer.h"
 #include "cobalt/browser/screen_shot_writer.h"
 #include "cobalt/browser/splash_screen_cache.h"
-#include "cobalt/browser/user_agent_platform_info.h"
 #include "cobalt/css_parser/parser.h"
 #include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/dom_settings.h"
@@ -52,10 +51,13 @@
 #include "cobalt/render_tree/node.h"
 #include "cobalt/render_tree/resource_provider.h"
 #include "cobalt/ui_navigation/nav_item.h"
+#include "cobalt/ui_navigation/scroll_engine/scroll_engine.h"
 #include "cobalt/web/agent.h"
 #include "cobalt/web/blob.h"
 #include "cobalt/web/context.h"
 #include "cobalt/web/csp_delegate.h"
+#include "cobalt/web/environment_settings.h"
+#include "cobalt/web/user_agent_platform_info.h"
 #include "cobalt/webdriver/session_driver.h"
 #include "starboard/atomic.h"
 #include "url/gurl.h"
@@ -90,9 +92,15 @@ class WebModule : public base::MessageLoop::DestructionObserver,
                   public LifecycleObserver {
  public:
   struct Options {
+    typedef base::Callback<scoped_refptr<script::Wrappable>(
+        WebModule*, web::EnvironmentSettings*)>
+        CreateObjectFunction;
+    typedef base::hash_map<std::string, CreateObjectFunction>
+        InjectedGlobalObjectAttributes;
+
     // All optional parameters defined in this structure should have their
     // values initialized in the default constructor to useful defaults.
-    explicit Options(const std::string& name);
+    Options();
 
     web::Agent::Options web_options;
 
@@ -240,6 +248,11 @@ class WebModule : public base::MessageLoop::DestructionObserver,
     // time.
     base::Callback<void(base::TimeTicks, base::TimeTicks)>
         collect_unload_event_time_callback;
+
+    // injected_global_attributes contains a map of attributes to be injected
+    // into the Web Agent's window object upon construction.  This provides
+    // a mechanism to inject custom APIs into the Web Agent object.
+    InjectedGlobalObjectAttributes injected_global_object_attributes;
   };
 
   typedef layout::LayoutManager::LayoutResults LayoutResults;
@@ -248,18 +261,20 @@ class WebModule : public base::MessageLoop::DestructionObserver,
   typedef base::Callback<void(const GURL&, const std::string&)> OnErrorCallback;
   typedef dom::Window::CloseCallback CloseCallback;
 
-  WebModule(const GURL& initial_url,
-            base::ApplicationState initial_application_state,
-            const OnRenderTreeProducedCallback& render_tree_produced_callback,
-            OnErrorCallback error_callback,
-            const CloseCallback& window_close_callback,
-            const base::Closure& window_minimize_callback,
-            media::CanPlayTypeHandler* can_play_type_handler,
-            media::MediaModule* media_module,
-            const cssom::ViewportSize& window_dimensions,
-            render_tree::ResourceProvider* resource_provider,
-            float layout_refresh_rate, const Options& options);
+  explicit WebModule(const std::string& name);
   ~WebModule();
+  void Run(const GURL& initial_url,
+           base::ApplicationState initial_application_state,
+           ui_navigation::scroll_engine::ScrollEngine* scroll_engine,
+           const OnRenderTreeProducedCallback& render_tree_produced_callback,
+           OnErrorCallback error_callback,
+           const CloseCallback& window_close_callback,
+           const base::Closure& window_minimize_callback,
+           media::CanPlayTypeHandler* can_play_type_handler,
+           media::MediaModule* media_module,
+           const cssom::ViewportSize& window_dimensions,
+           render_tree::ResourceProvider* resource_provider,
+           float layout_refresh_rate, const Options& options);
 
   // Injects an on screen keyboard input event into the web module. The value
   // for type represents beforeinput or input.
@@ -390,10 +405,11 @@ class WebModule : public base::MessageLoop::DestructionObserver,
 
  private:
   // Data required to construct a WebModule, initialized in the constructor and
-  // passed to |Initialize|.
+  // passed to |InitializeTaskInThread|.
   struct ConstructionData {
     ConstructionData(const GURL& initial_url,
                      base::ApplicationState initial_application_state,
+                     ui_navigation::scroll_engine::ScrollEngine* scroll_engine,
                      OnRenderTreeProducedCallback render_tree_produced_callback,
                      const OnErrorCallback& error_callback,
                      CloseCallback window_close_callback,
@@ -411,6 +427,7 @@ class WebModule : public base::MessageLoop::DestructionObserver,
                      const Options& options)
         : initial_url(initial_url),
           initial_application_state(initial_application_state),
+          scroll_engine(scroll_engine),
           render_tree_produced_callback(render_tree_produced_callback),
           error_callback(error_callback),
           window_close_callback(window_close_callback),
@@ -431,6 +448,7 @@ class WebModule : public base::MessageLoop::DestructionObserver,
 
     GURL initial_url;
     base::ApplicationState initial_application_state;
+    ui_navigation::scroll_engine::ScrollEngine* scroll_engine;
     OnRenderTreeProducedCallback render_tree_produced_callback;
     OnErrorCallback error_callback;
     CloseCallback window_close_callback;
@@ -452,20 +470,19 @@ class WebModule : public base::MessageLoop::DestructionObserver,
   // Forward declaration of the private implementation class.
   class Impl;
 
-  // Called by the constructor to create the private implementation object and
+  // Called by |Run| to create the private implementation object and
   // perform any other initialization required on the dedicated thread.
-  void Initialize(const ConstructionData& data, web::Context* context);
+  void InitializeTaskInThread(const ConstructionData& data,
+                              web::Context* context);
 
   void ClearAllIntervalsAndTimeouts();
-
-  void CancelSynchronousLoads();
 
   void GetIsReadyToFreeze(volatile bool* is_ready_to_freeze);
 
   // The message loop this object is running on.
   base::MessageLoop* message_loop() const {
     DCHECK(web_agent_);
-    return web_agent_->message_loop();
+    return web_agent_ ? web_agent_->message_loop() : nullptr;
   }
 
   // Private implementation object.

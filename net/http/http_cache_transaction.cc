@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "base/auto_reset.h"
 #include "base/bind.h"
@@ -60,6 +61,16 @@ namespace net {
 using CacheEntryStatus = HttpResponseInfo::CacheEntryStatus;
 
 namespace {
+
+#if defined(STARBOARD)
+// Default allowlist based off MIME types associated with top
+// resource types defined in resource_type.h.
+static const char* const kMimeTypesCacheAllowlist[] = {
+    "text/html", "text/css",      "image/gif",  "image/jpeg",
+    "image/png", "image/svg+xml", "image/webp", "font/otf",
+    "font/ttf",  "font/woff",     "font/woff2", "text/javascript",
+    "example/unit_test", "application/javascript"};
+#endif
 
 constexpr TimeDelta kStaleRevalidateTimeout = TimeDelta::FromSeconds(60);
 
@@ -3070,7 +3081,24 @@ int HttpCache::Transaction::WriteResponseInfoToEntry(bool truncated) {
   // (even though the cert status contains the actual errors) and no SSL
   // blocking page is shown.  An alternative would be to reverse-map the cert
   // status to a net error and replay the net error.
-  if ((response_.headers->HasHeaderValue("cache-control", "no-store")) ||
+
+#if defined(STARBOARD)
+  // Only allow caching for specific mime types.
+  std::string mime_type;
+  response_.headers->GetMimeType(&mime_type);
+  bool is_allowed_mime_type = false;
+  for (auto allowed_type : kMimeTypesCacheAllowlist) {
+    if (mime_type.compare(allowed_type) == 0) {
+      is_allowed_mime_type = true;
+      break;
+    }
+  }
+#else
+  bool is_allowed_mime_type = true;
+#endif
+
+  if (!is_allowed_mime_type ||
+      (response_.headers->HasHeaderValue("cache-control", "no-store")) ||
       IsCertStatusError(response_.ssl_info.cert_status)) {
     bool stopped = StopCachingImpl(false);
     DCHECK(stopped);

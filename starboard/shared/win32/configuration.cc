@@ -14,8 +14,8 @@
 
 #include "starboard/shared/win32/configuration.h"
 
-#include "cobalt/extension/configuration.h"
 #include "starboard/common/configuration_defaults.h"
+#include "starboard/extension/configuration.h"
 
 namespace starboard {
 namespace shared {
@@ -34,7 +34,7 @@ const char* CobaltRasterizerType() {
 
 const CobaltExtensionConfigurationApi kConfigurationApi = {
     kCobaltExtensionConfigurationName,
-    2,
+    3,
     &common::CobaltUserOnExitStrategyDefault,
     &common::CobaltRenderDirtyRegionOnlyDefault,
     &common::CobaltEglSwapIntervalDefault,
@@ -58,6 +58,7 @@ const CobaltExtensionConfigurationApi kConfigurationApi = {
     &CobaltRasterizerType,
     &common::CobaltEnableJitDefault,
     &common::CobaltFallbackSplashScreenTopicsDefault,
+    &common::CobaltCanStoreCompiledJavascriptDefault,
 };
 
 }  // namespace

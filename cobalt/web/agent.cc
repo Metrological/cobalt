@@ -18,6 +18,8 @@
 #include <memory>
 #include <utility>
 
+#include "base/observer_list.h"
+#include "base/threading/thread_checker.h"
 #include "base/trace_event/trace_event.h"
 #include "cobalt/loader/fetcher_factory.h"
 #include "cobalt/loader/script_loader_factory.h"
@@ -48,8 +50,13 @@ namespace web {
 namespace {
 class Impl : public Context {
  public:
-  explicit Impl(const Agent::Options& options);
+  Impl(const std::string& name, const Agent::Options& options);
   virtual ~Impl();
+
+  void AddEnvironmentSettingsChangeObserver(
+      EnvironmentSettingsChangeObserver* observer) final;
+  void RemoveEnvironmentSettingsChangeObserver(
+      EnvironmentSettingsChangeObserver* observer) final;
 
   // Context
   //
@@ -58,9 +65,6 @@ class Impl : public Context {
   }
   base::MessageLoop* message_loop() const final { return message_loop_; }
   void ShutDownJavaScriptEngine() final;
-  void set_fetcher_factory(loader::FetcherFactory* factory) final {
-    fetcher_factory_.reset(factory);
-  }
   loader::FetcherFactory* fetcher_factory() const final {
     return fetcher_factory_.get();
   }
@@ -80,6 +84,7 @@ class Impl : public Context {
     return script_runner_.get();
   }
   Blob::Registry* blob_registry() const final { return blob_registry_.get(); }
+  web::WebSettings* web_settings() const final { return web_settings_; }
   network::NetworkModule* network_module() const final {
     DCHECK(fetcher_factory_);
     return fetcher_factory_->network_module();
@@ -91,11 +96,18 @@ class Impl : public Context {
   const std::string& name() const final { return name_; };
   void setup_environment_settings(
       EnvironmentSettings* environment_settings) final {
+    for (auto& observer : environment_settings_change_observers_) {
+      observer.OnEnvironmentSettingsChanged(!!environment_settings);
+    }
     environment_settings_.reset(environment_settings);
     if (environment_settings_) environment_settings_->set_context(this);
+    if (service_worker_jobs_) {
+      service_worker_jobs_->SetActiveWorker(environment_settings);
+    }
   }
 
   EnvironmentSettings* environment_settings() const final {
+    DCHECK(environment_settings_);
     DCHECK_EQ(environment_settings_->context(), this);
     return environment_settings_.get();
   }
@@ -103,17 +115,49 @@ class Impl : public Context {
   scoped_refptr<worker::ServiceWorkerRegistration>
   LookupServiceWorkerRegistration(
       worker::ServiceWorkerRegistrationObject* registration) final;
-  // https://w3c.github.io/ServiceWorker/#service-worker-registration-creation
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#service-worker-registration-creation
   scoped_refptr<worker::ServiceWorkerRegistration> GetServiceWorkerRegistration(
       worker::ServiceWorkerRegistrationObject* registration) final;
 
+  void RemoveServiceWorker(worker::ServiceWorkerObject* worker) final;
   scoped_refptr<worker::ServiceWorker> LookupServiceWorker(
       worker::ServiceWorkerObject* worker) final;
-  // https://w3c.github.io/ServiceWorker/#get-the-service-worker-object
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#get-the-service-worker-object
   scoped_refptr<worker::ServiceWorker> GetServiceWorker(
       worker::ServiceWorkerObject* worker) final;
 
   WindowOrWorkerGlobalScope* GetWindowOrWorkerGlobalScope() final;
+
+  const UserAgentPlatformInfo* platform_info() const final {
+    return platform_info_;
+  }
+  std::string GetUserAgent() const final {
+    return network_module()->GetUserAgent();
+  }
+  std::string GetPreferredLanguage() const final {
+    return network_module()->preferred_language();
+  }
+
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-control
+  bool is_controlled_by(worker::ServiceWorkerObject* worker) const final {
+    // When a service worker client has a non-null active service worker, it is
+    // said to be controlled by that active service worker.
+    return active_service_worker() && (active_service_worker() == worker);
+  }
+
+  // https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-active-service-worker
+  void set_active_service_worker(
+      const scoped_refptr<worker::ServiceWorkerObject>& worker) final {
+    active_service_worker_ = worker;
+  }
+  const scoped_refptr<worker::ServiceWorkerObject>& active_service_worker()
+      const final {
+    return active_service_worker_;
+  }
+  scoped_refptr<worker::ServiceWorkerObject>& active_service_worker() final {
+    return active_service_worker_;
+  }
+
 
  private:
   // Injects a list of attributes into the Web Context's global object.
@@ -129,6 +173,9 @@ class Impl : public Context {
 
   // Name of the web instance.
   std::string name_;
+
+  web::WebSettings* const web_settings_;
+
   // FetcherFactory that is used to create a fetcher according to URL.
   std::unique_ptr<loader::FetcherFactory> fetcher_factory_;
 
@@ -157,22 +204,33 @@ class Impl : public Context {
   std::unique_ptr<EnvironmentSettings> environment_settings_;
 
   // The service worker registration object map.
-  //   https://w3c.github.io/ServiceWorker/#environment-settings-object-service-worker-registration-object-map
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#environment-settings-object-service-worker-registration-object-map
   std::map<worker::ServiceWorkerRegistrationObject*,
            scoped_refptr<worker::ServiceWorkerRegistration>>
       service_worker_registration_object_map_;
 
   // The service worker object map.
-  //   https://w3c.github.io/ServiceWorker/#environment-settings-object-service-worker-object-map
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#environment-settings-object-service-worker-object-map
   std::map<worker::ServiceWorkerObject*, scoped_refptr<worker::ServiceWorker>>
       service_worker_object_map_;
 
   worker::ServiceWorkerJobs* service_worker_jobs_;
+  const web::UserAgentPlatformInfo* platform_info_;
+
+  // https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-active-service-worker
+  // Note: When a service worker is unregistered from the last client, this will
+  // hold the last reference until the current page is unloaded.
+  scoped_refptr<worker::ServiceWorkerObject> active_service_worker_;
+
+  base::ObserverList<Context::EnvironmentSettingsChangeObserver>::Unchecked
+      environment_settings_change_observers_;
 };
 
-Impl::Impl(const Agent::Options& options) : name_(options.name) {
+Impl::Impl(const std::string& name, const Agent::Options& options)
+    : name_(name), web_settings_(options.web_settings) {
   TRACE_EVENT0("cobalt::web", "Agent::Impl::Impl()");
   service_worker_jobs_ = options.service_worker_jobs;
+  platform_info_ = options.platform_info;
   blob_registry_.reset(new Blob::Registry);
 
   fetcher_factory_.reset(new loader::FetcherFactory(
@@ -182,7 +240,7 @@ Impl::Impl(const Agent::Options& options) : name_(options.name) {
   DCHECK(fetcher_factory_);
 
   script_loader_factory_.reset(new loader::ScriptLoaderFactory(
-      options.name.c_str(), fetcher_factory_.get(), options.thread_priority));
+      name.c_str(), fetcher_factory_.get(), options.thread_priority));
   DCHECK(script_loader_factory_);
 
   javascript_engine_ =
@@ -211,23 +269,15 @@ Impl::Impl(const Agent::Options& options) : name_(options.name) {
         base::Bind(&Impl::InjectGlobalObjectAttributes, base::Unretained(this),
                    options.injected_global_object_attributes));
   }
-
-  if (service_worker_jobs_) {
-    service_worker_jobs_->RegisterWebContext(this);
-  }
 }
 
 void Impl::ShutDownJavaScriptEngine() {
   // TODO: Disentangle shutdown of the JS engine with the various tracking and
   // caching in the WebModule.
 
+  set_active_service_worker(nullptr);
   service_worker_object_map_.clear();
   service_worker_registration_object_map_.clear();
-
-  if (service_worker_jobs_) {
-    service_worker_jobs_->UnregisterWebContext(this);
-    service_worker_jobs_ = nullptr;
-  }
 
   if (global_environment_) {
     global_environment_->SetReportEvalCallback(base::Closure());
@@ -236,16 +286,33 @@ void Impl::ShutDownJavaScriptEngine() {
   }
 
   setup_environment_settings(nullptr);
+  environment_settings_change_observers_.Clear();
   blob_registry_.reset();
   script_runner_.reset();
   execution_state_.reset();
-  global_environment_ = NULL;
+
+  // Ensure that global_environment_ is null before it's destroyed.
+  scoped_refptr<script::GlobalEnvironment> global_environment(
+      std::move(global_environment_));
+  DCHECK(!global_environment_);
+  global_environment = nullptr;
+
   javascript_engine_.reset();
   fetcher_factory_.reset();
   script_loader_factory_.reset();
 }
 
 Impl::~Impl() { ShutDownJavaScriptEngine(); }
+
+void Impl::AddEnvironmentSettingsChangeObserver(
+    Context::EnvironmentSettingsChangeObserver* observer) {
+  environment_settings_change_observers_.AddObserver(observer);
+}
+
+void Impl::RemoveEnvironmentSettingsChangeObserver(
+    Context::EnvironmentSettingsChangeObserver* observer) {
+  environment_settings_change_observers_.RemoveObserver(observer);
+}
 
 void Impl::InjectGlobalObjectAttributes(
     const Agent::Options::InjectedGlobalObjectAttributes& attributes) {
@@ -279,7 +346,7 @@ scoped_refptr<worker::ServiceWorkerRegistration>
 Impl::GetServiceWorkerRegistration(
     worker::ServiceWorkerRegistrationObject* registration) {
   // Algorithm for 'get the service worker registration object':
-  //   https://w3c.github.io/ServiceWorker/#get-the-service-worker-registration-object
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#get-the-service-worker-registration-object
   scoped_refptr<worker::ServiceWorkerRegistration> worker_registration;
   if (!registration) {
     // Return undefined when registration is null.
@@ -339,10 +406,14 @@ Impl::GetServiceWorkerRegistration(
 }
 
 
+void Impl::RemoveServiceWorker(worker::ServiceWorkerObject* worker) {
+  service_worker_object_map_.erase(worker);
+}
+
 scoped_refptr<worker::ServiceWorker> Impl::LookupServiceWorker(
     worker::ServiceWorkerObject* worker) {
   // Algorithm for 'get the service worker object':
-  //   https://w3c.github.io/ServiceWorker/#get-the-service-worker-object
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#get-the-service-worker-object
   scoped_refptr<worker::ServiceWorker> service_worker;
 
   if (!worker) {
@@ -362,7 +433,7 @@ scoped_refptr<worker::ServiceWorker> Impl::LookupServiceWorker(
 scoped_refptr<worker::ServiceWorker> Impl::GetServiceWorker(
     worker::ServiceWorkerObject* worker) {
   // Algorithm for 'get the service worker object':
-  //   https://w3c.github.io/ServiceWorker/#get-the-service-worker-object
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#get-the-service-worker-object
   scoped_refptr<worker::ServiceWorker> service_worker;
 
   if (!worker) {
@@ -391,7 +462,7 @@ scoped_refptr<worker::ServiceWorker> Impl::GetServiceWorker(
 
 WindowOrWorkerGlobalScope* Impl::GetWindowOrWorkerGlobalScope() {
   script::Wrappable* global_wrappable =
-      global_environment()->global_wrappable();
+      global_environment_ ? global_environment_->global_wrappable() : nullptr;
   if (!global_wrappable) {
     return nullptr;
   }
@@ -409,9 +480,31 @@ void SignalWaitableEvent(base::WaitableEvent* event) { event->Signal(); }
 
 void Agent::WillDestroyCurrentMessageLoop() { context_.reset(); }
 
-Agent::Agent(const Options& options, InitializeCallback initialize_callback,
-             DestructionObserver* destruction_observer)
-    : thread_(options.name) {
+Agent::Agent(const std::string& name) : thread_(name) {}
+
+void Agent::Stop() {
+  DCHECK(message_loop());
+  DCHECK(thread_.IsRunning());
+
+  if (context() && context()->service_worker_jobs()) {
+    context()->service_worker_jobs()->UnregisterWebContext(context());
+  }
+
+  // Ensure that the destruction observer got added before stopping the thread.
+  destruction_observer_added_.Wait();
+  // Stop the thread. This will cause the destruction observer to be notified.
+  thread_.Stop();
+}
+
+Agent::~Agent() {
+  DCHECK(!thread_.IsRunning());
+  if (thread_.IsRunning()) {
+    Stop();
+  }
+}
+
+void Agent::Run(const Options& options, InitializeCallback initialize_callback,
+                DestructionObserver* destruction_observer) {
   // Start the dedicated thread and create the internal implementation
   // object on that thread.
   base::Thread::Options thread_options(base::MessageLoop::TYPE_DEFAULT,
@@ -421,8 +514,9 @@ Agent::Agent(const Options& options, InitializeCallback initialize_callback,
   DCHECK(message_loop());
 
   message_loop()->task_runner()->PostTask(
-      FROM_HERE, base::Bind(&Agent::Initialize, base::Unretained(this), options,
-                            initialize_callback));
+      FROM_HERE,
+      base::Bind(&Agent::InitializeTaskInThread, base::Unretained(this),
+                 options, initialize_callback));
 
   if (destruction_observer) {
     message_loop()->task_runner()->PostTask(
@@ -447,27 +541,21 @@ Agent::Agent(const Options& options, InitializeCallback initialize_callback,
                             base::Unretained(&destruction_observer_added_)));
 }
 
-Agent::~Agent() {
-  DCHECK(message_loop());
-  DCHECK(thread_.IsRunning());
-
-  // Ensure that the destruction observer got added before stopping the thread.
-  destruction_observer_added_.Wait();
-  // Stop the thread. This will cause the destruction observer to be notified.
-  thread_.Stop();
-}
-
-void Agent::Initialize(const Options& options,
-                       InitializeCallback initialize_callback) {
+void Agent::InitializeTaskInThread(const Options& options,
+                                   InitializeCallback initialize_callback) {
   DCHECK_EQ(base::MessageLoop::current(), message_loop());
-  context_.reset(CreateContext(options, thread_.message_loop()));
+  context_.reset(
+      CreateContext(thread_.thread_name(), options, thread_.message_loop()));
   initialize_callback.Run(context_.get());
 }
 
-Context* Agent::CreateContext(const Options& options,
+Context* Agent::CreateContext(const std::string& name, const Options& options,
                               base::MessageLoop* message_loop) {
-  auto* context = new Impl(options);
+  auto* context = new Impl(name, options);
   context->set_message_loop(message_loop);
+  if (options.service_worker_jobs) {
+    options.service_worker_jobs->RegisterWebContext(context);
+  }
   return context;
 }
 

@@ -66,6 +66,7 @@
 #include "cobalt/media/media_module.h"
 #include "cobalt/media_session/media_session_client.h"
 #include "cobalt/storage/storage_manager.h"
+#include "cobalt/ui_navigation/scroll_engine/scroll_engine.h"
 #include "cobalt/web/blob.h"
 #include "cobalt/web/context.h"
 #include "cobalt/web/csp_delegate_factory.h"
@@ -340,6 +341,8 @@ class WebModule::Impl {
 
   web::Context* web_context_;
 
+  ui_navigation::scroll_engine::ScrollEngine* scroll_engine_;
+
   // Simple flag used for basic error checking.
   bool is_running_;
 
@@ -389,8 +392,6 @@ class WebModule::Impl {
   // Stats for the web module. Both the dom stat tracker and layout stat
   // tracker are contained within it.
   std::unique_ptr<browser::WebModuleStatTracker> web_module_stat_tracker_;
-
-  std::unique_ptr<browser::UserAgentPlatformInfo> platform_info_;
 
   // Post and run tasks to notify MutationObservers.
   dom::MutationObserverTaskManager mutation_observer_task_manager_;
@@ -484,6 +485,7 @@ class WebModule::Impl::DocumentLoadedObserver : public dom::DocumentObserver {
 
 WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
     : web_context_(web_context),
+      scroll_engine_(data.scroll_engine),
       is_running_(false),
       is_render_tree_rasterization_pending_(
           base::StringPrintf("%s.IsRenderTreeRasterizationPending",
@@ -501,7 +503,6 @@ WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
       base::Bind(&WebModule::Impl::LogScriptError, base::Unretained(this));
   web_context_->javascript_engine()->RegisterErrorHandler(error_handler);
 #endif
-
   css_parser::Parser::SupportsMapToMeshFlag supports_map_to_mesh =
       data.options.enable_map_to_mesh
           ? css_parser::Parser::kSupportsMapToMesh
@@ -568,9 +569,6 @@ WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
       web_context_->name(), data.options.track_event_stats));
   DCHECK(web_module_stat_tracker_);
 
-  platform_info_.reset(new browser::UserAgentPlatformInfo());
-  DCHECK(platform_info_);
-
   media_source_registry_.reset(new dom::MediaSource::Registry);
 
   const media::DecoderBufferMemoryInfo* memory_info = nullptr;
@@ -588,6 +586,10 @@ WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
       data.can_play_type_handler, memory_info, &mutation_observer_task_manager_,
       data.options.dom_settings_options));
   DCHECK(web_context_->environment_settings());
+  // From algorithm to setup up a window environment settings object:
+  //   https://html.spec.whatwg.org/commit-snapshots/465a6b672c703054de278b0f8133eb3ad33d93f4/#set-up-a-window-environment-settings-object
+  // 6. Set settings object's creation URL to creationURL.
+  web_context_->environment_settings()->set_creation_url(data.initial_url);
 
   system_caption_settings_ = new cobalt::dom::captions::SystemCaptionSettings(
       web_context_->environment_settings());
@@ -617,8 +619,6 @@ WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
       base::CommandLine::ForCurrentProcess()->HasSwitch(switches::kUseTTS);
 #endif
 
-  std::unique_ptr<UserAgentPlatformInfo> platform_info(
-      new UserAgentPlatformInfo());
   DCHECK(web_context_->network_module());
   window_ = new dom::Window(
       web_context_->environment_settings(), data.window_dimensions,
@@ -631,9 +631,7 @@ WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
       web_context_->execution_state(), web_context_->script_runner(),
       web_context_->global_environment()->script_value_factory(),
       media_source_registry_.get(),
-      web_module_stat_tracker_->dom_stat_tracker(), data.initial_url,
-      web_context_->network_module()->GetUserAgent(), platform_info_.get(),
-      web_context_->network_module()->preferred_language(),
+      web_module_stat_tracker_->dom_stat_tracker(),
       base::GetSystemLanguageScript(), data.options.navigation_callback,
       base::Bind(&WebModule::Impl::OnLoadComplete, base::Unretained(this)),
       web_context_->network_module()->cookie_jar(),
@@ -665,11 +663,6 @@ WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
 
   window_weak_ = base::AsWeakPtr(window_.get());
   DCHECK(window_weak_);
-
-  dom::DOMSettings* dom_settings =
-      base::polymorphic_downcast<dom::DOMSettings*>(
-          web_context_->environment_settings());
-  dom_settings->set_window(window_);
 
   web_context_->global_environment()->CreateGlobalObject(
       window_, web_context_->environment_settings());
@@ -716,7 +709,7 @@ WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
 
   web_context_->global_environment()->SetReportEvalCallback(
       base::Bind(&web::CspDelegate::ReportEval,
-                 base::Unretained(window_->document()->csp_delegate())));
+                 base::Unretained(window_->csp_delegate())));
 
   web_context_->global_environment()->SetReportErrorCallback(
       base::Bind(&WebModule::Impl::ReportScriptError, base::Unretained(this)));
@@ -783,14 +776,16 @@ WebModule::Impl::~Impl() {
   window_ = NULL;
   media_source_registry_.reset();
   web_context_->ShutDownJavaScriptEngine();
-  platform_info_.reset();
   local_storage_database_.reset();
   mesh_cache_.reset();
   remote_typeface_cache_.reset();
+  // Warning: The image cache may contain animated images that rely on the
+  // thread in AnimatedImageTracker, so it's important to destroy the image
+  // cache before the animated image tracker object.
+  image_cache_.reset();
   animated_image_tracker_.reset();
   dom_parser_.reset();
   css_parser_.reset();
-  image_cache_.reset();
   web_module_stat_tracker_.reset();
 }
 
@@ -1024,12 +1019,10 @@ void WebModule::Impl::OnCspPolicyChanged() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK(is_running_);
   DCHECK(window_);
-  DCHECK(window_->document());
-  DCHECK(window_->document()->csp_delegate());
+  DCHECK(window_->csp_delegate());
 
   std::string eval_disabled_message;
-  bool allow_eval =
-      window_->document()->csp_delegate()->AllowEval(&eval_disabled_message);
+  bool allow_eval = window_->csp_delegate()->AllowEval(&eval_disabled_message);
   if (allow_eval) {
     web_context_->global_environment()->EnableEval();
   } else {
@@ -1314,49 +1307,27 @@ void WebModule::Impl::HandlePointerEvents() {
           base::polymorphic_downcast<const dom::UIEvent* const>(event.get())
               ->view());
       if (!topmost_event_target_) {
-        topmost_event_target_.reset(new layout::TopmostEventTarget());
+        topmost_event_target_.reset(
+            new layout::TopmostEventTarget(scroll_engine_));
       }
       topmost_event_target_->MaybeSendPointerEvents(event);
     }
   } while (event && !layout_manager_->IsRenderTreePending());
 }
 
-WebModule::Options::Options(const std::string& name)
-    : web_options(name),
-      layout_trigger(layout::LayoutManager::kOnDocumentMutation),
+WebModule::Options::Options()
+    : layout_trigger(layout::LayoutManager::kOnDocumentMutation),
       mesh_cache_capacity(configuration::Configuration::GetInstance()
                               ->CobaltMeshCacheSizeInBytes()) {
   web_options.stack_size = cobalt::browser::kWebModuleStackSize;
 }
 
-WebModule::WebModule(
-    const GURL& initial_url, base::ApplicationState initial_application_state,
-    const OnRenderTreeProducedCallback& render_tree_produced_callback,
-    OnErrorCallback error_callback, const CloseCallback& window_close_callback,
-    const base::Closure& window_minimize_callback,
-    media::CanPlayTypeHandler* can_play_type_handler,
-    media::MediaModule* media_module, const ViewportSize& window_dimensions,
-    render_tree::ResourceProvider* resource_provider, float layout_refresh_rate,
-    const Options& options)
+WebModule::WebModule(const std::string& name)
     : ui_nav_root_(new ui_navigation::NavItem(
           ui_navigation::kNativeItemTypeContainer,
           // Currently, events do not need to be processed for the root item.
           base::Closure(), base::Closure(), base::Closure())) {
-  ConstructionData construction_data(
-      initial_url, initial_application_state, render_tree_produced_callback,
-      error_callback, window_close_callback, window_minimize_callback,
-      can_play_type_handler, media_module, window_dimensions, resource_provider,
-      kDOMMaxElementDepth, layout_refresh_rate, ui_nav_root_,
-#if defined(ENABLE_DEBUGGER)
-      &waiting_for_web_debugger_,
-#endif  // defined(ENABLE_DEBUGGER)
-      &synchronous_loader_interrupt_, options);
-
-  web_agent_.reset(
-      new web::Agent(options.web_options,
-                     base::Bind(&WebModule::Initialize, base::Unretained(this),
-                                construction_data),
-                     this));
+  web_agent_.reset(new web::Agent(name));
 }
 
 WebModule::~WebModule() {
@@ -1365,11 +1336,52 @@ WebModule::~WebModule() {
   // This will cancel the timers for tasks, which help the thread exit
   ClearAllIntervalsAndTimeouts();
   web_agent_->WaitUntilDone();
+  web_agent_->Stop();
   web_agent_.reset();
 }
 
-void WebModule::Initialize(const ConstructionData& data,
-                           web::Context* context) {
+void WebModule::Run(
+    const GURL& initial_url, base::ApplicationState initial_application_state,
+    ui_navigation::scroll_engine::ScrollEngine* scroll_engine,
+    const OnRenderTreeProducedCallback& render_tree_produced_callback,
+    OnErrorCallback error_callback, const CloseCallback& window_close_callback,
+    const base::Closure& window_minimize_callback,
+    media::CanPlayTypeHandler* can_play_type_handler,
+    media::MediaModule* media_module, const ViewportSize& window_dimensions,
+    render_tree::ResourceProvider* resource_provider, float layout_refresh_rate,
+    const Options& options) {
+  ConstructionData construction_data(
+      initial_url, initial_application_state, scroll_engine,
+      render_tree_produced_callback, error_callback, window_close_callback,
+      window_minimize_callback, can_play_type_handler, media_module,
+      window_dimensions, resource_provider, kDOMMaxElementDepth,
+      layout_refresh_rate, ui_nav_root_,
+#if defined(ENABLE_DEBUGGER)
+      &waiting_for_web_debugger_,
+#endif  // defined(ENABLE_DEBUGGER)
+      &synchronous_loader_interrupt_, options);
+
+  web::Agent::Options web_options(options.web_options);
+  if (!options.injected_global_object_attributes.empty()) {
+    for (Options::InjectedGlobalObjectAttributes::const_iterator iter =
+             options.injected_global_object_attributes.begin();
+         iter != options.injected_global_object_attributes.end(); ++iter) {
+      DCHECK(!ContainsKey(web_options.injected_global_object_attributes,
+                          iter->first));
+      // Trampoline to the given callback, adding a pointer to this WebModule.
+      web_options.injected_global_object_attributes[iter->first] =
+          base::Bind(iter->second, base::Unretained(this));
+    }
+  }
+
+  web_agent_->Run(web_options,
+                  base::Bind(&WebModule::InitializeTaskInThread,
+                             base::Unretained(this), construction_data),
+                  this);
+}
+
+void WebModule::InitializeTaskInThread(const ConstructionData& data,
+                                       web::Context* context) {
   DCHECK_EQ(base::MessageLoop::current(), message_loop());
   impl_.reset(new Impl(context, data));
 }

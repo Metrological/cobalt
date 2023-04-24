@@ -16,7 +16,7 @@ package dev.cobalt.coat;
 
 import static dev.cobalt.util.Log.TAG;
 
-import android.app.NativeActivity;
+import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
@@ -29,6 +29,9 @@ import android.view.View;
 import android.view.ViewGroup.LayoutParams;
 import android.view.ViewParent;
 import android.widget.FrameLayout;
+import androidx.annotation.CallSuper;
+import com.google.androidgamesdk.GameActivity;
+import dev.cobalt.media.AudioOutputManager;
 import dev.cobalt.media.MediaCodecUtil;
 import dev.cobalt.media.VideoSurfaceView;
 import dev.cobalt.util.DisplayUtil;
@@ -37,9 +40,10 @@ import dev.cobalt.util.UsedByNative;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 /** Native activity that has the required JNI methods called by the Starboard implementation. */
-public abstract class CobaltActivity extends NativeActivity {
+public abstract class CobaltActivity extends GameActivity {
 
   // A place to put args while debugging so they're used even when starting from the launcher.
   // This should always be empty in submitted code.
@@ -69,6 +73,8 @@ public abstract class CobaltActivity extends NativeActivity {
   private long timeInNanoseconds;
 
   private static native void nativeLowMemoryEvent();
+
+  protected View mContentView = null;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -108,6 +114,21 @@ public abstract class CobaltActivity extends NativeActivity {
   }
 
   /**
+   * Creates an empty View for the launching activity, and prevent GameActivity from creating the
+   * default SurfaceView.
+   */
+  @Override
+  protected void onCreateSurfaceView() {
+    mSurfaceView = null;
+
+    getWindow().takeSurface(this);
+
+    mContentView = new View(this);
+    setContentView(mContentView);
+    mContentView.requestFocus();
+  }
+
+  /**
    * Instantiates the StarboardBridge. Apps not supporting sign-in should inject an instance of
    * NoopUserAuthorizer. Apps may subclass StarboardBridge if they need to override anything.
    */
@@ -130,6 +151,8 @@ public abstract class CobaltActivity extends NativeActivity {
     }
 
     DisplayUtil.cacheDefaultDisplay(this);
+    DisplayUtil.addDisplayListener(this);
+    AudioOutputManager.addAudioDeviceListener(this);
 
     getStarboardBridge().onActivityStart(this, keyboardEditor);
     super.onStart();
@@ -248,11 +271,12 @@ public abstract class CobaltActivity extends NativeActivity {
         return;
       }
 
-      String customProxy = String.format("--proxy=\"http=http://%s:%d\"", config.first, port);
+      String customProxy =
+          String.format(Locale.US, "--proxy=\"http=http://%s:%d\"", config.first, port);
       Log.i(TAG, "addCustomProxyArgs: " + customProxy);
       args.add(customProxy);
     } catch (NumberFormatException e) {
-      Log.w(TAG, String.format("http.proxyPort: %s is not valid number", config.second), e);
+      Log.w(TAG, "http.proxyPort: %s is not valid number", config.second, e);
     }
   }
 
@@ -266,8 +290,10 @@ public abstract class CobaltActivity extends NativeActivity {
     return StarboardBridge.isReleaseBuild();
   }
 
+  @CallSuper
   @Override
   protected void onNewIntent(Intent intent) {
+    super.onNewIntent(intent);
     getStarboardBridge().handleDeepLink(getIntentUrlAsString(intent));
   }
 
@@ -285,6 +311,7 @@ public abstract class CobaltActivity extends NativeActivity {
     getStarboardBridge().onActivityResult(requestCode, resultCode, data);
   }
 
+  @SuppressLint("MissingSuperCall")
   @Override
   public void onRequestPermissionsResult(
       int requestCode, String[] permissions, int[] grantResults) {
