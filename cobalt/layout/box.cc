@@ -553,6 +553,14 @@ LayoutUnit Box::GetPaddingBoxHeight() const {
   return padding_top() + height() + padding_bottom();
 }
 
+RectLayoutUnit Box::GetClampedPaddingBox(bool transform_forms_root) const {
+  auto padding_box_offset = GetPaddingBoxOffsetFromRoot(transform_forms_root);
+  auto clamped_padding_box = GetClampedPaddingBoxSize();
+  return RectLayoutUnit(padding_box_offset.x(), padding_box_offset.y(),
+                        clamped_padding_box.width(),
+                        clamped_padding_box.height());
+}
+
 SizeLayoutUnit Box::GetClampedPaddingBoxSize() const {
   // Padding box size depends on the content and padding areas
   // Its dimensions cannot be negative because the content and padding areas
@@ -2151,54 +2159,34 @@ bool Box::IsBorderStyleNoneOrHidden(
   return false;
 }
 
-bool Box::ApplyTransformActionToCoordinate(TransformAction action,
-                                           math::Vector2dF* coordinate) const {
+bool Box::ApplyTransformActionToCoordinate(math::Vector2dF* coordinate) const {
   std::vector<math::Vector2dF> coordinate_vector;
   coordinate_vector.push_back(*coordinate);
-  bool result = ApplyTransformActionToCoordinates(action, &coordinate_vector);
+  bool result = ApplyTransformActionToCoordinates(&coordinate_vector);
   *coordinate = coordinate_vector[0];
   return result;
 }
 
 bool Box::ApplyTransformActionToCoordinates(
-    TransformAction action, std::vector<math::Vector2dF>* coordinates) const {
+    std::vector<math::Vector2dF>* coordinates) const {
   const scoped_refptr<cssom::PropertyValue>& transform =
       computed_style()->transform();
   if (transform == cssom::KeywordValue::GetNone()) {
     return true;
   }
 
-  // The border box offset is calculated in two steps because we want to
-  // stop at the second transform and not the first (which is this box).
   Vector2dLayoutUnit containing_block_offset_from_root =
       GetContainingBlockOffsetFromRoot(true /*transform_forms_root*/);
 
-  // The transform rect always includes the offset from the containing block.
-  // However, in the case where the action is entering the transform, the full
-  // offset from the root needs to be included in the transform.
-  Vector2dLayoutUnit transform_rect_offset =
-      margin_box_offset_from_containing_block() +
-      GetBorderBoxOffsetFromMarginBox();
-  if (action == kEnterTransform) {
-    transform_rect_offset += containing_block_offset_from_root;
-  }
+  auto matrix = GetCSSTransformForBoxWithPredefinedOffset(
+      containing_block_offset_from_root);
 
-  // Transform the coordinates.
-  math::Matrix3F matrix = GetCSSTransform(
-      transform.get(), computed_style()->transform_origin().get(),
-      math::RectF(transform_rect_offset.x().toFloat(),
-                  transform_rect_offset.y().toFloat(),
-                  GetBorderBoxWidth().toFloat(),
-                  GetBorderBoxHeight().toFloat()),
-      ComputeUiNavFocusForTransform());
   if (!matrix.IsIdentity()) {
-    if (action == kEnterTransform) {
-      matrix = matrix.Inverse();
-      // The matrix is not invertible. Return that applying the transform
-      // failed.
-      if (matrix.IsZeros()) {
-        return false;
-      }
+    matrix = matrix.Inverse();
+    // The matrix is not invertible. Return that applying the transform
+    // failed.
+    if (matrix.IsZeros()) {
+      return false;
     }
 
     for (std::vector<math::Vector2dF>::iterator coordinate_iter =
@@ -2222,13 +2210,59 @@ bool Box::ApplyTransformActionToCoordinates(
            coordinates->begin();
        coordinate_iter != coordinates->end(); ++coordinate_iter) {
     math::Vector2dF& coordinate = *coordinate_iter;
-    if (action == kEnterTransform) {
-      coordinate -= containing_block_offset_from_root_as_float;
-    } else {
-      coordinate += containing_block_offset_from_root_as_float;
-    }
+    coordinate -= containing_block_offset_from_root_as_float;
   }
   return true;
+}
+
+math::Matrix3F Box::GetCSSTransformForBox() const {
+  if (!IsTransformed()) {
+    return math::Matrix3F::Identity();
+  }
+
+  Vector2dLayoutUnit containing_block_offset_from_root =
+      GetContainingBlockOffsetFromRoot(true /*transform_forms_root*/);
+  return GetCSSTransformForBoxWithPredefinedOffset(
+      containing_block_offset_from_root);
+}
+
+math::Matrix3F Box::GetCSSTransformForBoxWithPredefinedOffset(
+    Vector2dLayoutUnit containing_block_offset_from_root) const {
+  if (!IsTransformed()) {
+    return math::Matrix3F::Identity();
+  }
+
+  // The border box offset is calculated in two steps because we want to
+  // stop at the second transform and not the first (which is the containing
+  // block).
+  //
+  // The transform rect always includes the offset from the containing block.
+  // However, in the case where the action is entering the transform, the full
+  // offset from the root needs to be included in the transform.
+  Vector2dLayoutUnit transform_rect_offset =
+      margin_box_offset_from_containing_block() +
+      GetBorderBoxOffsetFromMarginBox() + containing_block_offset_from_root;
+
+  // Transform the coordinates.
+  math::Matrix3F matrix =
+      GetCSSTransform(computed_style()->transform().get(),
+                      computed_style()->transform_origin().get(),
+                      math::RectF(transform_rect_offset.x().toFloat(),
+                                  transform_rect_offset.y().toFloat(),
+                                  GetBorderBoxWidth().toFloat(),
+                                  GetBorderBoxHeight().toFloat()),
+                      ComputeUiNavFocusForTransform());
+
+  return matrix;
+}
+
+bool Box::CoordinateCanTarget(const math::Vector2dF* coordinate) const {
+  if (!cssom::IsOverflowCropped(computed_style())) {
+    return true;
+  }
+  const Vector2dLayoutUnit layout_coordinate(LayoutUnit(coordinate->x()),
+                                             LayoutUnit(coordinate->y()));
+  return IsUnderCoordinate(layout_coordinate);
 }
 
 void Box::AddIntersectionObserverRootsAndTargets(

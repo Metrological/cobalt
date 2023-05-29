@@ -24,7 +24,7 @@ class FilePath;
 class SequencedTaskRunner;
 class TaskRunner;
 class TimeDelta;
-}
+}  // namespace base
 
 namespace url {
 class Origin;
@@ -82,9 +82,7 @@ class NET_EXPORT URLFetcher {
  public:
   // Imposible http response code. Used to signal that no http response code
   // was received.
-  enum ResponseCode {
-    RESPONSE_CODE_INVALID = -1
-  };
+  enum ResponseCode { RESPONSE_CODE_INVALID = -1 };
 
   enum RequestType {
     GET,
@@ -323,6 +321,9 @@ class NET_EXPORT URLFetcher {
   // by Chromium, we do want to use it and need a proper way to retrieve it.
   virtual URLFetcherResponseWriter* GetResponseWriter() const = 0;
 #endif
+
+  // Retrieve the request headers from the request.
+  virtual const HttpRequestHeaders& GetRequestHeaders() const = 0;
 
   // Retrieve the response headers from the request.  Must only be called after
   // the OnURLFetchComplete callback has run.

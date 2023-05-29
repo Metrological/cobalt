@@ -37,27 +37,39 @@ FetchInterceptorCoordinator::FetchInterceptorCoordinator()
 
 
 void FetchInterceptorCoordinator::TryIntercept(
-    const GURL& url,
-    std::unique_ptr<base::OnceCallback<void(std::unique_ptr<std::string>)>>
-        callback,
-    std::unique_ptr<base::OnceCallback<void(const net::LoadTimingInfo&)>>
+    const GURL& url, bool main_resource,
+    const net::HttpRequestHeaders& request_headers,
+    scoped_refptr<base::SingleThreadTaskRunner> callback_task_runner,
+    base::OnceCallback<void(std::unique_ptr<std::string>)> callback,
+    base::OnceCallback<void(const net::LoadTimingInfo&)>
         report_load_timing_info,
-    std::unique_ptr<base::OnceClosure> fallback) {
+    base::OnceClosure fallback) {
   // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#handle-fetch
-  // Steps 17 to 23
-  // TODO: add should skip event handling
-  // (https://w3c.github.io/ServiceWorker/#should-skip-event).
-  // TODO: determine |shouldSoftUpdate| and if true run soft update in parallel
-  // (https://w3c.github.io/ServiceWorker/#soft-update).
+
   if (!fetch_interceptor_) {
-    std::move(*fallback).Run();
+    std::move(fallback).Run();
     return;
   }
+  // Steps 17 to 23
+  // TODO: add should skip event handling
+  // (https://www.w3.org/TR/2022/CRD-service-workers-20220712/#should-skip-event).
+
+  // 18. Let shouldSoftUpdate be true if any of the following are true, and
+  //     false otherwise:
+  //      . request is a non-subresource request.
+  // Note: check if destination is: "document", "embed", "frame", "iframe",
+  // "object", "report", "serviceworker", "sharedworker", or "worker".
+  //
+  //      . request is a subresource request and registration is stale.
+  // Note: check if destination is "audio", "audioworklet", "font", "image",
+  // "manifest", "paintworklet", "script", "style", "track", "video", "xslt"
+
   // TODO: test interception once registered service workers are persisted.
   //       Consider moving the interception out of the ServiceWorkerGlobalScope
   //       to avoid a race condition. Fetches should be able to be intercepted
   //       by an active, registered, service worker.
-  fetch_interceptor_->StartFetch(url, std::move(callback),
+  fetch_interceptor_->StartFetch(url, main_resource, request_headers,
+                                 callback_task_runner, std::move(callback),
                                  std::move(report_load_timing_info),
                                  std::move(fallback));
 }

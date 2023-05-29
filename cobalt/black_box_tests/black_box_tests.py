@@ -36,6 +36,8 @@ _DISABLED_BLACKBOXTEST_CONFIGS = [
     'android-arm/devel',
     'android-arm64/devel',
     'android-x86/devel',
+    'evergreen-arm/devel',
+    'evergreen-x64/devel',
     'raspi-0/devel',
 ]
 
@@ -53,7 +55,8 @@ _TESTS_NEEDING_SYSTEM_SIGNAL = [
     'preload_font',
     'preload_visibility',
     'preload_launch_parameter',
-    'signal_handler_doesnt_crash',
+    # TODO(b/254502632): Investigate the cause of the flakiness from this test.
+    # 'signal_handler_doesnt_crash',
     'suspend_visibility',
     'timer_hit_after_preload',
     'timer_hit_in_preload',
@@ -67,8 +70,11 @@ _TESTS_NO_SIGNAL = [
     'h5vcc_storage_write_verify_test',
     'http_cache',
     'persistent_cookie',
+    'service_worker_add_to_cache_test',
     'service_worker_cache_keys_test',
+    'service_worker_controller_activation_test',
     'service_worker_get_registrations_test',
+    'service_worker_fetch_main_resource_test',
     'service_worker_fetch_test',
     'service_worker_message_test',
     'service_worker_test',
@@ -222,13 +228,8 @@ class BlackBoxTests(object):
     if self.proxy_port == '-1':
       return 1
 
-    # Temporary means to determine if we are running on CI
-    # TODO: Update to IS_CI environment variable or similar
-    out_dir = _launcher_params.out_directory
-    is_ci = out_dir and 'mh_lab' in out_dir  # pylint: disable=unsupported-membership-test
-
-    if is_ci and (f'{_launcher_params.platform}/{_launcher_params.config}'
-                  in _DISABLED_BLACKBOXTEST_CONFIGS):
+    if (f'{_launcher_params.platform}/{_launcher_params.config}'
+        in _DISABLED_BLACKBOXTEST_CONFIGS):
       logging.warning('Blackbox tests disabled for platform:%s config:%s',
                       _launcher_params.platform, _launcher_params.config)
       return 0

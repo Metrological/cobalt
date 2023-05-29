@@ -38,6 +38,7 @@
 #include "cobalt/worker/service_worker_registration.h"
 #include "cobalt/worker/worker_global_scope.h"
 #include "net/base/load_timing_info.h"
+#include "net/http/http_request_headers.h"
 
 namespace cobalt {
 namespace worker {
@@ -48,8 +49,10 @@ namespace worker {
 class ServiceWorkerGlobalScope : public WorkerGlobalScope,
                                  public loader::FetchInterceptor {
  public:
-  explicit ServiceWorkerGlobalScope(script::EnvironmentSettings* settings,
-                                    ServiceWorkerObject* service_worker);
+  explicit ServiceWorkerGlobalScope(
+      script::EnvironmentSettings* settings,
+      const web::WindowOrWorkerGlobalScope::Options& options,
+      ServiceWorkerObject* service_worker);
   ServiceWorkerGlobalScope(const ServiceWorkerGlobalScope&) = delete;
   ServiceWorkerGlobalScope& operator=(const ServiceWorkerGlobalScope&) = delete;
 
@@ -72,12 +75,13 @@ class ServiceWorkerGlobalScope : public WorkerGlobalScope,
   script::HandlePromiseVoid SkipWaiting();
 
   void StartFetch(
-      const GURL& url,
-      std::unique_ptr<base::OnceCallback<void(std::unique_ptr<std::string>)>>
-          callback,
-      std::unique_ptr<base::OnceCallback<void(const net::LoadTimingInfo&)>>
+      const GURL& url, bool main_resource,
+      const net::HttpRequestHeaders& request_headers,
+      scoped_refptr<base::SingleThreadTaskRunner> callback_task_runner,
+      base::OnceCallback<void(std::unique_ptr<std::string>)> callback,
+      base::OnceCallback<void(const net::LoadTimingInfo&)>
           report_load_timing_info,
-      std::unique_ptr<base::OnceClosure> fallback) override;
+      base::OnceClosure fallback) override;
 
   const web::EventTargetListenerInfo::EventListenerScriptValue* oninstall() {
     return GetAttributeEventListener(base::Tokens::install());

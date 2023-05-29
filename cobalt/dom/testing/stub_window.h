@@ -28,6 +28,7 @@
 #include "cobalt/cssom/viewport_size.h"
 #include "cobalt/dom/captions/system_caption_settings.h"
 #include "cobalt/dom/dom_settings.h"
+#include "cobalt/dom/dom_stat_tracker.h"
 #include "cobalt/dom/local_storage_database.h"
 #include "cobalt/dom/testing/stub_environment_settings.h"
 #include "cobalt/dom/window.h"
@@ -107,6 +108,8 @@ class StubWindow {
     dom_parser_.reset(
         new dom_parser::Parser(base::Bind(&StubLoadCompleteCallback)));
     dom_stat_tracker_.reset(new dom::DomStatTracker("StubWindow"));
+    web::CspDelegate::Options csp_options;
+    csp_options.header_policy = csp::kCSPOptional;
     window_ = new dom::Window(
         web_context()->environment_settings(), cssom::ViewportSize(1920, 1080),
         base::kApplicationStateStarted, css_parser_.get(), dom_parser_.get(),
@@ -115,15 +118,14 @@ class StubWindow {
         nullptr, nullptr, nullptr, nullptr,
         web_context()->global_environment()->script_value_factory(), nullptr,
         dom_stat_tracker_.get(), "en", base::Callback<void(const GURL&)>(),
-        base::Bind(&StubLoadCompleteCallback), nullptr,
-        network_bridge::PostSender(), csp::kCSPOptional,
-        web::kCspEnforcementEnable, base::Closure() /* csp_policy_changed */,
-        base::Closure() /* ran_animation_frame_callbacks */,
+        base::Bind(&StubLoadCompleteCallback), nullptr /* cookie_jar */,
+        csp_options, base::Closure() /* ran_animation_frame_callbacks */,
         dom::Window::CloseCallback() /* window_close */,
         base::Closure() /* window_minimize */, on_screen_keyboard_bridge_,
         nullptr /* camera_3d */, dom::Window::OnStartDispatchEventCallback(),
         dom::Window::OnStopDispatchEventCallback(),
         dom::ScreenshotManager::ProvideScreenshotFunctionCallback(),
+        dom::Window::NavItemCallback(),
         nullptr /* synchronous_loader_interrupt */,
         false /* enable_inline_script_warnings */, nullptr /* ui_nav_root */,
         true /* enable_map_to_mesh */, 0 /* csp_insecure_allowed_token */,
@@ -131,9 +133,10 @@ class StubWindow {
         dom::Window::kClockTypeSystemTime /* clock_type */,
         dom::Window::CacheCallback() /* splash_screen_cache_callback */,
         system_caption_settings_ /* captions */
-        );
+    );
     global_environment()->CreateGlobalObject(
         window_, web_context()->environment_settings());
+    web_context()->SetupFinished();
   }
 
  private:
@@ -142,7 +145,7 @@ class StubWindow {
 
   void InitializeWebContext() {
     web_context_.reset(new web::testing::StubWebContext());
-    web_context()->setup_environment_settings(
+    web_context()->SetupEnvironmentSettings(
         new dom::testing::StubEnvironmentSettings(options_));
     web_context()->environment_settings()->set_creation_url(
         GURL("about:blank"));

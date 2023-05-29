@@ -324,6 +324,8 @@ static_library("starboard_platform") {
     "configuration.h",
     "configuration_constants.cc",
     "configuration_public.h",
+    "crash_handler.cc",
+    "crash_handler.h",
     "decode_target_create.cc",
     "decode_target_create.h",
     "decode_target_get_info.cc",
@@ -367,6 +369,8 @@ static_library("starboard_platform") {
     "log_is_tty.cc",
     "log_raw.cc",
     "main.cc",
+    "max_output_buffers_lookup_table.cc",
+    "max_output_buffers_lookup_table.h",
     "media_capabilities_cache.cc",
     "media_capabilities_cache.h",
     "media_codec_bridge.cc",
@@ -487,11 +491,10 @@ static_library("starboard_platform") {
   }
 
   if (sb_is_evergreen_compatible) {
-    public_deps += [ "//starboard/elf_loader:evergreen_config" ]
-
-    if (!sb_evergreen_compatible_enable_lite) {
-      public_deps += [ "//starboard/loader_app:pending_restart" ]
-    }
+    public_deps += [
+       "//starboard/elf_loader:evergreen_config",
+       "//starboard/loader_app:pending_restart",
+    ]
   }
 
   if (sb_evergreen_compatible_use_libunwind) {

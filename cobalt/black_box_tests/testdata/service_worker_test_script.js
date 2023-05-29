@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+h5vcc.storage.clearServiceWorkerCache();
+
 const eventCounts = {};
 const countEvent = (fnName, expectedEventCount) => {
   if (fnName in eventCounts) {
@@ -292,7 +294,7 @@ promiseSequence([
   () => navigator.serviceWorker.register('service_worker_test_nonexist.js')
       .then(fail(`Unknown script did not raise error.`))
       .catch(error => {
-        assertEqual('NetworkError', error.name);
+        assertEqual('SecurityError', error.name);
       }),
   checkSuccessfulRegistration,
   unregisterAll,

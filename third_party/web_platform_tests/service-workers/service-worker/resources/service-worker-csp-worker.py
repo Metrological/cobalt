@@ -1,4 +1,4 @@
-bodyDefault = b'''
+bodyDefault = '''
 importScripts('worker-testharness.js');
 importScripts('test-helpers.sub.js');
 importScripts('/common/get-host-info.sub.js');
@@ -17,6 +17,7 @@ test(function() {
                 'Importing the other origins script should fail.');
   }, 'importScripts test for default-src');
 
+/* b/114053979 Cobalt eval() allowed when missing csp
 test(function() {
     assert_throws_js(EvalError,
                      function() { eval('1 + 1'); },
@@ -24,7 +25,7 @@ test(function() {
     assert_throws_js(EvalError,
                      function() { new Function('1 + 1'); },
                      'new Function() should throw EvalError.')
-  }, 'eval test for default-src');
+  }, 'eval test for default-src');*/
 
 async_test(function(t) {
     fetch(host_info.HTTPS_REMOTE_ORIGIN +
@@ -43,7 +44,8 @@ async_test(function(t) {
       base_path() + 'redirect.py?Redirect=';
     var OTHER_BASE_URL = host_info.HTTPS_REMOTE_ORIGIN +
       base_path() + 'fetch-access-control.py?'
-    fetch(REDIRECT_URL + encodeURIComponent(OTHER_BASE_URL + 'ACAOrigin=*'),
+    fetch(REDIRECT_URL + encodeURIComponent(OTHER_BASE_URL + 'ACAOrigin=*') +
+          '&ACAOrigin=*',
           {mode: 'cors'})
       .then(function(response){
           assert_unreached('Redirected fetch should fail.');
@@ -53,7 +55,7 @@ async_test(function(t) {
       .catch(unreached_rejection(t));
   }, 'Redirected fetch test for default-src');'''
 
-bodyScript = b'''
+bodyScript = '''
 importScripts('worker-testharness.js');
 importScripts('test-helpers.sub.js');
 importScripts('/common/get-host-info.sub.js');
@@ -72,6 +74,7 @@ test(function() {
                 'Importing the other origins script should fail.');
   }, 'importScripts test for script-src');
 
+/* b/114053979 Cobalt eval() allowed when missing csp
 test(function() {
     assert_throws_js(EvalError,
                      function() { eval('1 + 1'); },
@@ -79,7 +82,7 @@ test(function() {
     assert_throws_js(EvalError,
                      function() { new Function('1 + 1'); },
                      'new Function() should throw EvalError.')
-  }, 'eval test for script-src');
+  }, 'eval test for script-src');*/
 
 async_test(function(t) {
     fetch(host_info.HTTPS_REMOTE_ORIGIN +
@@ -98,7 +101,8 @@ async_test(function(t) {
       base_path() + 'redirect.py?Redirect=';
     var OTHER_BASE_URL = host_info.HTTPS_REMOTE_ORIGIN +
       base_path() + 'fetch-access-control.py?'
-    fetch(REDIRECT_URL + encodeURIComponent(OTHER_BASE_URL + 'ACAOrigin=*'),
+    fetch(REDIRECT_URL + encodeURIComponent(OTHER_BASE_URL + 'ACAOrigin=*') +
+          '&ACAOrigin=*',
           {mode: 'cors'})
       .then(function(response){
           t.done();
@@ -108,7 +112,7 @@ async_test(function(t) {
       .catch(unreached_rejection(t));
   }, 'Redirected fetch test for script-src');'''
 
-bodyConnect = b'''
+bodyConnect = '''
 importScripts('worker-testharness.js');
 importScripts('test-helpers.sub.js');
 importScripts('/common/get-host-info.sub.js');
@@ -127,6 +131,7 @@ test(function() {
                  'Importing the other origins script should not fail.');
   }, 'importScripts test for connect-src');
 
+/* b/114053979 Cobalt eval() allowed when missing csp
 test(function() {
     var eval_failed = false;
     try {
@@ -137,7 +142,7 @@ test(function() {
     }
     assert_false(eval_failed,
                  'connect-src without unsafe-eval should not block eval().');
-  }, 'eval test for connect-src');
+  }, 'eval test for connect-src');*/
 
 async_test(function(t) {
     fetch(host_info.HTTPS_REMOTE_ORIGIN +
@@ -156,7 +161,8 @@ async_test(function(t) {
       base_path() + 'redirect.py?Redirect=';
     var OTHER_BASE_URL = host_info.HTTPS_REMOTE_ORIGIN +
       base_path() + 'fetch-access-control.py?'
-    fetch(REDIRECT_URL + encodeURIComponent(OTHER_BASE_URL + 'ACAOrigin=*'),
+    fetch(REDIRECT_URL + encodeURIComponent(OTHER_BASE_URL + 'ACAOrigin=*') +
+          '&ACAOrigin=*',
           {mode: 'cors'})
       .then(function(response){
           assert_unreached('Redirected fetch should fail.');
@@ -168,16 +174,16 @@ async_test(function(t) {
 
 def main(request, response):
     headers = []
-    headers.append((b'Content-Type', b'application/javascript'))
-    directive = request.GET[b'directive']
-    body = b'ERROR: Unknown directive'
-    if directive == b'default':
-        headers.append((b'Content-Security-Policy', b"default-src 'self'"))
+    headers.append(('Content-Type', 'application/javascript'))
+    directive = request.GET['directive']
+    body = 'ERROR: Unknown directive'
+    if directive == 'default':
+        headers.append(('Content-Security-Policy', "default-src 'self'"))
         body = bodyDefault
-    elif directive == b'script':
-        headers.append((b'Content-Security-Policy', b"script-src 'self'"))
+    elif directive == 'script':
+        headers.append(('Content-Security-Policy', "script-src 'self'"))
         body = bodyScript
-    elif directive == b'connect':
-        headers.append((b'Content-Security-Policy', b"connect-src 'self'"))
+    elif directive == 'connect':
+        headers.append(('Content-Security-Policy', "connect-src 'self'"))
         body = bodyConnect
     return headers, body

@@ -19,6 +19,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,7 @@
 #include "starboard/common/mutex.h"
 #include "starboard/common/string.h"
 #include "starboard/event.h"
+#include "starboard/key.h"
 #include "starboard/shared/starboard/audio_sink/audio_sink_internal.h"
 
 namespace starboard {
@@ -182,12 +184,21 @@ bool ApplicationAndroid::DestroyWindow(SbWindow window) {
 }
 
 Event* ApplicationAndroid::WaitForSystemEventWithTimeout(SbTime time) {
+  // Limit the polling time in case some non-system event is injected.
+  const int kMaxPollingTimeMillisecond = 10;
+
   // Convert from microseconds to milliseconds, taking the ceiling value.
   // If we take the floor, or round, then we end up busy looping every time
   // the next event time is less than one millisecond.
   int timeout_millis = (time + kSbTimeMillisecond - 1) / kSbTimeMillisecond;
   int looper_events;
-  int ident = ALooper_pollAll(timeout_millis, NULL, &looper_events, NULL);
+  int ident = ALooper_pollAll(
+      std::min(std::max(timeout_millis, 0), kMaxPollingTimeMillisecond), NULL,
+      &looper_events, NULL);
+
+  // Ignore new system events while processing one.
+  handle_system_events_ = false;
+
   switch (ident) {
     case kLooperIdAndroidCommand:
       ProcessAndroidCommand();
@@ -196,6 +207,8 @@ Event* ApplicationAndroid::WaitForSystemEventWithTimeout(SbTime time) {
       ProcessKeyboardInject();
       break;
   }
+
+  handle_system_events_ = true;
 
   // Always return NULL since we already dispatched our own system events.
   return NULL;
@@ -275,12 +288,16 @@ void ApplicationAndroid::ProcessAndroidCommand() {
       // early in SendAndroidCommand().
       {
         ScopedLock lock(android_command_mutex_);
-        // Cobalt can't keep running without a window, even if the Activity
-        // hasn't stopped yet. Block until conceal event has been processed.
+// Cobalt can't keep running without a window, even if the Activity
+// hasn't stopped yet. Block until conceal event has been processed.
 
-        // Only process injected events -- don't check system events since
-        // that may try to acquire the already-locked android_command_mutex_.
+// Only process injected events -- don't check system events since
+// that may try to acquire the already-locked android_command_mutex_.
+#if SB_API_VERSION >= 13
         InjectAndProcess(kSbEventTypeConceal, /* checkSystemEvents */ false);
+#else
+        InjectAndProcess(kSbEventTypeSuspend, /* checkSystemEvents */ false);
+#endif
 
         if (window_) {
           window_->native_window = NULL;
@@ -357,6 +374,7 @@ void ApplicationAndroid::ProcessAndroidCommand() {
   // If there's a window, sync the app state to the Activity lifecycle.
   if (native_window_) {
     switch (sync_state) {
+#if SB_API_VERSION >= 13
       case AndroidCommand::kStart:
         Inject(new Event(kSbEventTypeReveal, NULL, NULL));
         break;
@@ -369,6 +387,20 @@ void ApplicationAndroid::ProcessAndroidCommand() {
       case AndroidCommand::kStop:
         Inject(new Event(kSbEventTypeConceal, NULL, NULL));
         break;
+#else
+      case AndroidCommand::kStart:
+        Inject(new Event(kSbEventTypeResume, NULL, NULL));
+        break;
+      case AndroidCommand::kResume:
+        Inject(new Event(kSbEventTypeUnpause, NULL, NULL));
+        break;
+      case AndroidCommand::kPause:
+        Inject(new Event(kSbEventTypePause, NULL, NULL));
+        break;
+      case AndroidCommand::kStop:
+        Inject(new Event(kSbEventTypeSuspend, NULL, NULL));
+        break;
+#endif
       default:
         break;
     }
@@ -703,6 +735,20 @@ bool ApplicationAndroid::GetOverlayedBoolValue(const char* var_name) {
       env->GetBooleanFieldOrAbort(resource_overlay_, var_name, "Z");
   overlayed_bool_variables_[var_name] = value;
   return value;
+}
+
+extern "C" SB_EXPORT_PLATFORM void
+Java_dev_cobalt_coat_VolumeStateReceiver_nativeVolumeChanged(JNIEnv* env,
+                                                             jobject jcaller,
+                                                             jint volumeDelta) {
+  SbKey key = volumeDelta > 0 ? SbKey::kSbKeyVolumeUp : SbKey::kSbKeyVolumeDown;
+  ApplicationAndroid::Get()->SendKeyboardInject(key);
+}
+
+extern "C" SB_EXPORT_PLATFORM void
+Java_dev_cobalt_coat_VolumeStateReceiver_nativeMuteChanged(JNIEnv* env,
+                                                           jobject jcaller) {
+  ApplicationAndroid::Get()->SendKeyboardInject(SbKey::kSbKeyVolumeMute);
 }
 
 }  // namespace shared

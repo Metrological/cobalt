@@ -45,7 +45,8 @@ repos:
             (?x)^(
                 starboard/[^/]+/i18n/|
                 cobalt/content/licenses/|
-                cobalt/fetch/embedded_scripts
+                cobalt/fetch/embedded_scripts|
+                cobalt/loader/cors_preflight.cc
             )
 
 -   repo: local
@@ -58,10 +59,11 @@ repos:
         always_run: true
     -   id: clang-format
         name: clang-format
-        entry: python ./precommit_hooks/clang_format_wrapper.py
+        entry: clang-format
         language: python
         types: [c++]
         args: [-i, -style=file]
+        additional_dependencies: ['clang-format']
     -   id: cpplint
         name: cpplint
         entry: cpplint

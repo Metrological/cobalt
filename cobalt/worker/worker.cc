@@ -39,10 +39,6 @@
 namespace cobalt {
 namespace worker {
 
-namespace {
-bool PermitAnyURL(const GURL&, bool) { return true; }
-}  // namespace
-
 Worker::Worker(const char* name, const Options& options) : options_(options) {
   // Algorithm for 'run a worker'
   //   https://html.spec.whatwg.org/commit-snapshots/465a6b672c703054de278b0f8133eb3ad33d93f4/#run-a-worker
@@ -99,7 +95,7 @@ void Worker::Initialize(web::Context* context) {
   //   https://html.spec.whatwg.org/commit-snapshots/465a6b672c703054de278b0f8133eb3ad33d93f4/#set-up-a-worker-environment-settings-object
   worker_settings->set_origin(
       options_.outside_context->environment_settings()->GetOrigin());
-  web_context_->setup_environment_settings(worker_settings);
+  web_context_->SetupEnvironmentSettings(worker_settings);
   // From algorithm for to setup up a worker environment settings object:
   //   https://html.spec.whatwg.org/commit-snapshots/465a6b672c703054de278b0f8133eb3ad33d93f4/#set-up-a-worker-environment-settings-object
   // 5. Set settings object's creation URL to worker global scope's url.
@@ -108,8 +104,9 @@ void Worker::Initialize(web::Context* context) {
   // 8. Let worker global scope be the global object of realm execution
   //    context's Realm component.
   scoped_refptr<DedicatedWorkerGlobalScope> dedicated_worker_global_scope =
-      new DedicatedWorkerGlobalScope(web_context_->environment_settings(),
-                                     false);
+      new DedicatedWorkerGlobalScope(
+          web_context_->environment_settings(), options_.global_scope_options,
+          /*parent_cross_origin_isolated_capability*/ false);
   worker_global_scope_ = dedicated_worker_global_scope;
   // 9. Set up a worker environment settings object with realm execution
   //    context, outside settings, and unsafeWorkerCreationTime, and let
@@ -156,6 +153,7 @@ void Worker::Initialize(web::Context* context) {
   // "worker" otherwise.
   // 14. Obtain script
 
+  web_context_->SetupFinished();
   Obtain();
 }
 

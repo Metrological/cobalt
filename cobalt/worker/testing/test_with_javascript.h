@@ -28,7 +28,9 @@
 #include "cobalt/script/source_code.h"
 #include "cobalt/script/testing/mock_exception_state.h"
 #include "cobalt/web/context.h"
+#include "cobalt/web/stat_tracker.h"
 #include "cobalt/web/testing/stub_web_context.h"
+#include "cobalt/web/window_or_worker_global_scope.h"
 #include "cobalt/worker/dedicated_worker_global_scope.h"
 #include "cobalt/worker/service_worker_global_scope.h"
 #include "cobalt/worker/worker_settings.h"
@@ -42,15 +44,17 @@ namespace testing {
 template <class TypeIdProvider>
 class TestWithJavaScriptBase : public TypeIdProvider {
  public:
-  TestWithJavaScriptBase() {
+  TestWithJavaScriptBase() : stat_tracker_("TestWithJavaScriptBase", "Test") {
     web_context_.reset(new web::testing::StubWebContext());
-    web_context_->setup_environment_settings(new WorkerSettings());
+    web_context_->SetupEnvironmentSettings(new WorkerSettings());
     web_context_->environment_settings()->set_creation_url(GURL("about:blank"));
+    web::WindowOrWorkerGlobalScope::Options global_scope_options;
+    global_scope_options.stat_tracker = &stat_tracker_;
 
     if (TypeIdProvider::GetGlobalScopeTypeId() ==
         base::GetTypeId<DedicatedWorkerGlobalScope>()) {
-      dedicated_worker_global_scope_ =
-          new DedicatedWorkerGlobalScope(web_context_->environment_settings());
+      dedicated_worker_global_scope_ = new DedicatedWorkerGlobalScope(
+          web_context_->environment_settings(), global_scope_options);
       dedicated_worker_global_scope_->set_name("TestWithJavaScriptBase");
       web_context_->global_environment()->CreateGlobalObject(
           dedicated_worker_global_scope_, web_context_->environment_settings());
@@ -66,11 +70,13 @@ class TestWithJavaScriptBase : public TypeIdProvider {
               web_context_->network_module(),
               containing_service_worker_registration_));
       service_worker_global_scope_ = new ServiceWorkerGlobalScope(
-          web_context_->environment_settings(), service_worker_object_);
+          web_context_->environment_settings(), global_scope_options,
+          service_worker_object_);
       web_context_->global_environment()->CreateGlobalObject(
           service_worker_global_scope_, web_context_->environment_settings());
       worker_global_scope_ = service_worker_global_scope_.get();
     }
+    web_context_->SetupFinished();
   }
 
   ~TestWithJavaScriptBase() { ClearWebContext(); }
@@ -91,6 +97,10 @@ class TestWithJavaScriptBase : public TypeIdProvider {
   virtual web::Context* web_context() const {
     DCHECK(web_context_);
     return web_context_.get();
+  }
+
+  web::EnvironmentSettings* environment_settings() const {
+    return web_context()->environment_settings();
   }
 
   scoped_refptr<script::GlobalEnvironment> global_environment() const {
@@ -137,6 +147,7 @@ class TestWithJavaScriptBase : public TypeIdProvider {
       containing_service_worker_registration_;
   scoped_refptr<ServiceWorkerGlobalScope> service_worker_global_scope_;
   ::testing::StrictMock<script::testing::MockExceptionState> exception_state_;
+  web::StatTracker stat_tracker_;
 };
 
 template <class GlobalScope>

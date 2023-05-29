@@ -69,16 +69,17 @@ script::HandlePromiseWrappable ServiceWorkerContainer::ready() {
                          ->script_value_factory()
                          ->CreateInterfacePromise<
                              scoped_refptr<ServiceWorkerRegistration>>();
-    promise_reference_.reset(
-        new script::ValuePromiseWrappable::Reference(this, ready_promise_));
+    promise_reference_.reset(new script::ValuePromiseWrappable::Reference(
+        environment_settings()->context()->GetWindowOrWorkerGlobalScope(),
+        ready_promise_));
   }
   // 2. Let readyPromise be this's ready promise.
   script::HandlePromiseWrappable ready_promise(ready_promise_);
   // 3. If readyPromise is pending, run the following substeps in parallel:
   if (ready_promise->State() == script::PromiseState::kPending) {
     //    3.1. Let client by this's service worker client.
-    web::EnvironmentSettings* client = environment_settings();
-    worker::ServiceWorkerJobs* jobs = client->context()->service_worker_jobs();
+    web::Context* client = environment_settings()->context();
+    worker::ServiceWorkerJobs* jobs = client->service_worker_jobs();
     jobs->message_loop()->task_runner()->PostTask(
         FROM_HERE,
         base::BindOnce(&ServiceWorkerJobs::MaybeResolveReadyPromiseSubSteps,
@@ -132,10 +133,12 @@ script::HandlePromiseWrappable ServiceWorkerContainer::Register(
           ->script_value_factory()
           ->CreateInterfacePromise<scoped_refptr<ServiceWorkerRegistration>>();
   std::unique_ptr<script::ValuePromiseWrappable::Reference> promise_reference(
-      new script::ValuePromiseWrappable::Reference(this, promise));
+      new script::ValuePromiseWrappable::Reference(
+          environment_settings()->context()->GetWindowOrWorkerGlobalScope(),
+          promise));
 
   // 2. Let client be this's service worker client.
-  web::EnvironmentSettings* client = environment_settings();
+  web::Context* client = environment_settings()->context();
   // 3. Let scriptURL be the result of parsing scriptURL with this's
   // relevant settings object’s API base URL.
   const GURL& base_url = environment_settings()->base_url();
@@ -152,9 +155,9 @@ script::HandlePromiseWrappable ServiceWorkerContainer::Register(
   base::MessageLoop::current()->task_runner()->PostTask(
       FROM_HERE,
       base::BindOnce(&ServiceWorkerJobs::StartRegister,
-                     base::Unretained(client->context()->service_worker_jobs()),
-                     scope_url, script_url, std::move(promise_reference),
-                     client, options.type(), options.update_via_cache()));
+                     base::Unretained(client->service_worker_jobs()), scope_url,
+                     script_url, std::move(promise_reference), client,
+                     options.type(), options.update_via_cache()));
   // 7. Return p.
   return promise;
 }
@@ -170,14 +173,15 @@ script::HandlePromiseWrappable ServiceWorkerContainer::GetRegistration(
   // Perform the rest of the steps in a task, because the promise has to be
   // returned before we can safely reject or resolve it.
   auto promise =
-      base::polymorphic_downcast<web::EnvironmentSettings*>(
-          environment_settings())
+      environment_settings()
           ->context()
           ->global_environment()
           ->script_value_factory()
           ->CreateInterfacePromise<scoped_refptr<ServiceWorkerRegistration>>();
   std::unique_ptr<script::ValuePromiseWrappable::Reference> promise_reference(
-      new script::ValuePromiseWrappable::Reference(this, promise));
+      new script::ValuePromiseWrappable::Reference(
+          environment_settings()->context()->GetWindowOrWorkerGlobalScope(),
+          promise));
   base::MessageLoop::current()->task_runner()->PostTask(
       FROM_HERE, base::BindOnce(&ServiceWorkerContainer::GetRegistrationTask,
                                 base::Unretained(this), url,
@@ -197,11 +201,11 @@ void ServiceWorkerContainer::GetRegistrationTask(
   // Algorithm for 'ServiceWorkerContainer.getRegistration()':
   //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#navigator-service-worker-getRegistration
   // 1. Let client be this's service worker client.
-  web::EnvironmentSettings* client = environment_settings();
+  web::Context* client = environment_settings()->context();
 
   // 2. Let storage key be the result of running obtain a storage key given
   //    client.
-  url::Origin storage_key = client->ObtainStorageKey();
+  url::Origin storage_key = client->environment_settings()->ObtainStorageKey();
 
   // 3. Let clientURL be the result of parsing clientURL with this's relevant
   //    settings object’s API base URL.
@@ -232,7 +236,7 @@ void ServiceWorkerContainer::GetRegistrationTask(
 
   // 7. Let promise be a new promise.
   // 8. Run the following substeps in parallel:
-  worker::ServiceWorkerJobs* jobs = client->context()->service_worker_jobs();
+  worker::ServiceWorkerJobs* jobs = client->service_worker_jobs();
   DCHECK(jobs);
   jobs->message_loop()->task_runner()->PostTask(
       FROM_HERE, base::BindOnce(&ServiceWorkerJobs::GetRegistrationSubSteps,
@@ -248,8 +252,9 @@ ServiceWorkerContainer::GetRegistrations() {
                      ->script_value_factory()
                      ->CreateBasicPromise<script::SequenceWrappable>();
   std::unique_ptr<script::ValuePromiseSequenceWrappable::Reference>
-      promise_reference(
-          new script::ValuePromiseSequenceWrappable::Reference(this, promise));
+      promise_reference(new script::ValuePromiseSequenceWrappable::Reference(
+          environment_settings()->context()->GetWindowOrWorkerGlobalScope(),
+          promise));
   base::MessageLoop::current()->task_runner()->PostTask(
       FROM_HERE,
       base::BindOnce(&ServiceWorkerContainer::GetRegistrationsTask,
@@ -260,7 +265,7 @@ ServiceWorkerContainer::GetRegistrations() {
 void ServiceWorkerContainer::GetRegistrationsTask(
     std::unique_ptr<script::ValuePromiseSequenceWrappable::Reference>
         promise_reference) {
-  auto* client = environment_settings();
+  auto* client = environment_settings()->context();
   // https://w3c.github.io/ServiceWorker/#navigator-service-worker-getRegistrations
   worker::ServiceWorkerJobs* jobs =
       environment_settings()->context()->service_worker_jobs();

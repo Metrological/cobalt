@@ -39,7 +39,7 @@ void ServiceWorkerRegistry::WillDestroyCurrentMessageLoop() {
 
 ServiceWorkerRegistry::ServiceWorkerRegistry(
     web::WebSettings* web_settings, network::NetworkModule* network_module,
-    web::UserAgentPlatformInfo* platform_info)
+    web::UserAgentPlatformInfo* platform_info, const GURL& url)
     : thread_("ServiceWorkerRegistry") {
   if (!thread_.Start()) return;
   DCHECK(message_loop());
@@ -47,7 +47,7 @@ ServiceWorkerRegistry::ServiceWorkerRegistry(
   message_loop()->task_runner()->PostTask(
       FROM_HERE,
       base::Bind(&ServiceWorkerRegistry::Initialize, base::Unretained(this),
-                 web_settings, network_module, platform_info));
+                 web_settings, network_module, platform_info, url));
 
   // Register as a destruction observer to shut down the Web Agent once all
   // pending tasks have been executed and the message loop is about to be
@@ -73,8 +73,16 @@ ServiceWorkerRegistry::~ServiceWorkerRegistry() {
   // Ensure that the destruction observer got added before stopping the thread.
   // Stop the thread. This will cause the destruction observer to be notified.
   destruction_observer_added_.Wait();
-  service_worker_jobs_->Stop();
+  DCHECK_NE(thread_.message_loop(), base::MessageLoop::current());
   thread_.Stop();
+  DCHECK(!service_worker_jobs_);
+}
+
+void ServiceWorkerRegistry::EnsureServiceWorkerStarted(
+    const url::Origin& storage_key, const GURL& client_url,
+    base::WaitableEvent* done_event) {
+  service_worker_jobs()->EnsureServiceWorkerStarted(storage_key, client_url,
+                                                    done_event);
 }
 
 worker::ServiceWorkerJobs* ServiceWorkerRegistry::service_worker_jobs() {
@@ -85,11 +93,11 @@ worker::ServiceWorkerJobs* ServiceWorkerRegistry::service_worker_jobs() {
 
 void ServiceWorkerRegistry::Initialize(
     web::WebSettings* web_settings, network::NetworkModule* network_module,
-    web::UserAgentPlatformInfo* platform_info) {
+    web::UserAgentPlatformInfo* platform_info, const GURL& url) {
   TRACE_EVENT0("cobalt::browser", "ServiceWorkerRegistry::Initialize()");
   DCHECK_EQ(base::MessageLoop::current(), message_loop());
   service_worker_jobs_.reset(new worker::ServiceWorkerJobs(
-      web_settings, network_module, platform_info, message_loop()));
+      web_settings, network_module, platform_info, message_loop(), url));
 }
 
 }  // namespace browser

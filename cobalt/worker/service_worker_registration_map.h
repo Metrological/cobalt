@@ -29,7 +29,6 @@
 #include "cobalt/script/promise.h"
 #include "cobalt/script/script_value.h"
 #include "cobalt/script/script_value_factory.h"
-#include "cobalt/web/environment_settings.h"
 #include "cobalt/worker/service_worker_persistent_settings.h"
 #include "cobalt/worker/service_worker_registration_object.h"
 #include "cobalt/worker/service_worker_update_via_cache.h"
@@ -46,6 +45,7 @@ class ServiceWorkerRegistrationMap {
  public:
   explicit ServiceWorkerRegistrationMap(
       const ServiceWorkerPersistentSettings::Options& options);
+  ~ServiceWorkerRegistrationMap() { AbortAllActive(); }
 
   // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#get-registration-algorithm
   scoped_refptr<ServiceWorkerRegistrationObject> GetRegistration(
@@ -77,6 +77,8 @@ class ServiceWorkerRegistrationMap {
   // Registration since these are the cases in which a service worker
   // registration's active_worker or waiting_worker are updated.
   void PersistRegistration(const url::Origin& storage_key, const GURL& scope);
+
+  void ReadPersistentSettings();
 
  private:
   // ThreadChecker for use by the methods operating on the registration map.

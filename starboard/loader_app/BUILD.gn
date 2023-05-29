@@ -63,6 +63,18 @@ if (sb_is_evergreen_compatible && sb_evergreen_compatible_package) {
     outputs =
         [ "$sb_static_contents_output_data_dir/app/cobalt/lib/libcobalt.so" ]
   }
+  copy("copy_loader_app_manifest") {
+    install_content = true
+    if (target_cpu == "arm" && arm_float_abi == "softfp") {
+      sources = [ "$root_out_dir/../evergreen-$target_cpu-${arm_float_abi}_$build_type/manifest.json" ]
+    } else if (target_cpu == "arm64") {
+      sources =
+          [ "$root_out_dir/../evergreen-$target_cpu_$build_type/manifest.json" ]
+    } else {
+      sources = []
+    }
+    outputs = [ "$sb_static_contents_output_data_dir/app/cobalt/manifest.json" ]
+  }
 }
 
 target(final_executable_type, "loader_app") {
@@ -87,10 +99,12 @@ target(final_executable_type, "loader_app") {
       data_deps += [
         ":copy_loader_app_content",
         ":copy_loader_app_lib",
+        ":copy_loader_app_manifest",
       ]
       deps += [
         ":copy_loader_app_content",
         ":copy_loader_app_lib",
+        ":copy_loader_app_manifest",
       ]
     }
   }
@@ -209,12 +223,9 @@ static_library("installation_manager") {
 
   deps = [
     ":installation_store_proto",
+    ":pending_restart",
     "//starboard",
   ]
-
-  if (!sb_evergreen_compatible_enable_lite) {
-    deps += [ ":pending_restart" ]
-  }
 }
 
 target(gtest_target_type, "installation_manager_test") {
@@ -222,13 +233,12 @@ target(gtest_target_type, "installation_manager_test") {
   sources = [
     "//starboard/common/test_main.cc",
     "installation_manager_test.cc",
+    "pending_restart_test.cc",
   ]
-  if (sb_evergreen_compatible_enable_lite) {
-    sources += [ "pending_restart_test.cc" ]
-  }
   deps = [
     ":installation_manager",
     ":installation_store_proto",
+    ":pending_restart",
     "//testing/gmock",
     "//testing/gtest",
   ]

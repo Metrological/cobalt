@@ -55,21 +55,22 @@ class CspDelegatePermissive : public web::CspDelegateSecure {
  public:
   CspDelegatePermissive(
       std::unique_ptr<web::CspViolationReporter> violation_reporter,
-      const GURL& url, csp::CSPHeaderPolicy require_csp,
+      const GURL& url, csp::CSPHeaderPolicy csp_header_policy,
       const base::Closure& policy_changed_callback)
-      : web::CspDelegateSecure(std::move(violation_reporter), url, require_csp,
-                               policy_changed_callback) {
+      : web::CspDelegateSecure(std::move(violation_reporter), url,
+                               csp_header_policy, policy_changed_callback) {
     // Lies, but some checks in our parent require this.
     was_header_received_ = true;
   }
 
   static CspDelegate* Create(
       std::unique_ptr<web::CspViolationReporter> violation_reporter,
-      const GURL& url, csp::CSPHeaderPolicy require_csp,
+      const GURL& url, csp::CSPHeaderPolicy csp_header_policy,
       const base::Closure& policy_changed_callback,
       int insecure_allowed_token) {
     return new CspDelegatePermissive(std::move(violation_reporter), url,
-                                     require_csp, policy_changed_callback);
+                                     csp_header_policy,
+                                     policy_changed_callback);
   }
 
   bool OnReceiveHeaders(const csp::ResponseHeaders& headers) override {
@@ -196,6 +197,7 @@ std::string RunWebPlatformTest(const GURL& url, bool* got_results) {
   // Network module
   network::NetworkModule::Options net_options;
   net_options.https_requirement = network::kHTTPSOptional;
+  net_options.ignore_certificate_errors = true;
   std::string custom_proxy =
       base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII("proxy");
   if (!custom_proxy.empty()) net_options.custom_proxy = custom_proxy;
@@ -232,7 +234,8 @@ std::string RunWebPlatformTest(const GURL& url, bool* got_results) {
   // Create Service Worker Registry
   browser::ServiceWorkerRegistry* service_worker_registry =
       new browser::ServiceWorkerRegistry(&web_settings, &network_module,
-                                         new browser::UserAgentPlatformInfo());
+                                         new browser::UserAgentPlatformInfo(),
+                                         url);
   web_module_options.web_options.service_worker_jobs =
       service_worker_registry->service_worker_jobs();
 

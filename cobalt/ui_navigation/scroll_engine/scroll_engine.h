@@ -27,6 +27,7 @@
 #include "cobalt/dom/pointer_event_init.h"
 #include "cobalt/math/vector2d_f.h"
 #include "cobalt/ui_navigation/nav_item.h"
+#include "cobalt/ui_navigation/scroll_engine/free_scrolling_nav_item.h"
 
 namespace cobalt {
 namespace ui_navigation {
@@ -42,6 +43,13 @@ typedef enum ScrollType {
   Free,
 } ScrollType;
 
+struct EventPositionWithTimeStamp {
+  EventPositionWithTimeStamp(math::Vector2dF position, base::Time time_stamp)
+      : position(position), time_stamp(time_stamp) {}
+  math::Vector2dF position;
+  base::Time time_stamp;
+};
+
 class ScrollEngine {
  public:
   ScrollEngine();
@@ -53,7 +61,8 @@ class ScrollEngine {
                          math::Vector2dF initial_coordinates,
                          uint64 initial_time_stamp,
                          math::Vector2dF current_coordinates,
-                         uint64 current_time_stamp);
+                         uint64 current_time_stamp,
+                         const math::Matrix3F& initial_transform);
   void CancelActiveScrollsForNavItems(
       std::vector<scoped_refptr<ui_navigation::NavItem>> scrolls_to_cancel);
 
@@ -68,32 +77,11 @@ class ScrollEngine {
   base::Thread scroll_engine_{"ScrollEngineThread"};
   base::RepeatingTimer free_scroll_timer_;
 
-  struct EventPositionWithTimeStamp {
-    EventPositionWithTimeStamp(math::Vector2dF position, uint64 time_stamp)
-        : position(position), time_stamp(time_stamp) {}
-    math::Vector2dF position;
-    uint64 time_stamp;
-  };
-
-  struct FreeScrollingNavItem {
-    FreeScrollingNavItem(scoped_refptr<NavItem> nav_item,
-                         math::Vector2dF initial_offset,
-                         math::Vector2dF target_offset)
-        : nav_item(nav_item),
-          initial_offset(initial_offset),
-          target_offset(target_offset),
-          last_change(base::Time::Now()) {}
-    scoped_refptr<NavItem> nav_item;
-    math::Vector2dF initial_offset;
-    math::Vector2dF target_offset;
-    base::Time last_change;
-  };
-
   std::queue<EventPositionWithTimeStamp> previous_events_;
-  const scoped_refptr<cssom::TimingFunction>& timing_function_;
 
   scoped_refptr<NavItem> active_item_;
   math::Vector2dF active_velocity_;
+  math::Matrix3F active_transform_;
   ScrollType active_scroll_type_ = ScrollType::Unknown;
   std::map<uint32_t, scoped_refptr<dom::PointerEvent>> events_to_handle_;
   std::vector<FreeScrollingNavItem> nav_items_with_decaying_scroll_;

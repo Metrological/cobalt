@@ -19,7 +19,9 @@
 #include <string>
 
 #include "base/bind.h"
+#include "base/single_thread_task_runner.h"
 #include "net/base/load_timing_info.h"
+#include "net/http/http_request_headers.h"
 #include "url/gurl.h"
 
 namespace base {
@@ -33,12 +35,13 @@ namespace loader {
 class FetchInterceptor {
  public:
   virtual void StartFetch(
-      const GURL& url,
-      std::unique_ptr<base::OnceCallback<void(std::unique_ptr<std::string>)>>
-          callback,
-      std::unique_ptr<base::OnceCallback<void(const net::LoadTimingInfo&)>>
+      const GURL& url, bool main_resource,
+      const net::HttpRequestHeaders& request_headers,
+      scoped_refptr<base::SingleThreadTaskRunner> callback_task_runner,
+      base::OnceCallback<void(std::unique_ptr<std::string>)> callback,
+      base::OnceCallback<void(const net::LoadTimingInfo&)>
           report_load_timing_info,
-      std::unique_ptr<base::OnceClosure> fallback) = 0;
+      base::OnceClosure fallback) = 0;
 };
 
 // NetFetcher is for fetching data from the network.
@@ -53,12 +56,13 @@ class FetchInterceptorCoordinator {
   void Clear() { fetch_interceptor_ = nullptr; }
 
   void TryIntercept(
-      const GURL& url,
-      std::unique_ptr<base::OnceCallback<void(std::unique_ptr<std::string>)>>
-          callback,
-      std::unique_ptr<base::OnceCallback<void(const net::LoadTimingInfo&)>>
+      const GURL& url, bool main_resource,
+      const net::HttpRequestHeaders& request_headers,
+      scoped_refptr<base::SingleThreadTaskRunner> callback_task_runner,
+      base::OnceCallback<void(std::unique_ptr<std::string>)> callback,
+      base::OnceCallback<void(const net::LoadTimingInfo&)>
           report_load_timing_info,
-      std::unique_ptr<base::OnceClosure> fallback);
+      base::OnceClosure fallback);
 
  private:
   friend struct base::DefaultSingletonTraits<FetchInterceptorCoordinator>;

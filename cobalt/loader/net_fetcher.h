@@ -30,13 +30,17 @@
 #include "net/http/http_request_headers.h"
 #include "net/url_request/url_fetcher.h"
 #include "net/url_request/url_fetcher_delegate.h"
+#include "starboard/atomic.h"
 #include "url/gurl.h"
 
 namespace cobalt {
 namespace loader {
 
 // NetFetcher is for fetching data from the network.
-class NetFetcher : public Fetcher, public net::URLFetcherDelegate {
+class NetFetcher : public Fetcher,
+                   public net::URLFetcherDelegate,
+                   public base::SupportsWeakPtr<NetFetcher>,
+                   public base::MessageLoopCurrent::DestructionObserver {
  public:
   struct Options {
    public:
@@ -50,8 +54,9 @@ class NetFetcher : public Fetcher, public net::URLFetcherDelegate {
     bool skip_fetch_intercept;
   };
 
-  NetFetcher(const GURL& url, const csp::SecurityCallback& security_callback,
-             Handler* handler, const network::NetworkModule* network_module,
+  NetFetcher(const GURL& url, bool main_resource,
+             const csp::SecurityCallback& security_callback, Handler* handler,
+             const network::NetworkModule* network_module,
              const Options& options, RequestMode request_mode,
              const Origin& origin);
   ~NetFetcher() override;
@@ -63,6 +68,9 @@ class NetFetcher : public Fetcher, public net::URLFetcherDelegate {
                                   int64_t current, int64_t total,
                                   int64_t current_network_bytes) override;
   void ReportLoadTimingInfo(const net::LoadTimingInfo& timing_info) override;
+
+  // base::MessageLoopCurrent::DestructionObserver
+  void WillDestroyCurrentMessageLoop() override;
 
   void OnFetchIntercepted(std::unique_ptr<std::string> body);
 
@@ -79,6 +87,7 @@ class NetFetcher : public Fetcher, public net::URLFetcherDelegate {
   }
 
   void Start();
+  void InterceptFallback();
 
   // Empty struct to ensure the caller of |HandleError()| knows that |this|
   // may have been destroyed and handles it appropriately.
@@ -122,6 +131,8 @@ class NetFetcher : public Fetcher, public net::URLFetcherDelegate {
 
   scoped_refptr<base::SingleThreadTaskRunner> const task_runner_;
   bool skip_fetch_intercept_;
+  starboard::atomic_bool will_destroy_current_message_loop_;
+  bool main_resource_;
 
   DISALLOW_COPY_AND_ASSIGN(NetFetcher);
 };
