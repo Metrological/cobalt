@@ -36,6 +36,7 @@ class DedicatedWorkerGlobalScope : public WorkerGlobalScope {
  public:
   explicit DedicatedWorkerGlobalScope(
       script::EnvironmentSettings* settings,
+      const web::WindowOrWorkerGlobalScope::Options& options,
       bool parent_cross_origin_isolated_capability = false);
   DedicatedWorkerGlobalScope(const DedicatedWorkerGlobalScope&) = delete;
   DedicatedWorkerGlobalScope& operator=(const DedicatedWorkerGlobalScope&) =
@@ -79,6 +80,8 @@ class DedicatedWorkerGlobalScope : public WorkerGlobalScope {
   ~DedicatedWorkerGlobalScope() override {}
 
  private:
+  void InitializePolicyContainer();
+
   bool cross_origin_isolated_capability_;
 
   std::string name_;

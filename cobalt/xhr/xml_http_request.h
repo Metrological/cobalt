@@ -21,6 +21,8 @@
 #include <vector>
 
 #include "base/gtest_prod_util.h"
+#include "base/memory/weak_ptr.h"
+#include "base/message_loop/message_loop_current.h"
 #include "base/optional.h"
 #include "base/timer/timer.h"
 #include "cobalt/dom/document.h"
@@ -44,6 +46,7 @@
 #include "net/http/http_response_headers.h"
 #include "net/url_request/url_fetcher.h"
 #include "net/url_request/url_fetcher_delegate.h"
+#include "starboard/atomic.h"
 #include "url/gurl.h"
 
 namespace cobalt {
@@ -220,12 +223,18 @@ class XMLHttpRequest : public XMLHttpRequestEventTarget,
 };
 
 
-class XMLHttpRequestImpl {
+class XMLHttpRequestImpl
+    : public base::SupportsWeakPtr<XMLHttpRequestImpl>,
+      public base::MessageLoopCurrent::DestructionObserver {
  public:
   explicit XMLHttpRequestImpl(XMLHttpRequest* xhr);
   XMLHttpRequestImpl(const XMLHttpRequestImpl&) = delete;
   XMLHttpRequestImpl& operator=(const XMLHttpRequestImpl&) = delete;
-  virtual ~XMLHttpRequestImpl() {}
+  virtual ~XMLHttpRequestImpl() {
+    if (!will_destroy_current_message_loop_.load()) {
+      base::MessageLoop::current()->RemoveDestructionObserver(this);
+    }
+  }
 
   void Abort();
   void Open(const std::string& method, const std::string& url, bool async,
@@ -290,12 +299,16 @@ class XMLHttpRequestImpl {
   void OnURLFetchResponseStarted(const net::URLFetcher* source);
   void OnURLFetchDownloadProgress(const net::URLFetcher* source,
                                   int64_t current, int64_t total,
-                                  int64_t current_network_bytes);
+                                  int64_t current_network_bytes,
+                                  bool request_done);
   void OnURLFetchComplete(const net::URLFetcher* source);
 
   void OnURLFetchUploadProgress(const net::URLFetcher* source, int64 current,
                                 int64 total);
   void OnRedirect(const net::HttpResponseHeaders& headers);
+
+  // base::MessageLoopCurrent::DestructionObserver
+  void WillDestroyCurrentMessageLoop();
 
   // Called from bindings layer to tie objects' lifetimes to this XHR instance.
   XMLHttpRequestUpload* upload_or_null() { return upload_.get(); }
@@ -334,6 +347,7 @@ class XMLHttpRequestImpl {
   bool upload_listener_;
   bool with_credentials_;
   XMLHttpRequest* xhr_;
+  starboard::atomic_bool will_destroy_current_message_loop_;
 
   // A corspreflight instance for potentially sending preflight
   // request and performing cors check for all cross origin requests.
@@ -376,6 +390,11 @@ class XMLHttpRequestImpl {
   void UpdateProgress(int64_t received_length);
 
   virtual void StartRequest(const std::string& request_body);
+
+  void SendFallback(
+      const base::Optional<XMLHttpRequest::RequestBodyType>& request_body,
+      script::ExceptionState* exception_state);
+  void SendIntercepted(std::unique_ptr<std::string> response);
 
   // The following two methods are used to determine if garbage collection is
   // needed. It is legal to reuse XHR and send a new request in last request's
@@ -425,6 +444,7 @@ class XMLHttpRequestImpl {
   bool sent_;
   web::EnvironmentSettings* const settings_;
   bool stop_timeout_;
+  scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
   uint32 timeout_ms_;
   bool upload_complete_;
 
@@ -441,7 +461,11 @@ class DOMXMLHttpRequestImpl : public XMLHttpRequestImpl {
   explicit DOMXMLHttpRequestImpl(XMLHttpRequest* xhr);
   DOMXMLHttpRequestImpl(const DOMXMLHttpRequestImpl&) = delete;
   DOMXMLHttpRequestImpl& operator=(const DOMXMLHttpRequestImpl&) = delete;
-  ~DOMXMLHttpRequestImpl() override {}
+  ~DOMXMLHttpRequestImpl() override {
+    if (!will_destroy_current_message_loop_.load()) {
+      base::MessageLoop::current()->RemoveDestructionObserver(this);
+    }
+  }
 
   scoped_refptr<dom::Document> response_xml(
       script::ExceptionState* exception_state) override;

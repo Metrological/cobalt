@@ -27,15 +27,15 @@ group("starboard_platform") {
 
   deps = [
     "//third_party/libevent",
+    "//third_party/modp_b64",
     "//third_party/opus",
   ]
 
   if (sb_is_evergreen_compatible) {
-    public_deps += [ "//starboard/elf_loader:evergreen_config" ]
-
-    if (!sb_evergreen_compatible_enable_lite) {
-      public_deps += [ "//starboard/loader_app:pending_restart" ]
-    }
+    public_deps += [
+      "//starboard/elf_loader:evergreen_config",
+      "//starboard/loader_app:pending_restart",
+    ]
   }
 
   if (sb_evergreen_compatible_use_libunwind) {
@@ -83,6 +83,7 @@ static_library("starboard_platform_sources") {
     "//starboard/shared/alsa/alsa_util.cc",
     "//starboard/shared/alsa/alsa_util.h",
     "//starboard/shared/deviceauth/deviceauth_internal.cc",
+    "//starboard/shared/deviceauth/deviceauth_internal.h",
     "//starboard/shared/egl/system_egl.cc",
     "//starboard/shared/gcc/atomic_gcc_public.h",
     "//starboard/shared/gles/system_gles2.cc",
@@ -137,6 +138,10 @@ static_library("starboard_platform_sources") {
     "//starboard/shared/libevent/socket_waiter_wait.cc",
     "//starboard/shared/libevent/socket_waiter_wait_timed.cc",
     "//starboard/shared/libevent/socket_waiter_wake_up.cc",
+    "//starboard/shared/libfdkaac/fdk_aac_audio_decoder.cc",
+    "//starboard/shared/libfdkaac/fdk_aac_audio_decoder.h",
+    "//starboard/shared/libfdkaac/libfdkaac_library_loader.cc",
+    "//starboard/shared/libfdkaac/libfdkaac_library_loader.h",
     "//starboard/shared/libvpx/vpx_video_decoder.cc",
     "//starboard/shared/libvpx/vpx_video_decoder.h",
     "//starboard/shared/linux/byte_swap.cc",
@@ -160,6 +165,10 @@ static_library("starboard_platform_sources") {
     "//starboard/shared/nouser/user_get_property.cc",
     "//starboard/shared/nouser/user_get_signed_in.cc",
     "//starboard/shared/nouser/user_internal.cc",
+    "//starboard/shared/openh264/openh264_library_loader.cc",
+    "//starboard/shared/openh264/openh264_library_loader.h",
+    "//starboard/shared/openh264/openh264_video_decoder.cc",
+    "//starboard/shared/openh264/openh264_video_decoder.h",
     "//starboard/shared/opus/opus_audio_decoder.cc",
     "//starboard/shared/opus/opus_audio_decoder.h",
     "//starboard/shared/posix/directory_create.cc",

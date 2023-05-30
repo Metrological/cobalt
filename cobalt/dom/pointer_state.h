@@ -16,6 +16,7 @@
 #define COBALT_DOM_POINTER_STATE_H_
 
 #include <map>
+#include <memory>
 #include <queue>
 #include <set>
 
@@ -24,12 +25,20 @@
 #include "base/memory/weak_ptr.h"
 #include "cobalt/dom/html_element.h"
 #include "cobalt/dom/pointer_event_init.h"
+#include "cobalt/math/matrix3_f.h"
 #include "cobalt/math/vector2d_f.h"
 #include "cobalt/web/dom_exception.h"
 #include "cobalt/web/event.h"
 
 namespace cobalt {
 namespace dom {
+
+struct PossibleScrollTargets {
+  scoped_refptr<dom::HTMLElement> up;
+  scoped_refptr<dom::HTMLElement> down;
+  scoped_refptr<dom::HTMLElement> left;
+  scoped_refptr<dom::HTMLElement> right;
+};
 
 // This class contains various state related to pointer and mouse support.
 class PointerState {
@@ -77,16 +86,42 @@ class PointerState {
   // shutdown.
   void ClearForShutdown();
 
+  void SetClientCoordinates(int32_t pointer_id, math::Vector2dF position);
+  base::Optional<math::Vector2dF> GetClientCoordinates(int32_t pointer_id);
+  void ClearClientCoordinates(int32_t pointer_id);
+
+  void SetClientTimeStamp(int32_t pointer_id, uint64 time_stamp);
+  base::Optional<uint64> GetClientTimeStamp(int32_t pointer_id);
+  void ClearTimeStamp(int32_t pointer_id);
+
+  void SetPossibleScrollTargets(
+      int32_t pointer_id,
+      std::unique_ptr<PossibleScrollTargets> possible_scroll_targets);
+  PossibleScrollTargets* GetPossibleScrollTargets(int32_t pointer_id);
+  void ClearPossibleScrollTargets(int32_t pointer_id);
+
+  void SetClientTransformMatrix(int32_t pointer_id,
+                                const math::Matrix3F& matrix);
+  const math::Matrix3F& GetClientTransformMatrix(int32_t pointer_id);
+  void ClearMatrix(int32_t pointer_id);
+
+  // Tracks whether a certain pointer was cancelled, i.e. if it panned the
+  // page viewport.
+  // https://www.w3.org/TR/pointerevents1/#the-pointercancel-event
+  void SetWasCancelled(int32_t pointer_id);
+  bool GetWasCancelled(int32_t pointer_id);
+  void ClearWasCancelled(int32_t pointer_id);
+
   static bool CanQueueEvent(const scoped_refptr<web::Event>& event);
 
  private:
   // Stores pointer events until they are handled after a layout.
-  std::queue<scoped_refptr<web::Event> > pointer_events_;
+  std::queue<scoped_refptr<web::Event>> pointer_events_;
 
   // This stores the elements with target overrides
   //   https://www.w3.org/TR/2015/REC-pointerevents-20150224/#pointer-capture
-  std::map<int32_t, base::WeakPtr<Element> > target_override_;
-  std::map<int32_t, base::WeakPtr<Element> > pending_target_override_;
+  std::map<int32_t, base::WeakPtr<Element>> target_override_;
+  std::map<int32_t, base::WeakPtr<Element>> pending_target_override_;
 
   // Store the set of active pointers.
   //   https://www.w3.org/TR/2015/REC-pointerevents-20150224/#dfn-active-pointer
@@ -95,6 +130,15 @@ class PointerState {
   // Store the set of pointers with active buttons.
   //   https://www.w3.org/TR/2015/REC-pointerevents-20150224/#dfn-active-buttons-state
   std::set<int32_t> pointers_with_active_buttons_;
+
+  std::map<int32_t, math::Vector2dF> client_coordinates_;
+  std::map<int32_t, uint64> client_time_stamps_;
+  std::map<int32_t, std::unique_ptr<PossibleScrollTargets>>
+      client_possible_scroll_targets_;
+  std::map<int32_t, const math::Matrix3F> client_matrices_;
+  std::set<int32_t> client_cancellations_;
+
+  const math::Matrix3F identity_matrix_ = math::Matrix3F::Identity();
 };
 
 }  // namespace dom

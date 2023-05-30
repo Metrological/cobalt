@@ -52,21 +52,29 @@ using std::placeholders::_2;
 
 class VideoFrameImpl : public VideoFrame {
  public:
+  typedef std::function<void()> VideoFrameReleaseCallback;
+
   VideoFrameImpl(const DequeueOutputResult& dequeue_output_result,
-                 MediaCodecBridge* media_codec_bridge)
+                 MediaCodecBridge* media_codec_bridge,
+                 const VideoFrameReleaseCallback& release_callback)
       : VideoFrame(dequeue_output_result.flags & BUFFER_FLAG_END_OF_STREAM
                        ? kMediaTimeEndOfStream
                        : dequeue_output_result.presentation_time_microseconds),
         dequeue_output_result_(dequeue_output_result),
         media_codec_bridge_(media_codec_bridge),
-        released_(false) {
+        released_(false),
+        release_callback_(release_callback) {
     SB_DCHECK(media_codec_bridge_);
+    SB_DCHECK(release_callback_);
   }
 
   ~VideoFrameImpl() {
     if (!released_) {
       media_codec_bridge_->ReleaseOutputBuffer(dequeue_output_result_.index,
                                                false);
+      if (!is_end_of_stream()) {
+        release_callback_();
+      }
     }
   }
 
@@ -76,12 +84,14 @@ class VideoFrameImpl : public VideoFrame {
     released_ = true;
     media_codec_bridge_->ReleaseOutputBufferAtTimestamp(
         dequeue_output_result_.index, release_time_in_nanoseconds);
+    release_callback_();
   }
 
  private:
   DequeueOutputResult dequeue_output_result_;
   MediaCodecBridge* media_codec_bridge_;
   volatile bool released_;
+  const VideoFrameReleaseCallback release_callback_;
 };
 
 const SbTime kInitialPrerollTimeout = 250 * kSbTimeMillisecond;
@@ -174,8 +184,6 @@ class VideoRenderAlgorithmTunneled : public VideoRenderAlgorithmBase {
   VideoFrameTracker* frame_tracker_;
 };
 
-int VideoDecoder::number_of_hardware_decoders_ = 0;
-
 class VideoDecoder::Sink : public VideoDecoder::VideoRendererSink {
  public:
   bool Render() {
@@ -235,7 +243,8 @@ VideoDecoder::VideoDecoder(SbMediaVideoCodec video_codec,
       require_software_codec_(max_video_capabilities &&
                               strlen(max_video_capabilities) > 0),
       force_big_endian_hdr_metadata_(force_big_endian_hdr_metadata),
-      force_improved_support_check_(force_improved_support_check) {
+      force_improved_support_check_(force_improved_support_check),
+      number_of_preroll_frames_(kInitialPrerollFrameCount) {
   SB_DCHECK(error_message);
 
   if (tunnel_mode_audio_session_id != -1) {
@@ -252,9 +261,6 @@ VideoDecoder::VideoDecoder(SbMediaVideoCodec video_codec,
 
   if (require_software_codec_) {
     SB_DCHECK(output_mode_ == kSbPlayerOutputModeDecodeToTexture);
-  }
-  if (!require_software_codec_) {
-    number_of_hardware_decoders_++;
   }
 
   if (video_codec_ != kSbMediaVideoCodecAv1) {
@@ -273,10 +279,6 @@ VideoDecoder::~VideoDecoder() {
     ClearVideoWindow(force_reset_surface_under_tunnel_mode_);
   } else {
     ClearVideoWindow(false);
-  }
-
-  if (!require_software_codec_) {
-    number_of_hardware_decoders_--;
   }
 }
 
@@ -327,7 +329,7 @@ size_t VideoDecoder::GetPrerollFrameCount() const {
   if (input_buffer_written_ > 0 && first_buffer_timestamp_ != 0) {
     return kNonInitialPrerollFrameCount;
   }
-  return kInitialPrerollFrameCount;
+  return number_of_preroll_frames_;
 }
 
 SbTime VideoDecoder::GetPrerollTimeout() const {
@@ -337,20 +339,20 @@ SbTime VideoDecoder::GetPrerollTimeout() const {
   return kInitialPrerollTimeout;
 }
 
-void VideoDecoder::WriteInputBuffer(
-    const scoped_refptr<InputBuffer>& input_buffer) {
+void VideoDecoder::WriteInputBuffers(const InputBuffers& input_buffers) {
   SB_DCHECK(BelongsToCurrentThread());
-  SB_DCHECK(input_buffer);
-  SB_DCHECK(input_buffer->sample_type() == kSbMediaTypeVideo);
+  SB_DCHECK(!input_buffers.empty());
+  SB_DCHECK(input_buffers.front()->sample_type() == kSbMediaTypeVideo);
   SB_DCHECK(decoder_status_cb_);
 
   if (input_buffer_written_ == 0) {
     SB_DCHECK(video_fps_ == 0);
-    first_buffer_timestamp_ = input_buffer->timestamp();
+    first_buffer_timestamp_ = input_buffers.front()->timestamp();
 
     // If color metadata is present and is not an identity mapping, then
     // teardown the codec so it can be reinitalized with the new metadata.
-    auto& color_metadata = input_buffer->video_sample_info().color_metadata;
+    const auto& color_metadata =
+        input_buffers.front()->video_sample_info().color_metadata;
     if (!IsIdentity(color_metadata)) {
       SB_DCHECK(!color_metadata_) << "Unexpected residual color metadata.";
       SB_LOG(INFO) << "Reinitializing codec with HDR color metadata.";
@@ -378,14 +380,15 @@ void VideoDecoder::WriteInputBuffer(
     }
   }
 
-  ++input_buffer_written_;
+  input_buffer_written_ += input_buffers.size();
 
   if (video_codec_ == kSbMediaVideoCodecAv1 && video_fps_ == 0) {
     SB_DCHECK(!media_decoder_);
 
+    pending_input_buffers_.insert(pending_input_buffers_.end(),
+                                  input_buffers.begin(), input_buffers.end());
     if (pending_input_buffers_.size() <
         kFpsGuesstimateRequiredInputBufferCount) {
-      pending_input_buffers_.push_back(input_buffer);
       decoder_status_cb_(kNeedMoreInput, NULL);
       return;
     }
@@ -398,9 +401,10 @@ void VideoDecoder::WriteInputBuffer(
       ReportError(kSbPlayerErrorDecode, error_message);
       return;
     }
+    return;
   }
 
-  WriteInputBufferInternal(input_buffer);
+  WriteInputBuffersInternal(input_buffers);
 }
 
 void VideoDecoder::WriteEndOfStream() {
@@ -456,9 +460,14 @@ void VideoDecoder::Reset() {
   TeardownCodec();
   CancelPendingJobs();
 
+  // After TeardownCodec, buffered_output_frames_ should equal to 0.
+  SB_DCHECK(buffered_output_frames_ == 0);
+
   tunnel_mode_prerolling_.store(true);
   tunnel_mode_frame_rendered_.store(false);
   input_buffer_written_ = 0;
+  decoded_output_frames_ = 0;
+  output_format_ = starboard::nullopt;
   end_of_stream_written_ = false;
   video_fps_ = 0;
   pending_input_buffers_.clear();
@@ -581,9 +590,9 @@ bool VideoDecoder::InitializeCodec(std::string* error_message) {
     } else {
       SB_DCHECK(pending_input_buffers_.empty());
     }
-    while (!pending_input_buffers_.empty()) {
-      WriteInputBufferInternal(pending_input_buffers_[0]);
-      pending_input_buffers_.pop_front();
+    if (!pending_input_buffers_.empty()) {
+      WriteInputBuffersInternal(pending_input_buffers_);
+      pending_input_buffers_.clear();
     }
     return true;
   }
@@ -646,8 +655,10 @@ void VideoDecoder::OnEndOfStreamWritten(MediaCodecBridge* media_codec_bridge) {
   sink_->Render();
 }
 
-void VideoDecoder::WriteInputBufferInternal(
-    const scoped_refptr<InputBuffer>& input_buffer) {
+void VideoDecoder::WriteInputBuffersInternal(
+    const InputBuffers& input_buffers) {
+  SB_DCHECK(!input_buffers.empty());
+
   // There's a race condition when suspending the app. If surface view is
   // destroyed before video decoder stopped, |media_decoder_| could be null
   // here. And error_cb_() could be handled asynchronously. It's possible
@@ -657,7 +668,7 @@ void VideoDecoder::WriteInputBufferInternal(
     SB_LOG(INFO) << "Trying to write input buffer when media_decoder_ is null.";
     return;
   }
-  media_decoder_->WriteInputBuffer(input_buffer);
+  media_decoder_->WriteInputBuffers(input_buffers);
   if (media_decoder_->GetNumberOfPendingTasks() < kMaxPendingWorkSize) {
     decoder_status_cb_(kNeedMoreInput, NULL);
   } else if (tunnel_mode_audio_session_id_ != -1) {
@@ -669,7 +680,11 @@ void VideoDecoder::WriteInputBufferInternal(
   }
 
   if (tunnel_mode_audio_session_id_ != -1) {
-    video_frame_tracker_->OnInputBuffer(input_buffer->timestamp());
+    SbTime max_timestamp = input_buffers[0]->timestamp();
+    for (const auto& input_buffer : input_buffers) {
+      video_frame_tracker_->OnInputBuffer(input_buffer->timestamp());
+      max_timestamp = std::max(max_timestamp, input_buffer->timestamp());
+    }
 
     if (tunnel_mode_prerolling_.load()) {
       // TODO: Refine preroll logic in tunnel mode.
@@ -677,17 +692,17 @@ void VideoDecoder::WriteInputBufferInternal(
       if (first_buffer_timestamp_ == 0) {
         // Initial playback.
         enough_buffers_written_to_media_codec =
-            (input_buffer_written_ - pending_input_buffers_.size() -
+            (input_buffer_written_ -
              media_decoder_->GetNumberOfPendingTasks()) >
             kInitialPrerollFrameCount;
       } else {
         // Seeking.  Note that this branch can be eliminated once seeking in
         // tunnel mode is always aligned to the next video key frame.
         enough_buffers_written_to_media_codec =
-            (input_buffer_written_ - pending_input_buffers_.size() -
+            (input_buffer_written_ -
              media_decoder_->GetNumberOfPendingTasks()) >
                 kSeekingPrerollPendingWorkSizeInTunnelMode &&
-            input_buffer->timestamp() >= video_frame_tracker_->seek_to_time();
+            max_timestamp >= video_frame_tracker_->seek_to_time();
       }
 
       bool cache_full =
@@ -698,7 +713,7 @@ void VideoDecoder::WriteInputBufferInternal(
       if (prerolled && tunnel_mode_prerolling_.exchange(false)) {
         SB_LOG(INFO)
             << "Tunnel mode preroll finished on enqueuing input buffer "
-            << input_buffer->timestamp() << ", for seek time "
+            << max_timestamp << ", for seek time "
             << video_frame_tracker_->seek_to_time();
         decoder_status_cb_(
             kNeedMoreInput,
@@ -716,9 +731,27 @@ void VideoDecoder::ProcessOutputBuffer(
 
   bool is_end_of_stream =
       dequeue_output_result.flags & BUFFER_FLAG_END_OF_STREAM;
+  if (!is_end_of_stream) {
+    ++decoded_output_frames_;
+    if (output_format_) {
+      ++buffered_output_frames_;
+      // We have to wait until we feed enough inputs to the decoder and receive
+      // enough outputs before update |max_buffered_output_frames_|. Otherwise,
+      // |max_buffered_output_frames_| may be updated to a very small number
+      // when we receive the first few outputs.
+      if (decoded_output_frames_ > kInitialPrerollFrameCount &&
+          buffered_output_frames_ > max_buffered_output_frames_) {
+        max_buffered_output_frames_ = buffered_output_frames_;
+        MaxMediaCodecOutputBuffersLookupTable::GetInstance()
+            ->UpdateMaxOutputBuffers(output_format_.value(),
+                                     max_buffered_output_frames_);
+      }
+    }
+  }
   decoder_status_cb_(
       is_end_of_stream ? kBufferFull : kNeedMoreInput,
-      new VideoFrameImpl(dequeue_output_result, media_codec_bridge));
+      new VideoFrameImpl(dequeue_output_result, media_codec_bridge,
+                         std::bind(&VideoDecoder::OnVideoFrameRelease, this)));
 }
 
 void VideoDecoder::RefreshOutputFormat(MediaCodecBridge* media_codec_bridge) {
@@ -731,6 +764,29 @@ void VideoDecoder::RefreshOutputFormat(MediaCodecBridge* media_codec_bridge) {
       media_codec_bridge->GetOutputDimensions();
   frame_width_ = output_dimensions.width;
   frame_height_ = output_dimensions.height;
+
+  if (tunnel_mode_audio_session_id_ != -1) {
+    return;
+  }
+  if (first_output_format_changed_) {
+    // After resolution changes, the output buffers may have frames of different
+    // resolutions. In that case, it's hard to determine the max supported
+    // output buffers. So, we reset |output_format_| to null here to skip max
+    // output buffers check.
+    output_format_ = starboard::nullopt;
+    return;
+  }
+  output_format_ = VideoOutputFormat(video_codec_, output_dimensions.width,
+                                     output_dimensions.height,
+                                     (color_metadata_ ? true : false));
+  first_output_format_changed_ = true;
+  auto max_output_buffers =
+      MaxMediaCodecOutputBuffersLookupTable::GetInstance()
+          ->GetMaxOutputVideoBuffers(output_format_.value());
+  if (max_output_buffers > 0 &&
+      max_output_buffers < kInitialPrerollFrameCount) {
+    number_of_preroll_frames_ = max_output_buffers;
+  }
 }
 
 bool VideoDecoder::Tick(MediaCodecBridge* media_codec_bridge) {
@@ -918,6 +974,13 @@ void VideoDecoder::OnTunnelModeCheckForNeedMoreInput() {
 
   Schedule(std::bind(&VideoDecoder::OnTunnelModeCheckForNeedMoreInput, this),
            kNeedMoreInputCheckIntervalInTunnelMode);
+}
+
+void VideoDecoder::OnVideoFrameRelease() {
+  if (output_format_) {
+    --buffered_output_frames_;
+    SB_DCHECK(buffered_output_frames_ >= 0);
+  }
 }
 
 void VideoDecoder::OnSurfaceDestroyed() {

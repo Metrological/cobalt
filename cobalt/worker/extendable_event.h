@@ -15,6 +15,7 @@
 #ifndef COBALT_WORKER_EXTENDABLE_EVENT_H_
 #define COBALT_WORKER_EXTENDABLE_EVENT_H_
 
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -30,6 +31,7 @@
 #include "cobalt/web/context.h"
 #include "cobalt/web/dom_exception.h"
 #include "cobalt/web/environment_settings.h"
+#include "cobalt/web/environment_settings_helper.h"
 #include "cobalt/web/event.h"
 #include "cobalt/web/window_or_worker_global_scope.h"
 #include "cobalt/worker/extendable_event_init.h"
@@ -37,21 +39,38 @@
 #include "cobalt/worker/service_worker_jobs.h"
 #include "cobalt/worker/service_worker_object.h"
 #include "cobalt/worker/service_worker_registration_object.h"
+#include "v8/include/v8.h"
 
 namespace cobalt {
 namespace worker {
 
-class ExtendableEvent : public web::Event {
+class ExtendableEvent : public web::Event,
+                        public web::Context::EnvironmentSettingsChangeObserver {
  public:
-  explicit ExtendableEvent(const std::string& type) : Event(type) {}
-  ExtendableEvent(const std::string& type, const ExtendableEventInit& init_dict)
-      : ExtendableEvent(base::Token(type), init_dict) {}
-  ExtendableEvent(base::Token type,
+  explicit ExtendableEvent(script::EnvironmentSettings* settings,
+                           const std::string& type)
+      : Event(type), isolate_(web::get_isolate(settings)) {
+    InitializeEnvironmentSettingsChangeObserver(settings);
+  }
+  ExtendableEvent(script::EnvironmentSettings* settings,
+                  const std::string& type, const ExtendableEventInit& init_dict)
+      : ExtendableEvent(settings, base::Token(type), init_dict) {}
+  ExtendableEvent(script::EnvironmentSettings* settings, base::Token type,
                   base::OnceCallback<void(bool)> done_callback =
                       base::OnceCallback<void(bool)>())
-      : Event(type), done_callback_(std::move(done_callback)) {}
-  ExtendableEvent(base::Token type, const ExtendableEventInit& init_dict)
-      : Event(type, init_dict) {}
+      : Event(type),
+        done_callback_(std::move(done_callback)),
+        isolate_(web::get_isolate(settings)) {
+    InitializeEnvironmentSettingsChangeObserver(settings);
+  }
+  ExtendableEvent(script::EnvironmentSettings* settings, base::Token type,
+                  const ExtendableEventInit& init_dict)
+      : Event(type, init_dict), isolate_(web::get_isolate(settings)) {
+    InitializeEnvironmentSettingsChangeObserver(settings);
+  }
+
+  // web::Context::EnvironmentSettingsChangeObserver
+  void OnEnvironmentSettingsChanged(bool context_valid) override;
 
   void WaitUntil(
       script::EnvironmentSettings* settings,
@@ -65,7 +84,7 @@ class ExtendableEvent : public web::Event {
     // An ExtendableEvent object is said to be active when its timed out flag
     // is unset and either its pending promises count is greater than zero or
     // its dispatch flag is set.
-    //   https://w3c.github.io/ServiceWorker/#extendableevent-active
+    //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#extendableevent-active
     return !timed_out_flag_ &&
            ((pending_promise_count_ > 0) || IsBeingDispatched());
   }
@@ -75,17 +94,30 @@ class ExtendableEvent : public web::Event {
   DEFINE_WRAPPABLE_TYPE(ExtendableEvent);
 
  protected:
-  ~ExtendableEvent() override {}
+  ~ExtendableEvent() override {
+    std::move(remove_environment_settings_change_observer_).Run();
+  }
 
  private:
-  // https://w3c.github.io/ServiceWorker/#extendableevent-extend-lifetime-promises
+  void ExtendLifetime(const script::Promise<script::ValueHandle*>* promise);
+  void LessenLifetime(const script::Promise<script::ValueHandle*>* promise);
+  void InitializeEnvironmentSettingsChangeObserver(
+      script::EnvironmentSettings* settings);
+
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#extendableevent-extend-lifetime-promises
   // std::list<script::Promise<script::ValueHandle*>> extend_lifetime_promises_;
   int pending_promise_count_ = 0;
   bool has_rejected_promise_ = false;
-  // https://w3c.github.io/ServiceWorker/#extendableevent-timed-out-flag
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#extendableevent-timed-out-flag
   bool timed_out_flag_ = false;
 
   base::OnceCallback<void(bool)> done_callback_;
+  base::OnceClosure remove_environment_settings_change_observer_;
+  v8::Isolate* isolate_;
+
+  std::map<const script::Promise<script::ValueHandle*>*,
+           v8::TracedGlobal<v8::Value>*>
+      traced_global_promises_;
 };
 
 }  // namespace worker

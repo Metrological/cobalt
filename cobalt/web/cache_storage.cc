@@ -22,6 +22,7 @@
 #include "cobalt/base/source_location.h"
 #include "cobalt/cache/cache.h"
 #include "cobalt/script/source_code.h"
+#include "cobalt/script/v8c/v8c_value_handle.h"
 #include "cobalt/web/context.h"
 #include "cobalt/web/environment_settings_helper.h"
 
@@ -50,6 +51,7 @@ void CacheStorage::PerformOpen(
 script::HandlePromiseWrappable CacheStorage::Open(
     script::EnvironmentSettings* environment_settings,
     const std::string& cache_name) {
+  auto* global_wrappable = get_global_wrappable(environment_settings);
   script::HandlePromiseWrappable promise =
       get_script_value_factory(environment_settings)
           ->CreateInterfacePromise<scoped_refptr<Cache>>();
@@ -58,18 +60,20 @@ script::HandlePromiseWrappable CacheStorage::Open(
       FROM_HERE,
       base::BindOnce(&CacheStorage::PerformOpen, base::Unretained(this),
                      std::make_unique<script::ValuePromiseWrappable::Reference>(
-                         this, promise)));
+                         global_wrappable, promise)));
   return promise;
 }
 
 script::HandlePromiseBool CacheStorage::Delete(
     script::EnvironmentSettings* environment_settings,
     const std::string& cache_name) {
+  auto* global_wrappable = get_global_wrappable(environment_settings);
   script::HandlePromiseBool promise =
       get_script_value_factory(environment_settings)
           ->CreateBasicPromise<bool>();
   auto promise_reference =
-      std::make_unique<script::ValuePromiseBool::Reference>(this, promise);
+      std::make_unique<script::ValuePromiseBool::Reference>(global_wrappable,
+                                                            promise);
   auto* context = get_context(environment_settings);
   context->message_loop()->task_runner()->PostTask(
       FROM_HERE, base::BindOnce(
@@ -80,6 +84,28 @@ script::HandlePromiseBool CacheStorage::Delete(
                        promise_reference->value().Resolve(true);
                      },
                      std::move(promise_reference)));
+  return promise;
+}
+
+script::HandlePromiseBool CacheStorage::Has(
+    script::EnvironmentSettings* environment_settings,
+    const std::string& cache_name) {
+  script::HandlePromiseBool promise =
+      get_script_value_factory(environment_settings)
+          ->CreateBasicPromise<bool>();
+  promise->Resolve(true);
+  return promise;
+}
+
+script::Handle<script::Promise<script::Handle<script::ValueHandle>>>
+CacheStorage::Keys(script::EnvironmentSettings* environment_settings) {
+  script::HandlePromiseAny promise =
+      get_script_value_factory(environment_settings)
+          ->CreateBasicPromise<script::Any>();
+  auto global_environment = get_global_environment(environment_settings);
+  auto* isolate = global_environment->isolate();
+  promise->Resolve(script::Any(
+      new script::v8c::V8cValueHandleHolder(isolate, v8::Array::New(isolate))));
   return promise;
 }
 

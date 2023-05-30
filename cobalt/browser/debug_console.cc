@@ -109,7 +109,7 @@ DebugConsole::DebugConsole(
     base::ApplicationState initial_application_state,
     const WebModule::OnRenderTreeProducedCallback&
         render_tree_produced_callback,
-    network::NetworkModule* network_module,
+    web::WebSettings* web_settings, network::NetworkModule* network_module,
     const cssom::ViewportSize& window_dimensions,
     render_tree::ResourceProvider* resource_provider, float layout_refresh_rate,
     const debug::CreateDebugClientCallback& create_debug_client_callback,
@@ -121,7 +121,7 @@ DebugConsole::DebugConsole(
   web_module_options.image_cache_capacity = 0;
   // Disable CSP for the Debugger's WebModule. This will also allow eval() in
   // javascript.
-  web_module_options.csp_enforcement_mode = web::kCspEnforcementDisable;
+  web_module_options.csp_enforcement_type = web::kCspEnforcementDisable;
   web_module_options.csp_insecure_allowed_token =
       web::CspDelegateFactory::GetInsecureAllowedToken();
 
@@ -140,12 +140,13 @@ DebugConsole::DebugConsole(
   // Pass down this callback from Browser module to Web module eventually.
   web_module_options.maybe_freeze_callback = maybe_freeze_callback;
 
+  web_module_options.web_options.web_settings = web_settings;
   web_module_options.web_options.network_module = network_module;
   web_module_options.web_options.platform_info = platform_info;
 
   web_module_.reset(new WebModule("DebugConsoleWebModule"));
   web_module_->Run(GURL(kInitialDebugConsoleUrl), initial_application_state,
-                   render_tree_produced_callback,
+                   nullptr /* scroll_engine */, render_tree_produced_callback,
                    base::Bind(&DebugConsole::OnError, base::Unretained(this)),
                    WebModule::CloseCallback(), /* window_close_callback */
                    base::Closure(),            /* window_minimize_callback */

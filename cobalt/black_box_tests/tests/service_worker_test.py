@@ -23,16 +23,33 @@ from cobalt.black_box_tests.threaded_web_server import ThreadedWebServer
 # The base path of the requested assets is the parent directory.
 _SERVER_ROOT_PATH = os.path.join(os.path.dirname(__file__), os.pardir)
 
+paths_to_headers = {
+    'service_worker_test.html': {
+        'Content-Security-Policy':
+            "script-src 'nonce-blackboxtest' ; worker-src 'self'"
+    },
+    'service_worker_test_worker.js': {
+        'Content-Security-Policy':
+            "connect-src 'self' ; script-src 'none' ; worker-src 'self'"
+    }
+}
+
+#path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
 
 class ServiceWorkerRequestDetector(MakeRequestHandlerClass(_SERVER_ROOT_PATH)):
   """Proxies everything to SimpleHTTPRequestHandler, except some paths."""
 
   def end_headers(self):
     self.send_my_headers()
-
     SimpleHTTPServer.SimpleHTTPRequestHandler.end_headers(self)
 
   def send_header(self, header, value):
+    for partial_path, headers in paths_to_headers.items():
+      if partial_path in self.path:
+        for header_key, header_value in headers.items():
+          SimpleHTTPServer.SimpleHTTPRequestHandler.send_header(
+              self, header_key, header_value)
     # Ensure that the Content-Type for paths ending in '.js' are always
     # 'text/javascript'.
     if header == 'Content-Type' and self.path.endswith('.js'):
@@ -43,7 +60,9 @@ class ServiceWorkerRequestDetector(MakeRequestHandlerClass(_SERVER_ROOT_PATH)):
 
   def send_my_headers(self):
     # Add 'Service-Worker-Allowed' header for the main service worker scripts.
-    if self.path.endswith('/service_worker_test_worker.js'):
+    if self.path.endswith(
+        '/service_worker_test_worker.js') or self.path.endswith(
+            '/service_worker_test_persisted_worker.js'):
       self.send_header('Service-Worker-Allowed', '/bar')
 
   def do_GET(self):  # pylint: disable=invalid-name
@@ -58,12 +77,11 @@ class ServiceWorkerRequestDetector(MakeRequestHandlerClass(_SERVER_ROOT_PATH)):
 
       if not (service_worker_request_header
               == expected_service_worker_request_header):
-        raise ValueError('Service-Worker HTTP request header value does not '
-                         'match with expected value.\n'
-                         'Header value:%s\n'
-                         'Expected value:%s' %
-                         (service_worker_request_header,
-                          expected_service_worker_request_header))
+        raise ValueError(
+            'Service-Worker HTTP request header value does not '
+            'match with expected value.\n'
+            f'Header value:{service_worker_request_header}\n'
+            f'Expected value:{expected_service_worker_request_header}')
 
     return SimpleHTTPServer.SimpleHTTPRequestHandler.do_GET(self)
 

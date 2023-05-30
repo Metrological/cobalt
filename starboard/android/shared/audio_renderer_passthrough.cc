@@ -123,10 +123,9 @@ void AudioRendererPassthrough::Initialize(const ErrorCB& error_cb,
       std::bind(&AudioRendererPassthrough::OnDecoderOutput, this), error_cb);
 }
 
-void AudioRendererPassthrough::WriteSample(
-    const scoped_refptr<InputBuffer>& input_buffer) {
+void AudioRendererPassthrough::WriteSamples(const InputBuffers& input_buffers) {
   SB_DCHECK(BelongsToCurrentThread());
-  SB_DCHECK(input_buffer);
+  SB_DCHECK(!input_buffers.empty());
   SB_DCHECK(can_accept_more_data_.load());
 
   if (!audio_track_thread_) {
@@ -138,14 +137,14 @@ void AudioRendererPassthrough::WriteSample(
 
   if (frames_per_input_buffer_ == 0) {
     frames_per_input_buffer_ = ParseAc3SyncframeAudioSampleCount(
-        input_buffer->data(), input_buffer->size());
+        input_buffers.front()->data(), input_buffers.front()->size());
     SB_LOG(INFO) << "Got frames per input buffer " << frames_per_input_buffer_;
   }
 
   can_accept_more_data_.store(false);
 
   decoder_->Decode(
-      input_buffer,
+      input_buffers,
       std::bind(&AudioRendererPassthrough::OnDecoderConsumed, this));
 }
 
@@ -535,14 +534,18 @@ void AudioRendererPassthrough::UpdateStatusAndWriteData(
                  "has likely changed. Restarting playback.";
           error_cb_(kSbPlayerErrorCapabilityChanged,
                     "Audio device capability changed");
-          audio_track_bridge_->PauseAndFlush();
-          return;
+        } else {
+          // `kSbPlayerErrorDecode` is used for general SbPlayer error, there is
+          // no error code corresponding to audio sink.
+          error_cb_(
+              kSbPlayerErrorDecode,
+              FormatString("Error while writing frames: %d", samples_written));
+          SB_LOG(INFO) << "Encountered kSbPlayerErrorDecode while writing "
+                          "frames, error: "
+                       << samples_written;
         }
-        // `kSbPlayerErrorDecode` is used for general SbPlayer error, there is
-        // no error code corresponding to audio sink.
-        error_cb_(
-            kSbPlayerErrorDecode,
-            FormatString("Error while writing frames: %d", samples_written));
+        audio_track_bridge_->PauseAndFlush();
+        return;
       }
       decoded_audio_writing_offset_ += samples_written;
 

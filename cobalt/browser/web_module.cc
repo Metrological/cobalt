@@ -27,6 +27,7 @@
 #include "base/optional.h"
 #include "base/strings/stringprintf.h"
 #include "base/synchronization/waitable_event.h"
+#include "base/threading/thread_checker.h"
 #include "base/trace_event/trace_event.h"
 #include "cobalt/base/c_val.h"
 #include "cobalt/base/debugger_hooks.h"
@@ -48,7 +49,6 @@
 #include "cobalt/dom/keyboard_event.h"
 #include "cobalt/dom/keyboard_event_init.h"
 #include "cobalt/dom/local_storage_database.h"
-#include "cobalt/dom/media_source_settings.h"
 #include "cobalt/dom/mutation_observer_task_manager.h"
 #include "cobalt/dom/navigation_type.h"
 #include "cobalt/dom/navigator.h"
@@ -67,6 +67,7 @@
 #include "cobalt/media/media_module.h"
 #include "cobalt/media_session/media_session_client.h"
 #include "cobalt/storage/storage_manager.h"
+#include "cobalt/ui_navigation/scroll_engine/scroll_engine.h"
 #include "cobalt/web/blob.h"
 #include "cobalt/web/context.h"
 #include "cobalt/web/csp_delegate_factory.h"
@@ -106,6 +107,25 @@ CacheUrlContentCallback(SplashScreenCache* splash_screen_cache) {
   } else {
     return base::Callback<void(const std::string&,
                                const base::Optional<std::string>&)>();
+  }
+}
+
+void CancelScroll(ui_navigation::scroll_engine::ScrollEngine* scroll_engine,
+                  const scoped_refptr<ui_navigation::NavItem>& nav_item) {
+  auto nav_items = std::vector<scoped_refptr<ui_navigation::NavItem>>{nav_item};
+  scroll_engine->thread()->message_loop()->task_runner()->PostTask(
+      FROM_HERE, base::Bind(&ui_navigation::scroll_engine::ScrollEngine::
+                                CancelActiveScrollsForNavItems,
+                            base::Unretained(scroll_engine), nav_items));
+}
+
+dom::Window::NavItemCallback CancelScrollCallback(
+    ui_navigation::scroll_engine::ScrollEngine* scroll_engine) {
+  if (scroll_engine) {
+    return base::Bind(CancelScroll, base::Unretained(scroll_engine));
+  } else {
+    return base::Callback<void(
+        const scoped_refptr<cobalt::ui_navigation::NavItem>& nav_item)>();
   }
 }
 
@@ -216,8 +236,6 @@ class WebModule::Impl {
   void SetSize(cssom::ViewportSize viewport_size);
   void UpdateCamera3D(const scoped_refptr<input::Camera3D>& camera_3d);
   void SetMediaModule(media::MediaModule* media_module);
-  void SetMediaSourceSetting(const std::string& name, int value,
-                             bool* succeeded);
   void SetImageCacheCapacity(int64_t bytes);
   void SetRemoteTypefaceCacheCapacity(int64_t bytes);
 
@@ -293,8 +311,6 @@ class WebModule::Impl {
   void ProcessOnRenderTreeRasterized(const base::TimeTicks& produced_time,
                                      const base::TimeTicks& rasterized_time);
 
-  void OnCspPolicyChanged();
-
   scoped_refptr<script::GlobalEnvironment> global_environment() {
     DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
     return web_context_->global_environment();
@@ -342,6 +358,8 @@ class WebModule::Impl {
   THREAD_CHECKER(thread_checker_);
 
   web::Context* web_context_;
+
+  ui_navigation::scroll_engine::ScrollEngine* scroll_engine_;
 
   // Simple flag used for basic error checking.
   bool is_running_;
@@ -398,9 +416,6 @@ class WebModule::Impl {
 
   // Object to register and retrieve MediaSource object with a string key.
   std::unique_ptr<dom::MediaSource::Registry> media_source_registry_;
-
-  // Object to hold WebModule wide settings for MediaSource related objects.
-  dom::MediaSourceSettingsImpl media_source_settings_;
 
   // The Window object wraps all DOM-related components.
   scoped_refptr<dom::Window> window_;
@@ -488,6 +503,7 @@ class WebModule::Impl::DocumentLoadedObserver : public dom::DocumentObserver {
 
 WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
     : web_context_(web_context),
+      scroll_engine_(data.scroll_engine),
       is_running_(false),
       is_render_tree_rasterization_pending_(
           base::StringPrintf("%s.IsRenderTreeRasterizationPending",
@@ -505,7 +521,6 @@ WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
       base::Bind(&WebModule::Impl::LogScriptError, base::Unretained(this));
   web_context_->javascript_engine()->RegisterErrorHandler(error_handler);
 #endif
-
   css_parser::Parser::SupportsMapToMeshFlag supports_map_to_mesh =
       data.options.enable_map_to_mesh
           ? css_parser::Parser::kSupportsMapToMesh
@@ -517,7 +532,7 @@ WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
   dom_parser_.reset(new dom_parser::Parser(
       kDOMMaxElementDepth,
       base::Bind(&WebModule::Impl::OnLoadComplete, base::Unretained(this)),
-      data.options.require_csp));
+      data.options.csp_header_policy));
   DCHECK(dom_parser_);
 
   on_before_unload_fired_but_not_handled_ =
@@ -584,10 +599,10 @@ WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
     memory_info = stub_decoder_buffer_memory_info_.get();
   }
 
-  web_context_->setup_environment_settings(new dom::DOMSettings(
+  web_context_->SetupEnvironmentSettings(new dom::DOMSettings(
       debugger_hooks_, kDOMMaxElementDepth, media_source_registry_.get(),
-      &media_source_settings_, data.can_play_type_handler, memory_info,
-      &mutation_observer_task_manager_, data.options.dom_settings_options));
+      data.can_play_type_handler, memory_info, &mutation_observer_task_manager_,
+      data.options.dom_settings_options));
   DCHECK(web_context_->environment_settings());
   // From algorithm to setup up a window environment settings object:
   //   https://html.spec.whatwg.org/commit-snapshots/465a6b672c703054de278b0f8133eb3ad33d93f4/#set-up-a-window-environment-settings-object
@@ -599,6 +614,9 @@ WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
 
   dom::Window::CacheCallback splash_screen_cache_callback =
       CacheUrlContentCallback(data.options.splash_screen_cache);
+
+  dom::Window::NavItemCallback cancel_scroll_callback =
+      CancelScrollCallback(data.scroll_engine);
 
   // These members will reference other |Traceable|s, however are not
   // accessible from |Window|, so we must explicitly add them as roots.
@@ -638,9 +656,10 @@ WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
       base::GetSystemLanguageScript(), data.options.navigation_callback,
       base::Bind(&WebModule::Impl::OnLoadComplete, base::Unretained(this)),
       web_context_->network_module()->cookie_jar(),
-      web_context_->network_module()->GetPostSender(), data.options.require_csp,
-      data.options.csp_enforcement_mode,
-      base::Bind(&WebModule::Impl::OnCspPolicyChanged, base::Unretained(this)),
+      web::CspDelegate::Options(web_context_->network_module()->GetPostSender(),
+                                data.options.csp_header_policy,
+                                data.options.csp_enforcement_type,
+                                data.options.csp_insecure_allowed_token),
       base::Bind(&WebModule::Impl::OnRanAnimationFrameCallbacks,
                  base::Unretained(this)),
       data.window_close_callback, data.window_minimize_callback,
@@ -648,10 +667,11 @@ WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
       base::Bind(&WebModule::Impl::OnStartDispatchEvent,
                  base::Unretained(this)),
       base::Bind(&WebModule::Impl::OnStopDispatchEvent, base::Unretained(this)),
-      data.options.provide_screenshot_function, synchronous_loader_interrupt_,
-      data.options.enable_inline_script_warnings, data.ui_nav_root,
-      data.options.enable_map_to_mesh, data.options.csp_insecure_allowed_token,
-      data.dom_max_element_depth, data.options.video_playback_rate_multiplier,
+      data.options.provide_screenshot_function, cancel_scroll_callback,
+      synchronous_loader_interrupt_, data.options.enable_inline_script_warnings,
+      data.ui_nav_root, data.options.enable_map_to_mesh,
+      data.options.csp_insecure_allowed_token, data.dom_max_element_depth,
+      data.options.video_playback_rate_multiplier,
 #if defined(ENABLE_TEST_RUNNER)
       data.options.layout_trigger == layout::LayoutManager::kTestRunnerMode
           ? dom::Window::kClockTypeTestRunner
@@ -703,7 +723,7 @@ WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
   DCHECK(layout_manager_);
 
 #if !defined(COBALT_FORCE_CSP)
-  if (data.options.csp_enforcement_mode == web::kCspEnforcementDisable) {
+  if (data.options.csp_enforcement_type == web::kCspEnforcementDisable) {
     // If CSP is disabled, enable eval(). Otherwise, it will be enabled by
     // a CSP directive.
     web_context_->global_environment()->EnableEval();
@@ -737,6 +757,7 @@ WebModule::Impl::Impl(web::Context* web_context, const ConstructionData& data)
       data.options.collect_unload_event_time_callback;
 
   is_running_ = true;
+  web_context_->SetupFinished();
 }
 
 WebModule::Impl::~Impl() {
@@ -1018,21 +1039,6 @@ void WebModule::Impl::SetUnloadEventTimingInfo(base::TimeTicks start_time,
   }
 }
 
-void WebModule::Impl::OnCspPolicyChanged() {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  DCHECK(is_running_);
-  DCHECK(window_);
-  DCHECK(window_->csp_delegate());
-
-  std::string eval_disabled_message;
-  bool allow_eval = window_->csp_delegate()->AllowEval(&eval_disabled_message);
-  if (allow_eval) {
-    web_context_->global_environment()->EnableEval();
-  } else {
-    web_context_->global_environment()->DisableEval(eval_disabled_message);
-  }
-}
-
 bool WebModule::Impl::ReportScriptError(
     const script::ErrorReport& error_report) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
@@ -1101,12 +1107,6 @@ void WebModule::Impl::SetMediaModule(media::MediaModule* media_module) {
   dom_settings->set_decoder_buffer_memory_info(
       media_module->GetDecoderBufferAllocator());
   window_->set_web_media_player_factory(media_module);
-}
-
-void WebModule::Impl::SetMediaSourceSetting(const std::string& name, int value,
-                                            bool* succeeded) {
-  DCHECK(succeeded);
-  *succeeded = media_source_settings_.Set(name, value);
 }
 
 void WebModule::Impl::SetApplicationState(base::ApplicationState state,
@@ -1316,7 +1316,8 @@ void WebModule::Impl::HandlePointerEvents() {
           base::polymorphic_downcast<const dom::UIEvent* const>(event.get())
               ->view());
       if (!topmost_event_target_) {
-        topmost_event_target_.reset(new layout::TopmostEventTarget());
+        topmost_event_target_.reset(
+            new layout::TopmostEventTarget(scroll_engine_));
       }
       topmost_event_target_->MaybeSendPointerEvents(event);
     }
@@ -1350,6 +1351,7 @@ WebModule::~WebModule() {
 
 void WebModule::Run(
     const GURL& initial_url, base::ApplicationState initial_application_state,
+    ui_navigation::scroll_engine::ScrollEngine* scroll_engine,
     const OnRenderTreeProducedCallback& render_tree_produced_callback,
     OnErrorCallback error_callback, const CloseCallback& window_close_callback,
     const base::Closure& window_minimize_callback,
@@ -1358,10 +1360,11 @@ void WebModule::Run(
     render_tree::ResourceProvider* resource_provider, float layout_refresh_rate,
     const Options& options) {
   ConstructionData construction_data(
-      initial_url, initial_application_state, render_tree_produced_callback,
-      error_callback, window_close_callback, window_minimize_callback,
-      can_play_type_handler, media_module, window_dimensions, resource_provider,
-      kDOMMaxElementDepth, layout_refresh_rate, ui_nav_root_,
+      initial_url, initial_application_state, scroll_engine,
+      render_tree_produced_callback, error_callback, window_close_callback,
+      window_minimize_callback, can_play_type_handler, media_module,
+      window_dimensions, resource_provider, kDOMMaxElementDepth,
+      layout_refresh_rate, ui_nav_root_,
 #if defined(ENABLE_DEBUGGER)
       &waiting_for_web_debugger_,
 #endif  // defined(ENABLE_DEBUGGER)
@@ -1605,12 +1608,6 @@ void WebModule::SetMediaModule(media::MediaModule* media_module) {
   impl_->SetMediaModule(media_module);
 }
 
-bool WebModule::SetMediaSourceSetting(const std::string& name, int value) {
-  bool succeeded = false;
-  SetMediaSourceSettingInternal(name, value, &succeeded);
-  return succeeded;
-}
-
 void WebModule::SetImageCacheCapacity(int64_t bytes) {
   POST_TO_ENSURE_IMPL_ON_THREAD(SetImageCacheCapacity, bytes);
   impl_->SetImageCacheCapacity(bytes);
@@ -1742,13 +1739,6 @@ void WebModule::SetUnloadEventTimingInfo(base::TimeTicks start_time,
   TRACE_EVENT0("cobalt::browser", "WebModule::SetUnloadEventTimingInfo()");
   POST_TO_ENSURE_IMPL_ON_THREAD(SetUnloadEventTimingInfo, start_time, end_time);
   impl_->SetUnloadEventTimingInfo(start_time, end_time);
-}
-
-void WebModule::SetMediaSourceSettingInternal(const std::string& name,
-                                              int value, bool* succeeded) {
-  POST_AND_BLOCK_TO_ENSURE_IMPL_ON_THREAD(SetMediaSourceSettingInternal, name,
-                                          value, succeeded);
-  impl_->SetMediaSourceSetting(name, value, succeeded);
 }
 
 }  // namespace browser

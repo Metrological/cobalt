@@ -24,6 +24,7 @@
 #include "cobalt/h5vcc/h5vcc_storage.h"
 #include "cobalt/persistent_storage/persistent_settings.h"
 #include "cobalt/storage/storage_manager.h"
+#include "cobalt/worker/service_worker_consts.h"
 #include "net/base/completion_once_callback.h"
 #include "net/disk_cache/cobalt/cobalt_backend_impl.h"
 #include "net/disk_cache/cobalt/resource_type.h"
@@ -40,9 +41,7 @@ namespace {
 
 const char kTestFileName[] = "cache_test_file.json";
 
-const uint32 kWriteBufferSize = 1024 * 1024;
-
-const uint32 kReadBufferSize = 1024 * 1024;
+const uint32 kBufferSize = 16384;  // 16 KB
 
 H5vccStorageWriteTestResponse WriteTestResponse(std::string error = "",
                                                 uint32 bytes_written = 0) {
@@ -70,13 +69,32 @@ H5vccStorageSetQuotaResponse SetQuotaResponse(std::string error = "",
   return response;
 }
 
+void DeleteCacheResourceTypeDirectory(disk_cache::ResourceType type) {
+  auto metadata = disk_cache::kTypeMetadata[type];
+  std::vector<char> cache_dir(kSbFileMaxPath + 1, 0);
+  SbSystemGetPath(kSbSystemPathCacheDirectory, cache_dir.data(),
+                  kSbFileMaxPath);
+  base::FilePath cache_type_dir =
+      base::FilePath(cache_dir.data())
+          .Append(FILE_PATH_LITERAL(metadata.directory));
+  starboard::SbFileDeleteRecursive(cache_type_dir.value().data(), true);
+}
+
 void ClearCacheHelper(disk_cache::Backend* backend) {
   backend->DoomAllEntries(base::DoNothing());
+
+
+  for (int type_index = 0; type_index < disk_cache::kTypeCount; type_index++) {
+    DeleteCacheResourceTypeDirectory(
+        static_cast<disk_cache::ResourceType>(type_index));
+  }
 }
 
 void ClearCacheOfTypeHelper(disk_cache::ResourceType type,
                             disk_cache::CobaltBackendImpl* backend) {
   backend->DoomAllEntriesOfType(type, base::DoNothing());
+
+  DeleteCacheResourceTypeDirectory(type);
 }
 
 }  // namespace
@@ -157,13 +175,13 @@ H5vccStorageWriteTestResponse H5vccStorage::WriteTest(uint32 test_size,
   write_buf.append(test_string.substr(0, test_size % test_string.length()));
 
   // Incremental Writes of test_data, copies SbWriteAll, using a maximum
-  // kWriteBufferSize per write.
+  // kBufferSize per write.
   uint32 total_bytes_written = 0;
 
   do {
-    auto bytes_written = test_file.Write(
-        write_buf.data() + total_bytes_written,
-        std::min(kWriteBufferSize, test_size - total_bytes_written));
+    auto bytes_written =
+        test_file.Write(write_buf.data() + total_bytes_written,
+                        std::min(kBufferSize, test_size - total_bytes_written));
     if (bytes_written <= 0) {
       SbFileDelete(test_file_path.c_str());
       return WriteTestResponse("SbWrite -1 return value error");
@@ -196,21 +214,21 @@ H5vccStorageVerifyTestResponse H5vccStorage::VerifyTest(
   }
 
   // Incremental Reads of test_data, copies SbReadAll, using a maximum
-  // kReadBufferSize per write.
+  // kBufferSize per write.
   uint32 total_bytes_read = 0;
 
   do {
-    char read_buf[kReadBufferSize];
+    auto read_buffer = std::make_unique<char[]>(kBufferSize);
     auto bytes_read = test_file.Read(
-        read_buf, std::min(kReadBufferSize, test_size - total_bytes_read));
+        read_buffer.get(), std::min(kBufferSize, test_size - total_bytes_read));
     if (bytes_read <= 0) {
       SbFileDelete(test_file_path.c_str());
       return VerifyTestResponse("SbRead -1 return value error");
     }
 
-    // Verify read_buf equivalent to a repeated test_string.
+    // Verify read_buffer equivalent to a repeated test_string.
     for (auto i = 0; i < bytes_read; ++i) {
-      if (read_buf[i] !=
+      if (read_buffer.get()[i] !=
           test_string[(total_bytes_read + i) % test_string.size()]) {
         return VerifyTestResponse(
             "File test data does not match with test data string");
@@ -235,7 +253,7 @@ H5vccStorageSetQuotaResponse H5vccStorage::SetQuota(
   if (!quota.has_other() || !quota.has_html() || !quota.has_css() ||
       !quota.has_image() || !quota.has_font() || !quota.has_splash() ||
       !quota.has_uncompiled_js() || !quota.has_compiled_js() ||
-      !quota.has_cache_api()) {
+      !quota.has_cache_api() || !quota.has_service_worker_js()) {
     return SetQuotaResponse(
         "H5vccStorageResourceTypeQuotaBytesDictionary input parameter missing "
         "required fields.");
@@ -244,7 +262,7 @@ H5vccStorageSetQuotaResponse H5vccStorage::SetQuota(
   if (quota.other() < 0 || quota.html() < 0 || quota.css() < 0 ||
       quota.image() < 0 || quota.font() < 0 || quota.splash() < 0 ||
       quota.uncompiled_js() < 0 || quota.compiled_js() < 0 ||
-      quota.cache_api() < 0) {
+      quota.cache_api() < 0 || quota.service_worker_js() < 0) {
     return SetQuotaResponse(
         "H5vccStorageResourceTypeQuotaBytesDictionary input parameter fields "
         "cannot have a negative value.");
@@ -253,7 +271,7 @@ H5vccStorageSetQuotaResponse H5vccStorage::SetQuota(
   auto quota_total = quota.other() + quota.html() + quota.css() +
                      quota.image() + quota.font() + quota.splash() +
                      quota.uncompiled_js() + quota.compiled_js() +
-                     quota.cache_api();
+                     quota.cache_api() + quota.service_worker_js();
 
   uint32_t max_quota_size = 24 * 1024 * 1024;
 #if SB_API_VERSION >= 14
@@ -291,6 +309,8 @@ H5vccStorageSetQuotaResponse H5vccStorage::SetQuota(
                             static_cast<uint32_t>(quota.compiled_js()));
   SetAndSaveQuotaForBackend(disk_cache::kCacheApi,
                             static_cast<uint32_t>(quota.cache_api()));
+  SetAndSaveQuotaForBackend(disk_cache::kServiceWorkerScript,
+                            static_cast<uint32_t>(quota.service_worker_js()));
   return SetQuotaResponse("", true);
 }
 
@@ -328,6 +348,8 @@ H5vccStorageResourceTypeQuotaBytesDictionary H5vccStorage::GetQuota() {
           ->GetMaxCacheStorageInBytes(disk_cache::kCompiledScript)
           .value());
   quota.set_cache_api(cache_backend_->GetQuota(disk_cache::kCacheApi));
+  quota.set_service_worker_js(
+      cache_backend_->GetQuota(disk_cache::kServiceWorkerScript));
 
   uint32_t max_quota_size = 24 * 1024 * 1024;
 #if SB_API_VERSION >= 14
@@ -373,6 +395,35 @@ void H5vccStorage::ClearCache() {
         base::Bind(&ClearCacheHelper, base::Unretained(cache_backend_)));
   }
   cobalt::cache::Cache::GetInstance()->DeleteAll();
+}
+
+void H5vccStorage::ClearCacheOfType(int type_index) {
+  if (type_index < 0 || type_index > disk_cache::kTypeCount) {
+    DLOG(INFO)
+        << "Invalid type_index, out of bounds of disk_cache::kTypeMetadata";
+    return;
+  }
+  disk_cache::ResourceType type =
+      static_cast<disk_cache::ResourceType>(type_index);
+  if (ValidatedCacheBackend()) {
+    network_module_->task_runner()->PostTask(
+        FROM_HERE, base::Bind(&ClearCacheOfTypeHelper, type,
+                              base::Unretained(cache_backend_)));
+  }
+  cobalt::cache::Cache::GetInstance()->Delete(type);
+}
+
+void H5vccStorage::ClearServiceWorkerCache() {
+  ClearCacheOfType(
+      static_cast<int>(disk_cache::ResourceType::kServiceWorkerScript));
+  // Add deletion of service worker persistent settings file
+  std::vector<char> storage_dir(kSbFileMaxPath, 0);
+  SbSystemGetPath(kSbSystemPathCacheDirectory, storage_dir.data(),
+                  kSbFileMaxPath);
+  std::string service_worker_file_path =
+      std::string(storage_dir.data()) + kSbFileSepString +
+      worker::ServiceWorkerConsts::kSettingsJson;
+  SbFileDelete(service_worker_file_path.c_str());
 }
 
 bool H5vccStorage::ValidatedCacheBackend() {

@@ -59,7 +59,7 @@ script::HandlePromiseWrappable Clients::Get(const std::string& id) {
   TRACE_EVENT0("cobalt::worker", "Clients::Get()");
   DCHECK_EQ(base::MessageLoop::current(), settings_->context()->message_loop());
   // Algorithm for get(id):
-  //   https://w3c.github.io/ServiceWorker/#clients-get
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#clients-get
   // 1. Let promise be a new promise.
   script::HandlePromiseWrappable promise =
       settings_->context()
@@ -67,7 +67,8 @@ script::HandlePromiseWrappable Clients::Get(const std::string& id) {
           ->script_value_factory()
           ->CreateInterfacePromise<scoped_refptr<Client>>();
   std::unique_ptr<script::ValuePromiseWrappable::Reference> promise_reference(
-      new script::ValuePromiseWrappable::Reference(this, promise));
+      new script::ValuePromiseWrappable::Reference(
+          settings_->context()->GetWindowOrWorkerGlobalScope(), promise));
 
   // 2. Run these substeps in parallel:
   ServiceWorkerJobs* jobs = settings_->context()->service_worker_jobs();
@@ -89,15 +90,15 @@ script::HandlePromiseSequenceWrappable Clients::MatchAll(
   TRACE_EVENT0("cobalt::worker", "Clients::MatchAll()");
   DCHECK_EQ(base::MessageLoop::current(), settings_->context()->message_loop());
   // Algorithm for matchAll():
-  //   https://w3c.github.io/ServiceWorker/#clients-matchall
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#clients-matchall
   // 1. Let promise be a new promise.
   auto promise = settings_->context()
                      ->global_environment()
                      ->script_value_factory()
                      ->CreateBasicPromise<script::SequenceWrappable>();
   std::unique_ptr<script::ValuePromiseSequenceWrappable::Reference>
-      promise_reference(
-          new script::ValuePromiseSequenceWrappable::Reference(this, promise));
+      promise_reference(new script::ValuePromiseSequenceWrappable::Reference(
+          settings_->context()->GetWindowOrWorkerGlobalScope(), promise));
   // 2. Run the following steps in parallel:
   ServiceWorkerJobs* jobs = settings_->context()->service_worker_jobs();
   DCHECK(jobs);
@@ -117,7 +118,7 @@ script::HandlePromiseVoid Clients::Claim() {
   TRACE_EVENT0("cobalt::worker", "Clients::Claim()");
   DCHECK_EQ(base::MessageLoop::current(), settings_->context()->message_loop());
   // Algorithm for claim():
-  //   https://w3c.github.io/ServiceWorker/#clients-claim
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#clients-claim
   // 2. Let promise be a new promise.
   // Note: Done first because it's needed for rejecting in step 1.
   auto promise = settings_->context()
@@ -125,7 +126,8 @@ script::HandlePromiseVoid Clients::Claim() {
                      ->script_value_factory()
                      ->CreateBasicPromise<void>();
   std::unique_ptr<script::ValuePromiseVoid::Reference> promise_reference(
-      new script::ValuePromiseVoid::Reference(this, promise));
+      new script::ValuePromiseVoid::Reference(
+          settings_->context()->GetWindowOrWorkerGlobalScope(), promise));
 
   // 1. If the service worker is not an active worker, return a promise rejected
   // with an "InvalidStateError" DOMException.

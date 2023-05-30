@@ -29,52 +29,76 @@ namespace cobalt {
 namespace worker {
 
 // This class represents the 'service worker registration'.
-//   https://w3c.github.io/ServiceWorker/#dfn-service-worker-registration
+//   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-service-worker-registration
 // Not to be confused with the ServiceWorkerRegistration JavaScript object,
 // this represents the registration of the service worker in the browser,
 // independent from the JavaScript realm. The lifetime of this object is beyond
 // that of the ServiceWorkerRegistration JavaScript object(s) that represent
 // this object in their service worker clients.
-//   https://w3c.github.io/ServiceWorker/#service-worker-registration-lifetime
+//   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#service-worker-registration-lifetime
 class ServiceWorkerRegistrationObject
     : public base::RefCountedThreadSafe<ServiceWorkerRegistrationObject> {
  public:
   ServiceWorkerRegistrationObject(
       const url::Origin& storage_key, const GURL& scope_url,
       const ServiceWorkerUpdateViaCache& update_via_cache_mode);
-  ~ServiceWorkerRegistrationObject() {}
+  ~ServiceWorkerRegistrationObject();
+
+  void AbortAll();
 
   const url::Origin& storage_key() const { return storage_key_; }
+
   const GURL& scope_url() const { return scope_url_; }
+
   void set_update_via_cache_mode(
       const ServiceWorkerUpdateViaCache& update_via_cache_mode) {
     update_via_cache_mode_ = update_via_cache_mode;
   }
+
   const ServiceWorkerUpdateViaCache& update_via_cache_mode() const {
     return update_via_cache_mode_;
   }
 
-  void set_installing_worker(scoped_refptr<ServiceWorkerObject> worker) {
+  void set_installing_worker(const scoped_refptr<ServiceWorkerObject>& worker) {
     installing_worker_ = worker;
   }
   const scoped_refptr<ServiceWorkerObject>& installing_worker() const {
     return installing_worker_;
   }
-  void set_waiting_worker(scoped_refptr<ServiceWorkerObject> worker) {
+  void set_waiting_worker(const scoped_refptr<ServiceWorkerObject>& worker) {
     waiting_worker_ = worker;
   }
   const scoped_refptr<ServiceWorkerObject>& waiting_worker() const {
     return waiting_worker_;
   }
-  void set_active_worker(scoped_refptr<ServiceWorkerObject> worker) {
+  void set_active_worker(const scoped_refptr<ServiceWorkerObject>& worker) {
     active_worker_ = worker;
   }
   const scoped_refptr<ServiceWorkerObject>& active_worker() const {
     return active_worker_;
   }
 
-  // https://w3c.github.io/ServiceWorker/#get-newest-worker
-  ServiceWorkerObject* GetNewestWorker();
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#service-worker-registration-stale
+  bool stale() const {
+    return !last_update_check_time_.is_null() &&
+           (base::Time::Now() - last_update_check_time_).InSeconds() >
+               kStaleServiceWorkerRegistrationTimeout;
+  }
+
+  base::Time last_update_check_time() const { return last_update_check_time_; }
+  void set_last_update_check_time(base::Time time) {
+    last_update_check_time_ = time;
+  }
+
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#get-newest-worker
+  scoped_refptr<ServiceWorkerObject> GetNewestWorker();
+
+  const int kStaleServiceWorkerRegistrationTimeout = 86400;
+
+  base::WaitableEvent* done_event() { return &done_event_; }
+
+  bool is_persisted() const { return is_persisted_; }
+  void set_is_persisted(bool value) { is_persisted_ = value; }
 
  private:
   // This lock is to allow atomic operations on the registration object.
@@ -86,6 +110,14 @@ class ServiceWorkerRegistrationObject
   scoped_refptr<ServiceWorkerObject> installing_worker_;
   scoped_refptr<ServiceWorkerObject> waiting_worker_;
   scoped_refptr<ServiceWorkerObject> active_worker_;
+
+  base::Time last_update_check_time_;
+
+  base::WaitableEvent done_event_ = {
+      base::WaitableEvent::ResetPolicy::MANUAL,
+      base::WaitableEvent::InitialState::SIGNALED};
+
+  bool is_persisted_;
 };
 
 }  // namespace worker

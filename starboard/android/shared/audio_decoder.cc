@@ -24,7 +24,8 @@
 // Can be locally set to |1| for verbose audio decoding.  Verbose audio
 // decoding will log the following transitions that take place for each audio
 // unit:
-//   T1: Our client passes an |InputBuffer| of audio data into us.
+//   T1: Our client passes multiple packets (i.e. InputBuffers) of audio data
+//   into us.
 //   T2: We receive a corresponding media codec output buffer back from our
 //       |MediaCodecBridge|.
 //   T3: Our client reads a corresponding |DecodedAudio| out of us.
@@ -52,6 +53,9 @@ namespace android {
 namespace shared {
 
 namespace {
+
+using std::placeholders::_1;
+using std::placeholders::_2;
 
 SbMediaAudioSampleType GetSupportedSampleType() {
   SB_DCHECK(SbAudioSinkIsAudioSampleTypeSupported(
@@ -93,19 +97,22 @@ void AudioDecoder::Initialize(const OutputCB& output_cb,
   output_cb_ = output_cb;
   error_cb_ = error_cb;
 
-  media_decoder_->Initialize(error_cb_);
+  media_decoder_->Initialize(
+      std::bind(&AudioDecoder::ReportError, this, _1, _2));
 }
 
-void AudioDecoder::Decode(const scoped_refptr<InputBuffer>& input_buffer,
+void AudioDecoder::Decode(const InputBuffers& input_buffers,
                           const ConsumedCB& consumed_cb) {
   SB_DCHECK(BelongsToCurrentThread());
-  SB_DCHECK(input_buffer);
+  SB_DCHECK(!input_buffers.empty());
   SB_DCHECK(output_cb_);
   SB_DCHECK(media_decoder_);
 
-  VERBOSE_MEDIA_LOG() << "T1: timestamp " << input_buffer->timestamp();
+  for (const auto& input_buffer : input_buffers) {
+    VERBOSE_MEDIA_LOG() << "T1: timestamp " << input_buffer->timestamp();
+  }
 
-  media_decoder_->WriteInputBuffer(input_buffer);
+  media_decoder_->WriteInputBuffers(input_buffers);
 
   ScopedLock lock(decoded_audios_mutex_);
   if (media_decoder_->GetNumberOfPendingTasks() + decoded_audios_.size() <=
@@ -174,7 +181,8 @@ bool AudioDecoder::InitializeCodec() {
       new MediaDecoder(this, audio_codec_, audio_sample_info_, drm_system_));
   if (media_decoder_->is_valid()) {
     if (error_cb_) {
-      media_decoder_->Initialize(error_cb_);
+      media_decoder_->Initialize(
+          std::bind(&AudioDecoder::ReportError, this, _1, _2));
     }
     return true;
   }
@@ -192,7 +200,12 @@ void AudioDecoder::ProcessOutputBuffer(
   if (dequeue_output_result.num_bytes > 0) {
     ScopedJavaByteBuffer byte_buffer(
         media_codec_bridge->GetOutputBuffer(dequeue_output_result.index));
-    SB_DCHECK(!byte_buffer.IsNull());
+
+    if (byte_buffer.IsNull()) {
+      ReportError(kSbPlayerErrorDecode,
+                  "Failed to process audio output buffer.");
+      return;
+    }
 
     int16_t* data = static_cast<int16_t*>(IncrementPointerByBytes(
         byte_buffer.address(), dequeue_output_result.offset));
@@ -245,6 +258,17 @@ void AudioDecoder::RefreshOutputFormat(MediaCodecBridge* media_codec_bridge) {
   }
   output_sample_rate_ = output_format.sample_rate;
   output_channel_count_ = output_format.channel_count;
+}
+
+void AudioDecoder::ReportError(SbPlayerError error,
+                               const std::string& error_message) {
+  SB_DCHECK(error_cb_);
+
+  if (!error_cb_) {
+    return;
+  }
+
+  error_cb_(kSbPlayerErrorDecode, error_message);
 }
 
 }  // namespace shared

@@ -34,12 +34,12 @@ namespace worker {
 
 // The ServiceWorkerContainer interface represents the interface to register and
 // access service workers from a service worker client realm.
-//   https://w3c.github.io/ServiceWorker/#serviceworkercontainer-interface
+//   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#serviceworkercontainer-interface
 class ServiceWorkerContainer : public web::EventTarget {
  public:
   explicit ServiceWorkerContainer(script::EnvironmentSettings* settings);
 
-  // https://w3c.github.io/ServiceWorker/#navigator-service-worker-controller
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#navigator-service-worker-controller
   scoped_refptr<ServiceWorker> controller();
   script::HandlePromiseWrappable ready();
 
@@ -72,7 +72,9 @@ class ServiceWorkerContainer : public web::EventTarget {
       std::unique_ptr<script::ValuePromiseWrappable::Reference>
           promise_reference);
 
-  scoped_refptr<ServiceWorker> ready_;
+  void GetRegistrationsTask(
+      std::unique_ptr<script::ValuePromiseSequenceWrappable::Reference>
+          promise_reference);
 
   script::HandlePromiseWrappable ready_promise_;
   std::unique_ptr<script::ValuePromiseWrappable::Reference> promise_reference_;

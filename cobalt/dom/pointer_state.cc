@@ -15,6 +15,7 @@
 #include "cobalt/dom/pointer_state.h"
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
 #include "base/trace_event/trace_event.h"
@@ -259,6 +260,92 @@ void PointerState::ClearForShutdown() {
   pending_target_override_.clear();
   active_pointers_.clear();
   pointers_with_active_buttons_.clear();
+}
+
+void PointerState::SetClientCoordinates(int32_t pointer_id,
+                                        math::Vector2dF position) {
+  client_coordinates_[pointer_id] = position;
+}
+
+base::Optional<math::Vector2dF> PointerState::GetClientCoordinates(
+    int32_t pointer_id) {
+  auto client_coordinate = client_coordinates_.find(pointer_id);
+  if (client_coordinate != client_coordinates_.end()) {
+    return client_coordinate->second;
+  }
+  base::Optional<math::Vector2dF> ret;
+  return ret;
+}
+
+void PointerState::ClearClientCoordinates(int32_t pointer_id) {
+  client_coordinates_.erase(pointer_id);
+}
+
+void PointerState::SetClientTimeStamp(int32_t pointer_id, uint64 time_stamp) {
+  client_time_stamps_[pointer_id] = time_stamp;
+}
+
+base::Optional<uint64> PointerState::GetClientTimeStamp(int32_t pointer_id) {
+  auto time_stamp = client_time_stamps_.find(pointer_id);
+  if (time_stamp != client_time_stamps_.end()) {
+    return time_stamp->second;
+  }
+  base::Optional<uint64> ret;
+  return ret;
+}
+
+void PointerState::ClearTimeStamp(int32_t pointer_id) {
+  client_time_stamps_.erase(pointer_id);
+}
+
+void PointerState::SetPossibleScrollTargets(
+    int32_t pointer_id,
+    std::unique_ptr<PossibleScrollTargets> possible_scroll_targets) {
+  client_possible_scroll_targets_[pointer_id] =
+      std::move(possible_scroll_targets);
+}
+PossibleScrollTargets* PointerState::GetPossibleScrollTargets(
+    int32_t pointer_id) {
+  auto possible_scroll_targets =
+      client_possible_scroll_targets_.find(pointer_id);
+  if (possible_scroll_targets != client_possible_scroll_targets_.end()) {
+    return possible_scroll_targets->second.get();
+  }
+  return nullptr;
+}
+void PointerState::ClearPossibleScrollTargets(int32_t pointer_id) {
+  client_possible_scroll_targets_.erase(pointer_id);
+}
+
+void PointerState::SetClientTransformMatrix(int32_t pointer_id,
+                                            const math::Matrix3F& matrix) {
+  client_matrices_.emplace(pointer_id, matrix);
+}
+
+const math::Matrix3F& PointerState::GetClientTransformMatrix(
+    int32_t pointer_id) {
+  auto matrix_entry = client_matrices_.find(pointer_id);
+  if (matrix_entry != client_matrices_.end()) {
+    return matrix_entry->second;
+  }
+  return identity_matrix_;
+}
+
+void PointerState::ClearMatrix(int32_t pointer_id) {
+  client_matrices_.erase(pointer_id);
+}
+
+void PointerState::SetWasCancelled(int32_t pointer_id) {
+  client_cancellations_.insert(pointer_id);
+}
+
+bool PointerState::GetWasCancelled(int32_t pointer_id) {
+  auto client_cancellation = client_cancellations_.find(pointer_id);
+  return client_cancellation != client_cancellations_.end();
+}
+
+void PointerState::ClearWasCancelled(int32_t pointer_id) {
+  client_cancellations_.erase(pointer_id);
 }
 
 // static

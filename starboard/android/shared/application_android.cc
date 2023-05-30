@@ -19,6 +19,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,7 @@
 #include "starboard/common/mutex.h"
 #include "starboard/common/string.h"
 #include "starboard/event.h"
+#include "starboard/key.h"
 #include "starboard/shared/starboard/audio_sink/audio_sink_internal.h"
 
 namespace starboard {
@@ -59,8 +61,6 @@ const char* AndroidCommandName(
       return "Pause";
     case ApplicationAndroid::AndroidCommand::kStop:
       return "Stop";
-    case ApplicationAndroid::AndroidCommand::kInputQueueChanged:
-      return "InputQueueChanged";
     case ApplicationAndroid::AndroidCommand::kNativeWindowCreated:
       return "NativeWindowCreated";
     case ApplicationAndroid::AndroidCommand::kNativeWindowDestroyed:
@@ -83,7 +83,6 @@ typedef ::starboard::shared::starboard::Application::Event Event;
 ApplicationAndroid::ApplicationAndroid(ALooper* looper)
     : looper_(looper),
       native_window_(NULL),
-      input_queue_(NULL),
       android_command_readfd_(-1),
       android_command_writefd_(-1),
       keyboard_inject_readfd_(-1),
@@ -99,6 +98,17 @@ ApplicationAndroid::ApplicationAndroid(ALooper* looper)
   // Initialize Android asset access early so that ICU can load its tables
   // from the assets. The use ICU is used in our logging.
   SbFileAndroidInitialize();
+
+  // Enable axes used by Cobalt.
+  static const unsigned int required_axes[] = {
+      AMOTION_EVENT_AXIS_Z,       AMOTION_EVENT_AXIS_RZ,
+      AMOTION_EVENT_AXIS_HAT_X,   AMOTION_EVENT_AXIS_HAT_Y,
+      AMOTION_EVENT_AXIS_HSCROLL, AMOTION_EVENT_AXIS_VSCROLL,
+      AMOTION_EVENT_AXIS_WHEEL,
+  };
+  for (auto axis : required_axes) {
+    GameActivityPointerAxes_enableAxis(axis);
+  }
 
   int pipefd[2];
   int err;
@@ -152,6 +162,7 @@ SbWindow ApplicationAndroid::CreateWindow(const SbWindowOptions* options) {
   if (SbWindowIsValid(window_)) {
     return kSbWindowInvalid;
   }
+  ScopedLock lock(input_mutex_);
   window_ = new SbWindowPrivate;
   window_->native_window = native_window_;
   input_events_generator_.reset(new InputEventsGenerator(window_));
@@ -163,6 +174,7 @@ bool ApplicationAndroid::DestroyWindow(SbWindow window) {
     return false;
   }
 
+  ScopedLock lock(input_mutex_);
   input_events_generator_.reset();
 
   SB_DCHECK(window == window_);
@@ -172,23 +184,31 @@ bool ApplicationAndroid::DestroyWindow(SbWindow window) {
 }
 
 Event* ApplicationAndroid::WaitForSystemEventWithTimeout(SbTime time) {
+  // Limit the polling time in case some non-system event is injected.
+  const int kMaxPollingTimeMillisecond = 10;
+
   // Convert from microseconds to milliseconds, taking the ceiling value.
   // If we take the floor, or round, then we end up busy looping every time
   // the next event time is less than one millisecond.
   int timeout_millis = (time + kSbTimeMillisecond - 1) / kSbTimeMillisecond;
   int looper_events;
-  int ident = ALooper_pollAll(timeout_millis, NULL, &looper_events, NULL);
+  int ident = ALooper_pollAll(
+      std::min(std::max(timeout_millis, 0), kMaxPollingTimeMillisecond), NULL,
+      &looper_events, NULL);
+
+  // Ignore new system events while processing one.
+  handle_system_events_ = false;
+
   switch (ident) {
     case kLooperIdAndroidCommand:
       ProcessAndroidCommand();
-      break;
-    case kLooperIdAndroidInput:
-      ProcessAndroidInput();
       break;
     case kLooperIdKeyboardInject:
       ProcessKeyboardInject();
       break;
   }
+
+  handle_system_events_ = true;
 
   // Always return NULL since we already dispatched our own system events.
   return NULL;
@@ -232,23 +252,6 @@ void ApplicationAndroid::ProcessAndroidCommand() {
   switch (cmd.type) {
     case AndroidCommand::kUndefined:
       break;
-
-    case AndroidCommand::kInputQueueChanged: {
-      ScopedLock lock(android_command_mutex_);
-      if (input_queue_) {
-        AInputQueue_detachLooper(input_queue_);
-      }
-      input_queue_ = static_cast<AInputQueue*>(cmd.data);
-      if (input_queue_) {
-        AInputQueue_attachLooper(input_queue_, looper_, kLooperIdAndroidInput,
-                                 NULL, NULL);
-      }
-      // Now that we've swapped our use of the input queue, signal that the
-      // Android UI thread can continue.
-      android_command_condition_.Signal();
-      break;
-    }
-
     // Starboard resume/suspend is tied to the UI window being created/destroyed
     // (rather than to the Activity lifecycle) since Cobalt can't do anything at
     // all if it doesn't have a window surface to draw on.
@@ -285,12 +288,16 @@ void ApplicationAndroid::ProcessAndroidCommand() {
       // early in SendAndroidCommand().
       {
         ScopedLock lock(android_command_mutex_);
-        // Cobalt can't keep running without a window, even if the Activity
-        // hasn't stopped yet. Block until conceal event has been processed.
+// Cobalt can't keep running without a window, even if the Activity
+// hasn't stopped yet. Block until conceal event has been processed.
 
-        // Only process injected events -- don't check system events since
-        // that may try to acquire the already-locked android_command_mutex_.
+// Only process injected events -- don't check system events since
+// that may try to acquire the already-locked android_command_mutex_.
+#if SB_API_VERSION >= 13
         InjectAndProcess(kSbEventTypeConceal, /* checkSystemEvents */ false);
+#else
+        InjectAndProcess(kSbEventTypeSuspend, /* checkSystemEvents */ false);
+#endif
 
         if (window_) {
           window_->native_window = NULL;
@@ -327,10 +334,12 @@ void ApplicationAndroid::ProcessAndroidCommand() {
     }
 
     // Remember the Android activity state to sync to when we have a window.
+    case AndroidCommand::kStop:
+      SbAtomicNoBarrier_Increment(&android_stop_count_, -1);
+    // Intentional fall-through.
     case AndroidCommand::kStart:
     case AndroidCommand::kResume:
     case AndroidCommand::kPause:
-    case AndroidCommand::kStop:
       sync_state = activity_state_ = cmd.type;
       break;
     case AndroidCommand::kDeepLink: {
@@ -356,9 +365,16 @@ void ApplicationAndroid::ProcessAndroidCommand() {
     }
   }
 
+  // If there's an outstanding "stop" command, then don't update the app state
+  // since it'll be overridden by the upcoming "stop" state.
+  if (SbAtomicNoBarrier_Load(&android_stop_count_) > 0) {
+    return;
+  }
+
   // If there's a window, sync the app state to the Activity lifecycle.
   if (native_window_) {
     switch (sync_state) {
+#if SB_API_VERSION >= 13
       case AndroidCommand::kStart:
         Inject(new Event(kSbEventTypeReveal, NULL, NULL));
         break;
@@ -371,6 +387,20 @@ void ApplicationAndroid::ProcessAndroidCommand() {
       case AndroidCommand::kStop:
         Inject(new Event(kSbEventTypeConceal, NULL, NULL));
         break;
+#else
+      case AndroidCommand::kStart:
+        Inject(new Event(kSbEventTypeResume, NULL, NULL));
+        break;
+      case AndroidCommand::kResume:
+        Inject(new Event(kSbEventTypeUnpause, NULL, NULL));
+        break;
+      case AndroidCommand::kPause:
+        Inject(new Event(kSbEventTypePause, NULL, NULL));
+        break;
+      case AndroidCommand::kStop:
+        Inject(new Event(kSbEventTypeSuspend, NULL, NULL));
+        break;
+#endif
       default:
         break;
     }
@@ -385,43 +415,65 @@ void ApplicationAndroid::SendAndroidCommand(AndroidCommand::CommandType type,
   write(android_command_writefd_, &cmd, sizeof(cmd));
   // Synchronization only necessary when managing resources.
   switch (type) {
-    case AndroidCommand::kInputQueueChanged:
-      while (input_queue_ != data) {
-        android_command_condition_.Wait();
-      }
-      break;
     case AndroidCommand::kNativeWindowCreated:
     case AndroidCommand::kNativeWindowDestroyed:
       while (native_window_ != data) {
         android_command_condition_.Wait();
       }
       break;
+    case AndroidCommand::kStop:
+      SbAtomicNoBarrier_Increment(&android_stop_count_, 1);
+      break;
     default:
       break;
   }
 }
 
-void ApplicationAndroid::ProcessAndroidInput() {
-  AInputEvent* android_event = NULL;
-  while (AInputQueue_getEvent(input_queue_, &android_event) >= 0) {
-    SB_LOG(INFO) << "Android input: type="
-                 << AInputEvent_getType(android_event);
-    if (AInputQueue_preDispatchEvent(input_queue_, android_event)) {
-      continue;
-    }
-    if (!input_events_generator_) {
-      SB_DLOG(WARNING) << "Android input event ignored without an SbWindow.";
-      AInputQueue_finishEvent(input_queue_, android_event, false);
-      continue;
-    }
-    InputEventsGenerator::Events app_events;
-    bool handled = input_events_generator_->CreateInputEventsFromAndroidEvent(
-        android_event, &app_events);
-    for (int i = 0; i < app_events.size(); ++i) {
-      Inject(app_events[i].release());
-    }
-    AInputQueue_finishEvent(input_queue_, android_event, handled);
+bool ApplicationAndroid::SendAndroidMotionEvent(
+    const GameActivityMotionEvent* event) {
+  bool result = false;
+
+  ScopedLock lock(input_mutex_);
+  if (!input_events_generator_) {
+    return false;
   }
+
+  // add motion event into the queue.
+  InputEventsGenerator::Events app_events;
+  result = input_events_generator_->CreateInputEventsFromGameActivityEvent(
+      const_cast<GameActivityMotionEvent*>(event), &app_events);
+
+  for (int i = 0; i < app_events.size(); ++i) {
+    Inject(app_events[i].release());
+  }
+
+  return result;
+}
+
+bool ApplicationAndroid::SendAndroidKeyEvent(
+    const GameActivityKeyEvent* event) {
+  bool result = false;
+
+#ifdef STARBOARD_INPUT_EVENTS_FILTER
+  if (!input_events_filter_.ShouldProcessKeyEvent(event)) {
+    return result;
+  }
+#endif
+
+  ScopedLock lock(input_mutex_);
+  if (!input_events_generator_) {
+    return false;
+  }
+
+  // Add key event to the application queue.
+  InputEventsGenerator::Events app_events;
+  result = input_events_generator_->CreateInputEventsFromGameActivityEvent(
+      const_cast<GameActivityKeyEvent*>(event), &app_events);
+  for (int i = 0; i < app_events.size(); i++) {
+    Inject(app_events[i].release());
+  }
+
+  return result;
 }
 
 void ApplicationAndroid::ProcessKeyboardInject() {
@@ -429,6 +481,7 @@ void ApplicationAndroid::ProcessKeyboardInject() {
   int err = read(keyboard_inject_readfd_, &key, sizeof(key));
   SB_DCHECK(err >= 0) << "Keyboard inject read failed: errno=" << errno;
   SB_LOG(INFO) << "Keyboard inject: " << key;
+  ScopedLock lock(input_mutex_);
   if (!input_events_generator_) {
     SB_DLOG(WARNING) << "Injected input event ignored without an SbWindow.";
     return;
@@ -682,6 +735,20 @@ bool ApplicationAndroid::GetOverlayedBoolValue(const char* var_name) {
       env->GetBooleanFieldOrAbort(resource_overlay_, var_name, "Z");
   overlayed_bool_variables_[var_name] = value;
   return value;
+}
+
+extern "C" SB_EXPORT_PLATFORM void
+Java_dev_cobalt_coat_VolumeStateReceiver_nativeVolumeChanged(JNIEnv* env,
+                                                             jobject jcaller,
+                                                             jint volumeDelta) {
+  SbKey key = volumeDelta > 0 ? SbKey::kSbKeyVolumeUp : SbKey::kSbKeyVolumeDown;
+  ApplicationAndroid::Get()->SendKeyboardInject(key);
+}
+
+extern "C" SB_EXPORT_PLATFORM void
+Java_dev_cobalt_coat_VolumeStateReceiver_nativeMuteChanged(JNIEnv* env,
+                                                           jobject jcaller) {
+  ApplicationAndroid::Get()->SendKeyboardInject(SbKey::kSbKeyVolumeMute);
 }
 
 }  // namespace shared

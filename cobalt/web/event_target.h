@@ -16,6 +16,7 @@
 #define COBALT_WEB_EVENT_TARGET_H_
 
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -303,6 +304,13 @@ class EventTarget : public script::Wrappable,
     SetAttributeEventListener(base::Tokens::scroll(), event_listener);
   }
 
+  const EventListenerScriptValue* onpointercancel() {
+    return GetAttributeEventListener(base::Tokens::pointercancel());
+  }
+  void set_onpointercancel(const EventListenerScriptValue& event_listener) {
+    SetAttributeEventListener(base::Tokens::pointercancel(), event_listener);
+  }
+
   const EventListenerScriptValue* ongotpointercapture() {
     return GetAttributeEventListener(base::Tokens::gotpointercapture());
   }
@@ -527,6 +535,14 @@ class EventTarget : public script::Wrappable,
   }
   web::EnvironmentSettings* environment_settings() const {
     return environment_settings_;
+  }
+
+  std::set<base::Token>& event_listener_event_types() const {
+    static std::set<base::Token> event_listener_event_types;
+    for (auto& event_listener_info : event_listener_infos_) {
+      event_listener_event_types.insert(event_listener_info->type());
+    }
+    return event_listener_event_types;
   }
 
  protected:

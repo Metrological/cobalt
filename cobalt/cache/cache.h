@@ -45,15 +45,14 @@ namespace cache {
 class Cache {
  public:
   static Cache* GetInstance();
-  static uint32_t CreateKey(const std::string& s);
 
   bool Delete(disk_cache::ResourceType resource_type, uint32_t key);
   void Delete(disk_cache::ResourceType resource_type);
   void DeleteAll();
   std::vector<uint32_t> KeysWithMetadata(
       disk_cache::ResourceType resource_type);
-  std::unique_ptr<base::Value> Metadata(disk_cache::ResourceType resource_type,
-                                        uint32_t key);
+  base::Optional<base::Value> Metadata(disk_cache::ResourceType resource_type,
+                                       uint32_t key);
   std::unique_ptr<std::vector<uint8_t>> Retrieve(
       disk_cache::ResourceType resource_type, uint32_t key,
       std::function<std::pair<std::unique_ptr<std::vector<uint8_t>>,
@@ -92,7 +91,7 @@ class Cache {
   std::map<disk_cache::ResourceType,
            std::map<uint32_t, std::vector<base::WaitableEvent*>>>
       pending_;
-  bool enabled_;
+  bool enabled_ = true;
 
   persistent_storage::PersistentSettings* persistent_settings_ = nullptr;
 

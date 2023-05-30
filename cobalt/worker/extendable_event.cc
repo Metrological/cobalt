@@ -17,12 +17,20 @@
 namespace cobalt {
 namespace worker {
 
+void ExtendableEvent::OnEnvironmentSettingsChanged(bool context_valid) {
+  if (!context_valid) {
+    while (traced_global_promises_.size() > 0) {
+      LessenLifetime(traced_global_promises_.begin()->first);
+    }
+  }
+}
+
 void ExtendableEvent::WaitUntil(
     script::EnvironmentSettings* settings,
     std::unique_ptr<script::Promise<script::ValueHandle*>>& promise,
     script::ExceptionState* exception_state) {
   // Algorithm for waitUntil(), to add lifetime promise to event.
-  //   https://w3c.github.io/ServiceWorker/#dom-extendableevent-waituntil
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dom-extendableevent-waituntil
 
   // 1. If event’s isTrusted attribute is false, throw an "InvalidStateError"
   //    DOMException.
@@ -33,6 +41,7 @@ void ExtendableEvent::WaitUntil(
     return;
   }
   // 3. Add promise to event’s extend lifetime promises.
+  ExtendLifetime(promise.get());
   // 4. Increment event’s pending promises count by one.
   ++pending_promise_count_;
   // 5. Upon fulfillment or rejection of promise, queue a microtask to run
@@ -50,7 +59,7 @@ void ExtendableEvent::StateChange(
     const script::Promise<script::ValueHandle*>* promise) {
   // Implement the microtask called upon fulfillment or rejection of a
   // promise, as part of the algorithm for waitUntil().
-  //   https://w3c.github.io/ServiceWorker/#dom-extendableevent-waituntil
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dom-extendableevent-waituntil
   DCHECK(promise);
   has_rejected_promise_ |= promise->State() == script::PromiseState::kRejected;
   // 5.1. Decrement event’s pending promises count by one.
@@ -76,7 +85,45 @@ void ExtendableEvent::StateChange(
                                  ->service_worker_object()
                                  ->containing_service_worker_registration())));
   }
+  LessenLifetime(promise);
   delete promise;
+}
+
+void ExtendableEvent::ExtendLifetime(
+    const script::Promise<script::ValueHandle*>* promise) {
+  auto heap_tracer =
+      script::v8c::V8cEngine::GetFromIsolate(isolate_)->heap_tracer();
+  if (traced_global_promises_.size() == 0) {
+    heap_tracer->AddRoot(this);
+  }
+  auto* traced_global =
+      new v8::TracedGlobal<v8::Value>(isolate_, promise->promise());
+  traced_global_promises_[promise] = traced_global;
+  heap_tracer->AddRoot(traced_global);
+}
+
+void ExtendableEvent::LessenLifetime(
+    const script::Promise<script::ValueHandle*>* promise) {
+  auto heap_tracer =
+      script::v8c::V8cEngine::GetFromIsolate(isolate_)->heap_tracer();
+  if (traced_global_promises_.count(promise) == 1) {
+    auto* traced_global = traced_global_promises_[promise];
+    heap_tracer->RemoveRoot(traced_global);
+    traced_global_promises_.erase(promise);
+    delete traced_global;
+  }
+  if (traced_global_promises_.size() == 0) {
+    heap_tracer->RemoveRoot(this);
+  }
+}
+
+void ExtendableEvent::InitializeEnvironmentSettingsChangeObserver(
+    script::EnvironmentSettings* settings) {
+  web::Context* context = web::get_context(settings);
+  context->AddEnvironmentSettingsChangeObserver(this);
+  remove_environment_settings_change_observer_ =
+      base::BindOnce(&web::Context::RemoveEnvironmentSettingsChangeObserver,
+                     base::Unretained(context), base::Unretained(this));
 }
 
 }  // namespace worker

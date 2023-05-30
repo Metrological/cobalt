@@ -16,7 +16,7 @@ package dev.cobalt.coat;
 
 import static dev.cobalt.util.Log.TAG;
 
-import android.app.NativeActivity;
+import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
@@ -29,6 +29,8 @@ import android.view.View;
 import android.view.ViewGroup.LayoutParams;
 import android.view.ViewParent;
 import android.widget.FrameLayout;
+import androidx.annotation.CallSuper;
+import com.google.androidgamesdk.GameActivity;
 import dev.cobalt.media.AudioOutputManager;
 import dev.cobalt.media.MediaCodecUtil;
 import dev.cobalt.media.VideoSurfaceView;
@@ -41,7 +43,7 @@ import java.util.List;
 import java.util.Locale;
 
 /** Native activity that has the required JNI methods called by the Starboard implementation. */
-public abstract class CobaltActivity extends NativeActivity {
+public abstract class CobaltActivity extends GameActivity {
 
   // A place to put args while debugging so they're used even when starting from the launcher.
   // This should always be empty in submitted code.
@@ -60,6 +62,9 @@ public abstract class CobaltActivity extends NativeActivity {
   private static final String META_FORCE_MIGRATION_FOR_STORAGE_PARTITIONING =
       "cobalt.force_migration_for_storage_partitioning";
 
+  private static final String EVERGREEN_LITE = "--evergreen_lite";
+  private static final java.lang.String META_DATA_EVERGREEN_LITE = "cobalt.EVERGREEN_LITE";
+
   @SuppressWarnings("unused")
   private CobaltA11yHelper a11yHelper;
 
@@ -71,6 +76,8 @@ public abstract class CobaltActivity extends NativeActivity {
   private long timeInNanoseconds;
 
   private static native void nativeLowMemoryEvent();
+
+  protected View mContentView = null;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -107,6 +114,21 @@ public abstract class CobaltActivity extends NativeActivity {
       addContentView(
           keyboardEditor, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
     }
+  }
+
+  /**
+   * Creates an empty View for the launching activity, and prevent GameActivity from creating the
+   * default SurfaceView.
+   */
+  @Override
+  protected void onCreateSurfaceView() {
+    mSurfaceView = null;
+
+    getWindow().takeSurface(this);
+
+    mContentView = new View(this);
+    setContentView(mContentView);
+    mContentView.requestFocus();
   }
 
   /**
@@ -201,7 +223,9 @@ public abstract class CobaltActivity extends NativeActivity {
     boolean hasSplashUrlArg = hasArg(args, SPLASH_URL_ARG);
     // If the splash screen topics arg isn't specified, get it from AndroidManifest.xml.
     boolean hasSplashTopicsArg = hasArg(args, SPLASH_TOPICS_ARG);
-    if (!hasUrlArg || !hasSplashUrlArg || !hasSplashTopicsArg) {
+    // If the Evergreen-Lite arg isn't specified, get it from AndroidManifest.xml.
+    boolean hasEvergreenLiteArg = hasArg(args, EVERGREEN_LITE);
+    if (!hasUrlArg || !hasSplashUrlArg || !hasSplashTopicsArg || !hasEvergreenLiteArg) {
       try {
         ActivityInfo ai =
             getPackageManager()
@@ -224,6 +248,9 @@ public abstract class CobaltActivity extends NativeActivity {
             if (splashTopics != null) {
               args.add(SPLASH_TOPICS_ARG + splashTopics);
             }
+          }
+          if (!hasEvergreenLiteArg && ai.metaData.getBoolean(META_DATA_EVERGREEN_LITE)) {
+            args.add(EVERGREEN_LITE);
           }
           if (ai.metaData.getBoolean(META_FORCE_MIGRATION_FOR_STORAGE_PARTITIONING)) {
             args.add(FORCE_MIGRATION_FOR_STORAGE_PARTITIONING);
@@ -271,8 +298,10 @@ public abstract class CobaltActivity extends NativeActivity {
     return StarboardBridge.isReleaseBuild();
   }
 
+  @CallSuper
   @Override
   protected void onNewIntent(Intent intent) {
+    super.onNewIntent(intent);
     getStarboardBridge().handleDeepLink(getIntentUrlAsString(intent));
   }
 
@@ -290,6 +319,7 @@ public abstract class CobaltActivity extends NativeActivity {
     getStarboardBridge().onActivityResult(requestCode, resultCode, data);
   }
 
+  @SuppressLint("MissingSuperCall")
   @Override
   public void onRequestPermissionsResult(
       int requestCode, String[] permissions, int[] grantResults) {

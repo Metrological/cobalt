@@ -14,6 +14,8 @@
 
 #include "starboard/shared/opus/opus_audio_decoder.h"
 
+#include <algorithm>
+
 #include "starboard/common/log.h"
 #include "starboard/common/string.h"
 #include "starboard/memory.h"
@@ -87,16 +89,63 @@ void OpusAudioDecoder::Initialize(const OutputCB& output_cb,
   error_cb_ = error_cb;
 }
 
-void OpusAudioDecoder::Decode(const scoped_refptr<InputBuffer>& input_buffer,
+void OpusAudioDecoder::Decode(const InputBuffers& input_buffers,
                               const ConsumedCB& consumed_cb) {
   SB_DCHECK(BelongsToCurrentThread());
-  SB_DCHECK(input_buffer);
+  SB_DCHECK(!input_buffers.empty());
+  SB_DCHECK(pending_audio_buffers_.empty());
   SB_DCHECK(output_cb_);
 
   if (stream_ended_) {
     SB_LOG(ERROR) << "Decode() is called after WriteEndOfStream() is called.";
     return;
   }
+  if (input_buffers.size() > kMinimumBuffersToDecode) {
+    std::copy(std::begin(input_buffers), std::end(input_buffers),
+              std::back_inserter(pending_audio_buffers_));
+    consumed_cb_ = consumed_cb;
+    DecodePendingBuffers();
+  } else {
+    for (const auto& input_buffer : input_buffers) {
+      if (!DecodeInternal(input_buffer)) {
+        return;
+      }
+    }
+    Schedule(consumed_cb);
+  }
+}
+
+void OpusAudioDecoder::DecodePendingBuffers() {
+  SB_DCHECK(BelongsToCurrentThread());
+  SB_DCHECK(!pending_audio_buffers_.empty());
+  SB_DCHECK(consumed_cb_);
+
+  for (int i = 0; i < kMinimumBuffersToDecode; ++i) {
+    if (!DecodeInternal(pending_audio_buffers_.front())) {
+      return;
+    }
+    pending_audio_buffers_.pop_front();
+    if (pending_audio_buffers_.empty()) {
+      Schedule(consumed_cb_);
+      consumed_cb_ = nullptr;
+      if (stream_ended_) {
+        Schedule(std::bind(&OpusAudioDecoder::WriteEndOfStream, this));
+        stream_ended_ = false;
+      }
+      return;
+    }
+  }
+
+  SB_DCHECK(!pending_audio_buffers_.empty());
+  Schedule(std::bind(&OpusAudioDecoder::DecodePendingBuffers, this));
+}
+
+bool OpusAudioDecoder::DecodeInternal(
+    const scoped_refptr<InputBuffer>& input_buffer) {
+  SB_DCHECK(BelongsToCurrentThread());
+  SB_DCHECK(input_buffer);
+  SB_DCHECK(output_cb_);
+  SB_DCHECK(!stream_ended_ || !pending_audio_buffers_.empty());
 
   scoped_refptr<DecodedAudio> decoded_audio = new DecodedAudio(
       audio_sample_info_.number_of_channels, GetSampleType(),
@@ -122,8 +171,7 @@ void OpusAudioDecoder::Decode(const scoped_refptr<InputBuffer>& input_buffer,
       frames_per_au_ < kMaxOpusFramesPerAU) {
     frames_per_au_ = kMaxOpusFramesPerAU;
     // Send to decode again with the new |frames_per_au_|.
-    Decode(input_buffer, consumed_cb);
-    return;
+    return DecodeInternal(input_buffer);
   }
   if (decoded_frames <= 0) {
     // When the following check fails, it indicates that |frames_per_au_| is
@@ -137,7 +185,7 @@ void OpusAudioDecoder::Decode(const scoped_refptr<InputBuffer>& input_buffer,
     error_cb_(kSbPlayerErrorDecode,
               FormatString("%s() failed with error code: %d",
                            kDecodeFunctionName, decoded_frames));
-    return;
+    return false;
   }
 
   frames_per_au_ = decoded_frames;
@@ -146,8 +194,8 @@ void OpusAudioDecoder::Decode(const scoped_refptr<InputBuffer>& input_buffer,
                           starboard::media::GetBytesPerSample(GetSampleType()));
 
   decoded_audios_.push(decoded_audio);
-  Schedule(consumed_cb);
-  Schedule(output_cb_);
+  output_cb_();
+  return true;
 }
 
 void OpusAudioDecoder::WriteEndOfStream() {
@@ -157,6 +205,10 @@ void OpusAudioDecoder::WriteEndOfStream() {
   // Opus has no dependent frames so we needn't flush the decoder.  Set the
   // flag to ensure that Decode() is not called when the stream is ended.
   stream_ended_ = true;
+  if (!pending_audio_buffers_.empty()) {
+    return;
+  }
+
   // Put EOS into the queue.
   decoded_audios_.push(new DecodedAudio);
 
@@ -185,6 +237,8 @@ void OpusAudioDecoder::Reset() {
   while (!decoded_audios_.empty()) {
     decoded_audios_.pop();
   }
+  pending_audio_buffers_.clear();
+  consumed_cb_ = nullptr;
 
   CancelPendingJobs();
 }

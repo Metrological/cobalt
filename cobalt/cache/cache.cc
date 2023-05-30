@@ -22,12 +22,12 @@
 #include "base/files/file_util.h"
 #include "base/memory/singleton.h"
 #include "base/optional.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/values.h"
 #include "cobalt/configuration/configuration.h"
 #include "cobalt/extension/javascript_cache.h"
 #include "cobalt/persistent_storage/persistent_settings.h"
 #include "net/disk_cache/cobalt/cobalt_backend_impl.h"
-#include "starboard/common/murmurhash2.h"
 #include "starboard/configuration_constants.h"
 #include "starboard/system.h"
 
@@ -38,6 +38,8 @@ base::Optional<uint32_t> GetMinSizeToCacheInBytes(
   switch (resource_type) {
     case disk_cache::ResourceType::kCompiledScript:
       return 4096u;
+    case disk_cache::ResourceType::kServiceWorkerScript:
+      return 1u;
     default:
       return base::nullopt;
   }
@@ -50,6 +52,8 @@ base::Optional<std::string> GetSubdirectory(
       return "cache_api";
     case disk_cache::ResourceType::kCompiledScript:
       return "compiled_js";
+    case disk_cache::ResourceType::kServiceWorkerScript:
+      return "service_worker_js";
     default:
       return base::nullopt;
   }
@@ -92,11 +96,6 @@ Cache* Cache::GetInstance() {
   return base::Singleton<Cache, base::LeakySingletonTraits<Cache>>::get();
 }
 
-// static
-uint32_t Cache::CreateKey(const std::string& s) {
-  return starboard::MurmurHash2_32(s.c_str(), s.size());
-}
-
 bool Cache::Delete(disk_cache::ResourceType resource_type, uint32_t key) {
   auto* memory_capped_directory = GetMemoryCappedDirectory(resource_type);
   if (memory_capped_directory) {
@@ -113,6 +112,7 @@ void Cache::Delete(disk_cache::ResourceType resource_type) {
 }
 
 void Cache::DeleteAll() {
+  Delete(disk_cache::ResourceType::kServiceWorkerScript);
   Delete(disk_cache::ResourceType::kCompiledScript);
   Delete(disk_cache::ResourceType::kCacheApi);
 }
@@ -126,13 +126,13 @@ std::vector<uint32_t> Cache::KeysWithMetadata(
   return std::vector<uint32_t>();
 }
 
-std::unique_ptr<base::Value> Cache::Metadata(
+base::Optional<base::Value> Cache::Metadata(
     disk_cache::ResourceType resource_type, uint32_t key) {
   auto* memory_capped_directory = GetMemoryCappedDirectory(resource_type);
   if (memory_capped_directory) {
     return memory_capped_directory->Metadata(key);
   }
-  return nullptr;
+  return base::nullopt;
 }
 
 std::unique_ptr<std::vector<uint8_t>> Cache::Retrieve(
@@ -247,7 +247,8 @@ MemoryCappedDirectory* Cache::GetMemoryCappedDirectory(
 
 void Cache::Resize(disk_cache::ResourceType resource_type, uint32_t bytes) {
   if (resource_type != disk_cache::ResourceType::kCacheApi &&
-      resource_type != disk_cache::ResourceType::kCompiledScript)
+      resource_type != disk_cache::ResourceType::kCompiledScript &&
+      resource_type != disk_cache::ResourceType::kServiceWorkerScript)
     return;
   if (bytes == disk_cache::kTypeMetadata[resource_type].max_size_bytes) return;
 
@@ -271,6 +272,7 @@ base::Optional<uint32_t> Cache::GetMaxCacheStorageInBytes(
   switch (resource_type) {
     case disk_cache::ResourceType::kCacheApi:
     case disk_cache::ResourceType::kCompiledScript:
+    case disk_cache::ResourceType::kServiceWorkerScript:
       return disk_cache::kTypeMetadata[resource_type].max_size_bytes;
     default:
       return base::nullopt;
@@ -322,12 +324,24 @@ void Cache::Store(disk_cache::ResourceType resource_type, uint32_t key,
 
 bool Cache::CanCache(disk_cache::ResourceType resource_type,
                      uint32_t data_size) {
-  return enabled_ &&
-         cobalt::configuration::Configuration::GetInstance()
-             ->CobaltCanStoreCompiledJavascript() &&
-         data_size > 0u &&
-         data_size >= GetMinSizeToCacheInBytes(resource_type) &&
-         data_size <= GetMaxCacheStorageInBytes(resource_type);
+  bool size_okay = data_size > 0u &&
+                   data_size >= GetMinSizeToCacheInBytes(resource_type) &&
+                   data_size <= GetMaxCacheStorageInBytes(resource_type);
+  if (!size_okay) {
+    return false;
+  }
+  if (resource_type == disk_cache::ResourceType::kServiceWorkerScript ||
+      resource_type == disk_cache::ResourceType::kCacheApi) {
+    return true;
+  }
+  if (!enabled_) {
+    return false;
+  }
+  if (resource_type == disk_cache::ResourceType::kCompiledScript) {
+    return cobalt::configuration::Configuration::GetInstance()
+        ->CobaltCanStoreCompiledJavascript();
+  }
+  return true;
 }
 
 }  // namespace cache

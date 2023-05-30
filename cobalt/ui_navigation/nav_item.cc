@@ -87,7 +87,9 @@ SbAtomicPtr NavItem::s_focused_nav_item_(
     reinterpret_cast<intptr_t>(kNativeItemInvalid));
 
 NativeCallbacks NavItem::s_callbacks_ = {
-    &NavItem::OnBlur, &NavItem::OnFocus, &NavItem::OnScroll,
+    &NavItem::OnBlur,
+    &NavItem::OnFocus,
+    &NavItem::OnScroll,
 };
 
 NavItem::NavItem(NativeItemType type, const base::Closure& onblur_callback,
@@ -111,10 +113,9 @@ NavItem::NavItem(NativeItemType type, const base::Closure& onblur_callback,
 }
 
 NavItem::~NavItem() {
+  SetEnabled(false);
+
   starboard::ScopedSpinLock lock(&g_pending_updates_lock);
-  DCHECK(state_ == kStatePendingDelete);
-  DCHECK(SbAtomicNoBarrier_LoadPtr(&s_focused_nav_item_) !=
-         reinterpret_cast<intptr_t>(nav_item_));
   g_pending_updates->emplace_back(
       nav_item_, base::Bind(GetInterface().destroy_item, nav_item_));
   if (--g_nav_item_count == 0) {
@@ -144,6 +145,29 @@ void NavItem::PerformQueuedUpdates() {
   }
 
   GetInterface().do_batch_update(&ProcessPendingChanges, &updates_snapshot);
+}
+
+void NavItem::SetBounds(float scroll_top_lower_bound,
+                        float scroll_left_lower_bound,
+                        float scroll_top_upper_bound,
+                        float scroll_left_upper_bound) {
+  starboard::ScopedSpinLock lock(&g_pending_updates_lock);
+  if (GetInterface().set_item_bounds) {
+    GetInterface().set_item_bounds(
+        nav_item_, scroll_top_lower_bound, scroll_left_lower_bound,
+        scroll_top_upper_bound, scroll_left_upper_bound);
+  }
+}
+
+void NavItem::GetBounds(float* out_scroll_top_lower_bound,
+                        float* out_scroll_left_lower_bound,
+                        float* out_scroll_top_upper_bound,
+                        float* out_scroll_left_upper_bound) {
+  if (GetInterface().get_item_bounds) {
+    GetInterface().get_item_bounds(
+        nav_item_, out_scroll_top_lower_bound, out_scroll_left_lower_bound,
+        out_scroll_top_upper_bound, out_scroll_left_upper_bound);
+  }
 }
 
 void NavItem::Focus() {

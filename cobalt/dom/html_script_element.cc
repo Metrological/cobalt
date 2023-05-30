@@ -341,10 +341,11 @@ void HTMLScriptElement::Prepare() {
           base::Bind(
               &loader::FetcherFactory::CreateSecureFetcher,
               base::Unretained(html_element_context()->fetcher_factory()), url_,
-              csp_callback, request_mode_,
+              /*main_resource=*/false, csp_callback, request_mode_,
               document_->location() ? document_->location()->GetOriginAsObject()
                                     : loader::Origin(),
-              disk_cache::kUncompiledScript, net::HttpRequestHeaders()),
+              disk_cache::kUncompiledScript, net::HttpRequestHeaders(),
+              /*skip_fetch_intercept=*/false),
           base::Bind(&loader::TextDecoder::Create,
                      base::Bind(&HTMLScriptElement::OnSyncContentProduced,
                                 base::Unretained(this)),
@@ -442,7 +443,9 @@ void HTMLScriptElement::Prepare() {
             &prevent_gc_until_error_event_dispatch_);
       }
     } break;
-    default: { NOTREACHED(); }
+    default: {
+      NOTREACHED();
+    }
   }
 }
 

@@ -15,6 +15,7 @@
 #ifndef COBALT_WORKER_SERVICE_WORKER_GLOBAL_SCOPE_H_
 #define COBALT_WORKER_SERVICE_WORKER_GLOBAL_SCOPE_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -22,11 +23,13 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "cobalt/base/tokens.h"
+#include "cobalt/loader/fetch_interceptor_coordinator.h"
 #include "cobalt/script/environment_settings.h"
 #include "cobalt/script/promise.h"
 #include "cobalt/script/script_value_factory.h"
 #include "cobalt/script/value_handle.h"
 #include "cobalt/script/wrappable.h"
+#include "cobalt/web/cache_utils.h"
 #include "cobalt/web/event_target.h"
 #include "cobalt/web/event_target_listener_info.h"
 #include "cobalt/worker/clients.h"
@@ -34,17 +37,22 @@
 #include "cobalt/worker/service_worker_object.h"
 #include "cobalt/worker/service_worker_registration.h"
 #include "cobalt/worker/worker_global_scope.h"
+#include "net/base/load_timing_info.h"
+#include "net/http/http_request_headers.h"
 
 namespace cobalt {
 namespace worker {
 
 // Implementation of Service Worker Global Scope.
-//   https://w3c.github.io/ServiceWorker/#serviceworkerglobalscope-interface
+//   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#serviceworkerglobalscope-interface
 
-class ServiceWorkerGlobalScope : public WorkerGlobalScope {
+class ServiceWorkerGlobalScope : public WorkerGlobalScope,
+                                 public loader::FetchInterceptor {
  public:
-  explicit ServiceWorkerGlobalScope(script::EnvironmentSettings* settings,
-                                    ServiceWorkerObject* service_worker);
+  explicit ServiceWorkerGlobalScope(
+      script::EnvironmentSettings* settings,
+      const web::WindowOrWorkerGlobalScope::Options& options,
+      ServiceWorkerObject* service_worker);
   ServiceWorkerGlobalScope(const ServiceWorkerGlobalScope&) = delete;
   ServiceWorkerGlobalScope& operator=(const ServiceWorkerGlobalScope&) = delete;
 
@@ -65,6 +73,15 @@ class ServiceWorkerGlobalScope : public WorkerGlobalScope {
   scoped_refptr<ServiceWorkerRegistration> registration() const;
   scoped_refptr<ServiceWorker> service_worker() const;
   script::HandlePromiseVoid SkipWaiting();
+
+  void StartFetch(
+      const GURL& url, bool main_resource,
+      const net::HttpRequestHeaders& request_headers,
+      scoped_refptr<base::SingleThreadTaskRunner> callback_task_runner,
+      base::OnceCallback<void(std::unique_ptr<std::string>)> callback,
+      base::OnceCallback<void(const net::LoadTimingInfo&)>
+          report_load_timing_info,
+      base::OnceClosure fallback) override;
 
   const web::EventTargetListenerInfo::EventListenerScriptValue* oninstall() {
     return GetAttributeEventListener(base::Tokens::install());
@@ -119,7 +136,7 @@ class ServiceWorkerGlobalScope : public WorkerGlobalScope {
   DEFINE_WRAPPABLE_TYPE(ServiceWorkerGlobalScope);
 
  protected:
-  ~ServiceWorkerGlobalScope() override {}
+  ~ServiceWorkerGlobalScope() override;
 
  private:
   scoped_refptr<Clients> clients_;

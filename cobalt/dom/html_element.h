@@ -369,6 +369,9 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   // for this HTML element (if any).
   void UpdateUiNavigationFocus();
 
+  // Update boundaries for all UI navigation items.
+  void SetUiNavItemBounds();
+
   // Returns true if the element is the root element as defined in
   // https://www.w3.org/TR/html50/semantics.html#the-root-element.
   bool IsRootElement();
@@ -393,7 +396,7 @@ class HTMLElement : public Element, public cssom::MutationObserver {
                       const std::string& value) override;
   void OnRemoveAttribute(const std::string& name) override;
 
-    // Create Performance Resource Timing entry for background image.
+  // Create Performance Resource Timing entry for background image.
   void GetLoadTimingInfoAndCreateResourceTiming();
 
   // HTMLElement keeps a pointer to the dom stat tracker to ensure that it can
@@ -437,6 +440,9 @@ class HTMLElement : public Element, public cssom::MutationObserver {
   // Clear the list of active background images, and notify the animated image
   // tracker to stop the animations.
   void ClearActiveBackgroundImages();
+  // Carefully clear the list of cached background images to avoid crashing in
+  // the nested `HTMLElement::GetLoadTimingInfoAndCreateResourceTiming()` call.
+  void ClearCachedBackgroundImages();
 
   void UpdateCachedBackgroundImagesFromComputedStyle();
 

@@ -100,6 +100,15 @@ const char kAboutBlankURL[] = "about:blank";
 
 const char kPersistentSettingsJson[] = "settings.json";
 
+// The watchdog client name used to represent Stats.
+const char kWatchdogName[] = "stats";
+// The watchdog time interval in microseconds allowed between pings before
+// triggering violations.
+const int64_t kWatchdogTimeInterval = 10000000;
+// The watchdog time wait in microseconds to initially wait before triggering
+// violations.
+const int64_t kWatchdogTimeWait = 2000000;
+
 bool IsStringNone(const std::string& str) {
   return !base::strcasecmp(str.c_str(), "none");
 }
@@ -563,6 +572,7 @@ void AddCrashHandlerAnnotations() {
                                             user_agent.c_str())) {
       result = false;
     }
+    // TODO(b/265339522): move crashpad prod and ver setter to starboard.
     if (!crash_handler_extension->SetString("prod", product.c_str())) {
       result = false;
     }
@@ -668,6 +678,12 @@ Application::Application(const base::Closure& quit_closure, bool should_preload,
   watchdog::Watchdog* watchdog =
       watchdog::Watchdog::CreateInstance(persistent_settings_.get());
   DCHECK(watchdog);
+
+  // Registers Stats as a watchdog client.
+  if (watchdog)
+    watchdog->Register(kWatchdogName, kWatchdogName,
+                       base::kApplicationStateStarted, kWatchdogTimeInterval,
+                       kWatchdogTimeWait, watchdog::NONE);
 
   cobalt::cache::Cache::GetInstance()->set_persistent_settings(
       persistent_settings_.get());
@@ -836,8 +852,9 @@ Application::Application(const base::Closure& quit_closure, bool should_preload,
 #endif  // defined(COBALT_FORCE_CSP)
 
   network_module_options.https_requirement = security_flags.https_requirement;
-  options.web_module_options.require_csp = security_flags.csp_header_policy;
-  options.web_module_options.csp_enforcement_mode = web::kCspEnforcementEnable;
+  options.web_module_options.csp_header_policy =
+      security_flags.csp_header_policy;
+  options.web_module_options.csp_enforcement_type = web::kCspEnforcementEnable;
 
   options.requested_viewport_size = requested_viewport_size;
 
@@ -1459,6 +1476,16 @@ void Application::UpdateUserAgent() {
 void Application::UpdatePeriodicStats() {
   TRACE_EVENT0("cobalt::browser", "Application::UpdatePeriodicStats()");
   c_val_stats_.app_lifetime = base::StartupTimer::TimeElapsed();
+
+  // Pings watchdog.
+  watchdog::Watchdog* watchdog = watchdog::Watchdog::GetInstance();
+  if (watchdog) {
+#if defined(_DEBUG)
+    // Injects delay for watchdog debugging.
+    watchdog->MaybeInjectDebugDelay(kWatchdogName);
+#endif  // defined(_DEBUG)
+    watchdog->Ping(kWatchdogName);
+  }
 
   int64_t used_cpu_memory = SbSystemGetUsedCPUMemory();
   base::Optional<int64_t> used_gpu_memory;

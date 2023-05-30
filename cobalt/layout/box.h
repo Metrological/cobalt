@@ -268,6 +268,8 @@ class Box : public base::RefCounted<Box> {
   // Returns the offset from root to this box's containing block.
   Vector2dLayoutUnit GetContainingBlockOffsetFromRoot(
       bool transform_forms_root) const;
+  math::Matrix3F GetCSSTransformForBoxWithPredefinedOffset(
+      Vector2dLayoutUnit containing_block_offset_from_root) const;
 
   // Returns the offset from the containing block (which can be either the
   // containing block's content box or padding box) to its content box.
@@ -281,7 +283,8 @@ class Box : public base::RefCounted<Box> {
   RectLayoutUnit GetTransformedBoxFromRoot(
       const RectLayoutUnit& box_from_margin_box) const;
   RectLayoutUnit GetTransformedBoxFromRootWithScroll(
-      const RectLayoutUnit& box_from_margin_box) const;
+      const RectLayoutUnit& box_from_margin_box,
+      bool transform_forms_root = false) const;
   RectLayoutUnit GetTransformedBoxFromContainingBlock(
       const ContainerBox* containing_block,
       const RectLayoutUnit& box_from_margin_box) const;
@@ -372,7 +375,7 @@ class Box : public base::RefCounted<Box> {
   math::Matrix3F GetMarginBoxTransformFromContainingBlock(
       const ContainerBox* containing_block) const;
   math::Matrix3F GetMarginBoxTransformFromContainingBlockWithScroll(
-      const ContainerBox* containing_block) const;
+      const ContainerBox* containing_block, bool transform_forms_root) const;
 
   Vector2dLayoutUnit GetMarginBoxOffsetFromRoot(
       bool transform_forms_root) const;
@@ -412,6 +415,7 @@ class Box : public base::RefCounted<Box> {
   LayoutUnit padding_bottom() const { return padding_insets_.bottom(); }
   LayoutUnit GetPaddingBoxWidth() const;
   LayoutUnit GetPaddingBoxHeight() const;
+  RectLayoutUnit GetClampedPaddingBox(bool transform_forms_root) const;
   SizeLayoutUnit GetClampedPaddingBoxSize() const;
 
   RectLayoutUnit GetPaddingBoxFromMarginBox() const;
@@ -703,10 +707,12 @@ class Box : public base::RefCounted<Box> {
   // Applies the specified transform action to the provided coordinates.
   // Returns false if the transform is not invertible and the action requires
   // it being inverted.
-  bool ApplyTransformActionToCoordinate(TransformAction action,
-                                        math::Vector2dF* coordinate) const;
+  bool ApplyTransformActionToCoordinate(math::Vector2dF* coordinate) const;
   bool ApplyTransformActionToCoordinates(
-      TransformAction action, std::vector<math::Vector2dF>* coordinates) const;
+      std::vector<math::Vector2dF>* coordinates) const;
+
+  bool CoordinateCanTarget(const math::Vector2dF* coordinate) const;
+  math::Matrix3F GetCSSTransformForBox() const;
 
   // Intended to be set to false on the initial containing block, this indicates
   // that when the background color is rendered, it will be blended with what,
@@ -861,7 +867,8 @@ class Box : public base::RefCounted<Box> {
   // Get the transform for this box from the specified containing block (which
   // may be null to indicate root).
   math::Matrix3F GetMarginBoxTransformFromContainingBlockInternal(
-      const ContainerBox* containing_block, bool include_scroll) const;
+      const ContainerBox* containing_block, bool transform_forms_root,
+      bool include_scroll) const;
 
   // Some custom CSS transform functions require a UI navigation focus item as
   // input. This computes the appropriate UI navigation item for this box's

@@ -53,6 +53,7 @@
 #include "cobalt/math/matrix3_f.h"
 #include "cobalt/overlay_info/overlay_info_registry.h"
 #include "cobalt/persistent_storage/persistent_settings.h"
+#include "cobalt/ui_navigation/scroll_engine/scroll_engine.h"
 #include "cobalt/web/csp_delegate_factory.h"
 #include "cobalt/web/navigator_ua_data.h"
 #include "nb/memory_scope.h"
@@ -227,6 +228,7 @@ BrowserModule::BrowserModule(const GURL& url,
       event_dispatcher_(event_dispatcher),
       account_manager_(account_manager),
       is_rendered_(false),
+      is_web_module_rendered_(false),
       can_play_type_handler_(media::MediaModule::CreateCanPlayTypeHandler()),
       network_module_(network_module),
 #if SB_IS(EVERGREEN)
@@ -283,14 +285,15 @@ BrowserModule::BrowserModule(const GURL& url,
       main_web_module_generation_(0),
       next_timeline_id_(1),
       current_splash_screen_timeline_id_(-1),
-      current_main_web_module_timeline_id_(-1),
-      service_worker_registry_(network_module) {
+      current_main_web_module_timeline_id_(-1) {
   TRACE_EVENT0("cobalt::browser", "BrowserModule::BrowserModule()");
 
   // Apply platform memory setting adjustments and defaults.
   ApplyAutoMemSettings();
 
   platform_info_.reset(new browser::UserAgentPlatformInfo());
+  service_worker_registry_.reset(new ServiceWorkerRegistry(
+      &web_settings_, network_module, platform_info_.get(), url));
 
 #if SB_HAS(CORE_DUMP_HANDLER_SUPPORT)
   SbCoreDumpRegisterHandler(BrowserModule::CoreDumpHandler, this);
@@ -400,7 +403,7 @@ BrowserModule::BrowserModule(const GURL& url,
       platform_info_.get(), application_state_,
       base::Bind(&BrowserModule::QueueOnDebugConsoleRenderTreeProduced,
                  base::Unretained(this)),
-      network_module_, GetViewportSize(), GetResourceProvider(),
+      &web_settings_, network_module_, GetViewportSize(), GetResourceProvider(),
       kLayoutMaxRefreshFrequencyInHz,
       base::Bind(&BrowserModule::CreateDebugClient, base::Unretained(this)),
       base::Bind(&BrowserModule::OnMaybeFreeze, base::Unretained(this))));
@@ -526,6 +529,15 @@ void BrowserModule::Navigate(const GURL& url_reference) {
 
   main_web_module_layer_->Reset();
 
+  // Service worker should only start for HTTP or HTTPS fetches.
+  // https://fetch.spec.whatwg.org/commit-snapshots/8f8ab504da6ca9681db5c7f8aa3d1f4b6bf8840c/#http-fetch
+  bool can_start_service_worker = url.SchemeIsHTTPOrHTTPS();
+  auto service_worker_started_event = std::make_unique<base::WaitableEvent>();
+  if (can_start_service_worker) {
+    service_worker_registry_->EnsureServiceWorkerStarted(
+        url::Origin::Create(url), url, service_worker_started_event.get());
+  }
+
   // Wait until after the old WebModule is destroyed before setting the navigate
   // time so that it won't be included in the time taken to load the URL.
   navigate_time_ = base::TimeTicks::Now().ToInternalValue();
@@ -545,7 +557,7 @@ void BrowserModule::Navigate(const GURL& url_reference) {
           platform_info_.get(), application_state_,
           base::Bind(&BrowserModule::QueueOnSplashScreenRenderTreeProduced,
                      base::Unretained(this)),
-          network_module_, viewport_size, GetResourceProvider(),
+          &web_settings_, network_module_, viewport_size, GetResourceProvider(),
           kLayoutMaxRefreshFrequencyInHz, fallback_splash_screen_url_,
           splash_screen_cache_.get(),
           base::Bind(&BrowserModule::DestroySplashScreen, weak_this_),
@@ -553,6 +565,9 @@ void BrowserModule::Navigate(const GURL& url_reference) {
       lifecycle_observers_.AddObserver(splash_screen_.get());
     }
   }
+
+  scroll_engine_.reset(new ui_navigation::scroll_engine::ScrollEngine());
+  scroll_engine_->thread()->Start();
 
 // Create new WebModule.
 #if !defined(COBALT_FORCE_CSP)
@@ -605,13 +620,18 @@ void BrowserModule::Navigate(const GURL& url_reference) {
   options.maybe_freeze_callback =
       base::Bind(&BrowserModule::OnMaybeFreeze, base::Unretained(this));
 
+  options.web_options.web_settings = &web_settings_;
   options.web_options.network_module = network_module_;
   options.web_options.service_worker_jobs =
-      service_worker_registry_.service_worker_jobs();
+      service_worker_registry_->service_worker_jobs();
   options.web_options.platform_info = platform_info_.get();
   web_module_.reset(new WebModule("MainWebModule"));
+  // Wait for service worker to start if one exists.
+  if (can_start_service_worker) {
+    service_worker_started_event->Wait();
+  }
   web_module_->Run(
-      url, application_state_,
+      url, application_state_, scroll_engine_.get(),
       base::Bind(&BrowserModule::QueueOnRenderTreeProduced,
                  base::Unretained(this), main_web_module_generation_),
       base::Bind(&BrowserModule::OnError, base::Unretained(this)),
@@ -792,8 +812,9 @@ void BrowserModule::OnRenderTreeProduced(
   // explicitly.
   renderer_submission.timeline_info.id = current_main_web_module_timeline_id_;
 
-  renderer_submission.on_rasterized_callbacks.push_back(base::Bind(
-      &BrowserModule::OnRendererSubmissionRasterized, base::Unretained(this)));
+  renderer_submission.on_rasterized_callbacks.push_back(
+      base::Bind(&BrowserModule::OnWebModuleRendererSubmissionRasterized,
+                 base::Unretained(this)));
 
   if (!splash_screen_) {
     render_tree_combiner_.SetTimelineLayer(main_web_module_layer_.get());
@@ -1104,6 +1125,12 @@ void BrowserModule::OnPointerEventProduced(base::Token type,
   }
 #endif  // defined(ENABLE_DEBUGGER)
 
+  scroll_engine_->thread()->message_loop()->task_runner()->PostTask(
+      FROM_HERE,
+      base::Bind(
+          &ui_navigation::scroll_engine::ScrollEngine::HandlePointerEvent,
+          base::Unretained(scroll_engine_.get()), type, event));
+
   DCHECK(web_module_);
   web_module_->InjectPointerEvent(type, event);
 }
@@ -1177,6 +1204,7 @@ void BrowserModule::InjectOnScreenKeyboardInputEventToMainWebModule(
 
 void BrowserModule::OnError(const GURL& url, const std::string& error) {
   TRACE_EVENT0("cobalt::browser", "BrowserModule::OnError()");
+  LOG(ERROR) << error;
   if (base::MessageLoop::current() != self_message_loop_) {
     self_message_loop_->task_runner()->PostTask(
         FROM_HERE, base::Bind(&BrowserModule::OnError, weak_this_, url, error));
@@ -1502,6 +1530,23 @@ void BrowserModule::OnRendererSubmissionRasterized() {
     // Hide the system splash screen when the first render has completed.
     is_rendered_ = true;
     SbSystemHideSplashScreen();
+  }
+}
+
+void BrowserModule::OnWebModuleRendererSubmissionRasterized() {
+  TRACE_EVENT0("cobalt::browser",
+               "BrowserModule::OnFirstWebModuleSubmissionRasterized()");
+  OnRendererSubmissionRasterized();
+  if (!is_web_module_rendered_) {
+    is_web_module_rendered_ = true;
+    const CobaltExtensionGraphicsApi* graphics_extension =
+        static_cast<const CobaltExtensionGraphicsApi*>(
+            SbSystemGetExtension(kCobaltExtensionGraphicsName));
+    if (graphics_extension &&
+        strcmp(graphics_extension->name, kCobaltExtensionGraphicsName) == 0 &&
+        graphics_extension->version >= 6) {
+      graphics_extension->ReportFullyDrawn();
+    }
   }
 }
 
@@ -2037,8 +2082,9 @@ scoped_refptr<script::Wrappable> BrowserModule::CreateH5vccCallback(
   // The web_module_ member can not be safely used in this function.
 
   h5vcc::H5vcc::Settings h5vcc_settings;
-  h5vcc_settings.set_media_source_setting_func = base::Bind(
-      &WebModule::SetMediaSourceSetting, base::Unretained(web_module));
+  h5vcc_settings.set_web_setting_func =
+      base::Bind(&web::WebSettingsImpl::Set, base::Unretained(&web_settings_));
+  h5vcc_settings.media_module = media_module_.get();
   h5vcc_settings.network_module = network_module_;
 #if SB_IS(EVERGREEN)
   h5vcc_settings.updater_module = updater_module_;

@@ -48,10 +48,9 @@ PersistentSettings::PersistentSettings(const std::string& file_name)
   if (!thread_.Start()) return;
   DCHECK(message_loop());
 
-  std::vector<char> storage_dir(kSbFileMaxPath + 1, 0);
-  SbSystemGetPath(kSbSystemPathStorageDirectory, storage_dir.data(),
+  std::vector<char> storage_dir(kSbFileMaxPath, 0);
+  SbSystemGetPath(kSbSystemPathCacheDirectory, storage_dir.data(),
                   kSbFileMaxPath);
-
   persistent_settings_file_ =
       std::string(storage_dir.data()) + kSbFileSepString + file_name;
   LOG(INFO) << "Persistent settings file path: " << persistent_settings_file_;
@@ -142,7 +141,6 @@ bool PersistentSettings::GetPersistentSettingAsBool(const std::string& key,
   auto persistent_settings = pref_store_->GetValues();
   const base::Value* result = persistent_settings->FindKey(key);
   if (result && result->is_bool()) return result->GetBool();
-  LOG(INFO) << "Persistent setting does not exist: " << key;
   return default_setting;
 }
 
@@ -152,7 +150,6 @@ int PersistentSettings::GetPersistentSettingAsInt(const std::string& key,
   auto persistent_settings = pref_store_->GetValues();
   const base::Value* result = persistent_settings->FindKey(key);
   if (result && result->is_int()) return result->GetInt();
-  LOG(INFO) << "Persistent setting does not exist: " << key;
   return default_setting;
 }
 
@@ -162,7 +159,6 @@ double PersistentSettings::GetPersistentSettingAsDouble(
   auto persistent_settings = pref_store_->GetValues();
   const base::Value* result = persistent_settings->FindKey(key);
   if (result && result->is_double()) return result->GetDouble();
-  LOG(INFO) << "Persistent setting does not exist: " << key;
   return default_setting;
 }
 
@@ -172,7 +168,6 @@ std::string PersistentSettings::GetPersistentSettingAsString(
   auto persistent_settings = pref_store_->GetValues();
   const base::Value* result = persistent_settings->FindKey(key);
   if (result && result->is_string()) return result->GetString();
-  LOG(INFO) << "Persistent setting does not exist: " << key;
   return default_setting;
 }
 
@@ -184,7 +179,6 @@ std::vector<base::Value> PersistentSettings::GetPersistentSettingAsList(
   if (result && result->is_list()) {
     return std::move(result->TakeList());
   }
-  LOG(INFO) << "Persistent setting does not exist: " << key;
   return std::vector<base::Value>();
 }
 
@@ -202,7 +196,6 @@ PersistentSettings::GetPersistentSettingAsDictionary(const std::string& key) {
     }
     return dict;
   }
-  LOG(INFO) << "Persistent setting does not exist: " << key;
   return dict;
 }
 

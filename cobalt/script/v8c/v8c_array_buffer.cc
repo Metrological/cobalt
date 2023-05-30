@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
-
 #include "cobalt/script/v8c/v8c_array_buffer.h"
+
+#include <memory>
 
 #include "cobalt/base/polymorphic_downcast.h"
 #include "starboard/memory.h"
@@ -23,7 +23,7 @@ namespace cobalt {
 namespace script {
 
 PreallocatedArrayBufferData::PreallocatedArrayBufferData(size_t byte_length) {
-  data_ = SbMemoryAllocate(byte_length);
+  data_ = static_cast<uint8_t*>(SbMemoryAllocate(byte_length));
   byte_length_ = byte_length;
 }
 
@@ -36,7 +36,18 @@ PreallocatedArrayBufferData::~PreallocatedArrayBufferData() {
 }
 
 void PreallocatedArrayBufferData::Resize(size_t new_byte_length) {
-  data_ = SbMemoryReallocate(data_, new_byte_length);
+  if (byte_length_ == new_byte_length) {
+    return;
+  }
+  // Calling reallocate with size 0 and a non-null pointer causes memory leaks
+  // on many platforms, since it may return nullptr while also not deallocating
+  // the previously allocated memory.
+  if (data_ != nullptr && new_byte_length == 0) {
+    SbMemoryDeallocate(data_);
+    data_ = nullptr;
+  } else {
+    data_ = static_cast<uint8_t*>(SbMemoryReallocate(data_, new_byte_length));
+  }
   byte_length_ = new_byte_length;
 }
 
@@ -56,19 +67,18 @@ Handle<ArrayBuffer> ArrayBuffer::New(GlobalEnvironment* global_environment,
 }
 
 // static
-Handle<ArrayBuffer> ArrayBuffer::New(
-    GlobalEnvironment* global_environment,
-    std::unique_ptr<PreallocatedArrayBufferData> data) {
+Handle<ArrayBuffer> ArrayBuffer::New(GlobalEnvironment* global_environment,
+                                     PreallocatedArrayBufferData&& data) {
   auto* v8c_global_environment =
       base::polymorphic_downcast<v8c::V8cGlobalEnvironment*>(
           global_environment);
   v8::Isolate* isolate = v8c_global_environment->isolate();
   v8c::EntryScope entry_scope(isolate);
 
-  void* buffer;
+  uint8_t* buffer;
   size_t byte_length;
 
-  data->Detach(&buffer, &byte_length);
+  data.Detach(&buffer, &byte_length);
 
   v8::Local<v8::ArrayBuffer> array_buffer = v8::ArrayBuffer::New(
       isolate, buffer, byte_length, v8::ArrayBufferCreationMode::kInternalized);

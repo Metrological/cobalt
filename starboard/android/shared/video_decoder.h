@@ -16,10 +16,12 @@
 #define STARBOARD_ANDROID_SHARED_VIDEO_DECODER_H_
 
 #include <atomic>
-#include <deque>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "starboard/android/shared/drm_system.h"
+#include "starboard/android/shared/max_output_buffers_lookup_table.h"
 #include "starboard/android/shared/media_codec_bridge.h"
 #include "starboard/android/shared/media_decoder.h"
 #include "starboard/android/shared/video_frame_tracker.h"
@@ -55,10 +57,6 @@ class VideoDecoder
 
   class Sink;
 
-  static int number_of_hardware_decoders() {
-    return number_of_hardware_decoders_;
-  }
-
   VideoDecoder(SbMediaVideoCodec video_codec,
                SbDrmSystem drm_system,
                SbPlayerOutputMode output_mode,
@@ -87,8 +85,7 @@ class VideoDecoder
   // buffer.
   size_t GetMaxNumberOfCachedFrames() const override { return 12; }
 
-  void WriteInputBuffer(
-      const scoped_refptr<InputBuffer>& input_buffer) override;
+  void WriteInputBuffers(const InputBuffers& input_buffers) override;
   void WriteEndOfStream() override;
   void Reset() override;
   SbDecodeTarget GetCurrentDecodeTarget() override;
@@ -105,7 +102,7 @@ class VideoDecoder
   bool InitializeCodec(std::string* error_message);
   void TeardownCodec();
 
-  void WriteInputBufferInternal(const scoped_refptr<InputBuffer>& input_buffer);
+  void WriteInputBuffersInternal(const InputBuffers& input_buffers);
   void ProcessOutputBuffer(MediaCodecBridge* media_codec_bridge,
                            const DequeueOutputResult& output) override;
   void OnEndOfStreamWritten(MediaCodecBridge* media_codec_bridge);
@@ -118,10 +115,10 @@ class VideoDecoder
   void OnTunnelModePrerollTimeout();
   void OnTunnelModeCheckForNeedMoreInput();
 
+  void OnVideoFrameRelease();
+
   void OnSurfaceDestroyed() override;
   void ReportError(SbPlayerError error, const std::string& error_message);
-
-  static int number_of_hardware_decoders_;
 
   // These variables will be initialized inside ctor or Initialize() and will
   // not be changed during the life time of this class.
@@ -196,8 +193,17 @@ class VideoDecoder
   Mutex surface_destroy_mutex_;
   ConditionVariable surface_condition_variable_;
 
-  std::deque<const scoped_refptr<InputBuffer>> pending_input_buffers_;
+  std::vector<scoped_refptr<InputBuffer>> pending_input_buffers_;
   int video_fps_ = 0;
+
+  // The variables below are used to calculate platform max supported MediaCodec
+  // output buffers.
+  int decoded_output_frames_ = 0;
+  int buffered_output_frames_ = 0;
+  int max_buffered_output_frames_ = 0;
+  bool first_output_format_changed_ = false;
+  optional<VideoOutputFormat> output_format_;
+  size_t number_of_preroll_frames_;
 };
 
 }  // namespace shared

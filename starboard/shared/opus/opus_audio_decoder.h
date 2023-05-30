@@ -15,6 +15,7 @@
 #ifndef STARBOARD_SHARED_OPUS_OPUS_AUDIO_DECODER_H_
 #define STARBOARD_SHARED_OPUS_OPUS_AUDIO_DECODER_H_
 
+#include <deque>
 #include <queue>
 #include <vector>
 
@@ -44,13 +45,17 @@ class OpusAudioDecoder
 
   // AudioDecoder functions
   void Initialize(const OutputCB& output_cb, const ErrorCB& error_cb) override;
-  void Decode(const scoped_refptr<InputBuffer>& input_buffer,
+  void Decode(const InputBuffers& input_buffers,
               const ConsumedCB& consumed_cb) override;
   void WriteEndOfStream() override;
   scoped_refptr<DecodedAudio> Read(int* samples_per_second) override;
   void Reset() override;
 
  private:
+  static constexpr int kMinimumBuffersToDecode = 2;
+
+  void DecodePendingBuffers();
+  bool DecodeInternal(const scoped_refptr<InputBuffer>& input_buffer);
   static const int kMaxOpusFramesPerAU = 9600;
 
   SbMediaAudioSampleType GetSampleType() const;
@@ -63,6 +68,9 @@ class OpusAudioDecoder
   std::queue<scoped_refptr<DecodedAudio> > decoded_audios_;
   AudioSampleInfo audio_sample_info_;
   int frames_per_au_ = kMaxOpusFramesPerAU;
+
+  std::deque<scoped_refptr<InputBuffer>> pending_audio_buffers_;
+  ConsumedCB consumed_cb_;
 };
 
 }  // namespace opus

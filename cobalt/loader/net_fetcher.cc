@@ -18,10 +18,12 @@
 #include <string>
 #include <utility>
 
+#include "base/memory/ptr_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/trace_event/trace_event.h"
 #include "cobalt/base/polymorphic_downcast.h"
 #include "cobalt/loader/cors_preflight.h"
+#include "cobalt/loader/fetch_interceptor_coordinator.h"
 #include "cobalt/loader/url_fetcher_string_writer.h"
 #include "cobalt/network/network_module.h"
 #include "net/base/mime_util.h"
@@ -89,7 +91,7 @@ bool AllowMimeTypeAsScript(const std::string& mime_type) {
 
 }  // namespace
 
-NetFetcher::NetFetcher(const GURL& url,
+NetFetcher::NetFetcher(const GURL& url, bool main_resource,
                        const csp::SecurityCallback& security_callback,
                        Handler* handler,
                        const network::NetworkModule* network_module,
@@ -101,7 +103,11 @@ NetFetcher::NetFetcher(const GURL& url,
           base::Bind(&NetFetcher::Start, base::Unretained(this)))),
       request_cross_origin_(false),
       origin_(origin),
-      request_script_(options.resource_type == disk_cache::kUncompiledScript) {
+      request_script_(options.resource_type == disk_cache::kUncompiledScript),
+      task_runner_(base::MessageLoop::current()->task_runner()),
+      skip_fetch_intercept_(options.skip_fetch_intercept),
+      will_destroy_current_message_loop_(false),
+      main_resource_(main_resource) {
   url_fetcher_ = net::URLFetcher::Create(url, options.request_method, this);
   if (!options.headers.IsEmpty()) {
     url_fetcher_->SetExtraRequestHeaders(options.headers.ToString());
@@ -134,6 +140,11 @@ NetFetcher::NetFetcher(const GURL& url,
   // while a loader is still being constructed.
   base::MessageLoop::current()->task_runner()->PostTask(
       FROM_HERE, start_callback_.callback());
+  base::MessageLoop::current()->AddDestructionObserver(this);
+}
+
+void NetFetcher::WillDestroyCurrentMessageLoop() {
+  will_destroy_current_message_loop_.store(true);
 }
 
 void NetFetcher::Start() {
@@ -143,12 +154,43 @@ void NetFetcher::Start() {
                original_url.spec());
   if (security_callback_.is_null() ||
       security_callback_.Run(original_url, false /* did not redirect */)) {
-    url_fetcher_->Start();
+    if (skip_fetch_intercept_) {
+      url_fetcher_->Start();
+      return;
+    }
+    FetchInterceptorCoordinator::GetInstance()->TryIntercept(
+        original_url, main_resource_, url_fetcher_->GetRequestHeaders(),
+        task_runner_,
+        base::BindOnce(&NetFetcher::OnFetchIntercepted, AsWeakPtr()),
+        base::BindOnce(&NetFetcher::ReportLoadTimingInfo, AsWeakPtr()),
+        base::BindOnce(&NetFetcher::InterceptFallback, AsWeakPtr()));
+
   } else {
     std::string msg(base::StringPrintf("URL %s rejected by security policy.",
                                        original_url.spec().c_str()));
     return HandleError(msg).InvalidateThis();
   }
+}
+
+void NetFetcher::InterceptFallback() { url_fetcher_->Start(); }
+
+void NetFetcher::OnFetchIntercepted(std::unique_ptr<std::string> body) {
+  if (will_destroy_current_message_loop_.load()) {
+    return;
+  }
+  if (task_runner_ != base::MessageLoop::current()->task_runner()) {
+    task_runner_->PostTask(
+        FROM_HERE, base::BindOnce(&NetFetcher::OnFetchIntercepted,
+                                  base::Unretained(this), std::move(body)));
+    return;
+  }
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  if (!body || body->empty()) {
+    url_fetcher_->Start();
+    return;
+  }
+  handler()->OnReceivedPassed(this, std::make_unique<std::string>(*body));
+  handler()->OnDone(this);
 }
 
 void NetFetcher::OnURLFetchResponseStarted(const net::URLFetcher* source) {
@@ -170,9 +212,9 @@ void NetFetcher::OnURLFetchResponseStarted(const net::URLFetcher* source) {
   if ((handler()->OnResponseStarted(this, source->GetResponseHeaders()) ==
        kLoadResponseAbort) ||
       (!IsResponseCodeSuccess(source->GetResponseCode()))) {
-    std::string msg(
-        base::StringPrintf("Handler::OnResponseStarted aborted URL %s",
-                           source->GetURL().spec().c_str()));
+    std::string msg(base::StringPrintf("URL %s aborted or failed with code %d",
+                                       source->GetURL().spec().c_str(),
+                                       source->GetResponseCode()));
     return HandleError(msg).InvalidateThis();
   }
 
@@ -272,6 +314,9 @@ void NetFetcher::ReportLoadTimingInfo(const net::LoadTimingInfo& timing_info) {
 NetFetcher::~NetFetcher() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   start_callback_.Cancel();
+  if (!will_destroy_current_message_loop_.load()) {
+    base::MessageLoop::current()->RemoveDestructionObserver(this);
+  }
 }
 
 NetFetcher::ReturnWrapper NetFetcher::HandleError(const std::string& message) {

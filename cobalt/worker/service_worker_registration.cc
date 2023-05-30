@@ -41,7 +41,7 @@ ServiceWorkerRegistration::ServiceWorkerRegistration(
 script::HandlePromiseWrappable ServiceWorkerRegistration::Update() {
   TRACE_EVENT0("cobalt::worker", "ServiceWorkerRegistration::Update()");
   // Algorithm for update():
-  //   https://w3c.github.io/ServiceWorker/#service-worker-registration-update
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#service-worker-registration-update
 
   script::HandlePromiseWrappable promise =
       environment_settings()
@@ -50,7 +50,9 @@ script::HandlePromiseWrappable ServiceWorkerRegistration::Update() {
           ->script_value_factory()
           ->CreateInterfacePromise<scoped_refptr<ServiceWorkerRegistration>>();
   std::unique_ptr<script::ValuePromiseWrappable::Reference> promise_reference(
-      new script::ValuePromiseWrappable::Reference(this, promise));
+      new script::ValuePromiseWrappable::Reference(
+          environment_settings()->context()->GetWindowOrWorkerGlobalScope(),
+          promise));
   // Perform the rest of the steps in a task, because the promise has to be
   // returned before we can safely reject or resolve it.
   base::MessageLoop::current()->task_runner()->PostTask(
@@ -69,7 +71,7 @@ void ServiceWorkerRegistration::UpdateTask(
   DCHECK_EQ(base::MessageLoop::current(),
             environment_settings()->context()->message_loop());
   // Algorithm for update():
-  //   https://w3c.github.io/ServiceWorker/#service-worker-registration-update
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#service-worker-registration-update
 
   // 1. Let registration be the service worker registration.
   // 2. Let newestWorker be the result of running Get Newest Worker algorithm
@@ -112,22 +114,20 @@ void ServiceWorkerRegistration::UpdateTask(
   std::unique_ptr<ServiceWorkerJobs::Job> job = jobs->CreateJob(
       ServiceWorkerJobs::JobType::kUpdate, registration_->storage_key(),
       registration_->scope_url(), newest_worker->script_url(),
-      std::move(promise_reference), environment_settings());
+      std::move(promise_reference), environment_settings()->context());
   DCHECK(!promise_reference);
 
   // 7. Set job’s worker type to newestWorker’s type.
   // Cobalt only supports 'classic' worker type.
 
   // 8. Invoke Schedule Job with job.
-  jobs->message_loop()->task_runner()->PostTask(
-      FROM_HERE, base::BindOnce(&ServiceWorkerJobs::ScheduleJob,
-                                base::Unretained(jobs), std::move(job)));
+  jobs->ScheduleJob(std::move(job));
   DCHECK(!job.get());
 }
 
 script::HandlePromiseBool ServiceWorkerRegistration::Unregister() {
   // Algorithm for unregister():
-  //   https://w3c.github.io/ServiceWorker/#navigator-service-worker-unregister
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#navigator-service-worker-unregister
   // 1. Let registration be the service worker registration.
   // 2. Let promise be a new promise.
   script::HandlePromiseBool promise = environment_settings()
@@ -136,42 +136,41 @@ script::HandlePromiseBool ServiceWorkerRegistration::Unregister() {
                                           ->script_value_factory()
                                           ->CreateBasicPromise<bool>();
   std::unique_ptr<script::ValuePromiseBool::Reference> promise_reference(
-      new script::ValuePromiseBool::Reference(this, promise));
+      new script::ValuePromiseBool::Reference(
+          environment_settings()->context()->GetWindowOrWorkerGlobalScope(),
+          promise));
 
   // Perform the rest of the steps in a task, so that unregister doesn't race
   // past any previously submitted update requests.
   base::MessageLoop::current()->task_runner()->PostTask(
       FROM_HERE,
-      base::BindOnce(&ServiceWorkerRegistration::UnregisterTask,
-                     base::Unretained(this), std::move(promise_reference)));
+      base::BindOnce(
+          [](worker::ServiceWorkerJobs* jobs, const url::Origin& storage_key,
+             const GURL& scope_url,
+             std::unique_ptr<script::ValuePromiseBool::Reference>
+                 promise_reference,
+             web::Context* client) {
+            // 3. Let job be the result of running Create Job with unregister,
+            //    registration’s storage key, registration’s scope url, null,
+            //    promise, and this's relevant settings object.
+            std::unique_ptr<ServiceWorkerJobs::Job> job = jobs->CreateJob(
+                ServiceWorkerJobs::JobType::kUnregister, storage_key, scope_url,
+                GURL(), std::move(promise_reference), client);
+            DCHECK(!promise_reference);
+
+            // 4. Invoke Schedule Job with job.
+            jobs->ScheduleJob(std::move(job));
+            DCHECK(!job.get());
+          },
+          environment_settings()->context()->service_worker_jobs(),
+          registration_->storage_key(), registration_->scope_url(),
+          std::move(promise_reference), environment_settings()->context()));
   // 5. Return promise.
   return promise;
 }
 
-void ServiceWorkerRegistration::UnregisterTask(
-    std::unique_ptr<script::ValuePromiseBool::Reference> promise_reference) {
-  // Algorithm for unregister():
-  //   https://w3c.github.io/ServiceWorker/#navigator-service-worker-unregister
-  // 3. Let job be the result of running Create Job with unregister,
-  //    registration’s storage key, registration’s scope url, null, promise, and
-  //    this's relevant settings object.
-  worker::ServiceWorkerJobs* jobs =
-      environment_settings()->context()->service_worker_jobs();
-  std::unique_ptr<ServiceWorkerJobs::Job> job = jobs->CreateJob(
-      ServiceWorkerJobs::JobType::kUnregister, registration_->storage_key(),
-      registration_->scope_url(), GURL(), std::move(promise_reference),
-      environment_settings());
-  DCHECK(!promise_reference);
-
-  // 4. Invoke Schedule Job with job.
-  jobs->message_loop()->task_runner()->PostTask(
-      FROM_HERE, base::BindOnce(&ServiceWorkerJobs::ScheduleJob,
-                                base::Unretained(jobs), std::move(job)));
-  DCHECK(!job.get());
-}
-
 std::string ServiceWorkerRegistration::scope() const {
-  return registration_->scope_url().GetContent();
+  return registration_->scope_url().spec();
 }
 
 ServiceWorkerUpdateViaCache ServiceWorkerRegistration::update_via_cache()

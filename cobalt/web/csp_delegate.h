@@ -20,6 +20,7 @@
 
 #include "cobalt/base/source_location.h"
 #include "cobalt/csp/content_security_policy.h"
+#include "cobalt/web/csp_delegate_type.h"
 #include "cobalt/web/csp_violation_reporter.h"
 
 namespace cobalt {
@@ -31,6 +32,22 @@ namespace web {
 // Note that any thread may call CanLoad().
 class CspDelegate {
  public:
+  struct Options {
+    Options() = default;
+    Options(const network_bridge::PostSender& post_sender,
+            csp::CSPHeaderPolicy header_policy,
+            CspEnforcementType enforcement_type, int insecure_allowed_token = 0)
+        : post_sender(post_sender),
+          header_policy(header_policy),
+          enforcement_type(enforcement_type),
+          insecure_allowed_token(insecure_allowed_token) {}
+
+    network_bridge::PostSender post_sender;
+    csp::CSPHeaderPolicy header_policy = csp::kCSPRequired;
+    CspEnforcementType enforcement_type = kCspEnforcementEnable;
+    int insecure_allowed_token = 0;
+  };
+
   enum ResourceType {
     kFont,
     kImage,
@@ -38,12 +55,17 @@ class CspDelegate {
     kMedia,
     kScript,
     kStyle,
+    kWorker,
     kXhr,
     kWebSocket,
   };
 
   CspDelegate();
   virtual ~CspDelegate();
+
+  virtual const csp::ContentSecurityPolicy* GetPolicyContainer() = 0;
+  virtual void ClonePolicyContainer(
+      const csp::ContentSecurityPolicy& other) = 0;
 
   // Return |true| if the given resource type can be loaded from |url|.
   // Set |did_redirect| if url was the result of a redirect.
@@ -83,6 +105,13 @@ class CspDelegate {
 class CspDelegateInsecure : public CspDelegate {
  public:
   CspDelegateInsecure() {}
+  const csp::ContentSecurityPolicy* GetPolicyContainer() override {
+    return nullptr;
+  }
+  void ClonePolicyContainer(const csp::ContentSecurityPolicy& other) override {
+    // No policy to clone.
+    return;
+  }
   bool CanLoad(ResourceType, const GURL&, bool) const override { return true; }
   bool IsValidNonce(ResourceType, const std::string&) const override {
     return true;
@@ -105,9 +134,14 @@ class CspDelegateInsecure : public CspDelegate {
 class CspDelegateSecure : public CspDelegate {
  public:
   CspDelegateSecure(std::unique_ptr<CspViolationReporter> violation_reporter,
-                    const GURL& url, csp::CSPHeaderPolicy require_csp,
+                    const GURL& url, csp::CSPHeaderPolicy csp_header_policy,
                     const base::Closure& policy_changed_callback);
   ~CspDelegateSecure();
+
+  const csp::ContentSecurityPolicy* GetPolicyContainer() override {
+    return csp_.get();
+  }
+  void ClonePolicyContainer(const csp::ContentSecurityPolicy& other) override;
 
   // Return |true| if the given resource type can be loaded from |url|.
   // Set |did_redirect| if url was the result of a redirect.
@@ -155,7 +189,7 @@ class CspDelegateSecure : public CspDelegate {
   base::Closure policy_changed_callback_;
 
   // Whether Cobalt is forbidden to render without receiving CSP header.
-  csp::CSPHeaderPolicy require_csp_;
+  csp::CSPHeaderPolicy csp_header_policy_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(CspDelegateSecure);

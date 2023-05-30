@@ -46,9 +46,6 @@ ServiceWorkerObject::ServiceWorkerObject(const Options& options)
 
 ServiceWorkerObject::~ServiceWorkerObject() {
   TRACE_EVENT0("cobalt::worker", "ServiceWorkerObject::~ServiceWorkerObject()");
-  // Check that the object isn't destroyed without first calling Abort().
-  DCHECK(!web_agent_);
-  DCHECK(!web_context_);
   Abort();
 }
 
@@ -57,10 +54,13 @@ void ServiceWorkerObject::Abort() {
   if (web_agent_) {
     DCHECK(message_loop());
     DCHECK(web_context_);
-    web_agent_->WaitUntilDone();
-    web_agent_->Stop();
-    web_agent_.reset();
+    std::unique_ptr<web::Agent> web_agent(std::move(web_agent_));
+    DCHECK(web_agent);
+    DCHECK(!web_agent_);
+    web_agent->WaitUntilDone();
     web_context_ = nullptr;
+    web_agent->Stop();
+    web_agent.reset();
   }
 }
 
@@ -71,15 +71,19 @@ void ServiceWorkerObject::SetScriptResource(const GURL& url,
   // storing in the map.
   auto entry = script_resource_map_.find(url);
   if (entry != script_resource_map_.end()) {
-    if (entry->second.get() != resource) {
+    if (entry->second.content.get() != resource) {
       // The map has an entry, but it's different than the given one, make a
       // copy and replace.
-      entry->second.reset(new std::string(*resource));
+      entry->second.content.reset(new std::string(*resource));
     }
     return;
   }
 
-  script_resource_map_[url].reset(new std::string(*resource));
+  auto result = script_resource_map_.emplace(std::make_pair(
+      url,
+      ScriptResource(std::make_unique<std::string>(std::string(*resource)))));
+  // Assert that the insert was successful.
+  DCHECK(result.second);
 }
 
 bool ServiceWorkerObject::HasScriptResource() const {
@@ -87,14 +91,23 @@ bool ServiceWorkerObject::HasScriptResource() const {
          script_resource_map_.end() != script_resource_map_.find(script_url_);
 }
 
-std::string* ServiceWorkerObject::LookupScriptResource(const GURL& url) const {
+const ScriptResource* ServiceWorkerObject::LookupScriptResource(
+    const GURL& url) const {
   auto entry = script_resource_map_.find(url);
-  return entry != script_resource_map_.end() ? entry->second.get() : nullptr;
+  return entry != script_resource_map_.end() ? &entry->second : nullptr;
+}
+
+void ServiceWorkerObject::SetScriptResourceHasEverBeenEvaluated(
+    const GURL& url) {
+  auto entry = script_resource_map_.find(url);
+  if (entry != script_resource_map_.end()) {
+    entry->second.has_ever_been_evaluated = true;
+  }
 }
 
 void ServiceWorkerObject::PurgeScriptResourceMap() {
   // Steps 13-15 of Algorithm for Install:
-  //   https://w3c.github.io/ServiceWorker/#installation-algorithm
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#installation-algorithm
   // 13. Let map be registration’s installing worker's script resource map.
   // 14. Let usedSet be registration’s installing worker's set of used scripts.
   // 15. For each url of map:
@@ -117,7 +130,6 @@ void ServiceWorkerObject::WillDestroyCurrentMessageLoop() {
 #if defined(ENABLE_DEBUGGER)
   debug_module_.reset();
 #endif  // ENABLE_DEBUGGER
-
   worker_global_scope_ = nullptr;
 }
 
@@ -134,16 +146,17 @@ void ServiceWorkerObject::ObtainWebAgentAndWaitUntilDone() {
 
 bool ServiceWorkerObject::ShouldSkipEvent(base::Token event_name) {
   // Algorithm for Should Skip Event:
-  //   https://w3c.github.io/ServiceWorker/#should-skip-event-algorithm
-  // TODO(b/229622132): Implementing this algorithm will improve performance.
-  NOTIMPLEMENTED();
-  return false;
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#should-skip-event-algorithm
+  // 1. If serviceWorker’s set of event types to handle does not contain
+  // eventName, then the user agent may return true.
+  return (set_of_event_types_to_handle_.find(event_name) ==
+          set_of_event_types_to_handle_.end());
 }
 
 void ServiceWorkerObject::Initialize(web::Context* context) {
   TRACE_EVENT0("cobalt::worker", "ServiceWorkerObject::Initialize()");
   // Algorithm for "Run Service Worker"
-  // https://w3c.github.io/ServiceWorker/#run-service-worker-algorithm
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#run-service-worker-algorithm
 
   // 8.1. Let realmExecutionContext be the result of creating a new JavaScript
   //      realm given agent and the following customizations:
@@ -176,10 +189,11 @@ void ServiceWorkerObject::Initialize(web::Context* context) {
   //      origin to an implementation-defined value, target browsing context to
   //      null, and active service worker to null.
 
-  web_context_->setup_environment_settings(worker_settings);
+  web_context_->SetupEnvironmentSettings(worker_settings);
   web_context_->environment_settings()->set_creation_url(script_url_);
   scoped_refptr<ServiceWorkerGlobalScope> service_worker_global_scope =
-      new ServiceWorkerGlobalScope(web_context_->environment_settings(), this);
+      new ServiceWorkerGlobalScope(web_context_->environment_settings(),
+                                   options_.global_scope_options, this);
   worker_global_scope_ = service_worker_global_scope;
   web_context_->global_environment()->CreateGlobalObject(
       service_worker_global_scope, web_context_->environment_settings());
@@ -211,7 +225,18 @@ void ServiceWorkerObject::Initialize(web::Context* context) {
   // 8.10. If the run CSP initialization for a global object algorithm returns
   //       "Blocked" when executed upon workerGlobalScope, set startFailed to
   //       true and abort these steps.
-  // TODO(b/225037465): Implement CSP check.
+  const ScriptResource* script_resource = LookupScriptResource(script_url_);
+  DCHECK(script_resource);
+  csp::ResponseHeaders csp_headers(script_resource->headers);
+  DCHECK(service_worker_global_scope);
+  DCHECK(service_worker_global_scope->csp_delegate());
+  if (!service_worker_global_scope->csp_delegate()->OnReceiveHeaders(
+          csp_headers)) {
+    // https://www.w3.org/TR/service-workers/#content-security-policy
+    DLOG(WARNING) << "Warning: No Content Security Header received for the "
+                     "service worker.";
+  }
+  web_context_->SetupFinished();
   // 8.11. If serviceWorker is an active worker, and there are any tasks queued
   //       in serviceWorker’s containing service worker registration’s task
   //       queues, queue them to serviceWorker’s event loop’s task queues in the
@@ -224,11 +249,11 @@ void ServiceWorkerObject::Initialize(web::Context* context) {
 
   bool mute_errors = false;
   bool succeeded = false;
-  std::string* content = LookupScriptResource(script_url_);
-  DCHECK(content);
+  DCHECK(script_resource->content.get());
   base::SourceLocation script_location(script_url().spec(), 1, 1);
   std::string retval = web_context_->script_runner()->Execute(
-      *content, script_location, mute_errors, &succeeded);
+      *script_resource->content.get(), script_location, mute_errors,
+      &succeeded);
   // 8.13.2. If evaluationStatus.[[Value]] is empty, this means the script was
   //         not evaluated. Set startFailed to true and abort these steps.
   // We don't actually have access to an 'evaluationStatus' from ScriptRunner,
@@ -252,11 +277,32 @@ void ServiceWorkerObject::Initialize(web::Context* context) {
   // 8.16. Set serviceWorker’s start status to evaluationStatus.
   start_status_.reset(new std::string(retval));
   // 8.17. If script’s has ever been evaluated flag is unset, then:
-  // 8.17.1. For each eventType of settingsObject’s global object's associated
-  //         list of event listeners' event types:
-  // 8.17.1.1. Append eventType to workerGlobalScope’s associated service
-  //           worker's set of event types to handle.
-  // 8.17.1.2. Set script’s has ever been evaluated flag.
+  if (!script_resource->has_ever_been_evaluated) {
+    // 8.17.1. For each eventType of settingsObject’s global object's associated
+    //         list of event listeners' event types:
+    auto event_types =
+        service_worker_global_scope->event_listener_event_types();
+    for (auto& event_type : event_types) {
+      // 8.17.1.1. Append eventType to workerGlobalScope’s associated service
+      //           worker's set of event types to handle.
+      service_worker_global_scope->service_worker_object()
+          ->set_of_event_types_to_handle()
+          .insert(event_type);
+    }
+    // 8.17.2. Set script’s has ever been evaluated flag.
+    SetScriptResourceHasEverBeenEvaluated(script_url_);
+
+    if (event_types.empty()) {
+      // NOTE: If the global object’s associated list of event listeners does
+      // not have any event listener added at this moment, the service worker’s
+      // set of event types to handle remains an empty set. The user agents are
+      // encouraged to show a warning that the event listeners must be added on
+      // the very first evaluation of the worker script.
+      DLOG(WARNING) << "ServiceWorkerGlobalScope's event listeners must be "
+                       "added on the first evaluation of the worker script.";
+    }
+    event_types.clear();
+  }
   // 8.18. Run the responsible event loop specified by settingsObject until it
   //       is destroyed.
   // 8.19. Empty workerGlobalScope’s list of active timers.

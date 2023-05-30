@@ -107,10 +107,7 @@ Window::Window(
     const base::Callback<void(const GURL&)> navigation_callback,
     const loader::Decoder::OnCompleteFunction& load_complete_callback,
     network_bridge::CookieJar* cookie_jar,
-    const network_bridge::PostSender& post_sender,
-    csp::CSPHeaderPolicy require_csp,
-    web::CspEnforcementType csp_enforcement_mode,
-    const base::Closure& csp_policy_changed_callback,
+    const web::CspDelegate::Options& csp_options,
     const base::Closure& ran_animation_frame_callbacks_callback,
     CloseCallback window_close_callback, base::Closure window_minimize_callback,
     OnScreenKeyboardBridge* on_screen_keyboard_bridge,
@@ -119,6 +116,7 @@ Window::Window(
     const OnStopDispatchEventCallback& on_stop_dispatch_event_callback,
     const ScreenshotManager::ProvideScreenshotFunctionCallback&
         screenshot_function_callback,
+    const NavItemCallback& cancel_scroll_callback,
     base::WaitableEvent* synchronous_loader_interrupt,
     bool enable_inline_script_warnings,
     const scoped_refptr<ui_navigation::NavItem>& ui_nav_root,
@@ -130,11 +128,9 @@ Window::Window(
     // 'window' object EventTargets require special handling for onerror events,
     // see EventTarget constructor for more details.
     : web::WindowOrWorkerGlobalScope(
-          settings, dom_stat_tracker,
+          settings,
           web::WindowOrWorkerGlobalScope::Options(
-              initial_application_state, post_sender, require_csp,
-              csp_enforcement_mode, csp_policy_changed_callback,
-              csp_insecure_allowed_token)),
+              initial_application_state, csp_options, dom_stat_tracker)),
       viewport_size_(view_size),
       is_resize_event_pending_(false),
       is_reporting_script_error_(false),
@@ -178,6 +174,7 @@ Window::Window(
                                                      script_value_factory)
                               : NULL),
       splash_screen_cache_callback_(splash_screen_cache_callback),
+      cancel_scroll_callback_(cancel_scroll_callback),
       on_start_dispatch_event_callback_(on_start_dispatch_event_callback),
       on_stop_dispatch_event_callback_(on_stop_dispatch_event_callback),
       screenshot_manager_(settings, screenshot_function_callback),
@@ -213,7 +210,8 @@ void Window::StartDocumentLoad(
     const loader::Decoder::OnCompleteFunction& load_complete_callback) {
   document_loader_.reset(new loader::Loader(
       base::Bind(&loader::FetcherFactory::CreateFetcher,
-                 base::Unretained(fetcher_factory), url, disk_cache::kHTML),
+                 base::Unretained(fetcher_factory), url, /*main_resource=*/true,
+                 disk_cache::kHTML),
       base::Bind(&Parser::ParseDocumentAsync, base::Unretained(dom_parser),
                  document_, base::SourceLocation(url.spec(), 1, 1)),
       load_complete_callback));
@@ -667,6 +665,14 @@ void Window::CacheSplashScreen(const std::string& content,
   }
   DLOG(INFO) << "Caching splash screen for URL " << location()->url();
   splash_screen_cache_callback_.Run(content, topic);
+}
+
+void Window::CancelScroll(
+    const scoped_refptr<ui_navigation::NavItem>& nav_item) {
+  if (cancel_scroll_callback_.is_null()) {
+    return;
+  }
+  cancel_scroll_callback_.Run(nav_item);
 }
 
 const scoped_refptr<OnScreenKeyboard>& Window::on_screen_keyboard() const {

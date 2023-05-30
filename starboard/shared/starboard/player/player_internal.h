@@ -41,8 +41,11 @@ struct SbPlayerPrivate {
       void* context,
       starboard::scoped_ptr<PlayerWorker::Handler> player_worker_handler);
 
+  static int number_of_players() { return number_of_players_; }
+
   void Seek(SbTime seek_to_time, int ticket);
-  void WriteSample(const SbPlayerSampleInfo& sample_info);
+  void WriteSamples(const SbPlayerSampleInfo* sample_infos,
+                    int number_of_sample_infos);
   void WriteEndOfStream(SbMediaType stream_type);
   void SetBounds(int z_index, int x, int y, int width, int height);
 

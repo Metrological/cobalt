@@ -18,7 +18,6 @@
 #include <deque>
 #include <map>
 #include <memory>
-#include <queue>
 #include <set>
 #include <string>
 #include <utility>
@@ -37,8 +36,9 @@
 #include "cobalt/script/promise.h"
 #include "cobalt/script/script_value.h"
 #include "cobalt/script/script_value_factory.h"
+#include "cobalt/web/context.h"
 #include "cobalt/web/dom_exception.h"
-#include "cobalt/web/environment_settings.h"
+#include "cobalt/web/web_settings.h"
 #include "cobalt/worker/client_query_options.h"
 #include "cobalt/worker/frame_type.h"
 #include "cobalt/worker/service_worker.h"
@@ -56,10 +56,10 @@ namespace cobalt {
 namespace worker {
 
 // Algorithms for Service Worker Jobs.
-//   https://w3c.github.io/ServiceWorker/#algorithms
+//   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#algorithms
 class ServiceWorkerJobs {
  public:
-  // https://w3c.github.io/ServiceWorker/#dfn-job-type
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-job-type
   enum JobType { kRegister, kUpdate, kUnregister };
 
   class JobQueue;
@@ -98,15 +98,17 @@ class ServiceWorkerJobs {
         promise_wrappable_reference_;
   };
 
-  // https://w3c.github.io/ServiceWorker/#dfn-job
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-job
   struct Job {
     Job(JobType type, const url::Origin& storage_key, const GURL& scope_url,
-        const GURL& script_url, web::EnvironmentSettings* client,
+        const GURL& script_url, web::Context* client,
         std::unique_ptr<JobPromiseType> promise)
         : type(type),
           storage_key(storage_key),
           scope_url(scope_url),
           script_url(script_url),
+          update_via_cache(
+              ServiceWorkerUpdateViaCache::kServiceWorkerUpdateViaCacheImports),
           client(client),
           promise(std::move(promise)) {}
     ~Job() {
@@ -121,12 +123,13 @@ class ServiceWorkerJobs {
     GURL scope_url;
     GURL script_url;
     ServiceWorkerUpdateViaCache update_via_cache;
-    web::EnvironmentSettings* client;
+    web::Context* client;
     GURL referrer;
     std::unique_ptr<JobPromiseType> promise;
     JobQueue* containing_job_queue = nullptr;
     std::deque<std::unique_ptr<Job>> equivalent_jobs;
     bool force_bypass_cache_flag = false;
+    bool no_promise_okay = false;
 
     // Custom, not in the spec.
     //
@@ -139,7 +142,7 @@ class ServiceWorkerJobs {
     std::unique_ptr<loader::Loader> loader;
   };
 
-  // https://w3c.github.io/ServiceWorker/#dfn-job-queue
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-job-queue
   class JobQueue {
    public:
     bool empty() {
@@ -148,13 +151,13 @@ class ServiceWorkerJobs {
     }
     void Enqueue(std::unique_ptr<Job> job) {
       base::AutoLock lock(mutex_);
-      jobs_.push(std::move(job));
+      jobs_.push_back(std::move(job));
     }
     std::unique_ptr<Job> Dequeue() {
       base::AutoLock lock(mutex_);
       std::unique_ptr<Job> job;
       job.swap(jobs_.front());
-      jobs_.pop();
+      jobs_.pop_front();
       return job;
     }
     Job* FirstItem() {
@@ -171,100 +174,121 @@ class ServiceWorkerJobs {
           job, std::move(lock));
     }
 
+    // Ensure no references are kept to JS objects for a client that is about to
+    // be shutdown.
+    void PrepareForClientShutdown(web::Context* client);
+
+    // Helper method for PrepareForClientShutdown to help with recursion to
+    // equivalent jobs.
+    void PrepareJobForClientShutdown(const std::unique_ptr<Job>& job,
+                                     web::Context* client);
+
    private:
     base::Lock mutex_;
-    std::queue<std::unique_ptr<Job>> jobs_;
+    std::deque<std::unique_ptr<Job>> jobs_;
   };
 
-  ServiceWorkerJobs(network::NetworkModule* network_module,
-                    base::MessageLoop* message_loop);
+  ServiceWorkerJobs(web::WebSettings* web_settings,
+                    network::NetworkModule* network_module,
+                    web::UserAgentPlatformInfo* platform_info,
+                    base::MessageLoop* message_loop, const GURL& url);
   ~ServiceWorkerJobs();
 
   base::MessageLoop* message_loop() { return message_loop_; }
-  network::NetworkModule* network_module() { return network_module_; }
 
-  // https://w3c.github.io/ServiceWorker/#start-register-algorithm
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#start-register-algorithm
   void StartRegister(const base::Optional<GURL>& scope_url,
                      const GURL& script_url,
                      std::unique_ptr<script::ValuePromiseWrappable::Reference>
                          promise_reference,
-                     web::EnvironmentSettings* client, const WorkerType& type,
+                     web::Context* client, const WorkerType& type,
                      const ServiceWorkerUpdateViaCache& update_via_cache);
 
-  void MaybeResolveReadyPromiseSubSteps(web::EnvironmentSettings* client);
+  void MaybeResolveReadyPromiseSubSteps(web::Context* client);
 
   // Sub steps (8) of ServiceWorkerContainer.getRegistration().
-  //   https://w3c.github.io/ServiceWorker/#navigator-service-worker-getRegistration
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#navigator-service-worker-getRegistration
   void GetRegistrationSubSteps(
       const url::Origin& storage_key, const GURL& client_url,
-      web::EnvironmentSettings* client,
+      web::Context* client,
       std::unique_ptr<script::ValuePromiseWrappable::Reference>
           promise_reference);
 
+  void GetRegistrationsSubSteps(
+      const url::Origin& storage_key, web::Context* client,
+      std::unique_ptr<script::ValuePromiseSequenceWrappable::Reference>
+          promise_reference);
+
   // Sub steps (2) of ServiceWorkerGlobalScope.skipWaiting().
-  //   https://w3c.github.io/ServiceWorker/#dom-serviceworkerglobalscope-skipwaiting
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dom-serviceworkerglobalscope-skipwaiting
   void SkipWaitingSubSteps(
-      web::Context* client_context,
-      const base::WeakPtr<ServiceWorkerObject>& service_worker,
+      web::Context* worker_context, ServiceWorkerObject* service_worker,
       std::unique_ptr<script::ValuePromiseVoid::Reference> promise_reference);
 
   // Sub steps for ExtendableEvent.WaitUntil().
-  //   https://w3c.github.io/ServiceWorker/#dom-extendableevent-waituntil
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dom-extendableevent-waituntil
   void WaitUntilSubSteps(ServiceWorkerRegistrationObject* registration);
 
   // Parallel sub steps (2) for algorithm for Clients.get(id):
-  //   https://w3c.github.io/ServiceWorker/#clients-get
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#clients-get
   void ClientsGetSubSteps(
-      web::Context* client_context,
+      web::Context* worker_context,
       ServiceWorkerObject* associated_service_worker,
       std::unique_ptr<script::ValuePromiseWrappable::Reference>
           promise_reference,
       const std::string& id);
 
   // Algorithm for Resolve Get Client Promise:
-  //   https://w3c.github.io/ServiceWorker/#resolve-get-client-promise
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#resolve-get-client-promise
   void ResolveGetClientPromise(
-      web::EnvironmentSettings* client, web::Context* promise_context,
+      web::Context* client, web::Context* worker_context,
       std::unique_ptr<script::ValuePromiseWrappable::Reference>
           promise_reference);
 
   // Parallel sub steps (2) for algorithm for Clients.matchAll():
-  //   https://w3c.github.io/ServiceWorker/#clients-matchall
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#clients-matchall
   void ClientsMatchAllSubSteps(
-      web::Context* client_context,
+      web::Context* worker_context,
       ServiceWorkerObject* associated_service_worker,
       std::unique_ptr<script::ValuePromiseSequenceWrappable::Reference>
           promise_reference,
       bool include_uncontrolled, ClientType type);
 
   // Parallel sub steps (3) for algorithm for Clients.claim():
-  //   https://w3c.github.io/ServiceWorker/#dom-clients-claim
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dom-clients-claim
   void ClaimSubSteps(
-      web::Context* client_context,
+      web::Context* worker_context,
       ServiceWorkerObject* associated_service_worker,
       std::unique_ptr<script::ValuePromiseVoid::Reference> promise_reference);
 
   // Parallel sub steps (6) for algorithm for ServiceWorker.postMessage():
-  //   https://w3c.github.io/ServiceWorker/#service-worker-postmessage-options
+  //   https://www.w3.org/TR/2022/CRD-service-workers-20220712/#service-worker-postmessage-options
   void ServiceWorkerPostMessageSubSteps(
-      ServiceWorkerObject* service_worker,
-      web::EnvironmentSettings* incumbent_settings,
+      ServiceWorkerObject* service_worker, web::Context* incumbent_client,
       std::unique_ptr<script::DataBuffer> serialize_result);
 
   // Registration of web contexts that may have service workers.
   void RegisterWebContext(web::Context* context);
   void UnregisterWebContext(web::Context* context);
   bool IsWebContextRegistered(web::Context* context) {
+    DCHECK(base::MessageLoop::current() == message_loop());
     return web_context_registrations_.end() !=
            web_context_registrations_.find(context);
   }
 
-  // https://w3c.github.io/ServiceWorker/#create-job
+  // Ensure no references are kept to JS objects for a client that is about to
+  // be shutdown.
+  void PrepareForClientShutdown(web::Context* client);
+
+  // Set the active worker for a client if there is a matching service worker.
+  void SetActiveWorker(web::EnvironmentSettings* client);
+
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#create-job
   std::unique_ptr<Job> CreateJob(
       JobType type, const url::Origin& storage_key, const GURL& scope_url,
       const GURL& script_url,
       std::unique_ptr<script::ValuePromiseWrappable::Reference> promise,
-      web::EnvironmentSettings* client) {
+      web::Context* client) {
     return CreateJob(type, storage_key, scope_url, script_url,
                      JobPromiseType::Create(std::move(promise)), client);
   }
@@ -272,35 +296,55 @@ class ServiceWorkerJobs {
       JobType type, const url::Origin& storage_key, const GURL& scope_url,
       const GURL& script_url,
       std::unique_ptr<script::ValuePromiseBool::Reference> promise,
-      web::EnvironmentSettings* client) {
+      web::Context* client) {
     return CreateJob(type, storage_key, scope_url, script_url,
                      JobPromiseType::Create(std::move(promise)), client);
   }
-  std::unique_ptr<Job> CreateJob(JobType type, const url::Origin& storage_key,
-                                 const GURL& scope_url, const GURL& script_url,
-                                 std::unique_ptr<JobPromiseType> promise,
-                                 web::EnvironmentSettings* client);
+  std::unique_ptr<Job> CreateJobWithoutPromise(JobType type,
+                                               const url::Origin& storage_key,
+                                               const GURL& scope_url,
+                                               const GURL& script_url) {
+    auto job = CreateJob(type, storage_key, scope_url, script_url,
+                         std::unique_ptr<JobPromiseType>(), /*client=*/nullptr);
+    job->no_promise_okay = true;
+    return job;
+  }
+  std::unique_ptr<Job> CreateJob(
+      JobType type, const url::Origin& storage_key, const GURL& scope_url,
+      const GURL& script_url, std::unique_ptr<JobPromiseType> promise = nullptr,
+      web::Context* client = nullptr);
 
-  // https://w3c.github.io/ServiceWorker/#schedule-job
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#schedule-job
   void ScheduleJob(std::unique_ptr<Job> job);
 
-  // https://w3c.github.io/ServiceWorker/#activation-algorithm
-  void Activate(scoped_refptr<ServiceWorkerRegistrationObject> registration);
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#activation-algorithm
+  void Activate(ServiceWorkerRegistrationObject* registration);
 
-  // https://w3c.github.io/ServiceWorker/#clear-registration-algorithm
-  void ClearRegistration(
-      scoped_refptr<ServiceWorkerRegistrationObject> registration);
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#clear-registration-algorithm
+  void ClearRegistration(ServiceWorkerRegistrationObject* registration);
+
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#soft-update
+  void SoftUpdate(ServiceWorkerRegistrationObject* registration,
+                  bool force_bypass_cache);
+
+  void EnsureServiceWorkerStarted(const url::Origin& storage_key,
+                                  const GURL& client_url,
+                                  base::WaitableEvent* done_event);
 
  private:
   // State used for the 'Update' algorithm.
   struct UpdateJobState : public base::RefCounted<UpdateJobState> {
-    UpdateJobState(Job* job,
-                   scoped_refptr<ServiceWorkerRegistrationObject> registration,
-                   ServiceWorkerObject* newest_worker)
+    UpdateJobState(
+        Job* job,
+        const scoped_refptr<ServiceWorkerRegistrationObject>& registration,
+        ServiceWorkerObject* newest_worker)
         : job(job), registration(registration), newest_worker(newest_worker) {}
     Job* job;
     scoped_refptr<ServiceWorkerRegistrationObject> registration;
     ServiceWorkerObject* newest_worker;
+
+    // Headers received with the main service worker script load.
+    scoped_refptr<net::HttpResponseHeaders> script_headers;
 
     // map of content or resources for the worker.
     ScriptResourceMap updated_resource_map;
@@ -310,7 +354,7 @@ class ServiceWorkerJobs {
     bool has_updated_resources = false;
   };
 
-  // https://w3c.github.io/ServiceWorker/#dfn-scope-to-job-queue-map
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-scope-to-job-queue-map
   using JobQueueMap = std::map<std::string, std::unique_ptr<JobQueue>>;
 
   // Type to hold the errorData for rejection of promises.
@@ -337,19 +381,19 @@ class ServiceWorkerJobs {
 
   enum RegistrationState { kInstalling, kWaiting, kActive };
 
-  // https://w3c.github.io/ServiceWorker/#dfn-job-equivalent
-  bool EquivalentJobs(Job* one, Job* two);
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#dfn-job-equivalent
+  bool ReturnJobsAreEquivalent(Job* one, Job* two);
 
-  // https://w3c.github.io/ServiceWorker/#run-job-algorithm
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#run-job-algorithm
   void RunJob(JobQueue* job_queue);
 
   // Task for "Run Job" to run in the service worker thread.
   void RunJobTask(JobQueue* job_queue);
 
-  // https://w3c.github.io/ServiceWorker/#register-algorithm
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#register-algorithm
   void Register(Job* job);
 
-  // https://w3c.github.io/ServiceWorker/#update-algorithm
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#update-algorithm
   void Update(Job* job);
 
   void UpdateOnContentProduced(scoped_refptr<UpdateJobState> state,
@@ -365,30 +409,25 @@ class ServiceWorkerJobs {
                                 scoped_refptr<ServiceWorkerObject> worker,
                                 bool run_result);
 
-
-  // https://w3c.github.io/ServiceWorker/#unregister-algorithm
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#unregister-algorithm
   void Unregister(Job* job);
 
-  // https://w3c.github.io/ServiceWorker/#reject-job-promise
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#reject-job-promise
   void RejectJobPromise(Job* job, const PromiseErrorData& error_data);
 
-  // https://w3c.github.io/ServiceWorker/#resolve-job-promise-algorithm
-  void ResolveJobPromise(Job* job,
-                         scoped_refptr<ServiceWorkerRegistrationObject> value) {
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#resolve-job-promise-algorithm
+  void ResolveJobPromise(
+      Job* job, const scoped_refptr<ServiceWorkerRegistrationObject>& value) {
     ResolveJobPromise(job, false, value);
   }
-  void ResolveJobPromise(
-      Job* job, bool value,
-      scoped_refptr<ServiceWorkerRegistrationObject> registration = nullptr);
+  void ResolveJobPromise(Job* job, bool value,
+                         const scoped_refptr<ServiceWorkerRegistrationObject>&
+                             registration = nullptr);
 
-  // https://w3c.github.io/ServiceWorker/#finish-job-algorithm
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#finish-job-algorithm
   void FinishJob(Job* job);
 
-  // https://w3c.github.io/ServiceWorker/#get-newest-worker
-  ServiceWorker* GetNewestWorker(
-      scoped_refptr<ServiceWorkerRegistrationObject> registration);
-
-  // https://w3c.github.io/ServiceWorker/#run-service-worker-algorithm
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#run-service-worker-algorithm
   // The return value is a 'Completion or failure'.
   // A failure is signaled by returning nullptr. Otherwise, the returned string
   // points to the value of the Completion returned by the script runner
@@ -396,49 +435,52 @@ class ServiceWorkerJobs {
   std::string* RunServiceWorker(ServiceWorkerObject* worker,
                                 bool force_bypass_cache = false);
 
-  // https://w3c.github.io/ServiceWorker/#installation-algorithm
-  void Install(Job* job, scoped_refptr<ServiceWorkerObject> worker,
-               scoped_refptr<ServiceWorkerRegistrationObject> registration);
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#installation-algorithm
+  void Install(
+      Job* job, const scoped_refptr<ServiceWorkerObject>& worker,
+      const scoped_refptr<ServiceWorkerRegistrationObject>& registration);
 
-  // https://w3c.github.io/ServiceWorker/#try-activate-algorithm
-  void TryActivate(scoped_refptr<ServiceWorkerRegistrationObject> registration);
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#try-activate-algorithm
+  void TryActivate(ServiceWorkerRegistrationObject* registration);
 
-  // https://w3c.github.io/ServiceWorker/#service-worker-has-no-pending-events
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#service-worker-has-no-pending-events
   bool ServiceWorkerHasNoPendingEvents(ServiceWorkerObject* worker);
 
-  // https://w3c.github.io/ServiceWorker/#update-registration-state-algorithm
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#update-registration-state-algorithm
   void UpdateRegistrationState(
-      scoped_refptr<ServiceWorkerRegistrationObject> registration,
-      RegistrationState target, scoped_refptr<ServiceWorkerObject> source);
+      ServiceWorkerRegistrationObject* registration, RegistrationState target,
+      const scoped_refptr<ServiceWorkerObject>& source);
 
-  // https://w3c.github.io/ServiceWorker/#update-state-algorithm
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#update-state-algorithm
   void UpdateWorkerState(ServiceWorkerObject* worker, ServiceWorkerState state);
 
-  // https://w3c.github.io/ServiceWorker/#on-client-unload-algorithm
-  void HandleServiceWorkerClientUnload(web::EnvironmentSettings* client);
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#on-client-unload-algorithm
+  void HandleServiceWorkerClientUnload(web::Context* client);
 
-  // https://w3c.github.io/ServiceWorker/#terminate-service-worker
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#terminate-service-worker
   void TerminateServiceWorker(ServiceWorkerObject* worker);
 
-  // https://w3c.github.io/ServiceWorker/#notify-controller-change-algorithm
-  void NotifyControllerChange(web::EnvironmentSettings* client);
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#notify-controller-change-algorithm
+  void NotifyControllerChange(web::Context* client);
 
-  // https://w3c.github.io/ServiceWorker/#try-clear-registration-algorithm
-  void TryClearRegistration(
-      scoped_refptr<ServiceWorkerRegistrationObject> registration);
+  // https://www.w3.org/TR/2022/CRD-service-workers-20220712/#try-clear-registration-algorithm
+  void TryClearRegistration(ServiceWorkerRegistrationObject* registration);
 
   bool IsAnyClientUsingRegistration(
-      scoped_refptr<ServiceWorkerRegistrationObject> registration);
+      ServiceWorkerRegistrationObject* registration);
+
+  // Returns false when the timeout is reached.
+  bool WaitForAsynchronousExtensions(
+      const scoped_refptr<ServiceWorkerRegistrationObject>& registration);
 
   // FetcherFactory that is used to create a fetcher according to URL.
   std::unique_ptr<loader::FetcherFactory> fetcher_factory_;
   // LoaderFactory that is used to acquire references to resources from a URL.
   std::unique_ptr<loader::ScriptLoaderFactory> script_loader_factory_;
-  network::NetworkModule* network_module_;
   base::MessageLoop* message_loop_;
 
   JobQueueMap job_queue_map_;
-  ServiceWorkerRegistrationMap scope_to_registration_map_;
+  std::unique_ptr<ServiceWorkerRegistrationMap> scope_to_registration_map_;
 
   std::set<web::Context*> web_context_registrations_;
 

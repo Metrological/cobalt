@@ -21,6 +21,7 @@
 #include "base/synchronization/waitable_event.h"
 #include "base/threading/thread.h"
 #include "cobalt/network/network_module.h"
+#include "cobalt/web/web_settings.h"
 #include "cobalt/worker/service_worker_jobs.h"
 
 namespace cobalt {
@@ -31,7 +32,10 @@ namespace browser {
 // metadata are stored persistently on disk.
 class ServiceWorkerRegistry : public base::MessageLoop::DestructionObserver {
  public:
-  explicit ServiceWorkerRegistry(network::NetworkModule* network_module);
+  ServiceWorkerRegistry(web::WebSettings* web_settings,
+                        network::NetworkModule* network_module,
+                        web::UserAgentPlatformInfo* platform_info,
+                        const GURL& url);
   ~ServiceWorkerRegistry();
 
   // The message loop this object is running on.
@@ -40,12 +44,18 @@ class ServiceWorkerRegistry : public base::MessageLoop::DestructionObserver {
   // From base::MessageLoop::DestructionObserver.
   void WillDestroyCurrentMessageLoop() override;
 
+  void EnsureServiceWorkerStarted(const url::Origin& storage_key,
+                                  const GURL& client_url,
+                                  base::WaitableEvent* done_event);
+
   worker::ServiceWorkerJobs* service_worker_jobs();
 
  private:
   // Called by the constructor to perform any other initialization required on
   // the dedicated thread.
-  void Initialize(network::NetworkModule* network_module);
+  void Initialize(web::WebSettings* web_settings,
+                  network::NetworkModule* network_module,
+                  web::UserAgentPlatformInfo* platform_info, const GURL& url);
 
   // The thread created and owned by the Service Worker Registry.
   // All registry mutations occur on this thread. The thread has to outlive all
