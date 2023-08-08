@@ -41,6 +41,12 @@ pkg_config("pkg_libs") {
   if (has_ocdm == "1") {
     packages += [ "ocdm" ]
   }
+  if (has_provision == "1") {
+    packages += [
+      "WPEFrameworkProvisionProxy",
+      "provision"
+    ]
+  }
 }
 
 group("pkg_libs_grp") {
@@ -59,14 +65,7 @@ config("platform_configuration") {
   }
   if (has_provision == "1") {
     cflags += [
-      "-DHAS_PROVISION=1",
-      "-fPIC"
-    ]
-    ldflags += [
-      "-Wl,--whole-archive",
-      "-lWPEFrameworkProvisionProxy",
-      "-lprovision",
-      "-Wl,--no-whole-archive",
+      "-DHAS_PROVISION=1"
     ]
   }
   if (has_waylandsink == "1") {
