@@ -9,6 +9,7 @@
 #include <sstream>
 #include <iomanip>
 #include <cstring>
+#include <array>
 
 namespace third_party {
 namespace starboard {
