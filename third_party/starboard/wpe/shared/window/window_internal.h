@@ -39,8 +39,8 @@ class KeyboardHandler : public WPEFramework::Compositor::IDisplay::IKeyboard {
   KeyboardHandler();
   ~KeyboardHandler() override {}
 
-  void AddRef() const {}
-  uint32_t Release() const override { return 0; }
+  uint32_t AddRef() const { return (0); }
+  uint32_t Release() const override { return (0); }
   void KeyMap(const char information[], const uint16_t size) override {}
   void Key(const uint32_t key,
            const state action,
