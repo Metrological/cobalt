@@ -20,7 +20,7 @@
 #include "starboard/time.h"
 #include "starboard/window.h"
 
-#include "WPEFramework/compositor/Client.h"
+#include "Thunder/compositor/Client.h"
 
 namespace third_party {
 namespace starboard {
@@ -28,13 +28,13 @@ namespace wpe {
 namespace shared {
 namespace window {
 
-WPEFramework::Compositor::IDisplay* GetDisplay();
+Thunder::Compositor::IDisplay* GetDisplay();
 bool DisplayIsReady();
 void DestroyDisplay();
 std::string DisplayName();
 
 // FIXME PST: Move to separate files.
-class KeyboardHandler : public WPEFramework::Compositor::IDisplay::IKeyboard {
+class KeyboardHandler : public Thunder::Compositor::IDisplay::IKeyboard {
  public:
   KeyboardHandler();
   ~KeyboardHandler() override {}
@@ -83,16 +83,16 @@ struct SbWindowPrivate {
   SbWindowPrivate(const SbWindowOptions* options);
   ~SbWindowPrivate();
 
-  WPEFramework::Compositor::IDisplay* GetDisplay();
+  Thunder::Compositor::IDisplay* GetDisplay();
   void CreateDisplay();
   void DestroyDisplay();
   void PollNextSystemEvent();
 
-  WPEFramework::Compositor::IDisplay::ISurface* CreateVideoOverlay();
-  void DestroyVideoOverlay(WPEFramework::Compositor::IDisplay::ISurface*);
+  Thunder::Compositor::IDisplay::ISurface* CreateVideoOverlay();
+  void DestroyVideoOverlay(Thunder::Compositor::IDisplay::ISurface*);
 
-  WPEFramework::Compositor::IDisplay::ISurface* window_{nullptr};
-  WPEFramework::Compositor::IDisplay::ISurface* video_overlay_{nullptr};
+  Thunder::Compositor::IDisplay::ISurface* window_{nullptr};
+  Thunder::Compositor::IDisplay::ISurface* video_overlay_{nullptr};
   int window_width_{0};
   int window_height_{0};
   third_party::starboard::wpe::shared::window::KeyboardHandler kb_handler_;

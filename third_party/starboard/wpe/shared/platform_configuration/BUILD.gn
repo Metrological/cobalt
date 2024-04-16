@@ -25,11 +25,11 @@ declare_args() {
 
 pkg_config("pkg_libs") {
   packages = [
-    "WPEFrameworkCore",
-    "WPEFrameworkDefinitions",
-    "WPEFrameworkPlugins",
+    "ThunderCore",
+    "ThunderDefinitions",
+    "ThunderPlugins",
     "compositorclient",
-    "WPEFrameworkDeviceInfo",
+    "ThunderDeviceInfo",
     "gstreamer-1.0",
     "gstreamer-app-1.0",
     "gstreamer-base-1.0",
@@ -45,7 +45,7 @@ pkg_config("pkg_libs") {
   }
   if (has_provision == "1") {
     packages += [
-      "WPEFrameworkProvisionProxy",
+      "ThunderProvisionProxy",
       "provision"
     ]
   }

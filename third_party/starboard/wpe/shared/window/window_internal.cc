@@ -24,8 +24,8 @@
 #include "third_party/starboard/wpe/shared/application_wpe.h"
 #include "third_party/starboard/wpe/shared/events/system_events.h"
 
-using namespace WPEFramework;
-using namespace WPEFramework::Compositor;
+using namespace Thunder;
+using namespace Thunder::Compositor;
 
 namespace third_party {
 namespace starboard {
@@ -353,7 +353,7 @@ SbKeyLocation KeyCodeToSbKeyLocation(uint16_t code) {
 
 }  // namespace
 
-WPEFramework::Compositor::IDisplay* display_{nullptr};
+Thunder::Compositor::IDisplay* display_{nullptr};
 IDisplay* GetDisplay() {
   if (!display_) {
     display_ = IDisplay::Instance(DisplayName());
@@ -533,7 +533,7 @@ SbWindowPrivate::SbWindowPrivate(const SbWindowOptions* options) {
   CreateDisplay();
 }
 
-WPEFramework::Compositor::IDisplay* SbWindowPrivate::GetDisplay() {
+Thunder::Compositor::IDisplay* SbWindowPrivate::GetDisplay() {
   return third_party::starboard::wpe::shared::window::GetDisplay();
 }
 
@@ -584,7 +584,7 @@ void SbWindowPrivate::DestroyDisplay() {
   third_party::starboard::wpe::shared::window::DestroyDisplay();
 }
 
-WPEFramework::Compositor::IDisplay::ISurface*
+Thunder::Compositor::IDisplay::ISurface*
 SbWindowPrivate::CreateVideoOverlay() {
 #if defined(WAYLAND_SINK)
   return window_;
@@ -594,7 +594,7 @@ SbWindowPrivate::CreateVideoOverlay() {
 }
 
 void SbWindowPrivate::DestroyVideoOverlay(
-    WPEFramework::Compositor::IDisplay::ISurface* surface) {}
+    Thunder::Compositor::IDisplay::ISurface* surface) {}
 
 void SbWindowPrivate::PollNextSystemEvent() {
   if (third_party::starboard::wpe::shared::window::DisplayIsReady() == true) {
