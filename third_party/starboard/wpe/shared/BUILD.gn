@@ -294,6 +294,8 @@ static_library("starboard_platform_sources") {
     "//starboard/shared/starboard/system_request_pause.cc",
     "//starboard/shared/starboard/system_request_stop.cc",
     "//starboard/shared/starboard/system_request_unpause.cc",
+    "//starboard/shared/starboard/system_request_blur.cc",
+    "//starboard/shared/starboard/system_request_focus.cc",
     "//starboard/shared/starboard/system_supports_resume.cc",
     "//starboard/shared/starboard/link_receiver.cc",
 
@@ -402,6 +404,18 @@ static_library("starboard_platform_sources") {
     "//third_party/starboard/wpe/shared/events/system_events.cc",
   ]
 
+  # No hw-accelerated JPEG decoder
+  decode_sources = [
+    "//starboard/shared/stub/image_decode.cc",
+    "//starboard/shared/stub/image_is_decode_supported.cc",
+    "//starboard/shared/stub/decode_target_release.cc",
+    "//starboard/shared/stub/decode_target_get_info.cc"
+    #"//starboard/shared/libjpeg/image_decode.cc",
+    #"//starboard/shared/libjpeg/image_is_decode_supported.cc",
+    #"//starboard/shared/libjpeg/jpeg_image_decoder.cc",
+    #"//starboard/shared/libjpeg/jpeg_image_decoder.h"
+  ]
+
   sources = audio_sink_sources
   sources += directory_sources
   sources += drm_sources
@@ -418,11 +432,8 @@ static_library("starboard_platform_sources") {
   sources += threading_sources
   sources += window_sources
   sources += event_sources
+  sources += decode_sources
   sources += [
-    "//starboard/shared/libjpeg/image_decode.cc",
-    "//starboard/shared/libjpeg/image_is_decode_supported.cc",
-    "//starboard/shared/libjpeg/jpeg_image_decoder.cc",
-    "//starboard/shared/libjpeg/jpeg_image_decoder.h",
     "//starboard/shared/linux/byte_swap.cc",
     "//starboard/shared/linux/cpu_features_get.cc",
     "//starboard/shared/signal/crash_signals.cc",

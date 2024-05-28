@@ -37,6 +37,8 @@ pkg_config("pkg_libs") {
     "gstreamer-audio-1.0",
     "glib-2.0",
     "gobject-2.0",
+    "egl",
+    "glesv2"
   ]
   if (has_ocdm == "1") {
     packages += [ "ocdm" ]
@@ -55,7 +57,8 @@ group("pkg_libs_grp") {
 
 config("platform_configuration") {
   ldflags = [ 
-    "-Wl,--wrap=eglGetDisplay"
+    "-Wl,--wrap=eglGetDisplay",
+    "-Wl,--unresolved-symbols=report-all"
   ]
   cflags = []
   if (has_ocdm == "1") {
