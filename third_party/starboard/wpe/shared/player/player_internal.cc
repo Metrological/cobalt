@@ -841,7 +841,7 @@ class PlayerImpl : public Player, public DrmSystemOcdm::Observer {
   int total_video_frames_{0};
   int frame_width_{0};
   int frame_height_{0};
-  WPEFramework::Compositor::IDisplay::ISurface* video_overlay_{nullptr};
+  Thunder::Compositor::IDisplay::ISurface* video_overlay_{nullptr};
   GstElement* gst_video_overlay_{nullptr};
   State state_{State::kNull};
   SamplesPendingKey pending_;
