@@ -70,10 +70,7 @@ config("host") {
         ldflags += [ "-latomic" ]
 
         if (is_clang) {
-          ldflags += [
-            "-target",
-            "i386-unknown-linux-gnu",
-          ]
+          ldflags += []
         } else {
           ldflags += [ "-m32" ]
         }

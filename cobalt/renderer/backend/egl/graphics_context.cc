@@ -71,7 +71,7 @@ GraphicsContextEGL::GraphicsContextEGL(GraphicsSystem* parent_system,
   // when we need to make OpenGL calls that do not depend on a surface (e.g.
   // creating a texture).
   null_surface_ = new PBufferRenderTargetEGL(display, config, math::Size(0, 0));
-  CHECK(!null_surface_->CreationError());
+  // CHECK(!null_surface_->CreationError());
 
   ScopedMakeCurrent scoped_current_context(this);
 

@@ -28,6 +28,13 @@ SpdySessionKey::SpdySessionKey(const HostPortPair& host_port_pair,
 
 SpdySessionKey::SpdySessionKey(const SpdySessionKey& other) = default;
 
+SpdySessionKey& SpdySessionKey::operator= (const SpdySessionKey& other) {
+  host_port_proxy_pair_ = other.host_port_proxy_pair_;
+  privacy_mode_ = other.privacy_mode_;
+  socket_tag_ = other.socket_tag_;
+  return (*this);
+}
+
 SpdySessionKey::~SpdySessionKey() = default;
 
 bool SpdySessionKey::operator<(const SpdySessionKey& other) const {

@@ -102,7 +102,10 @@ base::Optional<ChooseConfigResult> ChooseConfig(
   // Return the first config that succeeds the above test.
   EGLint num_configs = 0;
   EGL_CALL(eglChooseConfig(display, attribute_list, NULL, 0, &num_configs));
-  CHECK_LT(0, num_configs);
+  // CHECK_LT(0, num_configs);
+  if (!num_configs) {
+      return base::nullopt;
+  }
 
   std::unique_ptr<EGLConfig[]> configs(new EGLConfig[num_configs]);
   EGL_CALL_SIMPLE(eglChooseConfig(display, attribute_list, configs.get(),
@@ -190,6 +193,15 @@ GraphicsSystemEGL::GraphicsSystemEGL(
       choose_config_results =
           ChooseConfig(display_, attribute_list, system_window);
     }
+  }
+
+  if (!choose_config_results) {
+    DCHECK_EQ(EGL_SURFACE_TYPE, attribute_list[0]);
+    EGLint& surface_type_value = attribute_list[1];
+
+    surface_type_value &= ~EGL_PBUFFER_BIT;
+    choose_config_results =
+        ChooseConfig(display_, attribute_list, system_window);
   }
 
   DCHECK(choose_config_results);

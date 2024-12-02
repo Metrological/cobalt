@@ -57,6 +57,11 @@ class LayoutUnit {
 #endif
   }
 
+  LayoutUnit(const LayoutUnit& value) : value_(value.value_) 
+#ifdef _DEBUG
+  , is_nan_ (value.is_nan_)
+#endif
+  {}
   float toFloat() const {
     return static_cast<float>(value_) / kFixedPointRatio;
   }
@@ -69,7 +74,7 @@ class LayoutUnit {
   }
 
   // Copy assignment operator.
-  LayoutUnit& operator=(LayoutUnit value) {
+  LayoutUnit& operator=(const LayoutUnit& value) {
     value_ = value.value_;
 #ifdef _DEBUG
     is_nan_ = is_nan_ || value.is_nan_;

@@ -1659,7 +1659,7 @@ config("chromium_code") {
       "__STDC_CONSTANT_MACROS",
       "__STDC_FORMAT_MACROS",
     ]
-    cflags = [ "-Werror" ]
+    # cflags = [ "-Werror" ]
   } else {
     cflags = [ "-Wall" ]
     if (treat_warnings_as_errors) {

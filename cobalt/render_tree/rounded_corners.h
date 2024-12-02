@@ -81,6 +81,14 @@ struct RoundedCorners {
         bottom_right(bottom_right),
         bottom_left(bottom_left) {}
 
+  RoundedCorners& operator= (const RoundedCorners& radiuses) {
+    top_left = radiuses.top_left;
+    top_right = radiuses.top_right;
+    bottom_right = radiuses.bottom_right;
+    bottom_left = radiuses.bottom_left; 
+    return (*this);
+  }
+
   bool operator==(const RoundedCorners& other) const {
     return top_left == other.top_left && top_right == other.top_right &&
            bottom_right == other.bottom_right &&

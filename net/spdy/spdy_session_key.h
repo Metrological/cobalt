@@ -22,6 +22,7 @@ class NET_EXPORT_PRIVATE SpdySessionKey {
                  const SocketTag& socket_tag);
 
   SpdySessionKey(const SpdySessionKey& other);
+  SpdySessionKey& operator= (const SpdySessionKey& other);
 
   ~SpdySessionKey();
 

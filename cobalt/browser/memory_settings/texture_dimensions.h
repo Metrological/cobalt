@@ -35,6 +35,13 @@ class TextureDimensions {
         height_(other.height_),
         bytes_per_pixel_(other.bytes_per_pixel_) {}
 
+  TextureDimensions& operator= (const TextureDimensions& other) {
+    width_ = other.width_;
+    height_ = other.height_;
+    bytes_per_pixel_ = other.bytes_per_pixel_;
+    return (*this);
+  }
+
   bool operator==(const TextureDimensions& other) const {
     return width_ == other.width_ && height_ == other.height_ &&
            bytes_per_pixel_ == other.bytes_per_pixel_;

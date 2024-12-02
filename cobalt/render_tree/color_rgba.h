@@ -39,6 +39,8 @@ struct ColorRGBA {
  public:
   ColorRGBA() : r_(0), g_(0), b_(0), a_(0) {}
 
+  ColorRGBA(const ColorRGBA& copy) : r_(copy.r_), g_(copy.g_), b_(copy.b_), a_(copy.a_) {
+  }
   ColorRGBA(float red, float green, float blue) {
     CheckRange(red);
     r_ = red;
