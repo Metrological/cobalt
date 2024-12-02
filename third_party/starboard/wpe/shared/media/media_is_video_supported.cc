@@ -21,6 +21,20 @@
 
 using ::starboard::shared::starboard::media::MimeType;
 
+static int GetEnvironmentVariable(const char* environmentName, const int defaultValue) {
+    int value = defaultValue;
+    const char* text = ::getenv(environmentName);
+
+    if (text != nullptr) {
+        value = atoi(text);
+    }
+
+    return (value);
+}
+
+static int gVideoWidth = GetEnvironmentVariable("GST_VIRTUAL_DISP_WIDTH", SB_MEDIA_MAX_VIDEO_FRAME_WIDTH);
+static int gVideoHeight = GetEnvironmentVariable("GST_VIRTUAL_DISP_HEIGHT", SB_MEDIA_MAX_VIDEO_FRAME_HEIGHT);
+
 SB_EXPORT bool SbMediaIsVideoSupported(SbMediaVideoCodec video_codec,
                                        const MimeType* mime_type,
                                        int /*profile*/,
@@ -40,8 +54,8 @@ SB_EXPORT bool SbMediaIsVideoSupported(SbMediaVideoCodec video_codec,
     return false;
   }
 
-  return frame_width <= SB_MEDIA_MAX_VIDEO_FRAME_WIDTH &&
-         frame_height <= SB_MEDIA_MAX_VIDEO_FRAME_HEIGHT &&
+  return frame_width <= gVideoWidth &&
+         frame_height <= gVideoHeight &&
          bitrate <= kSbMediaMaxVideoBitrateInBitsPerSecond &&
          fps <= SB_MEDIA_MAX_VIDEO_FRAMERATE_IN_FRAMES_PER_SECOND &&
          third_party::starboard::wpe::shared::media::
