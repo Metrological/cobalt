@@ -16,8 +16,13 @@
 
 #include "starboard/common/log.h"
 
+#include "third_party/starboard/wpe/shared/cobalt_api_wpe.h"
+
 #if SB_API_VERSION >= 10
+
+static int garbageCollectThreshold = third_party::starboard::wpe::shared::GetEnvironment("COBALT_MEDIA_GARBAGE_COLLECT", 170);
+
 SbTime SbMediaGetBufferGarbageCollectionDurationThreshold() {
-  return 170 * kSbTimeSecond;
+  return garbageCollectThreshold * kSbTimeSecond;
 }
 #endif  // SB_API_VERSION >= 10

@@ -16,7 +16,12 @@
 
 #include "starboard/common/log.h"
 
+#include "third_party/starboard/wpe/shared/cobalt_api_wpe.h"
+
 #if SB_API_VERSION >= 10
+
+static int maxBufferCapacity = third_party::starboard::wpe::shared::GetEnvironment("COBALT_MEDIA_VIDEO_BUFFER_BUDGET", 300);
+
 int SbMediaGetVideoBufferBudget(SbMediaVideoCodec codec,
                                 int resolution_width,
                                 int resolution_height,
@@ -28,7 +33,7 @@ int SbMediaGetVideoBufferBudget(SbMediaVideoCodec codec,
     // Specifies the maximum amount of memory used by video buffers of media
     // source before triggering a garbage collection when the video resolution
     // is lower than 1080p (1920x1080).
-    return 30 * 1024 * 1024;
+    return ((maxBufferCapacity > 30 ? 30 : maxBufferCapacity) * 1024 * 1024);
   }
 
   if (resolution_width <= 3840 && resolution_height <= 2160) {
@@ -36,18 +41,18 @@ int SbMediaGetVideoBufferBudget(SbMediaVideoCodec codec,
       // Specifies the maximum amount of memory used by video buffers of media
       // source before triggering a garbage collection when the video resolution
       // is lower than 4k (3840x2160) and bit per pixel is lower than 8.
-      return 100 * 1024 * 1024;
+      return ((maxBufferCapacity > 100 ? 100 : maxBufferCapacity) * 1024 * 1024);
     } else {
       // Specifies the maximum amount of memory used by video buffers of media
       // source before triggering a garbage collection when video resolution is
       // lower than 4k (3840x2160) and bit per pixel is greater than 8.
-      return 160 * 1024 * 1024;
+      return ((maxBufferCapacity > 160 ? 160 : maxBufferCapacity) * 1024 * 1024);
     }
   }
 
   // Specifies the maximum amount of memory used by video buffers of media
   // source before triggering a garbage collection when the video resolution is
   // lower than 8k (7680x4320).
-  return 300 * 1024 * 1024;
+  return ((maxBufferCapacity > 300 ? 300 : maxBufferCapacity) * 1024 * 1024);
 }
 #endif  // SB_API_VERSION >= 10

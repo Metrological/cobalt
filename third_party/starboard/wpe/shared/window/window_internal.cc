@@ -542,7 +542,7 @@ void SbWindowPrivate::CreateDisplay() {
   std::string window_name = third_party::starboard::wpe::shared::window::DisplayName();
 
 #if !defined(WAYLAND_SINK)
-  window_name += ":graphics";
+  window_name += ":1";
 #if defined(SB_NEEDS_VIDEO_OVERLAY_SURFACE)
   // The sufraces are stacked in order they are
   // created with by default so make sure video is under gfx by creating
@@ -550,7 +550,7 @@ void SbWindowPrivate::CreateDisplay() {
   video_overlay_ =
       third_party::starboard::wpe::shared::window::GetDisplay()->Create(
           third_party::starboard::wpe::shared::window::DisplayName() + ":"
-              + std::string("video"), window_width_, window_height_);
+              + std::string("0"), window_width_, window_height_);
 #endif
 #endif
 

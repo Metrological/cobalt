@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "starboard/media.h"
+#include "third_party/starboard/wpe/shared/cobalt_api_wpe.h"
 
 namespace third_party {
 namespace starboard {

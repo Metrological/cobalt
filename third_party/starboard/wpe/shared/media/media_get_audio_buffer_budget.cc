@@ -16,8 +16,13 @@
 
 #include "starboard/common/log.h"
 
+#include "third_party/starboard/wpe/shared/cobalt_api_wpe.h"
+
 #if SB_API_VERSION >= 10
+
+static int audioBufferBudget = third_party::starboard::wpe::shared::GetEnvironment("COBALT_MEDIA_AUDIO_BUFFER_BUDGET", 5);
+
 int SbMediaGetAudioBufferBudget() {
-  return 5 * 1024 * 1024;
+  return audioBufferBudget * 1024 * 1024;
 }
 #endif  // SB_API_VERSION >= 10

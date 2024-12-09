@@ -16,7 +16,12 @@
 
 #include "starboard/common/log.h"
 
+#include "third_party/starboard/wpe/shared/cobalt_api_wpe.h"
+
 #if SB_API_VERSION >= 10
+
+static int progressiveBufferBudget = third_party::starboard::wpe::shared::GetEnvironment("COBALT_MEDIA_PROGRESSIVE_BUFFER_BUDGET", 12);
+
 int SbMediaGetProgressiveBufferBudget(SbMediaVideoCodec codec,
                                       int resolution_width,
                                       int resolution_height,
@@ -25,6 +30,6 @@ int SbMediaGetProgressiveBufferBudget(SbMediaVideoCodec codec,
   SB_UNREFERENCED_PARAMETER(resolution_width);
   SB_UNREFERENCED_PARAMETER(resolution_height);
   SB_UNREFERENCED_PARAMETER(bits_per_pixel);
-  return 12 * 1024 * 1024;
+  return progressiveBufferBudget * 1024 * 1024;
 }
 #endif  // SB_API_VERSION >= 10

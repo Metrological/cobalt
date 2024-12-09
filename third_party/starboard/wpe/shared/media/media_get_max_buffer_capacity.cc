@@ -16,7 +16,12 @@
 
 #include "starboard/common/log.h"
 
+#include "third_party/starboard/wpe/shared/cobalt_api_wpe.h"
+
 #if SB_API_VERSION >= 10
+
+static int maxBufferCapacity = third_party::starboard::wpe::shared::GetEnvironment("COBALT_MEDIA_MAX_BUFFER_BUDGET", 360);
+
 int SbMediaGetMaxBufferCapacity(SbMediaVideoCodec codec,
                                 int resolution_width,
                                 int resolution_height,
@@ -28,7 +33,7 @@ int SbMediaGetMaxBufferCapacity(SbMediaVideoCodec codec,
     // The maximum amount of memory that will be used to store media buffers
     // when video resolution is 1080p. If 0, then memory can grow without bound.
     // This must be larger than sum of 1080p video budget and non-video budget.
-    return 50 * 1024 * 1024;
+    return ((maxBufferCapacity > 50 ? 50 : maxBufferCapacity) * 1024 * 1024);
   }
 
   if (resolution_width <= 3840 && resolution_height <= 2160) {
@@ -37,19 +42,19 @@ int SbMediaGetMaxBufferCapacity(SbMediaVideoCodec codec,
       // when video resolution is 4k and bit per pixel is lower than 8. If 0,
       // then memory can grow without bound. This must be larger than sum of 4k
       // video budget and non-video budget.
-      return 140 * 1024 * 1024;
+      return ((maxBufferCapacity > 140 ? 140 : maxBufferCapacity) * 1024 * 1024);
     } else {
       // The maximum amount of memory that will be used to store media buffers
       // when video resolution is 4k and bit per pixel is greater than 8. If 0,
       // then memory can grow without bound. This must be larger than sum of 4k
       // video budget and non-video budget.
-      return 210 * 1024 * 1024;
+      return ((maxBufferCapacity > 210 ? 210 : maxBufferCapacity) * 1024 * 1024);
     }
   }
 
   // The maximum amount of memory that will be used to store media buffers when
   // video resolution is 8k. If 0, then memory can grow without bound. This
   // must be larger than sum of 8k video budget and non-video budget.
-  return 360 * 1024 * 1024;
+  return ((maxBufferCapacity > 360 ? 360 : maxBufferCapacity) * 1024 * 1024);
 }
 #endif  // SB_API_VERSION >= 10

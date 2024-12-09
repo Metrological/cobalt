@@ -17,23 +17,13 @@
 #include "starboard/media.h"
 #include "starboard/shared/starboard/media/media_support_internal.h"
 #include "third_party/starboard/wpe/shared/media/gst_media_utils.h"
+#include "third_party/starboard/wpe/shared/cobalt_api_wpe.h"
 #include "starboard/configuration_constants.h"
 
 using ::starboard::shared::starboard::media::MimeType;
 
-static int GetEnvironmentVariable(const char* environmentName, const int defaultValue) {
-    int value = defaultValue;
-    const char* text = ::getenv(environmentName);
-
-    if (text != nullptr) {
-        value = atoi(text);
-    }
-
-    return (value);
-}
-
-static int gVideoWidth = GetEnvironmentVariable("GST_VIRTUAL_DISP_WIDTH", SB_MEDIA_MAX_VIDEO_FRAME_WIDTH);
-static int gVideoHeight = GetEnvironmentVariable("GST_VIRTUAL_DISP_HEIGHT", SB_MEDIA_MAX_VIDEO_FRAME_HEIGHT);
+static int gVideoWidth = third_party::starboard::wpe::shared::GetEnvironment("GST_VIRTUAL_DISP_WIDTH", SB_MEDIA_MAX_VIDEO_FRAME_WIDTH);
+static int gVideoHeight = third_party::starboard::wpe::shared::GetEnvironment("GST_VIRTUAL_DISP_HEIGHT", SB_MEDIA_MAX_VIDEO_FRAME_HEIGHT);
 
 SB_EXPORT bool SbMediaIsVideoSupported(SbMediaVideoCodec video_codec,
                                        const MimeType* mime_type,

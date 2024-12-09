@@ -15,10 +15,29 @@
 #ifndef THIRD_PARTY_STARBOARD_WPE_SHARED_COBALT_API_WPE_H_
 #define THIRD_PARTY_STARBOARD_WPE_SHARED_COBALT_API_WPE_H_
 
+#include <stdlib.h>
+
 namespace third_party {
 namespace starboard {
 namespace wpe {
 namespace shared {
+
+inline int GetEnvironment(const char environmentName[], const int defaultValue) {
+    int result = defaultValue;
+    const char* value = std::getenv(environmentName);     
+    if (value != nullptr) {
+        result = std::atoi(value);
+    }
+    return(result);
+}
+
+inline const char* GetEnvironment(const char environmentName[], const char* defaultValue) {
+    const char* result = std::getenv(environmentName);     
+    if (result == nullptr) {
+        result = defaultValue;
+    }
+    return(result);
+}
 
 enum class ResetType {
   kFactory,
